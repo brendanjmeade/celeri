@@ -1,6 +1,7 @@
 import copy
 import numpy as np
 from pyproj import Geod
+from matplotlib import path
 
 import celeri
 
@@ -148,3 +149,17 @@ def process_segment(segment, command):
     # segment.locking_depth.values = PatchLDtoggle(segment.locking_depth, segment.patch_file_name, segment.patch_flag, Command.patchFileNames) % Set locking depth to zero on segments that are associated with patches # TODO: Write this after patches are read in.
     segment = celeri.segment_centroids(segment)
     return segment
+
+
+def inpolygon(xq, yq, xv, yv):
+    """From:
+    https://stackoverflow.com/questions/31542843/inpolygon-for-python-examples-of-matplotlib-path-path-contains-points-method
+    """
+    shape = xq.shape
+    xq = xq.reshape(-1)
+    yq = yq.reshape(-1)
+    xv = xv.reshape(-1)
+    yv = yv.reshape(-1)
+    q = [(xq[i], yq[i]) for i in range(xq.shape[0])]
+    p = path.Path([(xv[i], yv[i]) for i in range(xv.shape[0])])
+    return p.contains_points(q).reshape(shape)
