@@ -133,14 +133,8 @@ def process_segment(segment, command):
     segment["x2"], segment["y2"], segment["z2"] = celeri.sph2cart(
         segment.lon2, segment.lat2, celeri.RADIUS_EARTH
     )
-
-    segment["mid_lon_plate_carree"] = (
-        segment_current_block.lon1.values + segment_current_block.lon2.values
-    ) / 2.0
-    segment["mid_lat_plate_carree"] = (
-        segment_current_block.lat1.values + segment_current_block.lat2.values
-    ) / 2.0
-
+    segment["mid_lon_plate_carree"] = (segment.lon1.values + segment.lon2.values) / 2.0
+    segment["mid_lat_plate_carree"] = (segment.lat1.values + segment.lat2.values) / 2.0
     segment["mid_lon"] = np.zeros_like(segment.lon1)
     segment["mid_lat"] = np.zeros_like(segment.lon1)
 
