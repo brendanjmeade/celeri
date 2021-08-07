@@ -46,7 +46,7 @@
         0
     ],
     "n_eigs": 50,
-    "segment_file_name": "./data/anatolia/anatolia_segment.csv",
+    "segment_file_name": "./data/western_north_america/small.csv",
     "station_file_name": "./data/western_north_america/station.csv",
     "block_file_name": "./data/western_north_america/block.csv",
     "fault_resolution": 500,
