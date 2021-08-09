@@ -19,6 +19,11 @@ def sph2cart(lon, lat, radius):
     return x, y, z
 
 
+def wrap2360(lon):
+    lon[np.where(lon < 0.0)] += 360.0
+    return lon
+
+
 def process_station(station, command):
     if command["unit_sigmas"] == "yes":  # Assign unit uncertainties, if requested
         station.east_sig = np.ones_like(station.east_sig)
