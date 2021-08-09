@@ -24,8 +24,8 @@ s = celeri.process_segment(s, command)
 split = celeri.split_segments_crossing_meridian(s)
 nseg = len(split)
 
-# make sure western vertex is the start point
-# [S, i] = OrderEndpointsSphere(split);
+# Make sure western vertex is the start point
+# S, i = order_endpoints_sphere(split)
 # sego = [S.lon1(:) S.lon2(:)];
 # sega = [S.lat1(:) S.lat2(:)];
 # segx = [S.x1(:) S.x2(:)];
@@ -49,7 +49,8 @@ nseg = len(split)
 
 # % Find unique points and indices to them
 # [~, ~, ui] = unique(allc, 'rows', 'first');
-# us = ui(1:nseg); ue = ui(nseg+1:end);
+# us = ui(1:nseg)
+# ue = ui(nseg+1:end);
 
 # % Calculate the azimuth of each fault segment
 # % Using atan instead of azimuth because azimuth breaks down for very long segments
@@ -146,10 +147,7 @@ nseg = len(split)
 #             seg_cnt = seg_cnt + 1;
 #         end
 #     end
-
-#     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-#     %%  Put poly_vec into seg_poly_ver                     %%
-#     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+#     % Put poly_vec into seg_poly_ver                     %%
 #     seg_poly_ver(i, 1:length(poly_vec)) = poly_vec;
 #     seg_trav_ord(i, 1:length(trav_ord)) = trav_ord;
 # end
