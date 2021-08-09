@@ -180,8 +180,8 @@ def split_segments_crossing_meridian(segment):
     prime meridian. All other segment properties are taken from
     the original segment.
     """
-    segment.lon1.values = celeri.wrap2360(segment.lon1.values)
-    segment.lon2.values = celeri.wrap2360(segment.lon2.values)
+    segment.lon1 = celeri.wrap2360(segment.lon1.values)
+    segment.lon2 = celeri.wrap2360(segment.lon2.values)
 
     # Get longitude differences
     prime_meridian_cross = np.abs(segment.lon1 - segment.lon2) > 180
