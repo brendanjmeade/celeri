@@ -1,5 +1,7 @@
 import copy
 import numpy as np
+import pandas as pd
+from numpy.lib.shape_base import split
 from pyproj import Geod
 from matplotlib import path
 
@@ -67,13 +69,12 @@ def order_endpoints_sphere(segment):
     point). This method works for both (-180, 180) and (0, 360) longitude
     conventions.
     """
+    # TODO: RETURN OLD JPL index as second returned value
     segment_copy = copy.deepcopy(segment)
     x1, y1, z1 = celeri.sph2cart(segment.lon1, segment.lat1, 1)
     x2, y2, z2 = celeri.sph2cart(segment.lon1, segment.lat2, 1)
     for i in range(x1.size):
-        cross_product = np.cross(
-            [x1[i], y1[i], z1[i]], [x2[i], y2[i], z2[i]]
-        )  # TODO: Need to work on this!!!
+        cross_product = np.cross([x1[i], y1[i], z1[i]], [x2[i], y2[i], z2[i]])
         if cross_product[2] <= 0:
             segment_copy.lon1.values[i] = segment.lon2.values[i]
             segment_copy.lat1.values[i] = segment.lat2.values[i]
@@ -167,58 +168,54 @@ def inpolygon(xq, yq, xv, yv):
     return p.contains_points(q).reshape(shape)
 
 
-def segmeridian(segment):
+def split_segments_crossing_meridian(segment):
     """segmeridian  Splits segments along the prime meridian.
     segment = segmeridian(segment) splits segments that cross the prime
     meridian into two segments, each with one endpoint on the
     prime meridian. All other segment properties are taken from
     the original segment.
     """
-
-    # Wrap to 360
     segment.lon1.values = celeri.wrap2360(segment.lon1.values)
     segment.lon2.values = celeri.wrap2360(segment.lon2.values)
 
     # Get longitude differences
-    dlon = np.abs(segment.lon1.to_numpy() - segment.lon2.to_numpy())
-    pmcross = np.where(dlon > 180)
+    prime_meridian_cross = np.abs(segment.lon1 - segment.lon2) > 180
+    split_idx = np.where(prime_meridian_cross)
 
-    #  Split those segments crossing the meridian
-    lat = gclatfind(
-        segment.lon1.values[pmcross],
-        segment.lat1.values[pmcross],
-        segment.lon2.values[pmcross],
-        segment.lat2.values[pmcross],
-        360.0 * np.ones(np.sum(pmcross), 1),
-    )
+    if any(prime_meridian_cross):
+        #  Split those segments crossing the meridian
+        split_lat = great_circle_latitude_find(
+            segment.lon1.values[split_idx],
+            segment.lat1.values[split_idx],
+            segment.lon2.values[split_idx],
+            segment.lat2.values[split_idx],
+            360.0 * np.ones(len(split_idx)),
+        )
 
-    # Replicate split segment properties and assign new endpoints
-    # Isolate split and whole segments
-    # split = structsubset(s, pmcross);
-    # whole = structsubset(s, ~pmcross);
+        # Replicate split segment properties and assign new endpoints
+        # Isolate split and whole segments
+        segment_whole = copy.copy(segment[~prime_meridian_cross])
+        segment_split = copy.copy(segment[prime_meridian_cross])
+        segment_split = pd.concat([segment_split, segment_split])
 
-    # Replicate the split array
-    # split = structmath(split, split, 'vertcat');
-
-    # Insert the split coordinates
-    # split.lon2(1:sum(pmcross)) = 360;
-    # split.lat2(1:sum(pmcross)) = lat;
-    # split.lon1(sum(pmcross)+1:end) = 0;
-    # split.lat1(sum(pmcross)+1:end) = lat;
-    # [split.midLon, split.midLat] = segmentmidpoint(split.lon1, split.lat1, split.lon2, split.lat2);
-    # [split.x1, split.y1, split.z1] = sph2cart(DegToRad(split.lon1), DegToRad(split.lat1), 6371);
-    # [split.x2, split.y2, split.z2] = sph2cart(DegToRad(split.lon2), DegToRad(split.lat2), 6371);
-
-    # Stitch together the whole and split structures
-    # S = structmath(split, whole, 'vertcat');
-
-    # # Indices of split segments
-    # si = find(pmcross);
-    return segment, si
+        # Insert the split coordinates
+        segment_split.lon2.values[0 : len(split_idx)] = 360.0
+        segment_split.lat2.values[0 : len(split_idx)] = split_lat
+        segment_split.lon1.values[len(split_idx) + 1 : -1] = 0.0
+        segment_split.lat1.values[len(split_idx) + 1 : -1] = split_lat
+        # [segment_split.midLon, segment_split.midLat] = segmentmidpoint(split.lon1, split.lat1, split.lon2, split.lat2);
+        segment_split.x1, segment_split.y1, segment_split.z1 = celeri.sph2cart(
+            segment_split.lon1.values, segment_split.lat1.values, RADIUS_EARTH
+        )
+        segment_split.x2, segment_split.y2, segment_split.z2 = celeri.sph2cart(
+            segment_split.lon2.values, segment_split.lat2.values, RADIUS_EARTH
+        )
+        segment = pd.concat([segment_split, segment_whole])
+    return segment, split_idx
 
 
-def gclatfind(lon1, lat1, lon2, lat2, lon):
-    """gclatfind   Determines latitude as a function of longitude along a great circle.
+def great_circle_latitude_find(lon1, lat1, lon2, lat2, lon):
+    """Determines latitude as a function of longitude along a great circle.
     LAT = gclatfind(LON1, LAT1, LON2, LAT2, LON) finds the latitudes of points of
     specified LON that lie along the great circle defined by endpoints LON1, LAT1
     and LON2, LAT2. Angles should be passed as degrees.

@@ -18,11 +18,13 @@ b = pd.read_csv(command["block_file_name"])
 st = celeri.process_station(st, command)
 s = celeri.process_segment(s, command)
 
-# % Split any prime meridian-crossing segments
-# split = segmeridian(s);
-nseg = len(s)
+### Start of BlockLabel.m translation ###
 
-# % make sure western vertex is the start point
+# Split any prime meridian-crossing segments
+split = celeri.split_segments_crossing_meridian(s)
+nseg = len(split)
+
+# make sure western vertex is the start point
 # [S, i] = OrderEndpointsSphere(split);
 # sego = [S.lon1(:) S.lon2(:)];
 # sega = [S.lat1(:) S.lat2(:)];
