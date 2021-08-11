@@ -25,7 +25,7 @@ split = celeri.split_segments_crossing_meridian(s)
 nseg = len(split)
 
 # Make sure western vertex is the start point
-# S, i = order_endpoints_sphere(split)
+S = celeri.order_endpoints_sphere(split)
 # sego = [S.lon1(:) S.lon2(:)];
 # sega = [S.lat1(:) S.lat2(:)];
 # segx = [S.x1(:) S.x2(:)];

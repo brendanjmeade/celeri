@@ -216,7 +216,7 @@ def split_segments_crossing_meridian(segment):
             segment_split.lon2.values, segment_split.lat2.values, RADIUS_EARTH
         )
         segment = pd.concat([segment_split, segment_whole])
-    return segment, split_idx
+    return segment
 
 
 def great_circle_latitude_find(lon1, lat1, lon2, lat2, lon):
