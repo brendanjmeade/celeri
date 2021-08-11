@@ -32,18 +32,17 @@ segx = np.array([S.x1.to_numpy(), S.x2.to_numpy()]).T
 segy = np.array([S.y1.to_numpy(), S.y2.to_numpy()]).T
 segy[np.where(np.abs(segy) < 1e-6)] = 0
 segz = np.array([S.z1.to_numpy(), S.z2.to_numpy()]).T
-# i = (i-1)*nseg + repmat((1:nseg)', 1, 2);
+i = np.array(
+    [np.arange(0, len(S)), np.arange(len(S), 2 * len(S))]
+).T  # TODO: Not sure if this should start at 0 or 1
 
-# % make sure there are no hanging segments
-# allc = [segx(:) segy(:) segz(:)];
-# %allc = [[s.x1(:) s.y1(:) s.z1(:)]; [s.x2(:) s.y2(:) s.z2(:)]];
-# [~, i1] = unique(allc, 'rows', 'first');
-# [~, i2] = unique(allc, 'rows', 'last');
-# if isempty(~find(i2-i1, 1))
-#     fprintf(1, '*** All blocks are not closed! ***\n');
-#     %else
-#     %fprintf(1, 'No hanging segments found');
-# end
+# Check for hanging segments
+allc = np.array([segx.T.flatten(), segy.T.flatten(), segz.T.flatten()]).T
+_, counts = np.unique(allc, axis=0, return_counts=True)
+if any(counts == 1):
+    print("Found hanging segments!")
+else:
+    print("No hanging segments found.")
 
 # % Carry out a few operations on all segments
 
