@@ -26,12 +26,12 @@ nseg = len(split)
 
 # Make sure western vertex is the start point
 S = celeri.order_endpoints_sphere(split)
-# sego = [S.lon1(:) S.lon2(:)];
-# sega = [S.lat1(:) S.lat2(:)];
-# segx = [S.x1(:) S.x2(:)];
-# segy = [S.y1(:) S.y2(:)];
-# segy(abs(segy) < 1e-6) = 0;
-# segz = [S.z1(:) S.z2(:)];
+sego = np.array([S.lon1.to_numpy(), S.lon2.to_numpy()]).T
+sega = np.array([S.lat1.to_numpy(), S.lat2.to_numpy()]).T
+segx = np.array([S.x1.to_numpy(), S.x2.to_numpy()]).T
+segy = np.array([S.y1.to_numpy(), S.y2.to_numpy()]).T
+segy[np.where(np.abs(segy) < 1e-6)] = 0
+segz = np.array([S.z1.to_numpy(), S.z2.to_numpy()]).T
 # i = (i-1)*nseg + repmat((1:nseg)', 1, 2);
 
 # % make sure there are no hanging segments

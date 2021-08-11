@@ -73,14 +73,26 @@ def order_endpoints_sphere(segment):
     component of cross(point1, point2) means that point1 is the western
     point). This method works for both (-180, 180) and (0, 360) longitude
     conventions.
+    BJM: Not sure why cross product approach was definitely not working in
+    python so I revereted to relative longitude check which sould be fine because
+    we're always in 0-360 space.
     """
-    # TODO: RETURN OLD JPL index as second returned value
+    # segment_copy = copy.deepcopy(segment)
+    # x1, y1, z1 = celeri.sph2cart(segment.lon1, segment.lat1, 1)
+    # x2, y2, z2 = celeri.sph2cart(segment.lon1, segment.lat2, 1)
+    # for i in range(x1.size):
+    #     cross_product = np.cross([x1[i], y1[i], z1[i]], [x2[i], y2[i], z2[i]])
+    #     if cross_product[2] <= 0:
+    #         print(i, "Reordering endpoints")
+    #         segment_copy.lon1.values[i] = segment.lon2.values[i]
+    #         segment_copy.lat1.values[i] = segment.lat2.values[i]
+    #         segment_copy.lon2.values[i] = segment.lon1.values[i]
+    #         segment_copy.lat2.values[i] = segment.lat1.values[i]
+    # return segment_copy
     segment_copy = copy.deepcopy(segment)
-    x1, y1, z1 = celeri.sph2cart(segment.lon1, segment.lat1, 1)
-    x2, y2, z2 = celeri.sph2cart(segment.lon1, segment.lat2, 1)
-    for i in range(x1.size):
-        cross_product = np.cross([x1[i], y1[i], z1[i]], [x2[i], y2[i], z2[i]])
-        if cross_product[2] <= 0:
+    for i in range(len(segment)):
+        if segment.lon1[i] > segment.lon2[i]:
+            print(i, "Reordering endpoints for segment ", segment.name[i].strip())
             segment_copy.lon1.values[i] = segment.lon2.values[i]
             segment_copy.lat1.values[i] = segment.lat2.values[i]
             segment_copy.lon2.values[i] = segment.lon1.values[i]
