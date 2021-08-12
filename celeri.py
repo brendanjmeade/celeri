@@ -256,7 +256,7 @@ def sphere_azimuth(lon1, lat1, lon2, lat2):
     The coordinate arrays must all be the same size.
     """
     num = np.sin(np.deg2rad(lon2 - lon1))
-    den = np.cos(np.deg2rad(lat1)) * np.tan(np.rad2deg(lat2)) - np.sin(
+    den = np.cos(np.deg2rad(lat1)) * np.tan(np.deg2rad(lat2)) - np.sin(
         np.deg2rad(lat1)
     ) * np.cos(np.deg2rad(lon2 - lon1))
     az = np.rad2deg(np.arctan2(num, den))

@@ -68,6 +68,14 @@ ue = ui[nseg + 1 : -1]
 # az21 = sphereazimuth(sego(:, 1), sega(:, 1), tlo2, tla2); # Toward test point
 # az22 = sphereazimuth(tlo2, tla2, sego(:, 1), sega(:, 1)); # From test point
 
+az2 = celeri.sphere_azimuth(
+    sego[:, 0], sega[:, 0], sego[:, 1], sega[:, 1]
+)  # Whole segment azimuth
+# [tlo2, tla2] = gcpoint(sego(:, 1), sega(:, 1), az2, 1);   # Local test point coordinates
+# az21 = sphereazimuth(sego(:, 1), sega(:, 1), tlo2, tla2); # Toward test point
+# az22 = sphereazimuth(tlo2, tla2, sego(:, 1), sega(:, 1)); # From test point
+
+
 # Local azimuths originating from endpoint 2
 # az1 = sphereazimuth(sego(:, 2), sega(:, 2), sego(:, 1), sega(:, 1)); # Local test point coordinates
 # [tlo1, tla1] = gcpoint(sego(:, 2), sega(:, 2), az1, 1);   # Whole segment azimuth
