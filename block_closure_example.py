@@ -71,7 +71,12 @@ ue = ui[nseg + 1 : -1]
 az2 = celeri.sphere_azimuth(
     sego[:, 0], sega[:, 0], sego[:, 1], sega[:, 1]
 )  # Whole segment azimuth
-# [tlo2, tla2] = gcpoint(sego(:, 1), sega(:, 1), az2, 1);   # Local test point coordinates
+tlo2, tla2 = celeri.great_circle_point(
+    sego[:, 1], sega[:, 1], az2, 1.0
+)  # Local test point coordinates
+
+# Local test point coordinates
+
 # az21 = sphereazimuth(sego(:, 1), sega(:, 1), tlo2, tla2); # Toward test point
 # az22 = sphereazimuth(tlo2, tla2, sego(:, 1), sega(:, 1)); # From test point
 

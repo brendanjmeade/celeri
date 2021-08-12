@@ -254,6 +254,7 @@ def sphere_azimuth(lon1, lat1, lon2, lat2):
     AZ = sphereazimuth(LON1, LAT1, LON2, LAT2) calculates the azimuth, AZ,
     between points defined by coordinates (LON1, LAT1) and (LON2, LAT2).
     The coordinate arrays must all be the same size.
+    TODO: Replace with pyproj???
     """
     num = np.sin(np.deg2rad(lon2 - lon1))
     den = np.cos(np.deg2rad(lat1)) * np.tan(np.deg2rad(lat2)) - np.sin(
@@ -261,3 +262,38 @@ def sphere_azimuth(lon1, lat1, lon2, lat2):
     ) * np.cos(np.deg2rad(lon2 - lon1))
     az = np.rad2deg(np.arctan2(num, den))
     return az
+
+
+def great_circle_point(lon, lat, az, dist):
+    """
+    Finds coordinates of a point along a great circle.
+    Determines the coordinates LON2, LAT2 of a point lying
+    along a great circle originating at point LON1, LAT1.
+    The azimuth of the great circle is given as AZ and the
+    angular distance between the two points is DIST. All input
+    arguments should be given in degrees, including the distance.
+    TODO: Distance in degrees???
+    TODO: Replace with pyproj???
+    """
+    # plat = asind(sind(lat).*cosd(dist) + cosd(lat).*sind(dist).*cosd(az));
+    # a = sind(dist).*sind(az).*cosd(lat);
+    # b = cosd(dist) - sind(lat).*sind(plat);
+
+    # if verLessThan('matlab', '8.0')
+    #     plon = lon + rad2deg(atan2(a, b));
+    # else
+    #     plon = lon + atan2d(a, b);
+    # end
+    # plon(b == 0) = lon(b == 0);
+    # plon(b == 0 & plat == 0) = lon(b == 0 & plat == 0) + 90;
+
+    plat = np.arcsin(
+        np.sin(np.deg2rad(lat)) * np.cos(np.deg2rad(dist))
+        + np.cos(np.deg2rad(lat)) * np.sin(np.deg2rad(dist)) * np.cos(np.deg2rad(az))
+    )
+    a = np.sin(np.deg2rad(dist)) * np.sin(np.deg2rad(az)) * np.cos(np.deg2rad(lat))
+    b = np.cos(np.deg2rad(dist)) - np.sin(np.deg2rad(lat)) * np.sin(np.deg2rad(plat))
+    plon = lon + np.rad2deg(np.arctan2(a, b))
+    plon[b == 0] = lon[b == 0]
+    plon[b == 0 and plat == 0] = lon[b == 0 and plat == 0] + 90.0
+    return plon, plat
