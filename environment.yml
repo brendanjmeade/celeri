@@ -1,0 +1,12 @@
+name: celeri
+channels:
+  - conda-forge
+dependencies:
+  - numpy
+  - scipy
+  - matplotlib
+  - pyproj
+  - pandas
+  - networkx
+  - jupyterlab
+  - ipympl
