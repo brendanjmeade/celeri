@@ -47,38 +47,38 @@ us = ui[0:nseg]
 ue = ui[nseg + 1 : -1]
 
 
-# % Calculate the azimuth of each fault segment
-# % Using atan instead of azimuth because azimuth breaks down for very long segments
-# % az1 = rad2deg(atan2(segx(:, 1) - segx(:, 2), segy(:, 1) - segy(:, 2)));
-# % az2 = rad2deg(atan2(segx(:, 2) - segx(:, 1), segy(:, 2) - segy(:, 1)));
+# Calculate the azimuth of each fault segment
+# Using atan instead of azimuth because azimuth breaks down for very long segments
+# az1 = rad2deg(atan2(segx(:, 1) - segx(:, 2), segy(:, 1) - segy(:, 2)));
+# az2 = rad2deg(atan2(segx(:, 2) - segx(:, 1), segy(:, 2) - segy(:, 1)));
 
-# % Make local azimuths for every endpoint. The problem is indeed for really long segments;
-# % the junction is essentially approached along an azimuth that doesn't sensibly fall between
-# % the "exit" azimuths. So, for each end point, create a new test point 1 degree away along
-# % the great circle, but because it's closer, the great circle azimuth will be "local" and
-# % therefore makes the junction decision more sensibly.
-# %
-# % An example problem segment is the northern boundary of North America in the Blocks release
-# % segment file. Its azimuth eastward, away from the northern Pacific Ocean, is about 38, but
-# % westward away from Greenland, it's 315. This ends up affecting the Pacific and exterior blocks.
+# Make local azimuths for every endpoint. The problem is indeed for really long segments;
+# the junction is essentially approached along an azimuth that doesn't sensibly fall between
+# the "exit" azimuths. So, for each end point, create a new test point 1 degree away along
+# the great circle, but because it's closer, the great circle azimuth will be "local" and
+# therefore makes the junction decision more sensibly.
+#
+# An example problem segment is the northern boundary of North America in the Blocks release
+# segment file. Its azimuth eastward, away from the northern Pacific Ocean, is about 38, but
+# westward away from Greenland, it's 315. This ends up affecting the Pacific and exterior blocks.
 
-# % Local azimuths originating from endpoint 1
-# az2 = sphereazimuth(sego(:, 1), sega(:, 1), sego(:, 2), sega(:, 2)); % Whole segment azimuth
-# [tlo2, tla2] = gcpoint(sego(:, 1), sega(:, 1), az2, 1);   % Local test point coordinates
-# az21 = sphereazimuth(sego(:, 1), sega(:, 1), tlo2, tla2); % Toward test point
-# az22 = sphereazimuth(tlo2, tla2, sego(:, 1), sega(:, 1)); % From test point
+# Local azimuths originating from endpoint 1
+# az2 = sphereazimuth(sego(:, 1), sega(:, 1), sego(:, 2), sega(:, 2)); # Whole segment azimuth
+# [tlo2, tla2] = gcpoint(sego(:, 1), sega(:, 1), az2, 1);   # Local test point coordinates
+# az21 = sphereazimuth(sego(:, 1), sega(:, 1), tlo2, tla2); # Toward test point
+# az22 = sphereazimuth(tlo2, tla2, sego(:, 1), sega(:, 1)); # From test point
 
-# % Local azimuths originating from endpoint 2
-# az1 = sphereazimuth(sego(:, 2), sega(:, 2), sego(:, 1), sega(:, 1)); % Local test point coordinates
-# [tlo1, tla1] = gcpoint(sego(:, 2), sega(:, 2), az1, 1);   % Whole segment azimuth
-# az11 = sphereazimuth(sego(:, 2), sega(:, 2), tlo1, tla1); % Toward test point
-# az12 = sphereazimuth(tlo1, tla1, sego(:, 2), sega(:, 2)); % From test point
+# Local azimuths originating from endpoint 2
+# az1 = sphereazimuth(sego(:, 2), sega(:, 2), sego(:, 1), sega(:, 1)); # Local test point coordinates
+# [tlo1, tla1] = gcpoint(sego(:, 2), sega(:, 2), az1, 1);   # Whole segment azimuth
+# az11 = sphereazimuth(sego(:, 2), sega(:, 2), tlo1, tla1); # Toward test point
+# az12 = sphereazimuth(tlo1, tla1, sego(:, 2), sega(:, 2)); # From test point
 # saz = [az21 az11];
 # eaz = [az22 az12];
 # saz(saz < 0) = saz(saz < 0) + 360;
 # eaz(eaz < 0) = eaz(eaz < 0) + 360;
 
-# % Declare array to store polygon segment indices
+# Declare array to store polygon segment indices
 # poly_ver = zeros(1, nseg);
 # trav_ord = poly_ver;
 # seg_poly_ver = zeros(nseg);
