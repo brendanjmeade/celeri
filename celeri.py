@@ -186,9 +186,8 @@ def inpolygon(xq, yq, xv, yv):
 
 
 def split_segments_crossing_meridian(segment):
-    """segmeridian  Splits segments along the prime meridian.
-    segment = segmeridian(segment) splits segments that cross the prime
-    meridian into two segments, each with one endpoint on the
+    """
+    Splits segments along the prime meridian with one endpoint on the
     prime meridian. All other segment properties are taken from
     the original segment.
     """
@@ -210,7 +209,6 @@ def split_segments_crossing_meridian(segment):
         )
 
         # Replicate split segment properties and assign new endpoints
-        # Isolate split and whole segments
         segment_whole = copy.copy(segment[~prime_meridian_cross])
         segment_split = copy.copy(segment[prime_meridian_cross])
         segment_split = pd.concat([segment_split, segment_split])
@@ -232,7 +230,8 @@ def split_segments_crossing_meridian(segment):
 
 
 def great_circle_latitude_find(lon1, lat1, lon2, lat2, lon):
-    """Determines latitude as a function of longitude along a great circle.
+    """
+    Determines latitude as a function of longitude along a great circle.
     LAT = gclatfind(LON1, LAT1, LON2, LAT2, LON) finds the latitudes of points of
     specified LON that lie along the great circle defined by endpoints LON1, LAT1
     and LON2, LAT2. Angles should be passed as degrees.
@@ -247,3 +246,21 @@ def great_circle_latitude_find(lon1, lat1, lon2, lat2, lon):
         - np.tan(lat2) * np.sin(lon - lon1) / np.sin(lon1 - lon2)
     )
     return
+
+
+def sphere_azimuth(lon1, lat1, lon2, lat2):
+    """
+    Calculates azimuth between sets of points on a sphere.
+    AZ = sphereazimuth(LON1, LAT1, LON2, LAT2) calculates the azimuth, AZ,
+    between points defined by coordinates (LON1, LAT1) and (LON2, LAT2).
+    The coordinate arrays must all be the same size.
+    """
+    # num = sind(lon2 - lon1);
+    # den = cosd(lat1).*tand(lat2) - sind(lat1).*cosd(lon2 - lon1);
+    # az = rad_to_deg(atan2(num, den));
+    num = np.sin(np.deg2rad(lon2 - lon1))
+    den = np.cos(np.deg2rad(lat1)) * np.tan(np.rad2deg(lat2)) - np.sin(
+        np.deg2rad(lat1)
+    ) * np.cos(np.deg2rad(lon2 - lon1))
+    az = np.rad2deg(np.atan2(num, den))
+    return az
