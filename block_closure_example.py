@@ -36,20 +36,16 @@ i = np.array(
     [np.arange(0, len(S)), np.arange(len(S), 2 * len(S))]
 ).T  # TODO: Not sure if this should start at 0 or 1
 
-# Check for hanging segments
+# Check for hanging segments #TODO: Why is this done with x,y,z instead of lon, lat?
 allc = np.array([segx.T.flatten(), segy.T.flatten(), segz.T.flatten()]).T
-_, counts = np.unique(allc, axis=0, return_counts=True)
-if any(counts == 1):
+if any(np.unique(allc, axis=0, return_counts=True)[1] == 1):
     print("Found hanging segments!")
-else:
-    print("No hanging segments found.")
 
-# % Carry out a few operations on all segments
+# Find unique points and indices to them
+ui = np.unique(allc, axis=0, return_index=True, return_inverse=True)[2]
+us = ui[0:nseg]
+ue = ui[nseg + 1 : -1]
 
-# % Find unique points and indices to them
-# [~, ~, ui] = unique(allc, 'rows', 'first');
-# us = ui(1:nseg)
-# ue = ui(nseg+1:end);
 
 # % Calculate the azimuth of each fault segment
 # % Using atan instead of azimuth because azimuth breaks down for very long segments
