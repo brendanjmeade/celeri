@@ -73,14 +73,26 @@ def order_endpoints_sphere(segment):
     component of cross(point1, point2) means that point1 is the western
     point). This method works for both (-180, 180) and (0, 360) longitude
     conventions.
+    BJM: Not sure why cross product approach was definitely not working in
+    python so I revereted to relative longitude check which sould be fine because
+    we're always in 0-360 space.
     """
-    # TODO: RETURN OLD JPL index as second returned value
+    # segment_copy = copy.deepcopy(segment)
+    # x1, y1, z1 = celeri.sph2cart(segment.lon1, segment.lat1, 1)
+    # x2, y2, z2 = celeri.sph2cart(segment.lon1, segment.lat2, 1)
+    # for i in range(x1.size):
+    #     cross_product = np.cross([x1[i], y1[i], z1[i]], [x2[i], y2[i], z2[i]])
+    #     if cross_product[2] <= 0:
+    #         print(i, "Reordering endpoints")
+    #         segment_copy.lon1.values[i] = segment.lon2.values[i]
+    #         segment_copy.lat1.values[i] = segment.lat2.values[i]
+    #         segment_copy.lon2.values[i] = segment.lon1.values[i]
+    #         segment_copy.lat2.values[i] = segment.lat1.values[i]
+    # return segment_copy
     segment_copy = copy.deepcopy(segment)
-    x1, y1, z1 = celeri.sph2cart(segment.lon1, segment.lat1, 1)
-    x2, y2, z2 = celeri.sph2cart(segment.lon1, segment.lat2, 1)
-    for i in range(x1.size):
-        cross_product = np.cross([x1[i], y1[i], z1[i]], [x2[i], y2[i], z2[i]])
-        if cross_product[2] <= 0:
+    for i in range(len(segment)):
+        if segment.lon1[i] > segment.lon2[i]:
+            print(i, "Reordering endpoints for segment ", segment.name[i].strip())
             segment_copy.lon1.values[i] = segment.lon2.values[i]
             segment_copy.lat1.values[i] = segment.lat2.values[i]
             segment_copy.lon2.values[i] = segment.lon1.values[i]
@@ -174,9 +186,8 @@ def inpolygon(xq, yq, xv, yv):
 
 
 def split_segments_crossing_meridian(segment):
-    """segmeridian  Splits segments along the prime meridian.
-    segment = segmeridian(segment) splits segments that cross the prime
-    meridian into two segments, each with one endpoint on the
+    """
+    Splits segments along the prime meridian with one endpoint on the
     prime meridian. All other segment properties are taken from
     the original segment.
     """
@@ -198,7 +209,6 @@ def split_segments_crossing_meridian(segment):
         )
 
         # Replicate split segment properties and assign new endpoints
-        # Isolate split and whole segments
         segment_whole = copy.copy(segment[~prime_meridian_cross])
         segment_split = copy.copy(segment[prime_meridian_cross])
         segment_split = pd.concat([segment_split, segment_split])
@@ -216,11 +226,12 @@ def split_segments_crossing_meridian(segment):
             segment_split.lon2.values, segment_split.lat2.values, RADIUS_EARTH
         )
         segment = pd.concat([segment_split, segment_whole])
-    return segment, split_idx
+    return segment
 
 
 def great_circle_latitude_find(lon1, lat1, lon2, lat2, lon):
-    """Determines latitude as a function of longitude along a great circle.
+    """
+    Determines latitude as a function of longitude along a great circle.
     LAT = gclatfind(LON1, LAT1, LON2, LAT2, LON) finds the latitudes of points of
     specified LON that lie along the great circle defined by endpoints LON1, LAT1
     and LON2, LAT2. Angles should be passed as degrees.
@@ -235,3 +246,54 @@ def great_circle_latitude_find(lon1, lat1, lon2, lat2, lon):
         - np.tan(lat2) * np.sin(lon - lon1) / np.sin(lon1 - lon2)
     )
     return
+
+
+def sphere_azimuth(lon1, lat1, lon2, lat2):
+    """
+    Calculates azimuth between sets of points on a sphere.
+    AZ = sphereazimuth(LON1, LAT1, LON2, LAT2) calculates the azimuth, AZ,
+    between points defined by coordinates (LON1, LAT1) and (LON2, LAT2).
+    The coordinate arrays must all be the same size.
+    TODO: Replace with pyproj???
+    """
+    num = np.sin(np.deg2rad(lon2 - lon1))
+    den = np.cos(np.deg2rad(lat1)) * np.tan(np.deg2rad(lat2)) - np.sin(
+        np.deg2rad(lat1)
+    ) * np.cos(np.deg2rad(lon2 - lon1))
+    az = np.rad2deg(np.arctan2(num, den))
+    return az
+
+
+def great_circle_point(lon, lat, az, dist):
+    """
+    Finds coordinates of a point along a great circle.
+    Determines the coordinates LON2, LAT2 of a point lying
+    along a great circle originating at point LON1, LAT1.
+    The azimuth of the great circle is given as AZ and the
+    angular distance between the two points is DIST. All input
+    arguments should be given in degrees, including the distance.
+    TODO: Distance in degrees???
+    TODO: Replace with pyproj???
+    """
+    # plat = asind(sind(lat).*cosd(dist) + cosd(lat).*sind(dist).*cosd(az));
+    # a = sind(dist).*sind(az).*cosd(lat);
+    # b = cosd(dist) - sind(lat).*sind(plat);
+
+    # if verLessThan('matlab', '8.0')
+    #     plon = lon + rad2deg(atan2(a, b));
+    # else
+    #     plon = lon + atan2d(a, b);
+    # end
+    # plon(b == 0) = lon(b == 0);
+    # plon(b == 0 & plat == 0) = lon(b == 0 & plat == 0) + 90;
+
+    plat = np.arcsin(
+        np.sin(np.deg2rad(lat)) * np.cos(np.deg2rad(dist))
+        + np.cos(np.deg2rad(lat)) * np.sin(np.deg2rad(dist)) * np.cos(np.deg2rad(az))
+    )
+    a = np.sin(np.deg2rad(dist)) * np.sin(np.deg2rad(az)) * np.cos(np.deg2rad(lat))
+    b = np.cos(np.deg2rad(dist)) - np.sin(np.deg2rad(lat)) * np.sin(np.deg2rad(plat))
+    plon = lon + np.rad2deg(np.arctan2(a, b))
+    plon[b == 0] = lon[b == 0]
+    plon[b == 0 and plat == 0] = lon[b == 0 and plat == 0] + 90.0
+    return plon, plat

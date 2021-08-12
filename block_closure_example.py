@@ -25,65 +25,73 @@ split = celeri.split_segments_crossing_meridian(s)
 nseg = len(split)
 
 # Make sure western vertex is the start point
-# S, i = order_endpoints_sphere(split)
-# sego = [S.lon1(:) S.lon2(:)];
-# sega = [S.lat1(:) S.lat2(:)];
-# segx = [S.x1(:) S.x2(:)];
-# segy = [S.y1(:) S.y2(:)];
-# segy(abs(segy) < 1e-6) = 0;
-# segz = [S.z1(:) S.z2(:)];
-# i = (i-1)*nseg + repmat((1:nseg)', 1, 2);
+S = celeri.order_endpoints_sphere(split)
+sego = np.array([S.lon1.to_numpy(), S.lon2.to_numpy()]).T
+sega = np.array([S.lat1.to_numpy(), S.lat2.to_numpy()]).T
+segx = np.array([S.x1.to_numpy(), S.x2.to_numpy()]).T
+segy = np.array([S.y1.to_numpy(), S.y2.to_numpy()]).T
+segy[np.where(np.abs(segy) < 1e-6)] = 0
+segz = np.array([S.z1.to_numpy(), S.z2.to_numpy()]).T
+i = np.array(
+    [np.arange(0, len(S)), np.arange(len(S), 2 * len(S))]
+).T  # TODO: Not sure if this should start at 0 or 1
 
-# % make sure there are no hanging segments
-# allc = [segx(:) segy(:) segz(:)];
-# %allc = [[s.x1(:) s.y1(:) s.z1(:)]; [s.x2(:) s.y2(:) s.z2(:)]];
-# [~, i1] = unique(allc, 'rows', 'first');
-# [~, i2] = unique(allc, 'rows', 'last');
-# if isempty(~find(i2-i1, 1))
-#     fprintf(1, '*** All blocks are not closed! ***\n');
-#     %else
-#     %fprintf(1, 'No hanging segments found');
-# end
+# Check for hanging segments #TODO: Why is this done with x,y,z instead of lon, lat?
+allc = np.array([segx.T.flatten(), segy.T.flatten(), segz.T.flatten()]).T
+if any(np.unique(allc, axis=0, return_counts=True)[1] == 1):
+    print("Found hanging segments!")
 
-# % Carry out a few operations on all segments
+# Find unique points and indices to them
+ui = np.unique(allc, axis=0, return_index=True, return_inverse=True)[2]
+us = ui[0:nseg]
+ue = ui[nseg + 1 : -1]
 
-# % Find unique points and indices to them
-# [~, ~, ui] = unique(allc, 'rows', 'first');
-# us = ui(1:nseg)
-# ue = ui(nseg+1:end);
 
-# % Calculate the azimuth of each fault segment
-# % Using atan instead of azimuth because azimuth breaks down for very long segments
-# % az1 = rad2deg(atan2(segx(:, 1) - segx(:, 2), segy(:, 1) - segy(:, 2)));
-# % az2 = rad2deg(atan2(segx(:, 2) - segx(:, 1), segy(:, 2) - segy(:, 1)));
+# Calculate the azimuth of each fault segment
+# Using atan instead of azimuth because azimuth breaks down for very long segments
+# az1 = rad2deg(atan2(segx(:, 1) - segx(:, 2), segy(:, 1) - segy(:, 2)));
+# az2 = rad2deg(atan2(segx(:, 2) - segx(:, 1), segy(:, 2) - segy(:, 1)));
 
-# % Make local azimuths for every endpoint. The problem is indeed for really long segments;
-# % the junction is essentially approached along an azimuth that doesn't sensibly fall between
-# % the "exit" azimuths. So, for each end point, create a new test point 1 degree away along
-# % the great circle, but because it's closer, the great circle azimuth will be "local" and
-# % therefore makes the junction decision more sensibly.
-# %
-# % An example problem segment is the northern boundary of North America in the Blocks release
-# % segment file. Its azimuth eastward, away from the northern Pacific Ocean, is about 38, but
-# % westward away from Greenland, it's 315. This ends up affecting the Pacific and exterior blocks.
+# Make local azimuths for every endpoint. The problem is indeed for really long segments;
+# the junction is essentially approached along an azimuth that doesn't sensibly fall between
+# the "exit" azimuths. So, for each end point, create a new test point 1 degree away along
+# the great circle, but because it's closer, the great circle azimuth will be "local" and
+# therefore makes the junction decision more sensibly.
+#
+# An example problem segment is the northern boundary of North America in the Blocks release
+# segment file. Its azimuth eastward, away from the northern Pacific Ocean, is about 38, but
+# westward away from Greenland, it's 315. This ends up affecting the Pacific and exterior blocks.
 
-# % Local azimuths originating from endpoint 1
-# az2 = sphereazimuth(sego(:, 1), sega(:, 1), sego(:, 2), sega(:, 2)); % Whole segment azimuth
-# [tlo2, tla2] = gcpoint(sego(:, 1), sega(:, 1), az2, 1);   % Local test point coordinates
-# az21 = sphereazimuth(sego(:, 1), sega(:, 1), tlo2, tla2); % Toward test point
-# az22 = sphereazimuth(tlo2, tla2, sego(:, 1), sega(:, 1)); % From test point
+# Local azimuths originating from endpoint 1
+# az2 = sphereazimuth(sego(:, 1), sega(:, 1), sego(:, 2), sega(:, 2)); # Whole segment azimuth
+# [tlo2, tla2] = gcpoint(sego(:, 1), sega(:, 1), az2, 1);   # Local test point coordinates
+# az21 = sphereazimuth(sego(:, 1), sega(:, 1), tlo2, tla2); # Toward test point
+# az22 = sphereazimuth(tlo2, tla2, sego(:, 1), sega(:, 1)); # From test point
 
-# % Local azimuths originating from endpoint 2
-# az1 = sphereazimuth(sego(:, 2), sega(:, 2), sego(:, 1), sega(:, 1)); % Local test point coordinates
-# [tlo1, tla1] = gcpoint(sego(:, 2), sega(:, 2), az1, 1);   % Whole segment azimuth
-# az11 = sphereazimuth(sego(:, 2), sega(:, 2), tlo1, tla1); % Toward test point
-# az12 = sphereazimuth(tlo1, tla1, sego(:, 2), sega(:, 2)); % From test point
+az2 = celeri.sphere_azimuth(
+    sego[:, 0], sega[:, 0], sego[:, 1], sega[:, 1]
+)  # Whole segment azimuth
+tlo2, tla2 = celeri.great_circle_point(
+    sego[:, 1], sega[:, 1], az2, 1.0
+)  # Local test point coordinates
+
+# Local test point coordinates
+
+# az21 = sphereazimuth(sego(:, 1), sega(:, 1), tlo2, tla2); # Toward test point
+# az22 = sphereazimuth(tlo2, tla2, sego(:, 1), sega(:, 1)); # From test point
+
+
+# Local azimuths originating from endpoint 2
+# az1 = sphereazimuth(sego(:, 2), sega(:, 2), sego(:, 1), sega(:, 1)); # Local test point coordinates
+# [tlo1, tla1] = gcpoint(sego(:, 2), sega(:, 2), az1, 1);   # Whole segment azimuth
+# az11 = sphereazimuth(sego(:, 2), sega(:, 2), tlo1, tla1); # Toward test point
+# az12 = sphereazimuth(tlo1, tla1, sego(:, 2), sega(:, 2)); # From test point
 # saz = [az21 az11];
 # eaz = [az22 az12];
 # saz(saz < 0) = saz(saz < 0) + 360;
 # eaz(eaz < 0) = eaz(eaz < 0) + 360;
 
-# % Declare array to store polygon segment indices
+# Declare array to store polygon segment indices
 # poly_ver = zeros(1, nseg);
 # trav_ord = poly_ver;
 # seg_poly_ver = zeros(nseg);
