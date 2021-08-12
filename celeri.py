@@ -255,12 +255,9 @@ def sphere_azimuth(lon1, lat1, lon2, lat2):
     between points defined by coordinates (LON1, LAT1) and (LON2, LAT2).
     The coordinate arrays must all be the same size.
     """
-    # num = sind(lon2 - lon1);
-    # den = cosd(lat1).*tand(lat2) - sind(lat1).*cosd(lon2 - lon1);
-    # az = rad_to_deg(atan2(num, den));
     num = np.sin(np.deg2rad(lon2 - lon1))
     den = np.cos(np.deg2rad(lat1)) * np.tan(np.rad2deg(lat2)) - np.sin(
         np.deg2rad(lat1)
     ) * np.cos(np.deg2rad(lon2 - lon1))
-    az = np.rad2deg(np.atan2(num, den))
+    az = np.rad2deg(np.arctan2(num, den))
     return az
