@@ -1,7 +1,6 @@
 function segment2csv(segment_file_name)
 
 % Read file from old .segment format
-segment_file_name = "Reference_GBM.segment";
 segment = ReadSegmentTri(segment_file_name);
 
 % Create new field names
