@@ -1,4 +1,4 @@
-% function segment2csv(segment_file_name)
+function segment2csv(segment_file_name)
 
 % Read file from old .segment format
 segment_file_name = "Reference_GBM.segment";
@@ -10,20 +10,24 @@ segment.locking_depth_sig = segment.lDepSig;
 segment.locking_depth_flag = segment.lDepTog;
 segment.dip_sig = segment.dipSig;
 segment.dip_flag = segment.dipTog;
-
-segment.dip_flag = ssRate;
-segment.dip_flag = ssRateSig;
-segment.dip_flag = ssRateTog;
-segment.dip_flag = dsRate;
-segment.dip_flag = dsRateSig;
-segment.dip_flag = dsRateTog;
-segment.dip_flag = tsRate;
-segment.dip_flag = tsRateSig;
-segment.dip_flag = tsRateTog;
-segment.dip_flag = bDep;
-segment.dip_flag = bDepSig;
-segment.dip_flag =bDepTog;
-
+segment.ss_rate = segment.ssRate;
+segment.ss_rate_sig = segment.ssRateSig;
+segment.ss_rate_flag = segment.ssRateTog;
+segment.ds_rate = segment.dsRate;
+segment.ds_rate_sig = segment.dsRateSig;
+segment.ds_rate_flag = segment.dsRateTog;
+segment.ts_rate = segment.tsRate;
+segment.ts_rate_sig = segment.tsRateSig;
+segment.ts_rate_flag = segment.tsRateTog;
+segment.burial_depth = segment.bDep;
+segment.burial_depth_sig = segment.bDepSig;
+segment.burial_depth_flag = segment.bDepTog;
+segment.resolution_override = segment.resOver;
+segment.resolution_other = segment.resOther;
+segment.patch_file_name = segment.patchFile;
+segment.patch_flag = segment.patchTog;
+segment.patch_slip_file = segment.patchSlipFile;
+segment.patch_slip_flag = segment.patchSlipTog;
 
 % Delete old field names
 segment = rmfield(segment, "lDep");
@@ -43,9 +47,13 @@ segment = rmfield(segment, "tsRateTog");
 segment = rmfield(segment, "bDep");
 segment = rmfield(segment, "bDepSig");
 segment = rmfield(segment, "bDepTog");
-
+segment = rmfield(segment, "resOver");
+segment = rmfield(segment, "resOther");
+segment = rmfield(segment, "patchFile");
+segment = rmfield(segment, "patchTog");
+segment = rmfield(segment, "patchSlipFile");
+segment = rmfield(segment, "patchSlipTog");
 
 % Save as .csv
-segment
 csv_file_name = append(strrep(segment_file_name, ".", "_"), ".csv");
-% struct2csv(segment, csv_file_name);
+struct2csv(segment, csv_file_name);
