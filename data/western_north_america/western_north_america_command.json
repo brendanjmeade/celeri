@@ -1,5 +1,5 @@
 {
-    "file_name": "command.json",
+    "file_name": "western_north_america_command.json",
     "reuse_elastic": "no",
     "reuse_elastic_file": "",
     "save_kernels": "no",
@@ -46,9 +46,9 @@
         0
     ],
     "n_eigs": 50,
-    "segment_file_name": "./data/western_north_america/WNA_segment.csv",
-    "station_file_name": "./data/western_north_america/station.csv",
-    "block_file_name": "./data/western_north_america/block.csv",
+    "segment_file_name": "./data/western_north_america/western_north_america_segment.csv",
+    "station_file_name": "./data/western_north_america/western_north_america_station.csv",
+    "block_file_name": "./data/western_north_america/western_north_america_block.csv",
     "fault_resolution": 500,
     "station_data_weight": 1,
     "station_data_weight_min": 1,
