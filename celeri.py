@@ -174,7 +174,8 @@ def process_segment(segment, command):
 
 
 def inpolygon(xq, yq, xv, yv):
-    """From:
+    """
+    From:
     https://stackoverflow.com/questions/31542843/inpolygon-for-python-examples-of-matplotlib-path-path-contains-points-method
     """
     shape = xq.shape
@@ -185,6 +186,13 @@ def inpolygon(xq, yq, xv, yv):
     q = [(xq[i], yq[i]) for i in range(xq.shape[0])]
     p = path.Path([(xv[i], yv[i]) for i in range(xv.shape[0])])
     return p.contains_points(q).reshape(shape)
+
+
+def polygon_area(x, y):
+    """
+    From: https://newbedev.com/calculate-area-of-polygon-given-x-y-coordinates
+    """
+    return 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
 
 
 def split_segments_crossing_meridian(segment):
