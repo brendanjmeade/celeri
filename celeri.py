@@ -1,6 +1,7 @@
 import copy
 import numpy as np
 import pandas as pd
+import scipy.spatial
 from numpy.lib.shape_base import split
 from pyproj import Geod
 from matplotlib import path
