@@ -36,7 +36,9 @@ def process_station(station, command):
     station["x"], station["y"], station["z"] = celeri.sph2cart(
         station.lon, station.lat, celeri.RADIUS_EARTH
     )
-    station = station[station.tog == True]  # Keep only the stations that are toggled on
+    station = station[
+        station.flag == True
+    ]  # Keep only the stations that are toggled on
     return station
 
 
