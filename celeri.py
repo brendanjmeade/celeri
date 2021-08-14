@@ -196,7 +196,7 @@ def polygon_area(x, y):
     return 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
 
 
-def assign_block_labels(segment, station, block):
+def assign_block_labels(segment, station, block, sar):
     """
     Ben Thompson's implementation of the half edge approach to the
     block labeling problem and east/west assignment.
@@ -413,22 +413,6 @@ def assign_block_labels(segment, station, block):
         block.area_plate_carree.values[i] = celeri.polygon_area(vs[:, 0], vs[:, 1])
     external_block_idx = np.argmax(block.area_plate_carree)
 
-    # Assign block labels to GPS stations
-    station["block_label"] = -1 * np.ones(len(station))
-    for i in range(len(polygon_vertices)):
-        if i != external_block_idx:
-            p = polygon_vertices[i]
-            vs = np.concatenate([dedup_vertices[p], dedup_vertices[p[0]][None, :]])
-            stations_polygon = celeri.inpolygon(
-                station.lon.to_numpy(), station.lat.to_numpy(), vs[:, 0], vs[:, 1]
-            )
-            stations_polygon_idx = np.where(stations_polygon == True)[0]
-            station.block_label.values[stations_polygon_idx] = i
-
-    # Any unassigned stations should be put on the external block
-    station.block_label.values[station.block_label == -1] = external_block_idx
-    station.block_label = station.block_label.astype(int)
-
     # Assign block labels points to block interior points
     block["block_label"] = -1 * np.ones(len(block))
     for i in range(len(polygon_vertices)):
@@ -443,12 +427,44 @@ def assign_block_labels(segment, station, block):
             )
             block_polygon_idx = np.where(block_polygon == True)[0]
             block.block_label.values[block_polygon_idx] = i
-
     # Any unassigned interior point should be put on the external block
     block.block_label.values[block.block_label == -1] = external_block_idx
     block.block_label = block.block_label.astype(int)
 
-    return segment, station, block
+    # Assign block labels to GPS stations
+    if not station.empty:
+        station["block_label"] = -1 * np.ones(len(station))
+        for i in range(len(polygon_vertices)):
+            if i != external_block_idx:
+                p = polygon_vertices[i]
+                vs = np.concatenate([dedup_vertices[p], dedup_vertices[p[0]][None, :]])
+                stations_polygon = celeri.inpolygon(
+                    station.lon.to_numpy(), station.lat.to_numpy(), vs[:, 0], vs[:, 1]
+                )
+                stations_polygon_idx = np.where(stations_polygon == True)[0]
+                station.block_label.values[stations_polygon_idx] = i
+        # Any unassigned stations should be put on the external block
+        station.block_label.values[station.block_label == -1] = external_block_idx
+        station.block_label = station.block_label.astype(int)
+
+    # Assign block labels to SAR locations
+    if not sar.empty:
+        sar["block_label"] = -1 * np.ones(len(sar))
+        for i in range(len(polygon_vertices)):
+            if i != external_block_idx:
+                p = polygon_vertices[i]
+                vs = np.concatenate([dedup_vertices[p], dedup_vertices[p[0]][None, :]])
+                sar_polygon = celeri.inpolygon(
+                    sar.lon.to_numpy(), sar.lat.to_numpy(), vs[:, 0], vs[:, 1]
+                )
+                sar_polygon_idx = np.where(sar_polygon == True)[0]
+                sar.block_label.values[sar_polygon_idx] = i
+
+        # Any unassigned stations should be put on the external block
+        sar.block_label.values[sar.block_label == -1] = external_block_idx
+        sar.block_label = sar.block_label.astype(int)
+
+    return segment, station, block, sar
 
 
 def split_segments_crossing_meridian(segment):
