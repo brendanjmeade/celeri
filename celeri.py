@@ -1,4 +1,5 @@
 import copy
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import scipy.spatial
@@ -9,8 +10,8 @@ from matplotlib import path
 import celeri
 
 
-RADIUS_EARTH = np.float64(6371e3)  # m
 GEOID = Geod(ellps="WGS84")
+RADIUS_EARTH = np.float64((celeri.GEOID.a + celeri.GEOID.b) / 2)
 
 
 def sph2cart(lon, lat, radius):
@@ -579,3 +580,49 @@ def great_circle_latitude_find(lon1, lat1, lon2, lat2, lon):
 #     plon[b == 0] = lon[b == 0]
 #     plon[b == 0 and plat == 0] = lon[b == 0 and plat == 0] + 90.0
 #     return plon, plat
+
+
+def plot_block_labels(segment, block, station):
+    plt.figure()
+    plt.title("West and east labels")
+    for i in range(len(segment)):
+        plt.plot(
+            [segment.lon1.values[i], segment.lon2.values[i]],
+            [segment.lat1.values[i], segment.lat2.values[i]],
+            "-k",
+            linewidth=0.5,
+        )
+        plt.text(
+            segment.mid_lon_plate_carree.values[i],
+            segment.mid_lat_plate_carree.values[i],
+            str(segment["west_labels"][i]) + "," + str(segment["east_labels"][i]),
+            fontsize=8,
+            color="m",
+            horizontalalignment="center",
+            verticalalignment="center",
+        )
+
+    for i in range(len(station)):
+        plt.text(
+            station.lon.values[i],
+            station.lat.values[i],
+            str(station.block_label[i]),
+            fontsize=8,
+            color="k",
+            horizontalalignment="center",
+            verticalalignment="center",
+        )
+
+    for i in range(len(block)):
+        plt.text(
+            block.interior_lon.values[i],
+            block.interior_lat.values[i],
+            str(block.block_label[i]),
+            fontsize=8,
+            color="g",
+            horizontalalignment="center",
+            verticalalignment="center",
+        )
+
+    plt.gca().set_aspect("equal")
+    plt.show()
