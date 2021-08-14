@@ -1,4 +1,5 @@
 import copy
+import json
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -12,6 +13,39 @@ import celeri
 
 GEOID = Geod(ellps="WGS84")
 RADIUS_EARTH = np.float64((celeri.GEOID.a + celeri.GEOID.b) / 2)
+
+
+def read_data(command_file_name):
+    with open(command_file_name, "r") as f:
+        command = json.load(f)
+    segment = pd.read_csv(command["segment_file_name"])
+    block = pd.read_csv(command["block_file_name"])
+
+    if command.__contains__("station_file_name"):
+        if len(command["station_file_name"]) != 0:
+            station = pd.read_csv(command["station_file_name"])
+        else:
+            station = pd.DataFrame()
+    else:
+        station = pd.DataFrame()
+
+    if command.__contains__("mogi_file_name"):
+        if len(command["mogi_file_name"]) != 0:
+            mogi = pd.read_csv(command["mogi_file_name"])
+        else:
+            mogi = pd.DataFrame()
+    else:
+        mogi = pd.DataFrame()
+
+    if command.__contains__("sar_file_name"):
+        if len(command["sar_file_name"]) != 0:
+            sar = pd.read_csv(command["sar_file_name"])
+        else:
+            sar = pd.DataFrame()
+    else:
+        sar = pd.DataFrame()
+
+    return command, segment, block, station, mogi, sar
 
 
 def sph2cart(lon, lat, radius):
