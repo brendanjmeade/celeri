@@ -44,7 +44,6 @@ def read_data(command_file_name):
             sar = pd.DataFrame()
     else:
         sar = pd.DataFrame()
-
     return command, segment, block, station, mogi, sar
 
 
