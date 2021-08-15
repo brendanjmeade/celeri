@@ -25,25 +25,116 @@ def read_data(command_file_name):
         if len(command["station_file_name"]) != 0:
             station = pd.read_csv(command["station_file_name"])
         else:
-            station = pd.DataFrame()
+            station = pd.DataFrame(
+                columns=[
+                    "lon",
+                    "lat",
+                    "corr",
+                    "other1",
+                    "name",
+                    "east_vel",
+                    "north_vel",
+                    "east_sig",
+                    "north_sig",
+                    "flag",
+                    "up_vel",
+                    "up_sig",
+                    "east_adjust",
+                    "north_adjust",
+                    "up_adjust",
+                    "dep",
+                    "x",
+                    "y",
+                    "z",
+                    "block_label",
+                ]
+            )
     else:
-        station = pd.DataFrame()
+        station = pd.DataFrame(
+            columns=[
+                "lon",
+                "lat",
+                "corr",
+                "other1",
+                "name",
+                "east_vel",
+                "north_vel",
+                "east_sig",
+                "north_sig",
+                "flag",
+                "up_vel",
+                "up_sig",
+                "east_adjust",
+                "north_adjust",
+                "up_adjust",
+                "dep",
+                "x",
+                "y",
+                "z",
+                "block_label",
+            ]
+        )
 
     if command.__contains__("mogi_file_name"):
         if len(command["mogi_file_name"]) != 0:
             mogi = pd.read_csv(command["mogi_file_name"])
         else:
-            mogi = pd.DataFrame()
+            mogi = pd.DataFrame(
+                columns=[
+                    "name",
+                    "lon",
+                    "lat",
+                    "dep",
+                    "volume_change_flag",
+                    "volume_change",
+                    "volume_change_sig",
+                ]
+            )
     else:
-        mogi = pd.DataFrame()
+        mogi = pd.DataFrame(
+            columns=[
+                "name",
+                "lon",
+                "lat",
+                "dep",
+                "volume_change_flag",
+                "volume_change",
+                "volume_change_sig",
+            ]
+        )
 
     if command.__contains__("sar_file_name"):
         if len(command["sar_file_name"]) != 0:
             sar = pd.read_csv(command["sar_file_name"])
         else:
-            sar = pd.DataFrame()
+            sar = pd.DataFrame(
+                columns=[
+                    "lon",
+                    "lat",
+                    "line_of_sight_change_val",
+                    "line_of_sight_change_sig",
+                    "look_vector_x",
+                    "look_vector_y",
+                    "look_vector_z",
+                    "reference_point_x",
+                    "reference_point_y",
+                ]
+            )
     else:
-        sar = pd.DataFrame()
+        sar = pd.DataFrame(
+            columns=[
+                "lon",
+                "lat",
+                "line_of_sight_change_val",
+                "line_of_sight_change_sig",
+                "look_vector_x",
+                "look_vector_y",
+                "look_vector_z",
+                "reference_point_x",
+                "reference_point_y",
+            ]
+        )
+
     return command, segment, block, station, mogi, sar
 
 
