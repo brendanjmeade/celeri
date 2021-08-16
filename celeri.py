@@ -24,6 +24,8 @@ def read_data(command_file_name):
     if command.__contains__("station_file_name"):
         if len(command["station_file_name"]) != 0:
             station = pd.read_csv(command["station_file_name"])
+
+            # station.loc[:, ~station.columns.str.match('Unnamed')]
         else:
             station = pd.DataFrame(
                 columns=[
@@ -42,7 +44,7 @@ def read_data(command_file_name):
                     "east_adjust",
                     "north_adjust",
                     "up_adjust",
-                    "dep",
+                    "dep",  # TODO: What is dep???
                     "x",
                     "y",
                     "z",
@@ -67,7 +69,7 @@ def read_data(command_file_name):
                 "east_adjust",
                 "north_adjust",
                 "up_adjust",
-                "dep",
+                "dep",  # TODO: What is dep???
                 "x",
                 "y",
                 "z",
@@ -84,7 +86,7 @@ def read_data(command_file_name):
                     "name",
                     "lon",
                     "lat",
-                    "dep",
+                    "dep",  # TODO: What is dep???
                     "volume_change_flag",
                     "volume_change",
                     "volume_change_sig",
@@ -96,7 +98,7 @@ def read_data(command_file_name):
                 "name",
                 "lon",
                 "lat",
-                "dep",
+                "dep",  # TODO: What is dep???
                 "volume_change_flag",
                 "volume_change",
                 "volume_change_sig",
@@ -653,6 +655,71 @@ def great_circle_latitude_find(lon1, lat1, lon2, lat2, lon):
         - np.tan(lat2) * np.sin(lon - lon1) / np.sin(lon1 - lon2)
     )
     return
+
+
+def process_sar(sar, command):
+    """
+    Preprocessing of SAR data.
+    """
+    if sar.empty:
+        sar["dep"] = np.zeros_like(
+            sar.lon
+        )  # TODO: Add a "dep" field of all zeros, to be used with ProjectTriCoords
+
+        # Set the uncertainties to reflect the weights specified in the command file
+        # In constructing the data weight vector, the value is 1./Sar.dataSig.^2, so
+        # the adjustment made here is sar.dataSig / np.sqrt(command.sarWgt)
+        sar.line_of_sight_change_sig = sar.line_of_sight_change_sig / np.sqrt(
+            command["sar_weight"]
+        )
+        sar["x"], sar["y"], sar["z"] = celeri.sph2cart(
+            np.deg2rad(sar.lon), np.deg2rad(sar.lat), celeri.RADIUS_EARTH
+        )
+        sar["block_label"] = -1 * np.ones_like(sar.x)
+    else:
+        sar["dep"] = []
+        sar["x"] = []
+        sar["y"] = []
+        sar["x"] = []
+        sar["block_label"] = []
+    return sar
+
+
+def merge_geodetic_data(station, sar):
+    """
+    Merge GPS and InSAR data to a single geodetic_data dictionary
+    TODO: Can this be pushed to the matrix assembly stage???
+    """
+    geodetic_data = {}
+    geodetic_data["n_stations"] = len(station)
+    geodetic_data["n_sar"] = len(sar)
+    geodetic_data["east_vel"] = station.east_vel.to_numpy()
+    geodetic_data["east_sig"] = station.east_sig.to_numpy()
+    geodetic_data["north_vel"] = station.north_vel.to_numpy()
+    geodetic_data["north_sig"] = station.north_sig.to_numpy()
+    geodetic_data["up_vel"] = station.up_vel.to_numpy()
+    geodetic_data["up_sig"] = station.up_sig.to_numpy()
+    geodetic_data[
+        "sar_line_of_sight_change_val"
+    ] = sar.line_of_sight_change_val.to_numpy()
+    geodetic_data[
+        "sar_line_of_sight_change_sig"
+    ] = sar.line_of_sight_change_sig.to_numpy()
+    geodetic_data["lon"] = np.concatenate((station.lon.to_numpy(), sar.lon.to_numpy()))
+    geodetic_data["lat"] = np.concatenate((station.lat.to_numpy(), sar.lat.to_numpy()))
+    geodetic_data["dep"] = np.concatenate(
+        (station.dep.to_numpy(), sar.dep.to_numpy())
+    )  # TODO: What is dep????
+    geodetic_data["x"] = np.concatenate((station.x.to_numpy(), sar.x.to_numpy()))
+    geodetic_data["y"] = np.concatenate((station.y.to_numpy(), sar.y.to_numpy()))
+    geodetic_data["z"] = np.concatenate((station.z.to_numpy(), sar.z.to_numpy()))
+    geodetic_data["block_label"] = np.concatenate(
+        (station.block_label.to_numpy(), sar.block_label.to_numpy())
+    )
+    geodetic_data["sar_coordinate_idx"] = np.arange(
+        len(station), len(station) + len(sar)
+    )  # TODO: Not sure this is correct
+    return geodetic_data
 
 
 # def sphere_azimuth(lon1, lat1, lon2, lat2):
