@@ -19,13 +19,14 @@ def read_data(command_file_name):
     with open(command_file_name, "r") as f:
         command = json.load(f)
     segment = pd.read_csv(command["segment_file_name"])
+    segment = segment.loc[:, ~segment.columns.str.match("Unnamed")]
     block = pd.read_csv(command["block_file_name"])
+    block = block.loc[:, ~block.columns.str.match("Unnamed")]
 
     if command.__contains__("station_file_name"):
         if len(command["station_file_name"]) != 0:
             station = pd.read_csv(command["station_file_name"])
-
-            # station.loc[:, ~station.columns.str.match('Unnamed')]
+            station = station.loc[:, ~station.columns.str.match("Unnamed")]
         else:
             station = pd.DataFrame(
                 columns=[
@@ -80,6 +81,7 @@ def read_data(command_file_name):
     if command.__contains__("mogi_file_name"):
         if len(command["mogi_file_name"]) != 0:
             mogi = pd.read_csv(command["mogi_file_name"])
+            mogi = mogi.loc[:, ~mogi.columns.str.match("Unnamed")]
         else:
             mogi = pd.DataFrame(
                 columns=[
@@ -108,6 +110,7 @@ def read_data(command_file_name):
     if command.__contains__("sar_file_name"):
         if len(command["sar_file_name"]) != 0:
             sar = pd.read_csv(command["sar_file_name"])
+            sar = sar.loc[:, ~sar.columns.str.match("Unnamed")]
         else:
             sar = pd.DataFrame(
                 columns=[
