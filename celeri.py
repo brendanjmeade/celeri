@@ -122,15 +122,11 @@ def process_station(station, command):
         station.north_sig = np.ones_like(station.north_sig)
         station.up_sig = np.ones_like(station.up_sig)
 
-    station["dep"] = np.zeros_like(
-        station.lon
-    )  # Add a "dep" field of all zeros, to be used with project_tri_coords
+    station["depth"] = np.zeros_like(station.lon)
     station["x"], station["y"], station["z"] = celeri.sph2cart(
         station.lon, station.lat, celeri.RADIUS_EARTH
     )
-    station = station[
-        station.flag == True
-    ]  # Keep only the stations that are toggled on
+    station = station[station.flag == 1]  # Keep only the stations that are toggled on
     return station
 
 
@@ -643,7 +639,7 @@ def process_sar(sar, command):
     Preprocessing of SAR data.
     """
     if sar.empty:
-        sar["dep"] = np.zeros_like(
+        sar["depth"] = np.zeros_like(
             sar.lon
         )  # TODO: Add a "dep" field of all zeros, to be used with ProjectTriCoords
 
@@ -688,9 +684,9 @@ def merge_geodetic_data(station, sar):
     ] = sar.line_of_sight_change_sig.to_numpy()
     geodetic_data["lon"] = np.concatenate((station.lon.to_numpy(), sar.lon.to_numpy()))
     geodetic_data["lat"] = np.concatenate((station.lat.to_numpy(), sar.lat.to_numpy()))
-    geodetic_data["dep"] = np.concatenate(
-        (station.dep.to_numpy(), sar.dep.to_numpy())
-    )  # TODO: What is dep????
+    geodetic_data["depth"] = np.concatenate(
+        (station.depth.to_numpy(), sar.depth.to_numpy())
+    )
     geodetic_data["x"] = np.concatenate((station.x.to_numpy(), sar.x.to_numpy()))
     geodetic_data["y"] = np.concatenate((station.y.to_numpy(), sar.y.to_numpy()))
     geodetic_data["z"] = np.concatenate((station.z.to_numpy(), sar.z.to_numpy()))
