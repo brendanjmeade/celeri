@@ -645,9 +645,7 @@ def process_sar(sar, command):
     Preprocessing of SAR data.
     """
     if sar.empty:
-        sar["depth"] = np.zeros_like(
-            sar.lon
-        )  # TODO: Add a "dep" field of all zeros, to be used with ProjectTriCoords
+        sar["depth"] = np.zeros_like(sar.lon)
 
         # Set the uncertainties to reflect the weights specified in the command file
         # In constructing the data weight vector, the value is 1./Sar.dataSig.^2, so
