@@ -12,47 +12,27 @@ import celeri
 
 
 GEOID = Geod(ellps="WGS84")
-RADIUS_EARTH = np.float64((celeri.GEOID.a + celeri.GEOID.b) / 2)
+RADIUS_EARTH = np.float64((GEOID.a + GEOID.b) / 2)
 
 
 def read_data(command_file_name):
+    # Read command data
     with open(command_file_name, "r") as f:
         command = json.load(f)
+
+    # Read segment data
     segment = pd.read_csv(command["segment_file_name"])
     segment = segment.loc[:, ~segment.columns.str.match("Unnamed")]
+
+    # Read block data
     block = pd.read_csv(command["block_file_name"])
     block = block.loc[:, ~block.columns.str.match("Unnamed")]
 
-    if command.__contains__("station_file_name"):
-        if len(command["station_file_name"]) != 0:
-            station = pd.read_csv(command["station_file_name"])
-            station = station.loc[:, ~station.columns.str.match("Unnamed")]
-        else:
-            station = pd.DataFrame(
-                columns=[
-                    "lon",
-                    "lat",
-                    "corr",
-                    "other1",
-                    "name",
-                    "east_vel",
-                    "north_vel",
-                    "east_sig",
-                    "north_sig",
-                    "flag",
-                    "up_vel",
-                    "up_sig",
-                    "east_adjust",
-                    "north_adjust",
-                    "up_adjust",
-                    "dep",  # TODO: What is dep???
-                    "x",
-                    "y",
-                    "z",
-                    "block_label",
-                ]
-            )
-    else:
+    # Read station data
+    if (
+        not command.__contains__("station_file_name")
+        or len(command["station_file_name"]) == 0
+    ):
         station = pd.DataFrame(
             columns=[
                 "lon",
@@ -77,24 +57,15 @@ def read_data(command_file_name):
                 "block_label",
             ]
         )
-
-    if command.__contains__("mogi_file_name"):
-        if len(command["mogi_file_name"]) != 0:
-            mogi = pd.read_csv(command["mogi_file_name"])
-            mogi = mogi.loc[:, ~mogi.columns.str.match("Unnamed")]
-        else:
-            mogi = pd.DataFrame(
-                columns=[
-                    "name",
-                    "lon",
-                    "lat",
-                    "dep",  # TODO: What is dep???
-                    "volume_change_flag",
-                    "volume_change",
-                    "volume_change_sig",
-                ]
-            )
     else:
+        station = pd.read_csv(command["station_file_name"])
+        station = station.loc[:, ~station.columns.str.match("Unnamed")]
+
+    # Read Mogi source data
+    if (
+        not command.__contains__("mogi_file_name")
+        or len(command["mogi_file_name"]) == 0
+    ):
         mogi = pd.DataFrame(
             columns=[
                 "name",
@@ -106,26 +77,12 @@ def read_data(command_file_name):
                 "volume_change_sig",
             ]
         )
-
-    if command.__contains__("sar_file_name"):
-        if len(command["sar_file_name"]) != 0:
-            sar = pd.read_csv(command["sar_file_name"])
-            sar = sar.loc[:, ~sar.columns.str.match("Unnamed")]
-        else:
-            sar = pd.DataFrame(
-                columns=[
-                    "lon",
-                    "lat",
-                    "line_of_sight_change_val",
-                    "line_of_sight_change_sig",
-                    "look_vector_x",
-                    "look_vector_y",
-                    "look_vector_z",
-                    "reference_point_x",
-                    "reference_point_y",
-                ]
-            )
     else:
+        mogi = pd.read_csv(command["mogi_file_name"])
+        mogi = mogi.loc[:, ~mogi.columns.str.match("Unnamed")]
+
+    # Read SAR data
+    if not command.__contains__("sar_file_name") or len(command["sar_file_name"]) == 0:
         sar = pd.DataFrame(
             columns=[
                 "lon",
@@ -140,6 +97,9 @@ def read_data(command_file_name):
             ]
         )
 
+    else:
+        sar = pd.read_csv(command["sar_file_name"])
+        sar = sar.loc[:, ~sar.columns.str.match("Unnamed")]
     return command, segment, block, station, mogi, sar
 
 
