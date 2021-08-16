@@ -326,7 +326,7 @@ def polygon_area(x, y):
     return 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
 
 
-def assign_block_labels(segment, station, block, sar):
+def assign_block_labels(segment, station, block, mogi, sar):
     """
     Ben Thompson's implementation of the half edge approach to the
     block labeling problem and east/west assignment.
@@ -594,7 +594,24 @@ def assign_block_labels(segment, station, block, sar):
         sar.block_label.values[sar.block_label == -1] = external_block_idx
         sar.block_label = sar.block_label.astype(int)
 
-    return segment, station, block, sar
+    # Assign block labels to Mogi sources
+    if not mogi.empty:
+        mogi["block_label"] = -1 * np.ones(len(mogi))
+        for i in range(len(polygon_vertices)):
+            if i != external_block_idx:
+                p = polygon_vertices[i]
+                vs = np.concatenate([dedup_vertices[p], dedup_vertices[p[0]][None, :]])
+                mogi_polygon = celeri.inpolygon(
+                    mogi.lon.to_numpy(), mogi.lat.to_numpy(), vs[:, 0], vs[:, 1]
+                )
+                mogi_polygon_idx = np.where(mogi_polygon == True)[0]
+                mogi.block_label.values[mogi_polygon_idx] = i
+
+        # Any unassigned stations should be put on the external block
+        mogi.block_label.values[mogi.block_label == -1] = external_block_idx
+        mogi.block_label = mogi.block_label.astype(int)
+
+    return segment, station, block, mogi, sar
 
 
 def split_segments_crossing_meridian(segment):
