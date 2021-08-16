@@ -666,41 +666,51 @@ def process_sar(sar, command):
     return sar
 
 
-def merge_geodetic_data(station, sar):
+def create_assembly_dictionary():
+    assembly = {}
+    assembly["data"] = {}
+    assembly["sigma"] = {}
+    assembly["index"] = {}
+    return assembly
+
+
+def merge_geodetic_data(assembly, station, sar):
     """
-    Merge GPS and InSAR data to a single geodetic_data dictionary
-    TODO: Can this be pushed to the matrix assembly stage???
+    Merge GPS and InSAR data to a single assembly dictionary
     """
-    geodetic_data = {}
-    geodetic_data["n_stations"] = len(station)
-    geodetic_data["n_sar"] = len(sar)
-    geodetic_data["east_vel"] = station.east_vel.to_numpy()
-    geodetic_data["east_sig"] = station.east_sig.to_numpy()
-    geodetic_data["north_vel"] = station.north_vel.to_numpy()
-    geodetic_data["north_sig"] = station.north_sig.to_numpy()
-    geodetic_data["up_vel"] = station.up_vel.to_numpy()
-    geodetic_data["up_sig"] = station.up_sig.to_numpy()
-    geodetic_data[
+    assembly["data"]["n_stations"] = len(station)
+    assembly["data"]["n_sar"] = len(sar)
+    assembly["data"]["east_vel"] = station.east_vel.to_numpy()
+    assembly["sigma"]["east_sig"] = station.east_sig.to_numpy()
+    assembly["data"]["north_vel"] = station.north_vel.to_numpy()
+    assembly["sigma"]["north_sig"] = station.north_sig.to_numpy()
+    assembly["data"]["up_vel"] = station.up_vel.to_numpy()
+    assembly["sigma"]["up_sig"] = station.up_sig.to_numpy()
+    assembly["data"][
         "sar_line_of_sight_change_val"
     ] = sar.line_of_sight_change_val.to_numpy()
-    geodetic_data[
+    assembly["sigma"][
         "sar_line_of_sight_change_sig"
     ] = sar.line_of_sight_change_sig.to_numpy()
-    geodetic_data["lon"] = np.concatenate((station.lon.to_numpy(), sar.lon.to_numpy()))
-    geodetic_data["lat"] = np.concatenate((station.lat.to_numpy(), sar.lat.to_numpy()))
-    geodetic_data["depth"] = np.concatenate(
+    assembly["data"]["lon"] = np.concatenate(
+        (station.lon.to_numpy(), sar.lon.to_numpy())
+    )
+    assembly["data"]["lat"] = np.concatenate(
+        (station.lat.to_numpy(), sar.lat.to_numpy())
+    )
+    assembly["data"]["depth"] = np.concatenate(
         (station.depth.to_numpy(), sar.depth.to_numpy())
     )
-    geodetic_data["x"] = np.concatenate((station.x.to_numpy(), sar.x.to_numpy()))
-    geodetic_data["y"] = np.concatenate((station.y.to_numpy(), sar.y.to_numpy()))
-    geodetic_data["z"] = np.concatenate((station.z.to_numpy(), sar.z.to_numpy()))
-    geodetic_data["block_label"] = np.concatenate(
+    assembly["data"]["x"] = np.concatenate((station.x.to_numpy(), sar.x.to_numpy()))
+    assembly["data"]["y"] = np.concatenate((station.y.to_numpy(), sar.y.to_numpy()))
+    assembly["data"]["z"] = np.concatenate((station.z.to_numpy(), sar.z.to_numpy()))
+    assembly["data"]["block_label"] = np.concatenate(
         (station.block_label.to_numpy(), sar.block_label.to_numpy())
     )
-    geodetic_data["sar_coordinate_idx"] = np.arange(
+    assembly["index"]["sar_coordinate_idx"] = np.arange(
         len(station), len(station) + len(sar)
     )  # TODO: Not sure this is correct
-    return geodetic_data
+    return assembly
 
 
 # def sphere_azimuth(lon1, lat1, lon2, lat2):
