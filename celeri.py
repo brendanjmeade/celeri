@@ -288,6 +288,12 @@ def assign_block_labels(segment, station, block, mogi, sar):
     Ben Thompson's implementation of the half edge approach to the
     block labeling problem and east/west assignment.
     """
+
+    # Assume very long segments cross the prime meridian and
+    # split them there so that the segment crawler can continue
+    # correctly.  JPL solution.
+    segment = split_segments_crossing_meridian(segment)
+
     np_segments = np.zeros((len(segment), 2, 2))
     np_segments[:, 0, 0] = segment.lon1.to_numpy()
     np_segments[:, 1, 0] = segment.lon2.to_numpy()
