@@ -264,7 +264,7 @@ def process_segment(segment, command):
     return segment
 
 
-def inpolygon(xq, yq, xv, yv):
+def in_polygon(xq, yq, xv, yv):
     """
     From:
     https://stackoverflow.com/questions/31542843/inpolygon-for-python-examples-of-matplotlib-path-path-contains-points-method
@@ -509,7 +509,7 @@ def assign_block_labels(segment, station, block, mogi, sar):
         if i != external_block_idx:
             p = polygon_vertices[i]
             vs = np.concatenate([dedup_vertices[p], dedup_vertices[p[0]][None, :]])
-            block_polygon = celeri.inpolygon(
+            block_polygon = celeri.in_polygon(
                 block.interior_lon.to_numpy(),
                 block.interior_lat.to_numpy(),
                 vs[:, 0],
@@ -528,7 +528,7 @@ def assign_block_labels(segment, station, block, mogi, sar):
             if i != external_block_idx:
                 p = polygon_vertices[i]
                 vs = np.concatenate([dedup_vertices[p], dedup_vertices[p[0]][None, :]])
-                stations_polygon = celeri.inpolygon(
+                stations_polygon = celeri.in_polygon(
                     station.lon.to_numpy(), station.lat.to_numpy(), vs[:, 0], vs[:, 1]
                 )
                 stations_polygon_idx = np.where(stations_polygon == True)[0]
@@ -544,7 +544,7 @@ def assign_block_labels(segment, station, block, mogi, sar):
             if i != external_block_idx:
                 p = polygon_vertices[i]
                 vs = np.concatenate([dedup_vertices[p], dedup_vertices[p[0]][None, :]])
-                sar_polygon = celeri.inpolygon(
+                sar_polygon = celeri.in_polygon(
                     sar.lon.to_numpy(), sar.lat.to_numpy(), vs[:, 0], vs[:, 1]
                 )
                 sar_polygon_idx = np.where(sar_polygon == True)[0]
@@ -561,7 +561,7 @@ def assign_block_labels(segment, station, block, mogi, sar):
             if i != external_block_idx:
                 p = polygon_vertices[i]
                 vs = np.concatenate([dedup_vertices[p], dedup_vertices[p[0]][None, :]])
-                mogi_polygon = celeri.inpolygon(
+                mogi_polygon = celeri.in_polygon(
                     mogi.lon.to_numpy(), mogi.lat.to_numpy(), vs[:, 0], vs[:, 1]
                 )
                 mogi_polygon_idx = np.where(mogi_polygon == True)[0]
