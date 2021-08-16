@@ -50,7 +50,7 @@ def read_data(command_file_name):
                 "east_adjust",
                 "north_adjust",
                 "up_adjust",
-                "dep",  # TODO: What is dep???
+                "depth",
                 "x",
                 "y",
                 "z",
@@ -71,7 +71,7 @@ def read_data(command_file_name):
                 "name",
                 "lon",
                 "lat",
-                "dep",  # TODO: What is dep???
+                "depth",
                 "volume_change_flag",
                 "volume_change",
                 "volume_change_sig",
@@ -87,6 +87,7 @@ def read_data(command_file_name):
             columns=[
                 "lon",
                 "lat",
+                "depth",
                 "line_of_sight_change_val",
                 "line_of_sight_change_sig",
                 "look_vector_x",
