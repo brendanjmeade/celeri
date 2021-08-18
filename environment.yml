@@ -10,3 +10,4 @@ dependencies:
   - networkx
   - jupyterlab
   - ipympl
+  - meshio
