@@ -781,6 +781,155 @@ def merge_geodetic_data(assembly, station, sar):
     return assembly
 
 
+def euler_pole_covariance_to_rotation_vector_covariance(
+    omega_x, omega_y, omega_z, euler_pole_covariance_all
+):
+    """
+    This function takes the model parameter covariance matrix
+    in terms of the Euler pole and rotation rate and linearly
+    propagates them to rotation vector space.
+    """
+    print(euler_pole_covariance_to_rotation_vector_covariance.__name__)
+    omega_x_sig = np.zeros_like(omega_x)
+    omega_y_sig = np.zeros_like(omega_y)
+    omega_z_sig = np.zeros_like(omega_z)
+    print("at loop")
+    # print(omega_x)
+    for i in range(len(omega_x)):
+        x = omega_x[i]
+        y = omega_y[i]
+        z = omega_z[i]
+        euler_pole_covariance_current = euler_pole_covariance_all[
+            3 * i : 3 * (i + 1), 3 * i : 3 * (i + 1)
+        ]
+
+        """
+        There may be cases where x, y and z are all zero.  This leads to /0 errors.  To avoid this  %%
+        we check for these cases and Let A = b * I where b is a small constant (10^-4) and I is     %%
+        the identity matrix
+        """
+        if (x == 0) and (y == 0):
+            euler_to_cartsian_operator = 1e-4 * np.eye(
+                3
+            )  # Set a default small value for rotation vector uncertainty
+        else:
+            # Calculate the partial derivatives
+            dlat_dx = (
+                -z / (x ** 2 + y ** 2) ** (3 / 2) / (1 + z ** 2 / (x ** 2 + y ** 2)) * x
+            )
+            dlat_dy = (
+                -z / (x ** 2 + y ** 2) ** (3 / 2) / (1 + z ** 2 / (x ** 2 + y ** 2)) * y
+            )
+            dlat_dz = (
+                1 / (x ** 2 + y ** 2) ** (1 / 2) / (1 + z ** 2 / (x ** 2 + y ** 2))
+            )
+            dlon_dx = -y / x ** 2 / (1 + (y / x) ** 2)
+            dlon_dy = 1 / x / (1 + (y / x) ** 2)
+            dlon_dz = 0
+            dmag_dx = x / np.sqrt(x ** 2 + y ** 2 + z ** 2)
+            dmag_dy = y / np.sqrt(x ** 2 + y ** 2 + z ** 2)
+            dmag_dz = z / np.sqrt(x ** 2 + y ** 2 + z ** 2)
+            euler_to_cartsian_operator = np.array(
+                [
+                    [dlat_dx, dlat_dy, dlat_dz],
+                    [dlon_dx, dlon_dy, dlon_dz],
+                    [dmag_dx, dmag_dy, dmag_dz],
+                ]
+            )
+
+        # Propagate the Euler pole covariance matrix to a rotation rate
+        # covariance matrix
+        rotation_vector_covariance = (
+            np.inv(euler_to_cartsian_operator)
+            * euler_pole_covariance_current
+            * np.inv(euler_to_cartsian_operator).T
+        )
+
+        # Organized data for the return
+        main_diagonal_values = np.diag(rotation_vector_covariance)
+        omega_x_sig[i] = np.sqrt(main_diagonal_values[0])
+        omega_y_sig[i] = np.sqrt(main_diagonal_values[1])
+        omega_z_sig[i] = np.sqrt(main_diagonal_values[2])
+    return omega_x_sig, omega_y_sig, omega_z_sig
+
+
+def get_block_constraint_partials(block):
+    """
+    Partials for a priori block motion constraints.
+    Essentially a set of eye(3) matrices
+    """
+    print(get_block_constraint_partials.__name__)
+    apriori_block_idx = np.where(block.apriori_flag.to_numpy() == 1)[0]
+    print(apriori_block_idx)
+    operator = np.zeros((3 * len(apriori_block_idx), 3 * len(block)))
+    for i in range(len(apriori_block_idx)):
+        start_row = 3 * i
+        start_column = 3 * apriori_block_idx[i]
+        operator[start_row : start_row + 3, start_column : start_column + 3] = np.eye(3)
+    return operator
+
+
+def block_constraints(assembly, block, command):
+    """
+    Applying a priori block motion constraints
+    """
+    print(block_constraints.__name__)
+    block_constraint_partials = get_block_constraint_partials(block)
+    assembly["index"]["block_constraints_idx"] = np.where(block.apriori_flag == 1)[0]
+    assembly["data"]["n_block_constraints"] = 3 * len(
+        assembly["index"]["block_constraints_idx"]
+    )
+    assembly["data"]["block_constraints"] = np.zeros(block_constraint_partials.shape[0])
+    assembly["sigma"]["block_constraints"] = np.zeros(
+        block_constraint_partials.shape[0]
+    )
+    print("here")
+    print(assembly["index"]["block_constraints_idx"])
+    if assembly["data"]["n_block_constraints"] > 0:
+        (
+            assembly["data"]["block_constraints"][0::3],
+            assembly["data"]["block_constraints"][1::3],
+            assembly["data"]["block_constraints"][2::3],
+        ) = celeri.sph2cart(
+            np.deg2rad(block.euler_lon[assembly["index"]["block_constraints_idx"]]),
+            np.deg2rad(block.euler_lat[assembly["index"]["block_constraints_idx"]]),
+            np.deg2rad(block.rotation_rate[assembly["index"]["block_constraints_idx"]]),
+        )
+
+        euler_pole_covariance_all = np.diag(
+            np.concatenate(
+                (
+                    np.deg2rad(
+                        block.euler_lat_sig[assembly["index"]["block_constraints_idx"]]
+                    ),
+                    np.deg2rad(
+                        block.euler_lon_sig[assembly["index"]["block_constraints_idx"]]
+                    ),
+                    np.deg2rad(
+                        block.rotation_rate_sig[
+                            assembly["index"]["block_constraints_idx"]
+                        ]
+                    ),
+                )
+            )
+        )
+        (
+            assembly["sigma"]["block_constraints"][0::3],
+            assembly["sigma"]["block_constraints"][1::3],
+            assembly["sigma"]["block_constraints"][2::3],
+        ) = euler_pole_covariance_to_rotation_vector_covariance(
+            assembly["data"]["block_constraints"][0::3],
+            assembly["data"]["block_constraints"][1::3],
+            assembly["data"]["block_constraints"][2::3],
+            np.diag(euler_pole_covariance_all),
+        )
+
+    assembly["sigma"]["sigma.block_constraint_weight"] = command[
+        "block_constraint_weight"
+    ]
+    return assembly, block_constraint_partials
+
+
 # def sphere_azimuth(lon1, lat1, lon2, lat2):
 #     """
 #     Calculates azimuth between sets of points on a sphere.
