@@ -274,7 +274,7 @@ def segment_centroids(segment):
             np.cos(np.deg2rad(segment.dip[i]))
         )
         azx = (segment.y2[i] - segment.y1[i]) / (segment.x2[i] - segment.x1[i])
-        azx = np.arctan(-1.0 / azx)  # TODO: FIX THIS VARIABLE NAME
+        azx = np.arctan(-1.0 / azx)  # TODO: MAKE THIS VARIABLE NAME DESCRIPTIVE
         segment.centroid_z.values[i] = (
             segment.locking_depth[i] - segment.burial_depth[i]
         ) / 2.0
