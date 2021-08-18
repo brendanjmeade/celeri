@@ -789,12 +789,9 @@ def euler_pole_covariance_to_rotation_vector_covariance(
     in terms of the Euler pole and rotation rate and linearly
     propagates them to rotation vector space.
     """
-    print(euler_pole_covariance_to_rotation_vector_covariance.__name__)
     omega_x_sig = np.zeros_like(omega_x)
     omega_y_sig = np.zeros_like(omega_y)
     omega_z_sig = np.zeros_like(omega_z)
-    print("at loop")
-    # print(omega_x)
     for i in range(len(omega_x)):
         x = omega_x[i]
         y = omega_y[i]
@@ -840,9 +837,9 @@ def euler_pole_covariance_to_rotation_vector_covariance(
         # Propagate the Euler pole covariance matrix to a rotation rate
         # covariance matrix
         rotation_vector_covariance = (
-            np.inv(euler_to_cartsian_operator)
+            np.linalg.inv(euler_to_cartsian_operator)
             * euler_pole_covariance_current
-            * np.inv(euler_to_cartsian_operator).T
+            * np.linalg.inv(euler_to_cartsian_operator).T
         )
 
         # Organized data for the return
@@ -858,9 +855,7 @@ def get_block_constraint_partials(block):
     Partials for a priori block motion constraints.
     Essentially a set of eye(3) matrices
     """
-    print(get_block_constraint_partials.__name__)
     apriori_block_idx = np.where(block.apriori_flag.to_numpy() == 1)[0]
-    print(apriori_block_idx)
     operator = np.zeros((3 * len(apriori_block_idx), 3 * len(block)))
     for i in range(len(apriori_block_idx)):
         start_row = 3 * i
@@ -873,7 +868,6 @@ def block_constraints(assembly, block, command):
     """
     Applying a priori block motion constraints
     """
-    print(block_constraints.__name__)
     block_constraint_partials = get_block_constraint_partials(block)
     assembly["index"]["block_constraints_idx"] = np.where(block.apriori_flag == 1)[0]
     assembly["data"]["n_block_constraints"] = 3 * len(
@@ -883,8 +877,6 @@ def block_constraints(assembly, block, command):
     assembly["sigma"]["block_constraints"] = np.zeros(
         block_constraint_partials.shape[0]
     )
-    print("here")
-    print(assembly["index"]["block_constraints_idx"])
     if assembly["data"]["n_block_constraints"] > 0:
         (
             assembly["data"]["block_constraints"][0::3],
@@ -921,12 +913,10 @@ def block_constraints(assembly, block, command):
             assembly["data"]["block_constraints"][0::3],
             assembly["data"]["block_constraints"][1::3],
             assembly["data"]["block_constraints"][2::3],
-            np.diag(euler_pole_covariance_all),
+            euler_pole_covariance_all,
         )
 
-    assembly["sigma"]["sigma.block_constraint_weight"] = command[
-        "block_constraint_weight"
-    ]
+    assembly["sigma"]["block_constraint_weight"] = command["block_constraint_weight"]
     return assembly, block_constraint_partials
 
 
