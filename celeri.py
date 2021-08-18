@@ -1,5 +1,6 @@
 import copy
 import json
+import meshio
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -27,6 +28,45 @@ def read_data(command_file_name):
     # Read block data
     block = pd.read_csv(command["block_file_name"])
     block = block.loc[:, ~block.columns.str.match("Unnamed")]
+
+    # Read mesh data
+    with open(command["mesh_param_file_name"], 'r') as f:
+        mesh_param = json.load(f)
+    meshes = {}
+    for i in range(len(mesh_param)):
+        meshes[i] = meshio.read(mesh_param[i]["mesh_filename"])
+        meshes[i].verts = meshes[i].get_cells_type("triangle")
+        # Expand mesh coordinates
+        meshes[i].lon1 = meshes[i].points[meshes[i].verts[:,0],0]
+        meshes[i].lon2 = meshes[i].points[meshes[i].verts[:,1],0]
+        meshes[i].lon3 = meshes[i].points[meshes[i].verts[:,2],0]
+        meshes[i].lat1 = meshes[i].points[meshes[i].verts[:,0],1]
+        meshes[i].lat2 = meshes[i].points[meshes[i].verts[:,1],1]
+        meshes[i].lat3 = meshes[i].points[meshes[i].verts[:,2],1]
+        meshes[i].dep1 = meshes[i].points[meshes[i].verts[:,0],2]
+        meshes[i].dep2 = meshes[i].points[meshes[i].verts[:,1],2]
+        meshes[i].dep3 = meshes[i].points[meshes[i].verts[:,2],2]
+        meshes[i].centroids = np.mean(meshes[i].points[meshes[i].verts, :], axis=1)
+        # Cartesian coordinates in meters
+        meshes[i].x1, meshes[i].y1, meshes[i].z1 = celeri.sph2cart(
+            meshes[i].lon1, meshes[i].lat1, celeri.RADIUS_EARTH+1000.*meshes[i].dep1
+            )
+        meshes[i].x2, meshes[i].y2, meshes[i].z2 = celeri.sph2cart(
+            meshes[i].lon2, meshes[i].lat2, celeri.RADIUS_EARTH+1000.*meshes[i].dep2)
+        meshes[i].x3, meshes[i].y3, meshes[i].z3 = celeri.sph2cart(
+            meshes[i].lon3, meshes[i].lat3, celeri.RADIUS_EARTH+1000.*meshes[i].dep3)
+        # Cross products for orientations
+        tri_leg1 = np.transpose([np.deg2rad(meshes[i].lon2-meshes[i].lon1), 
+             np.deg2rad(meshes[i].lat2-meshes[i].lat1), 
+             (1+1000.*meshes[i].dep2/celeri.RADIUS_EARTH)-(1+1000.*meshes[i].dep1/celeri.RADIUS_EARTH)])
+        tri_leg2 = np.transpose([np.deg2rad(meshes[i].lon3-meshes[i].lon1), 
+             np.deg2rad(meshes[i].lat3-meshes[i].lat1), 
+             (1+1000.*meshes[i].dep3/celeri.RADIUS_EARTH)-(1+1000.*meshes[i].dep1/celeri.RADIUS_EARTH)])
+        meshes[i].nv = np.cross(tri_leg1, tri_leg2)
+        azimuth, elevation, r = celeri.cart2sph(meshes[i].nv[:,0], meshes[i].nv[:,1], meshes[i].nv[:,2])
+        meshes[i].strike = celeri.wrap2360(-np.rad2deg(azimuth))
+        meshes[i].dip = 90 - np.rad2deg(elevation)
+        meshes[i].dip_flag = meshes[i].dip != 90
 
     # Read station data
     if (
@@ -101,7 +141,7 @@ def read_data(command_file_name):
     else:
         sar = pd.read_csv(command["sar_file_name"])
         sar = sar.loc[:, ~sar.columns.str.match("Unnamed")]
-    return command, segment, block, station, mogi, sar
+    return command, segment, block, meshes, station, mogi, sar
 
 
 def sph2cart(lon, lat, radius):
@@ -110,6 +150,11 @@ def sph2cart(lon, lat, radius):
     z = radius * np.sin(np.deg2rad(lat))
     return x, y, z
 
+def cart2sph(x, y, z):
+    azimuth = np.arctan2(y, x)
+    elevation = np.arctan2(z, np.sqrt(x**2 + y**2))
+    r = np.sqrt(x**2 + y**2 + z**2)
+    return azimuth, elevation, r
 
 def wrap2360(lon):
     lon[np.where(lon < 0.0)] += 360.0
