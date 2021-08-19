@@ -920,6 +920,249 @@ def block_constraints(assembly, block, command):
     return assembly, block_constraint_partials
 
 
+def get_cross_partials(vector):
+    """
+    Returns a linear operator R that when multiplied by
+    vector a gives the cross product a cross b
+    """
+    return np.array(
+        [
+            [0, vector[2], -vector[1]],
+            [-vector[2], 0, vector[0]],
+            [vector[1], -vector[0], 0],
+        ]
+    )
+
+
+def cartesian_vector_to_spherical_vector(vel_x, vel_y, vel_z, lon, lat):
+    """
+    This function transforms vectors from Cartesian to spherical components.
+    Arguments:
+        vel_x: array of x components of velocity
+        vel_y: array of y components of velocity
+        vel_z: array of z components of velocity
+        lon: array of station longitudes
+        lat: array of station latitudes
+    Returned variables:
+        vel_north: array of north components of velocity
+        vel_east: array of east components of velocity
+        vel_up: array of up components of velocity
+    """
+    projection_matrix = np.array(
+        [
+            [
+                -np.sin(np.deg2rad(lat)) * np.cos(np.deg2rad(lon)),
+                -np.sin(np.deg2rad(lat)) * np.sin(np.deg2rad(lon)),
+                np.cos(np.deg2rad(lat)),
+            ],
+            [-np.sin(np.deg2rad(lon)), np.cos(np.deg2rad(lon)), 0],
+            [
+                -np.cos(np.deg2rad(lat)) * np.cos(np.deg2rad(lon)),
+                -np.cos(np.deg2rad(lat)) * np.sin(np.deg2rad(lon)),
+                -np.sin(np.deg2rad(lat)),
+            ],
+        ]
+    )
+    vel_north, vel_east, vel_up = np.dot(
+        projection_matrix, np.array([vel_x, vel_y, vel_z])
+    )
+    return vel_north, vel_east, vel_up
+
+
+def get_fault_slip_rate_partials(segment, block):
+    """
+    Calculate partial derivatives for slip rate constraints
+    """
+    n_segments = len(segment)
+    n_blocks = len(block)
+    fault_slip_rate_partials = np.zeros((3 * n_segments, 3 * n_blocks))
+    for i in range(n_segments):
+        # Project velocities from Cartesian to spherical coordinates at segment mid-points
+        row_idx = 3 * i
+        column_idx_east = 3 * segment.east_labels[i]
+        column_idx_west = 3 * segment.west_labels[i]
+        R = get_cross_partials([segment.mid_x[i], segment.mid_y[i], segment.mid_z[i]])
+        (
+            vel_north_to_omega_x,
+            vel_east_to_omega_x,
+            _,
+        ) = cartesian_vector_to_spherical_vector(
+            R[0, 0], R[1, 0], R[2, 0], segment.mid_lon[i], segment.mid_lat[i]
+        )
+        (
+            vel_north_to_omega_y,
+            vel_east_to_omega_y,
+            _,
+        ) = cartesian_vector_to_spherical_vector(
+            R[0, 1], R[1, 1], R[2, 1], segment.mid_lon[i], segment.mid_lat[i]
+        )
+        (
+            vel_north_to_omega_z,
+            vel_east_to_omega_z,
+            _,
+        ) = cartesian_vector_to_spherical_vector(
+            R[0, 2], R[1, 2], R[2, 2], segment.mid_lon[i], segment.mid_lat[i]
+        )
+
+        # Build unit vector for the fault
+        # Projection on to fault strike
+        segment_azimuth, _, _ = celeri.GEOID.inv(
+            segment.lon1[i], segment.lat1[i], segment.lon2[i], segment.lat2[i]
+        )  # TODO: Need to check this vs. matlab azimuth for consistency
+        unit_x_parallel = np.cos(np.deg2rad(90 - segment_azimuth))
+        unit_y_parallel = np.sin(np.deg2rad(90 - segment_azimuth))
+        unit_x_perpendicular = np.sin(np.deg2rad(segment_azimuth - 90))
+        unit_y_perpendicular = np.cos(np.deg2rad(segment_azimuth - 90))
+
+        # Projection onto fault dip
+        if segment.lat2[i] < segment.lat1[i]:
+            unit_x_parallel = -unit_x_parallel
+            unit_y_parallel = -unit_y_parallel
+            unit_x_perpendicular = -unit_x_perpendicular
+            unit_y_perpendicular = -unit_y_perpendicular
+
+        # This is the logic for dipping vs. non-dipping faults
+        # If fault is dipping make it so that the dip slip rate has a fault normal
+        # component equal to the fault normal differential plate velocity.  This
+        # is kinematically consistent in the horizontal but *not* in the vertical.
+        if segment.dip[i] != 90:
+            scale_factor = 1 / abs(np.cos(np.deg2rad(segment.dip[i])))
+            slip_rate_matrix = np.array(
+                [
+                    [
+                        unit_x_parallel * vel_east_to_omega_x
+                        + unit_y_parallel * vel_north_to_omega_x,
+                        unit_x_parallel * vel_east_to_omega_y
+                        + unit_y_parallel * vel_north_to_omega_y,
+                        unit_x_parallel * vel_east_to_omega_z
+                        + unit_y_parallel * vel_north_to_omega_z,
+                    ],
+                    [
+                        scale_factor
+                        * (
+                            unit_x_perpendicular * vel_east_to_omega_x
+                            + unit_y_perpendicular * vel_north_to_omega_x
+                        ),
+                        scale_factor
+                        * (
+                            unit_x_perpendicular * vel_east_to_omega_y
+                            + unit_y_perpendicular * vel_north_to_omega_y
+                        ),
+                        scale_factor
+                        * (
+                            unit_x_perpendicular * vel_east_to_omega_z
+                            + unit_y_perpendicular * vel_north_to_omega_z
+                        ),
+                    ],
+                    [0, 0, 0],
+                ]
+            )
+        else:
+            scale_factor = -1
+            slip_rate_matrix = np.array(
+                [
+                    [
+                        unit_x_parallel * vel_east_to_omega_x
+                        + unit_y_parallel * vel_north_to_omega_x,
+                        unit_x_parallel * vel_east_to_omega_y
+                        + unit_y_parallel * vel_north_to_omega_y,
+                        unit_x_parallel * vel_east_to_omega_z
+                        + unit_y_parallel * vel_north_to_omega_z,
+                    ],
+                    [0, 0, 0],
+                    [
+                        scale_factor
+                        * (
+                            unit_x_perpendicular * vel_east_to_omega_x
+                            + unit_y_perpendicular * vel_north_to_omega_x
+                        ),
+                        scale_factor
+                        * (
+                            unit_x_perpendicular * vel_east_to_omega_y
+                            + unit_y_perpendicular * vel_north_to_omega_y
+                        ),
+                        scale_factor
+                        * (
+                            unit_x_perpendicular * vel_east_to_omega_z
+                            + unit_y_perpendicular * vel_north_to_omega_z
+                        ),
+                    ],
+                ]
+            )
+
+        fault_slip_rate_partials[
+            row_idx : row_idx + 3, column_idx_east : column_idx_east + 3
+        ] = slip_rate_matrix
+        fault_slip_rate_partials[
+            row_idx : row_idx + 3, column_idx_west : column_idx_west + 3
+        ] = -slip_rate_matrix
+    return fault_slip_rate_partials
+
+
+def slip_rate_constraints(assembly, segment, block, command):
+    print("Isolating slip rate constraints")
+    for i in range(len(segment.lon1)):
+        if segment.ss_rate_flag[i] == 1:
+            "{:.2f}".format(segment.ss_rate[i])
+            print(
+                "- Strike-slip rate constraint on "
+                + segment.name[i].strip()
+                + ": rate = "
+                + "{:.2f}".format(segment.ss_rate[i])
+                + " (mm/yr), 1-sigma uncertainty = +/-"
+                + "{:.2f}".format(segment.ss_rate_sig[i])
+                + " (mm/yr)"
+            )
+        if segment.ds_rate_flag[i] == 1:
+            print(
+                "- Dip-slip rate constraint on "
+                + segment.name[i].strip()
+                + ": rate = "
+                + "{:.2f}".format(segment.ds_rate[i])
+                + " (mm/yr), 1-sigma uncertainty = +/-"
+                + "{:.2f}".format(segment.ds_rate_sig[i])
+                + " (mm/yr)"
+            )
+        if segment.ts_rate_flag[i] == 1:
+            print(
+                "- Tensile-slip rate constraint on "
+                + segment.name[i].strip()
+                + ": rate = "
+                + "{:.2f}".format(segment.ts_rate[i])
+                + " (mm/yr), 1-sigma uncertainty = +/-"
+                + "{:.2f}".format(segment.ts_rate_sig[i])
+                + " (mm/yr)"
+            )
+
+    slip_rate_constraint_partials = get_fault_slip_rate_partials(segment, block)
+    slip_rate_constraint_flag = np.concatenate(
+        (segment.ss_rate_flag, segment.ds_rate_flag, segment.ts_rate_flag)
+    )
+    assembly["index"]["slip_rate_constraints"] = np.where(
+        slip_rate_constraint_flag == 1
+    )[0]
+    assembly["data"]["n_slip_rate_constraints"] = len(
+        assembly["index"]["slip_rate_constraints"]
+    )
+    assembly["data"]["slip_rate_constraints"] = np.concatenate(
+        (segment.ss_rate, segment.ds_rate, segment.ts_rate)
+    )
+    assembly["data"]["slip_rate_constraints"] = assembly["data"][
+        "slip_rate_constraints"
+    ][assembly["index"]["slip_rate_constraints"]]
+    assembly["sigma"]["slip_rate_constraints"] = np.concatenate(
+        (segment.ss_rate_sig, segment.ds_rate_sig, segment.ts_rate_sig)
+    )
+    assembly["sigma"]["slip_rate_constraints"] = assembly["sigma"][
+        "slip_rate_constraints"
+    ][assembly["index"]["slip_rate_constraints"]]
+    slip_rate_constraint_partials = slip_rate_constraint_partials[
+        assembly["index"]["slip_rate_constraints"], :
+    ]
+    assembly["sigma"]["slip_rate_constraint_weight"] = command["slip_constraint_weight"]
+    return assembly, slip_rate_constraint_partials
+
+
 # def sphere_azimuth(lon1, lat1, lon2, lat2):
 #     """
 #     Calculates azimuth between sets of points on a sphere.
