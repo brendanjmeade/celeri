@@ -687,6 +687,7 @@ def split_segments_crossing_meridian(segment):
             segment_split.lon2.values, segment_split.lat2.values, RADIUS_EARTH
         )
         segment = pd.concat([segment_split, segment_whole])
+        segment = order_endpoints_sphere(segment)  # TODO: WHY IS THIS FAILING???
     return segment
 
 
