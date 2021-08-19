@@ -194,7 +194,8 @@ def process_station(station, command):
     station["x"], station["y"], station["z"] = celeri.sph2cart(
         station.lon, station.lat, celeri.RADIUS_EARTH
     )
-    station = station[station.flag == 1]  # Keep only the stations that are toggled on
+    station = station.drop(np.where(station.flag == 0)[0])
+    station = station.reset_index(drop=True)
     return station
 
 
@@ -360,7 +361,7 @@ def assign_block_labels(segment, station, block, mogi, sar):
     # Assume very long segments cross the prime meridian and
     # split them there so that the segment crawler can continue
     # correctly.  JPL solution.
-    segment = split_segments_crossing_meridian(segment)
+    # segment = split_segments_crossing_meridian(segment)
 
     np_segments = np.zeros((len(segment), 2, 2))
     np_segments[:, 0, 0] = segment.lon1.to_numpy()
@@ -701,7 +702,7 @@ def great_circle_latitude_find(lon1, lat1, lon2, lat2, lon):
     lon2 = np.deg2rad(lon2)
     lat2 = np.deg2rad(lat2)
     lon = np.deg2rad(lon)
-    lat = np.atan(
+    lat = np.arctan(
         np.tan(lat1) * np.sin(lon - lon2) / np.sin(lon1 - lon2)
         - np.tan(lat2) * np.sin(lon - lon1) / np.sin(lon1 - lon2)
     )
@@ -1235,6 +1236,7 @@ def plot_block_labels(segment, block, station):
         )
 
     for i in range(len(station)):
+
         plt.text(
             station.lon.values[i],
             station.lat.values[i],
