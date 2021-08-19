@@ -251,7 +251,7 @@ def order_endpoints_sphere(segment):
     segment_copy = copy.deepcopy(segment)
     for i in range(len(segment)):
         if segment.lon1[i] > segment.lon2[i]:
-            print(i, "Reordering endpoints for segment ", segment.name[i].strip())
+            # print(i, "Reordering endpoints for segment ", segment.name[i].strip())
             segment_copy.lon1.values[i] = segment.lon2.values[i]
             segment_copy.lat1.values[i] = segment.lat2.values[i]
             segment_copy.lon2.values[i] = segment.lon1.values[i]
@@ -361,7 +361,7 @@ def assign_block_labels(segment, station, block, mogi, sar):
     # Assume very long segments cross the prime meridian and
     # split them there so that the segment crawler can continue
     # correctly.  JPL solution.
-    # segment = split_segments_crossing_meridian(segment)
+    segment = split_segments_crossing_meridian(segment)
 
     np_segments = np.zeros((len(segment), 2, 2))
     np_segments[:, 0, 0] = segment.lon1.to_numpy()
