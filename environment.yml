@@ -11,3 +11,5 @@ dependencies:
   - jupyterlab
   - ipympl
   - meshio
+  - pytest
+  - addict

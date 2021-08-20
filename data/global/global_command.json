@@ -46,9 +46,9 @@
         0
     ],
     "n_eigs": 50,
-    "segment_file_name": "./data/global/reference_gbm_segment.csv",
+    "segment_file_name": "./data/global/Reference_GBM_segment.csv",
     "station_file_name": "./data/global/kreemer_plus.csv",
-    "block_file_name": "./data/global/reference_gbm_block.csv",
+    "block_file_name": "./data/global/Reference_GBM_block.csv",
     "mesh_param_file_name": "./data/test_mesh_param.json",
     "fault_resolution": 500,
     "station_data_weight": 1,
