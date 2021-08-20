@@ -702,10 +702,10 @@ def split_segments_crossing_meridian(segment):
         segment_split.lat1.values[len(split_idx) + 1 : -1] = split_lat
         # [segment_split.midLon, segment_split.midLat] = segmentmidpoint(split.lon1, split.lat1, split.lon2, split.lat2);
         segment_split.x1, segment_split.y1, segment_split.z1 = celeri.sph2cart(
-            segment_split.lon1.values, segment_split.lat1.values, RADIUS_EARTH
+            np.deg2rad(segment_split.lon1.values), np.deg2rad(segment_split.lat1.values), RADIUS_EARTH
         )
         segment_split.x2, segment_split.y2, segment_split.z2 = celeri.sph2cart(
-            segment_split.lon2.values, segment_split.lat2.values, RADIUS_EARTH
+            np.deg2rad(segment_split.lon2.values), np.deg2rad(segment_split.lat2.values), RADIUS_EARTH
         )
         segment = pd.concat([segment_split, segment_whole])
         # segment = order_endpoints_sphere(segment)  # TODO: WHY IS THIS FAILING???
