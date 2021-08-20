@@ -223,6 +223,7 @@ def locking_depth_manager(segment, command):
         segment.locking_depth.values = command["locking_depth_override_value"]
     return segment
 
+
 def zero_mesh_segment_locking_depth(segment, meshes):
     """
     This function sets the locking depths of any segments that trace
@@ -230,11 +231,15 @@ def zero_mesh_segment_locking_depth(segment, meshes):
     contribution, as the elastic strain is accounted for by the mesh.
 
     To have its locking depth set to zero, the segment's patch_flag
-    and patch_file_name fields must not be equal to zero but also 
+    and patch_file_name fields must not be equal to zero but also
     less than the number of available mesh files.
     """
     segment = segment.copy(deep=True)
-    togg_off = np.where((segment.patch_flag != 0) & (segment.patch_file_name != 0) & (segment.patch_file_name <= len(meshes)))[0]
+    togg_off = np.where(
+        (segment.patch_flag != 0)
+        & (segment.patch_file_name != 0)
+        & (segment.patch_file_name <= len(meshes))
+    )[0]
     segment.locking_depth.values[togg_off] = 0
     return segment
 
@@ -703,7 +708,7 @@ def split_segments_crossing_meridian(segment):
             segment_split.lon2.values, segment_split.lat2.values, RADIUS_EARTH
         )
         segment = pd.concat([segment_split, segment_whole])
-        segment = order_endpoints_sphere(segment)  # TODO: WHY IS THIS FAILING???
+        # segment = order_endpoints_sphere(segment)  # TODO: WHY IS THIS FAILING???
     return segment
 
 
