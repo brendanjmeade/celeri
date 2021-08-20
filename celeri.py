@@ -256,9 +256,16 @@ def order_endpoints_sphere(segment):
     python so I revereted to relative longitude check which sould be fine because
     we're always in 0-360 space.
     """
-    # segment_copy = copy.deepcopy(segment)
-    # x1, y1, z1 = celeri.sph2cart(segment.lon1, segment.lat1, 1)
-    # x2, y2, z2 = celeri.sph2cart(segment.lon1, segment.lat2, 1)
+    segment_copy = copy.deepcopy(segment)
+    endpoints1 = np.transpose(np.array([segment.x1, segment.y1, segment.z1]))
+    endpoints2 = np.transpose(np.array([segment.x2, segment.y2, segment.z2]))
+    cross_product = np.cross(endpoints1, endpoints2)
+    swap_endpoint_idx = np.where(cross_product[:,2] < 0)
+    segment_copy.lon1.values[swap_endpoint_idx] = segment.lon2.values[swap_endpoint_idx]
+    segment_copy.lat1.values[swap_endpoint_idx] = segment.lat2.values[swap_endpoint_idx]
+    segment_copy.lon2.values[swap_endpoint_idx] = segment.lon1.values[swap_endpoint_idx]
+    segment_copy.lat2.values[swap_endpoint_idx] = segment.lat1.values[swap_endpoint_idx]
+    return segment_copy
     # for i in range(x1.size):
     #     cross_product = np.cross([x1[i], y1[i], z1[i]], [x2[i], y2[i], z2[i]])
     #     if cross_product[2] <= 0:
@@ -267,16 +274,16 @@ def order_endpoints_sphere(segment):
     #         segment_copy.lat1.values[i] = segment.lat2.values[i]
     #         segment_copy.lon2.values[i] = segment.lon1.values[i]
     #         segment_copy.lat2.values[i] = segment.lat1.values[i]
+    
+    # segment_copy = copy.deepcopy(segment)
+    # for i in range(len(segment)):
+    #     if segment.lon1[i] > segment.lon2[i]:
+    #         # print(i, "Reordering endpoints for segment ", segment.name[i].strip())
+    #         segment_copy.lon1.values[i] = segment.lon2.values[i]
+    #         segment_copy.lat1.values[i] = segment.lat2.values[i]
+    #         segment_copy.lon2.values[i] = segment.lon1.values[i]
+    #         segment_copy.lat2.values[i] = segment.lat1.values[i]
     # return segment_copy
-    segment_copy = copy.deepcopy(segment)
-    for i in range(len(segment)):
-        if segment.lon1[i] > segment.lon2[i]:
-            # print(i, "Reordering endpoints for segment ", segment.name[i].strip())
-            segment_copy.lon1.values[i] = segment.lon2.values[i]
-            segment_copy.lat1.values[i] = segment.lat2.values[i]
-            segment_copy.lon2.values[i] = segment.lon1.values[i]
-            segment_copy.lat2.values[i] = segment.lat1.values[i]
-    return segment_copy
 
 
 def segment_centroids(segment):
@@ -323,13 +330,14 @@ def segment_centroids(segment):
 
 
 def process_segment(segment, command, meshes):
-    segment = celeri.order_endpoints_sphere(segment)
+    
     segment["x1"], segment["y1"], segment["z1"] = celeri.sph2cart(
         segment.lon1, segment.lat1, celeri.RADIUS_EARTH
     )
     segment["x2"], segment["y2"], segment["z2"] = celeri.sph2cart(
         segment.lon2, segment.lat2, celeri.RADIUS_EARTH
     )
+    segment = celeri.order_endpoints_sphere(segment)
     segment["mid_lon_plate_carree"] = (segment.lon1.values + segment.lon2.values) / 2.0
     segment["mid_lat_plate_carree"] = (segment.lat1.values + segment.lat2.values) / 2.0
     segment["mid_lon"] = np.zeros_like(segment.lon1)
@@ -689,17 +697,16 @@ def split_segments_crossing_meridian(segment):
             segment.lat2.values[split_idx],
             360.0 * np.ones(len(split_idx)),
         )
-
+        split_lat = np.rad2deg(split_lat)
         # Replicate split segment properties and assign new endpoints
         segment_whole = copy.copy(segment[~prime_meridian_cross])
         segment_split = copy.copy(segment[prime_meridian_cross])
         segment_split = pd.concat([segment_split, segment_split])
-
         # Insert the split coordinates
-        segment_split.lon2.values[0 : len(split_idx)] = 360.0
-        segment_split.lat2.values[0 : len(split_idx)] = split_lat
-        segment_split.lon1.values[len(split_idx) + 1 : -1] = 0.0
-        segment_split.lat1.values[len(split_idx) + 1 : -1] = split_lat
+        segment_split.lon2.values[0 : len(split_lat)] = 360.0
+        segment_split.lat2.values[0 : len(split_lat)] = split_lat
+        segment_split.lon1.values[len(split_lat):] = 0.0
+        segment_split.lat1.values[len(split_lat):] = split_lat
         # [segment_split.midLon, segment_split.midLat] = segmentmidpoint(split.lon1, split.lat1, split.lon2, split.lat2);
         segment_split.x1, segment_split.y1, segment_split.z1 = celeri.sph2cart(
             segment_split.lon1.values, segment_split.lat1.values, RADIUS_EARTH
@@ -708,7 +715,7 @@ def split_segments_crossing_meridian(segment):
             segment_split.lon2.values, segment_split.lat2.values, RADIUS_EARTH
         )
         segment = pd.concat([segment_split, segment_whole])
-        # segment = order_endpoints_sphere(segment)  # TODO: WHY IS THIS FAILING???
+        segment = order_endpoints_sphere(segment)  # TODO: WHY IS THIS FAILING???
     return segment
 
 
@@ -728,7 +735,7 @@ def great_circle_latitude_find(lon1, lat1, lon2, lat2, lon):
         np.tan(lat1) * np.sin(lon - lon2) / np.sin(lon1 - lon2)
         - np.tan(lat2) * np.sin(lon - lon1) / np.sin(lon1 - lon2)
     )
-    return
+    return lat
 
 
 def process_sar(sar, command):
