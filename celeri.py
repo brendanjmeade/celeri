@@ -1101,15 +1101,11 @@ def test_end2end():
     segment = celeri.process_segment(segment, command, meshes)
     sar = celeri.process_sar(sar, command)
     closure = celeri.assign_block_labels(segment, station, block, mogi, sar)
-
-    # Check that the number of blocks is correct.
     assert(len(closure.polygon_vertices) == 306)
 
-    assembly = celeri.create_assembly_dictionary()
+    assembly = Dict()
+    operators = Dict()
     assembly = celeri.merge_geodetic_data(assembly, station, sar)
+    assembly, operators.block_motion_constraints = celeri.block_constraints(assembly, block, command)
+    assembly, operators.slip_rate_constraints = celeri.slip_rate_constraints(assembly, segment, block, command)
 
-    class Partials:
-        pass
-    partials = Partials()
-    assembly, partials.block_motion_constraints = celeri.block_constraints(assembly, block, command)
-    assembly, partials.slip_rate_constraints = celeri.slip_rate_constraints(assembly, segment, block, command)
