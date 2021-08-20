@@ -12,3 +12,4 @@ dependencies:
   - ipympl
   - meshio
   - pytest
+  - addict
