@@ -765,64 +765,73 @@ def process_sar(sar, command):
 #     return assembly
 
 
-def initialize_assembly_and_operators():
-    """
-    Initialize assembly and operators as lightweight objects
-    The purpose oof this is so that we can use dot notation easily.
-    """
-
-    class Operators:
-        pass
-
-    class Assembly:
-        class data:
-            pass
-
-        class sigma:
-            pass
-
-        class index:
-            pass
-
-    assembly = Assembly()
-    operators = Operators()
-    return assembly, operators
+# def merge_geodetic_data(assembly, station, sar):
+#     """
+#     Merge GPS and InSAR data to a single assembly dictionary
+#     """
+#     assembly["data"]["n_stations"] = len(station)
+#     assembly["data"]["n_sar"] = len(sar)
+#     assembly["data"]["east_vel"] = station.east_vel.to_numpy()
+#     assembly["sigma"]["east_sig"] = station.east_sig.to_numpy()
+#     assembly["data"]["north_vel"] = station.north_vel.to_numpy()
+#     assembly["sigma"]["north_sig"] = station.north_sig.to_numpy()
+#     assembly["data"]["up_vel"] = station.up_vel.to_numpy()
+#     assembly["sigma"]["up_sig"] = station.up_sig.to_numpy()
+#     assembly["data"][
+#         "sar_line_of_sight_change_val"
+#     ] = sar.line_of_sight_change_val.to_numpy()
+#     assembly["sigma"][
+#         "sar_line_of_sight_change_sig"
+#     ] = sar.line_of_sight_change_sig.to_numpy()
+#     assembly["data"]["lon"] = np.concatenate(
+#         (station.lon.to_numpy(), sar.lon.to_numpy())
+#     )
+#     assembly["data"]["lat"] = np.concatenate(
+#         (station.lat.to_numpy(), sar.lat.to_numpy())
+#     )
+#     assembly["data"]["depth"] = np.concatenate(
+#         (station.depth.to_numpy(), sar.depth.to_numpy())
+#     )
+#     assembly["data"]["x"] = np.concatenate((station.x.to_numpy(), sar.x.to_numpy()))
+#     assembly["data"]["y"] = np.concatenate((station.y.to_numpy(), sar.y.to_numpy()))
+#     assembly["data"]["z"] = np.concatenate((station.z.to_numpy(), sar.z.to_numpy()))
+#     assembly["data"]["block_label"] = np.concatenate(
+#         (station.block_label.to_numpy(), sar.block_label.to_numpy())
+#     )
+#     assembly["index"]["sar_coordinate_idx"] = np.arange(
+#         len(station), len(station) + len(sar)
+#     )  # TODO: Not sure this is correct
+#     return assembly
 
 
 def merge_geodetic_data(assembly, station, sar):
     """
-    Merge GPS and InSAR data to a single assembly dictionary
+    Merge GPS and InSAR data to a single assembly object
     """
-    assembly["data"]["n_stations"] = len(station)
-    assembly["data"]["n_sar"] = len(sar)
-    assembly["data"]["east_vel"] = station.east_vel.to_numpy()
-    assembly["sigma"]["east_sig"] = station.east_sig.to_numpy()
-    assembly["data"]["north_vel"] = station.north_vel.to_numpy()
-    assembly["sigma"]["north_sig"] = station.north_sig.to_numpy()
-    assembly["data"]["up_vel"] = station.up_vel.to_numpy()
-    assembly["sigma"]["up_sig"] = station.up_sig.to_numpy()
-    assembly["data"][
-        "sar_line_of_sight_change_val"
-    ] = sar.line_of_sight_change_val.to_numpy()
-    assembly["sigma"][
-        "sar_line_of_sight_change_sig"
-    ] = sar.line_of_sight_change_sig.to_numpy()
-    assembly["data"]["lon"] = np.concatenate(
-        (station.lon.to_numpy(), sar.lon.to_numpy())
+    assembly.data.n_stations = len(station)
+    assembly.data.n_sar = len(sar)
+    assembly.data.east_vel = station.east_vel.to_numpy()
+    assembly.sigma.east_sig = station.east_sig.to_numpy()
+    assembly.data.north_vel = station.north_vel.to_numpy()
+    assembly.sigma.north_sig = station.north_sig.to_numpy()
+    assembly.data.up_vel = station.up_vel.to_numpy()
+    assembly.sigma.up_sig = station.up_sig.to_numpy()
+    assembly.data.sar_line_of_sight_change_val = sar.line_of_sight_change_val.to_numpy()
+    assembly.sigma.sar_line_of_sight_change_sig = (
+        sar.line_of_sight_change_sig.to_numpy()
     )
-    assembly["data"]["lat"] = np.concatenate(
-        (station.lat.to_numpy(), sar.lat.to_numpy())
-    )
-    assembly["data"]["depth"] = np.concatenate(
+    assembly.data.lon = np.concatenate((station.lon.to_numpy(), sar.lon.to_numpy()))
+    assembly.data.lat = np.concatenate((station.lat.to_numpy(), sar.lat.to_numpy()))
+    assembly.data.depth = np.concatenate(
         (station.depth.to_numpy(), sar.depth.to_numpy())
     )
-    assembly["data"]["x"] = np.concatenate((station.x.to_numpy(), sar.x.to_numpy()))
-    assembly["data"]["y"] = np.concatenate((station.y.to_numpy(), sar.y.to_numpy()))
-    assembly["data"]["z"] = np.concatenate((station.z.to_numpy(), sar.z.to_numpy()))
-    assembly["data"]["block_label"] = np.concatenate(
+    assembly.data.x = np.concatenate((station.x.to_numpy(), sar.x.to_numpy()))
+    assembly.data.y = np.concatenate((station.y.to_numpy(), sar.y.to_numpy()))
+    assembly.data.z = np.concatenate((station.z.to_numpy(), sar.z.to_numpy()))
+    assembly.data.block_label = np.concatenate(
         (station.block_label.to_numpy(), sar.block_label.to_numpy())
     )
-    assembly["index"]["sar_coordinate_idx"] = np.arange(
+    assembly.index.sar_coordinate_idx = np.arange(
         len(station), len(station) + len(sar)
     )  # TODO: Not sure this is correct
     return assembly
