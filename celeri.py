@@ -223,6 +223,21 @@ def locking_depth_manager(segment, command):
         segment.locking_depth.values = command["locking_depth_override_value"]
     return segment
 
+def zero_mesh_segment_locking_depth(segment, meshes):
+    """
+    This function sets the locking depths of any segments that trace
+    a mesh to zero, so that they have no rectangular elastic strain
+    contribution, as the elastic strain is accounted for by the mesh.
+
+    To have its locking depth set to zero, the segment's patch_flag
+    and patch_file_name fields must not be equal to zero but also 
+    less than the number of available mesh files.
+    """
+    segment = segment.copy(deep=True)
+    togg_off = np.where((segment.patch_flag != 0) & (segment.patch_file_name != 0) & (segment.patch_file_name <= len(meshes)))[0]
+    segment.locking_depth.values[togg_off] = 0
+    return segment
+
 
 def order_endpoints_sphere(segment):
     """
@@ -302,7 +317,7 @@ def segment_centroids(segment):
     return segment
 
 
-def process_segment(segment, command):
+def process_segment(segment, command, meshes):
     segment = celeri.order_endpoints_sphere(segment)
     segment["x1"], segment["y1"], segment["z1"] = celeri.sph2cart(
         segment.lon1, segment.lat1, celeri.RADIUS_EARTH
@@ -325,6 +340,7 @@ def process_segment(segment, command):
         segment.mid_lon, segment.mid_lat, celeri.RADIUS_EARTH
     )
     segment = celeri.locking_depth_manager(segment, command)
+    segment = celeri.zero_mesh_segment_locking_depth(segment, meshes)
     # segment.locking_depth.values = PatchLDtoggle(segment.locking_depth, segment.patch_file_name, segment.patch_flag, Command.patchFileNames) % Set locking depth to zero on segments that are associated with patches # TODO: Write this after patches are read in.
     segment = celeri.segment_centroids(segment)
     return segment
