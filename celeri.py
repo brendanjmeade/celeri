@@ -1188,28 +1188,24 @@ def slip_rate_constraints(assembly, segment, block, command):
     slip_rate_constraint_flag = np.concatenate(
         (segment.ss_rate_flag, segment.ds_rate_flag, segment.ts_rate_flag)
     )
-    assembly["index"]["slip_rate_constraints"] = np.where(
-        slip_rate_constraint_flag == 1
-    )[0]
-    assembly["data"]["n_slip_rate_constraints"] = len(
-        assembly["index"]["slip_rate_constraints"]
-    )
-    assembly["data"]["slip_rate_constraints"] = np.concatenate(
+    assembly.index.slip_rate_constraints = np.where(slip_rate_constraint_flag == 1)[0]
+    assembly.data.n_slip_rate_constraints = len(assembly.index.slip_rate_constraints)
+    assembly.data.slip_rate_constraints = np.concatenate(
         (segment.ss_rate, segment.ds_rate, segment.ts_rate)
     )
-    assembly["data"]["slip_rate_constraints"] = assembly["data"][
-        "slip_rate_constraints"
-    ][assembly["index"]["slip_rate_constraints"]]
-    assembly["sigma"]["slip_rate_constraints"] = np.concatenate(
+    assembly.data.slip_rate_constraints = assembly.data.slip_rate_constraints[
+        assembly.index.slip_rate_constraints
+    ]
+    assembly.sigma.slip_rate_constraints = np.concatenate(
         (segment.ss_rate_sig, segment.ds_rate_sig, segment.ts_rate_sig)
     )
-    assembly["sigma"]["slip_rate_constraints"] = assembly["sigma"][
-        "slip_rate_constraints"
-    ][assembly["index"]["slip_rate_constraints"]]
-    slip_rate_constraint_partials = slip_rate_constraint_partials[
-        assembly["index"]["slip_rate_constraints"], :
+    assembly.sigma.slip_rate_constraints = assembly.sigma.slip_rate_constraints[
+        assembly.index.slip_rate_constraints
     ]
-    assembly["sigma"]["slip_rate_constraint_weight"] = command["slip_constraint_weight"]
+    slip_rate_constraint_partials = slip_rate_constraint_partials[
+        assembly.index.slip_rate_constraints, :
+    ]
+    assembly.sigma.slip_rate_constraint_weight = command["slip_constraint_weight"]
     return assembly, slip_rate_constraint_partials
 
 
