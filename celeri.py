@@ -703,7 +703,7 @@ def split_segments_crossing_meridian(segment):
         segment_split = copy.copy(segment[prime_meridian_cross])
         segment_split = pd.concat([segment_split, segment_split])
         # Insert the split coordinates
-        segment_split.lon2.values[0 : len(split_lat)] = 360.0
+        segment_split.lon2.values[0 : len(split_lat)] = 0.0
         segment_split.lat2.values[0 : len(split_lat)] = split_lat
         segment_split.lon1.values[len(split_lat):] = 0.0
         segment_split.lat1.values[len(split_lat):] = split_lat
