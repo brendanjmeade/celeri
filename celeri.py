@@ -925,55 +925,105 @@ def block_constraints(assembly, block, command):
     Applying a priori block motion constraints
     """
     block_constraint_partials = get_block_constraint_partials(block)
-    assembly["index"]["block_constraints_idx"] = np.where(block.apriori_flag == 1)[0]
-    assembly["data"]["n_block_constraints"] = 3 * len(
-        assembly["index"]["block_constraints_idx"]
-    )
-    assembly["data"]["block_constraints"] = np.zeros(block_constraint_partials.shape[0])
-    assembly["sigma"]["block_constraints"] = np.zeros(
-        block_constraint_partials.shape[0]
-    )
-    if assembly["data"]["n_block_constraints"] > 0:
+    assembly.index.block_constraints_idx = np.where(block.apriori_flag == 1)[0]
+    assembly.data.n_block_constraints = 3 * len(assembly.index.block_constraints_idx)
+    assembly.data.block_constraints = np.zeros(block_constraint_partials.shape[0])
+    assembly.sigma.block_constraints = np.zeros(block_constraint_partials.shape[0])
+    if assembly.data.n_block_constraints > 0:
         (
-            assembly["data"]["block_constraints"][0::3],
-            assembly["data"]["block_constraints"][1::3],
-            assembly["data"]["block_constraints"][2::3],
+            assembly.data.block_constraints[0::3],
+            assembly.data.block_constraints[1::3],
+            assembly.data.block_constraints[2::3],
         ) = celeri.sph2cart(
-            np.deg2rad(block.euler_lon[assembly["index"]["block_constraints_idx"]]),
-            np.deg2rad(block.euler_lat[assembly["index"]["block_constraints_idx"]]),
-            np.deg2rad(block.rotation_rate[assembly["index"]["block_constraints_idx"]]),
+            np.deg2rad(block.euler_lon[assembly.index.block_constraints_idx]),
+            np.deg2rad(block.euler_lat[assembly.index.block_constraints_idx]),
+            np.deg2rad(block.rotation_rate[assembly.index.block_constraints_idx]),
         )
 
         euler_pole_covariance_all = np.diag(
             np.concatenate(
                 (
                     np.deg2rad(
-                        block.euler_lat_sig[assembly["index"]["block_constraints_idx"]]
+                        block.euler_lat_sig[assembly.index.block_constraints_idx]
                     ),
                     np.deg2rad(
-                        block.euler_lon_sig[assembly["index"]["block_constraints_idx"]]
+                        block.euler_lon_sig[assembly.index.block_constraints_idx]
                     ),
                     np.deg2rad(
-                        block.rotation_rate_sig[
-                            assembly["index"]["block_constraints_idx"]
-                        ]
+                        block.rotation_rate_sig[assembly.index.block_constraints_idx]
                     ),
                 )
             )
         )
         (
-            assembly["sigma"]["block_constraints"][0::3],
-            assembly["sigma"]["block_constraints"][1::3],
-            assembly["sigma"]["block_constraints"][2::3],
+            assembly.sigma.block_constraints[0::3],
+            assembly.sigma.block_constraints[1::3],
+            assembly.sigma.block_constraints[2::3],
         ) = euler_pole_covariance_to_rotation_vector_covariance(
-            assembly["data"]["block_constraints"][0::3],
-            assembly["data"]["block_constraints"][1::3],
-            assembly["data"]["block_constraints"][2::3],
+            assembly.data.block_constraints[0::3],
+            assembly.data.block_constraints[1::3],
+            assembly.data.block_constraints[2::3],
             euler_pole_covariance_all,
         )
 
-    assembly["sigma"]["block_constraint_weight"] = command["block_constraint_weight"]
+    assembly.sigma.block_constraint_weight = command["block_constraint_weight"]
     return assembly, block_constraint_partials
+
+
+# def block_constraints(assembly, block, command):
+#     """
+#     Applying a priori block motion constraints
+#     """
+#     block_constraint_partials = get_block_constraint_partials(block)
+#     assembly.index.block_constraints_idx = np.where(block.apriori_flag == 1)[0]
+#     assembly["data"]["n_block_constraints"] = 3 * len(
+#         assembly["index"]["block_constraints_idx"]
+#     )
+#     assembly["data"]["block_constraints"] = np.zeros(block_constraint_partials.shape[0])
+#     assembly["sigma"]["block_constraints"] = np.zeros(
+#         block_constraint_partials.shape[0]
+#     )
+#     if assembly["data"]["n_block_constraints"] > 0:
+#         (
+#             assembly["data"]["block_constraints"][0::3],
+#             assembly["data"]["block_constraints"][1::3],
+#             assembly["data"]["block_constraints"][2::3],
+#         ) = celeri.sph2cart(
+#             np.deg2rad(block.euler_lon[assembly["index"]["block_constraints_idx"]]),
+#             np.deg2rad(block.euler_lat[assembly["index"]["block_constraints_idx"]]),
+#             np.deg2rad(block.rotation_rate[assembly["index"]["block_constraints_idx"]]),
+#         )
+
+#         euler_pole_covariance_all = np.diag(
+#             np.concatenate(
+#                 (
+#                     np.deg2rad(
+#                         block.euler_lat_sig[assembly["index"]["block_constraints_idx"]]
+#                     ),
+#                     np.deg2rad(
+#                         block.euler_lon_sig[assembly["index"]["block_constraints_idx"]]
+#                     ),
+#                     np.deg2rad(
+#                         block.rotation_rate_sig[
+#                             assembly["index"]["block_constraints_idx"]
+#                         ]
+#                     ),
+#                 )
+#             )
+#         )
+#         (
+#             assembly["sigma"]["block_constraints"][0::3],
+#             assembly["sigma"]["block_constraints"][1::3],
+#             assembly["sigma"]["block_constraints"][2::3],
+#         ) = euler_pole_covariance_to_rotation_vector_covariance(
+#             assembly["data"]["block_constraints"][0::3],
+#             assembly["data"]["block_constraints"][1::3],
+#             assembly["data"]["block_constraints"][2::3],
+#             euler_pole_covariance_all,
+#         )
+
+#     assembly["sigma"]["block_constraint_weight"] = command["block_constraint_weight"]
+#     return assembly, block_constraint_partials
 
 
 def get_cross_partials(vector):
