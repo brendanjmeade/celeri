@@ -757,12 +757,36 @@ def process_sar(sar, command):
     return sar
 
 
-def create_assembly_dictionary():
-    assembly = {}
-    assembly["data"] = {}
-    assembly["sigma"] = {}
-    assembly["index"] = {}
-    return assembly
+# def create_assembly_dictionary():
+#     assembly = {}
+#     assembly["data"] = {}
+#     assembly["sigma"] = {}
+#     assembly["index"] = {}
+#     return assembly
+
+
+def initialize_assembly_and_operators():
+    """
+    Initialize assembly and operators as lightweight objects
+    The purpose oof this is so that we can use dot notation easily.
+    """
+
+    class Operators:
+        pass
+
+    class Assembly:
+        class data:
+            pass
+
+        class sigma:
+            pass
+
+        class index:
+            pass
+
+    assembly = Assembly()
+    operators = Operators()
+    return assembly, operators
 
 
 def merge_geodetic_data(assembly, station, sar):
