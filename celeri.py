@@ -1,3 +1,4 @@
+import addict
 import copy
 import json
 import meshio
@@ -23,17 +24,18 @@ def read_data(command_file_name):
     # Read command data
     with open(command_file_name, "r") as f:
         command = json.load(f)
+    command = addict.Dict(command)  # Convert to dot notation dictionary
 
     # Read segment data
-    segment = pd.read_csv(command["segment_file_name"])
+    segment = pd.read_csv(command.segment_file_name)
     segment = segment.loc[:, ~segment.columns.str.match("Unnamed")]
 
     # Read block data
-    block = pd.read_csv(command["block_file_name"])
+    block = pd.read_csv(command.block_file_name)
     block = block.loc[:, ~block.columns.str.match("Unnamed")]
 
     # Read mesh data
-    with open(command["mesh_param_file_name"], "r") as f:
+    with open(command.mesh_param_file_name, "r") as f:
         mesh_param = json.load(f)
     meshes = {}
     for i in range(len(mesh_param)):
@@ -94,7 +96,7 @@ def read_data(command_file_name):
     # Read station data
     if (
         not command.__contains__("station_file_name")
-        or len(command["station_file_name"]) == 0
+        or len(command.station_file_name) == 0
     ):
         station = pd.DataFrame(
             columns=[
@@ -121,14 +123,11 @@ def read_data(command_file_name):
             ]
         )
     else:
-        station = pd.read_csv(command["station_file_name"])
+        station = pd.read_csv(command.station_file_name)
         station = station.loc[:, ~station.columns.str.match("Unnamed")]
 
     # Read Mogi source data
-    if (
-        not command.__contains__("mogi_file_name")
-        or len(command["mogi_file_name"]) == 0
-    ):
+    if not command.__contains__("mogi_file_name") or len(command.mogi_file_name) == 0:
         mogi = pd.DataFrame(
             columns=[
                 "name",
@@ -141,11 +140,11 @@ def read_data(command_file_name):
             ]
         )
     else:
-        mogi = pd.read_csv(command["mogi_file_name"])
+        mogi = pd.read_csv(command.mogi_file_name)
         mogi = mogi.loc[:, ~mogi.columns.str.match("Unnamed")]
 
     # Read SAR data
-    if not command.__contains__("sar_file_name") or len(command["sar_file_name"]) == 0:
+    if not command.__contains__("sar_file_name") or len(command.sar_file_name) == 0:
         sar = pd.DataFrame(
             columns=[
                 "lon",
@@ -162,7 +161,7 @@ def read_data(command_file_name):
         )
 
     else:
-        sar = pd.read_csv(command["sar_file_name"])
+        sar = pd.read_csv(command.sar_file_name)
         sar = sar.loc[:, ~sar.columns.str.match("Unnamed")]
     return command, segment, block, meshes, station, mogi, sar
 
@@ -187,7 +186,7 @@ def wrap2360(lon):
 
 
 def process_station(station, command):
-    if command["unit_sigmas"] == "yes":  # Assign unit uncertainties, if requested
+    if command.unit_sigmas == "yes":  # Assign unit uncertainties, if requested
         station.east_sig = np.ones_like(station.east_sig)
         station.north_sig = np.ones_like(station.north_sig)
         station.up_sig = np.ones_like(station.up_sig)
@@ -208,21 +207,21 @@ def locking_depth_manager(segment, command):
     0, 1 are untouched.
     """
     segment = segment.copy(deep=True)
-    segment.locking_depth.values[segment.locking_depth_flag == 2] = command[
-        "locking_depth_flag2"
-    ]
-    segment.locking_depth.values[segment.locking_depth_flag == 3] = command[
-        "locking_depth_flag3"
-    ]
-    segment.locking_depth.values[segment.locking_depth_flag == 4] = command[
-        "locking_depth_flag4"
-    ]
-    segment.locking_depth.values[segment.locking_depth_flag == 5] = command[
-        "locking_depth_flag5"
-    ]
+    segment.locking_depth.values[
+        segment.locking_depth_flag == 2
+    ] = command.locking_depth_flag2
+    segment.locking_depth.values[
+        segment.locking_depth_flag == 3
+    ] = command.locking_depth_flag3
+    segment.locking_depth.values[
+        segment.locking_depth_flag == 4
+    ] = command.locking_depth_flag4
+    segment.locking_depth.values[
+        segment.locking_depth_flag == 5
+    ] = command.locking_depth_flag5
 
-    if command["locking_depth_override_flag"] == "yes":
-        segment.locking_depth.values = command["locking_depth_override_value"]
+    if command.locking_depth_override_flag == "yes":
+        segment.locking_depth.values = command.locking_depth_override_value
     return segment
 
 
@@ -262,7 +261,7 @@ def order_endpoints_sphere(segment):
     endpoints1 = np.transpose(np.array([segment.x1, segment.y1, segment.z1]))
     endpoints2 = np.transpose(np.array([segment.x2, segment.y2, segment.z2]))
     cross_product = np.cross(endpoints1, endpoints2)
-    swap_endpoint_idx = np.where(cross_product[:,2] < 0)
+    swap_endpoint_idx = np.where(cross_product[:, 2] < 0)
     segment_copy.lon1.values[swap_endpoint_idx] = segment.lon2.values[swap_endpoint_idx]
     segment_copy.lat1.values[swap_endpoint_idx] = segment.lat2.values[swap_endpoint_idx]
     segment_copy.lon2.values[swap_endpoint_idx] = segment.lon1.values[swap_endpoint_idx]
@@ -347,11 +346,11 @@ def process_segment(segment, command, meshes):
     # @BJM: Is this better done with GEIOD?
     sep = segment.lon2 - segment.lon1
     periodic_lon_separation = np.where(
-        sep > 180,
-        sep - 360,
-        np.where(sep < -180, sep + 360, sep)
+        sep > 180, sep - 360, np.where(sep < -180, sep + 360, sep)
     )
-    segment["mid_lon_plate_carree"] = segment.lon1.values + periodic_lon_separation / 2.0
+    segment["mid_lon_plate_carree"] = (
+        segment.lon1.values + periodic_lon_separation / 2.0
+    )
 
     # No worries for latitude because there's no periodicity.
     segment["mid_lat_plate_carree"] = (segment.lat1.values + segment.lat2.values) / 2.0
@@ -396,8 +395,8 @@ def assign_block_labels(segment, station, block, mogi, sar):
     closure = celeri_closure.run_block_closure(np_segments)
     labels = celeri_closure.get_segment_labels(closure)
 
-    segment["west_labels"] = labels[:,0]
-    segment["east_labels"] = labels[:,1]
+    segment["west_labels"] = labels[:, 0]
+    segment["east_labels"] = labels[:, 1]
 
     # Check for unprocessed indices
     unprocessed_indices = np.union1d(
@@ -464,7 +463,7 @@ def process_sar(sar, command):
         # In constructing the data weight vector, the value is 1./Sar.dataSig.^2, so
         # the adjustment made here is sar.dataSig / np.sqrt(command.sarWgt)
         sar.line_of_sight_change_sig = sar.line_of_sight_change_sig / np.sqrt(
-            command["sar_weight"]
+            command.sar_weight
         )
         sar["x"], sar["y"], sar["z"] = celeri.sph2cart(
             np.deg2rad(sar.lon), np.deg2rad(sar.lat), celeri.RADIUS_EARTH
@@ -477,53 +476,6 @@ def process_sar(sar, command):
         sar["x"] = []
         sar["block_label"] = []
     return sar
-
-
-# def create_assembly_dictionary():
-#     assembly = {}
-#     assembly["data"] = {}
-#     assembly["sigma"] = {}
-#     assembly["index"] = {}
-#     return assembly
-
-
-# def merge_geodetic_data(assembly, station, sar):
-#     """
-#     Merge GPS and InSAR data to a single assembly dictionary
-#     """
-#     assembly["data"]["n_stations"] = len(station)
-#     assembly["data"]["n_sar"] = len(sar)
-#     assembly["data"]["east_vel"] = station.east_vel.to_numpy()
-#     assembly["sigma"]["east_sig"] = station.east_sig.to_numpy()
-#     assembly["data"]["north_vel"] = station.north_vel.to_numpy()
-#     assembly["sigma"]["north_sig"] = station.north_sig.to_numpy()
-#     assembly["data"]["up_vel"] = station.up_vel.to_numpy()
-#     assembly["sigma"]["up_sig"] = station.up_sig.to_numpy()
-#     assembly["data"][
-#         "sar_line_of_sight_change_val"
-#     ] = sar.line_of_sight_change_val.to_numpy()
-#     assembly["sigma"][
-#         "sar_line_of_sight_change_sig"
-#     ] = sar.line_of_sight_change_sig.to_numpy()
-#     assembly["data"]["lon"] = np.concatenate(
-#         (station.lon.to_numpy(), sar.lon.to_numpy())
-#     )
-#     assembly["data"]["lat"] = np.concatenate(
-#         (station.lat.to_numpy(), sar.lat.to_numpy())
-#     )
-#     assembly["data"]["depth"] = np.concatenate(
-#         (station.depth.to_numpy(), sar.depth.to_numpy())
-#     )
-#     assembly["data"]["x"] = np.concatenate((station.x.to_numpy(), sar.x.to_numpy()))
-#     assembly["data"]["y"] = np.concatenate((station.y.to_numpy(), sar.y.to_numpy()))
-#     assembly["data"]["z"] = np.concatenate((station.z.to_numpy(), sar.z.to_numpy()))
-#     assembly["data"]["block_label"] = np.concatenate(
-#         (station.block_label.to_numpy(), sar.block_label.to_numpy())
-#     )
-#     assembly["index"]["sar_coordinate_idx"] = np.arange(
-#         len(station), len(station) + len(sar)
-#     )  # TODO: Not sure this is correct
-#     return assembly
 
 
 def merge_geodetic_data(assembly, station, sar):
@@ -688,7 +640,7 @@ def block_constraints(assembly, block, command):
             euler_pole_covariance_all,
         )
 
-    assembly.sigma.block_constraint_weight = command["block_constraint_weight"]
+    assembly.sigma.block_constraint_weight = command.block_constraint_weight
     return assembly, block_constraint_partials
 
 
@@ -927,7 +879,7 @@ def slip_rate_constraints(assembly, segment, block, command):
     slip_rate_constraint_partials = slip_rate_constraint_partials[
         assembly.index.slip_rate_constraints, :
     ]
-    assembly.sigma.slip_rate_constraint_weight = command["slip_constraint_weight"]
+    assembly.sigma.slip_rate_constraint_weight = command.slip_constraint_weight
     return assembly, slip_rate_constraint_partials
 
 
@@ -987,7 +939,7 @@ def plot_block_labels(segment, block, station, closure):
     plt.title("West and east labels")
     for i in range(closure.n_polygons()):
         plt.plot(closure.polygon_vertices[i][:,0], closure.polygon_vertices[i][:,1], 'k-', linewidth=0.5)
-    
+
     for i in range(len(segment)):
         plt.text(
             segment.mid_lon_plate_carree.values[i],
@@ -1025,6 +977,7 @@ def plot_block_labels(segment, block, station, closure):
     plt.gca().set_aspect("equal")
     plt.show()
 
+
 def test_end2end():
     """
     This doesn't actually check for correctness much at all,
@@ -1041,5 +994,9 @@ def test_end2end():
     assembly = Dict()
     operators = Dict()
     assembly = celeri.merge_geodetic_data(assembly, station, sar)
-    assembly, operators.block_motion_constraints = celeri.block_constraints(assembly, block, command)
-    assembly, operators.slip_rate_constraints = celeri.slip_rate_constraints(assembly, segment, block, command)
+    assembly, operators.block_motion_constraints = celeri.block_constraints(
+        assembly, block, command
+    )
+    assembly, operators.slip_rate_constraints = celeri.slip_rate_constraints(
+        assembly, segment, block, command
+    )
