@@ -386,7 +386,7 @@ def assign_block_labels(segment, station, block, mogi, sar):
     block labeling problem and east/west assignment.
     """
     #segment = split_segments_crossing_meridian(segment)
-    
+
     np_segments = np.zeros((len(segment), 2, 2))
     np_segments[:, 0, 0] = segment.lon1.to_numpy()
     np_segments[:, 1, 0] = segment.lon2.to_numpy()
@@ -420,7 +420,7 @@ def assign_block_labels(segment, station, block, mogi, sar):
     # Assign block labels to GPS stations
     if not station.empty:
         station['block_label'] = closure.assign_points(
-            station.lon.to_numpy(), 
+            station.lon.to_numpy(),
             station.lat.to_numpy()
         )
 
@@ -432,50 +432,7 @@ def assign_block_labels(segment, station, block, mogi, sar):
     if not mogi.empty:
         mogi["block_label"] = closure.assign_points(mogi.lon.to_numpy(), mogi.lat.to_numpy())
 
-    return segment, closure
-
-def split_segments_crossing_meridian(segment):
-    """
-    Splits segments along the prime meridian with one endpoint on the
-    prime meridian. All other segment properties are taken from
-    the original segment.
-    """
-    segment.lon1 = celeri.wrap2360(segment.lon1.values)
-    segment.lon2 = celeri.wrap2360(segment.lon2.values)
-
-    # Get longitude differences
-    prime_meridian_cross = np.abs(segment.lon1 - segment.lon2) > 180
-    split_idx = np.where(prime_meridian_cross)
-
-    if any(prime_meridian_cross):
-        #  Split those segments crossing the meridian
-        split_lat = great_circle_latitude_find(
-            segment.lon1.values[split_idx],
-            segment.lat1.values[split_idx],
-            segment.lon2.values[split_idx],
-            segment.lat2.values[split_idx],
-            360.0 * np.ones(len(split_idx)),
-        )
-        split_lat = np.rad2deg(split_lat)
-        # Replicate split segment properties and assign new endpoints
-        segment_whole = copy.copy(segment[~prime_meridian_cross])
-        segment_split = copy.copy(segment[prime_meridian_cross])
-        segment_split = pd.concat([segment_split, segment_split])
-        # Insert the split coordinates
-        segment_split.lon2.values[0 : len(split_lat)] = 0.0
-        segment_split.lat2.values[0 : len(split_lat)] = split_lat
-        segment_split.lon1.values[len(split_lat):] = 0.0
-        segment_split.lat1.values[len(split_lat):] = split_lat
-        # [segment_split.midLon, segment_split.midLat] = segmentmidpoint(split.lon1, split.lat1, split.lon2, split.lat2);
-        segment_split.x1, segment_split.y1, segment_split.z1 = celeri.sph2cart(
-            segment_split.lon1.values, segment_split.lat1.values, RADIUS_EARTH
-        )
-        segment_split.x2, segment_split.y2, segment_split.z2 = celeri.sph2cart(
-            segment_split.lon2.values, segment_split.lat2.values, RADIUS_EARTH
-        )
-        segment = pd.concat([segment_split, segment_whole])
-        segment = order_endpoints_sphere(segment)  # TODO: WHY IS THIS FAILING???
-    return segment
+    return closure
 
 def great_circle_latitude_find(lon1, lat1, lon2, lat2, lon):
     """
@@ -1025,16 +982,13 @@ def slip_rate_constraints(assembly, segment, block, command):
 #     return plon, plat
 
 
-def plot_block_labels(segment, block, station):
+def plot_block_labels(segment, block, station, closure):
     plt.figure()
     plt.title("West and east labels")
+    for i in range(closure.n_polygons()):
+        plt.plot(closure.polygon_vertices[i][:,0], closure.polygon_vertices[i][:,1], 'k-', linewidth=0.5)
+    
     for i in range(len(segment)):
-        plt.plot(
-            [segment.lon1.values[i], segment.lon2.values[i]],
-            [segment.lat1.values[i], segment.lat2.values[i]],
-            "-k",
-            linewidth=0.5,
-        )
         plt.text(
             segment.mid_lon_plate_carree.values[i],
             segment.mid_lat_plate_carree.values[i],
@@ -1076,13 +1030,13 @@ def test_end2end():
     This doesn't actually check for correctness much at all,
     but just tests to make sure that a full block model run executes without errors.
     """
-    command_file_name = './data/global/global_command.json'
+    command_file_name = './data/western_north_america/western_north_america_command.json'
     command, segment, block, meshes, station, mogi, sar = celeri.read_data(command_file_name)
     station = celeri.process_station(station, command)
     segment = celeri.process_segment(segment, command, meshes)
     sar = celeri.process_sar(sar, command)
     closure = celeri.assign_block_labels(segment, station, block, mogi, sar)
-    assert(len(closure.polygon_vertices) == 306)
+    assert(len(closure.polygon_vertices) == 31)
 
     assembly = Dict()
     operators = Dict()

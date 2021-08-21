@@ -4,7 +4,6 @@ from typing import List
 import numpy as np
 import scipy.spatial
 import matplotlib.pyplot as plt
-from spherical_geometry.polygon import SingleSphericalPolygon
 
 def angle_between_vectors(v1, v2, v3):
     """
@@ -68,9 +67,11 @@ class BlockClosureResult:
     # For each polygon, an array with the actual vertices
     polygon_vertices: List[np.ndarray] = None
     
-    # We create SingleSphericalPolygon objects from the spherical_geometry library for 
-    # doing point in polygon tests.
-    spherical_polygons: List[SingleSphericalPolygon] = None
+    # For each polygon, an array with the actual vertices in unit sphere x,y,z coordinates 
+    polygon_vertices_xyz: List[np.ndarray] = None
+        
+    # For each polygon, an arbitrary point that is interior to the polygon.
+    polygon_interior_xyz: List[np.ndarray] = None
 
     def n_edges(self):
         return self.edge_idx_to_vertex_idx.shape[0]
@@ -111,13 +112,97 @@ class BlockClosureResult:
             v2_idx, v1_idx = v1_idx, v2_idx
         return v1_idx, v2_idx
     
+    def in_polygon(self, polygon_idx, lon, lat):
+        """
+        Returns whether each point specified by (lon, lat) is within the
+        spherical polygon defined by polygon_idx. 
+        
+        The intermediate calculation uses a great circle intersection test. 
+        An explanation of this calculation is copied from. The source code is 
+        modified from the same source. The primary modification is to vectorize 
+        over a list of points rather than a single test point.
+        
+        https://github.com/spacetelescope/spherical_geometry/blob/e00f4ef619eb2871b305eded2a537a95c858b001/spherical_geometry/great_circle_arc.py#L91
+        
+        A, B : (*x*, *y*, *z*) Nx3 arrays of triples
+            Endpoints of the first great circle arcs.
+            
+        C, D : (*x*, *y*, *z*) Nx3 arrays of triples
+            Endpoints of the second great circle arcs.
+        
+        Notes
+        -----
+        The basic intersection is computed using linear algebra as follows
+        [1]_:
+        .. math::
+            T = \lVert(A × B) × (C × D)\rVert
+        To determine the correct sign (i.e. hemisphere) of the
+        intersection, the following four values are computed:
+        .. math::
+        
+            s_1 = ((A × B) × A) \cdot T
+            
+            s_2 = (B × (A × B)) \cdot T
+            
+            s_3 = ((C × D) × C) \cdot T
+            
+            s_4 = (D × (C × D)) \cdot T
+            
+        For :math:`s_n`, if all positive :math:`T` is returned as-is.  If
+        all negative, :math:`T` is multiplied by :math:`-1`.  Otherwise
+        the intersection does not exist and is undefined.
+        
+        References
+        ----------
+        
+        .. [1] Method explained in an `e-mail
+            <http://www.mathworks.com/matlabcentral/newsreader/view_thread/276271>`_
+            by Roger Stafford.
+            
+        http://www.mathworks.com/matlabcentral/newsreader/view_thread/276271
+        """
+        A = self.polygon_vertices_xyz[polygon_idx][:-1,:]
+        B = self.polygon_vertices_xyz[polygon_idx][1:,:]
+        x, y, z = unit_sph2cart(lon, lat)
+        C = np.hstack((x[:,None],y[:,None],z[:,None]))
+        D = self.polygon_interior_xyz[polygon_idx][None,:]
+
+        ABX = np.cross(A, B)
+        CDX = np.cross(C, D)
+
+        T = np.cross(ABX[:, None, :], CDX[None,:, :], axis=2)
+        T /= np.linalg.norm(T, axis=2)[:,:,None]
+        s = np.zeros(T.shape[:2])
+
+        s += np.sign(np.sum(np.cross(ABX, A)[:,None,:] * T, axis=2))
+        s += np.sign(np.sum(np.cross(B, ABX)[:,None,:] * T, axis=2))
+        s += np.sign(np.sum(np.cross(CDX, C)[None,:,:] * T, axis=2))
+        s += np.sign(np.sum(np.cross(D, CDX)[None,:,:] * T, axis=2))
+        s3d = s[:,:, None]
+
+        cross = np.where(s3d == -4, -T, np.where(s3d == 4, T, np.nan))
+
+        equals = (np.all(A[:,None] == C[None,:], axis=2) |
+                  np.all(A[:,None] == D[None,:], axis=-1) |
+                  np.all(B[:,None] == C[None,:], axis=-1) |
+                  np.all(B[:,None] == D[None,:], axis=-1))
+
+        intersection = np.where(equals[:,:,None], np.nan, cross)
+
+        crossings = np.isfinite(intersection[...,0])
+        n_crossings = np.sum(crossings, axis=0)
+
+        return (n_crossings % 2) == 0
+    
     def assign_points(self, lon, lat):
-        block_assignments = [-1] * lat.shape[0]
-        for j in range(lat.shape[0]):
-            for i in range(self.n_polygons()):
-                if self.spherical_polygons[i].contains_lonlat(lon[j], lat[j]):
-                    block_assignments[j] = i
-                    break
+        # TODO: this is super slow because it's fundamentally an O(N^2) operation.
+        # This can be mitigated because most points will be nowhere near a given 
+        # block so we can do a bounding box test to short-circuit the in_polygon 
+        # test. An explanation of how to do this is provided here:
+        # https://gis.stackexchange.com/questions/17788/how-to-compute-the-bounding-box-of-multiple-layers-in-lat-long
+        block_assignments = np.full(lat.shape[0], -1)
+        for i in range(self.n_polygons()):
+            block_assignments[self.in_polygon(i, lon, lat)] = i
         return block_assignments
     
 
@@ -164,12 +249,17 @@ def run_block_closure(np_segments):
     )
 
     closure.polygon_vertices = []
+    closure.polygon_vertices_xyz = []
     for i in range(closure.n_polygons()):
         p = closure.polygon_vertex_idxs[i]
         vs = np.concatenate([closure.vertices[p], closure.vertices[p[0]][None, :]])
         closure.polygon_vertices.append(vs)
-    
-    closure.spherical_polygons = []
+        
+        x, y, z = unit_sph2cart(vs[:,0], vs[:,1])
+        xyz = np.hstack((x[:,None],y[:,None],z[:,None]))
+        closure.polygon_vertices_xyz.append(xyz)
+        
+    closure.polygon_interior_xyz = []
     for p in closure.polygon_vertices:
         for i in range(p.shape[0]):
             dx = p[i+1,0] - p[i+1,0]
@@ -186,7 +276,8 @@ def run_block_closure(np_segments):
                 # Stop after we've found an acceptable interior point.
                 break
                 
-        closure.spherical_polygons.append(SingleSphericalPolygon.from_lonlat(p[:,0], p[:,1], center=interior_pt))
+        x, y, z = unit_sph2cart(interior_pt[0], interior_pt[1])
+        closure.polygon_interior_xyz.append(np.array([x, y, z]))
 
     return closure
 
