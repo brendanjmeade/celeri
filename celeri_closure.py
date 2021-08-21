@@ -4,7 +4,7 @@ from typing import List
 import numpy as np
 import scipy.spatial
 import matplotlib.pyplot as plt
-
+from spherical_geometry.polygon import SingleSphericalPolygon
 
 def angle_between_vectors(v1, v2, v3):
     """
@@ -67,6 +67,10 @@ class BlockClosureResult:
 
     # For each polygon, an array with the actual vertices
     polygon_vertices: List[np.ndarray] = None
+    
+    # We create SingleSphericalPolygon objects from the spherical_geometry library for 
+    # doing point in polygon tests.
+    spherical_polygons: List[SingleSphericalPolygon] = None
 
     def n_edges(self):
         return self.edge_idx_to_vertex_idx.shape[0]
@@ -101,6 +105,21 @@ class BlockClosureResult:
         # Return a half edge index instead of an edge index.
         return 2 * possible_edges[right_idx] + edge_direction[right_idx]
 
+    def get_half_edge_vertices(self, half_edge_idx):
+        v1_idx, v2_idx = self.edge_idx_to_vertex_idx[half_edge_idx // 2]
+        if half_edge_idx % 2 == 0:
+            v2_idx, v1_idx = v1_idx, v2_idx
+        return v1_idx, v2_idx
+    
+    def assign_points(self, lon, lat):
+        block_assignments = [-1] * lat.shape[0]
+        for j in range(lat.shape[0]):
+            for i in range(self.n_polygons()):
+                if self.spherical_polygons[i].contains_lonlat(lon[j], lat[j]):
+                    block_assignments[j] = i
+                    break
+        return block_assignments
+    
 
 def run_block_closure(np_segments):
     """
@@ -149,10 +168,36 @@ def run_block_closure(np_segments):
         p = closure.polygon_vertex_idxs[i]
         vs = np.concatenate([closure.vertices[p], closure.vertices[p[0]][None, :]])
         closure.polygon_vertices.append(vs)
+    
+    closure.spherical_polygons = []
+    for p in closure.polygon_vertices:
+        for i in range(p.shape[0]):
+            dx = p[i+1,0] - p[i+1,0]
+            
+            # Make sure we skip any meridian crossing edges. 
+            if -180 < dx < 180:
+                midpt = (p[i+1, :] + p[i, :]) / 2
+                edge_vector = p[i+1, :] - p[i, :]
+                edge_right_normal = np.array([edge_vector[1], -edge_vector[0]])
+                
+                # Offset only a small amount into the interior to avoid stepping 
+                # back across a different edge into the exterior.
+                interior_pt = midpt + edge_right_normal * 0.01
+                # Stop after we've found an acceptable interior point.
+                break
+                
+        closure.spherical_polygons.append(SingleSphericalPolygon.from_lonlat(p[:,0], p[:,1], center=interior_pt))
 
     return closure
 
-
+def unit_sph2cart(lon, lat):
+    lon_rad = np.deg2rad(lon)
+    lat_rad = np.deg2rad(lat)
+    x = np.cos(lon_rad) * np.cos(lat_rad)
+    y = np.sin(lon_rad) * np.cos(lat_rad)
+    z = np.sin(lat_rad)
+    return x, y, z
+    
 def decompose_segments_into_graph(np_segments):
     all_vertices = np_segments.reshape((-1, 2))
     tree = scipy.spatial.KDTree(all_vertices, leafsize=1000)
@@ -194,12 +239,17 @@ def decompose_segments_into_graph(np_segments):
     )
 
 
+    
 def traverse_polygons(closure, right_half_edge):
 
     # Which polygon lies to the right of the half edge.
     right_polygon = np.full(closure.n_edges() * 2, -1, dtype=int)
 
     polygon_edge_idxs = []
+    
+    # A spherical polygon defines two enclosed regions. We specify which is the "interior"
+    # via this point. 
+    polygon_interior_pts = []
 
     for half_edge_idx in range(2 * closure.n_edges()):
         # If this half edge is already in a polygon, skip it.
@@ -209,6 +259,7 @@ def traverse_polygons(closure, right_half_edge):
         # Follow a new polygon around its loop by indexing the right_half_edge array.
         polygon_idx = len(polygon_edge_idxs)
         polygon_edge_idxs.append([half_edge_idx])
+        
         next_idx = right_half_edge[half_edge_idx]
         while next_idx != half_edge_idx:
             # Step 1) Check that we don't have errors!
@@ -247,9 +298,7 @@ def get_segment_labels(closure):
     # Identify east and west labels based on the blocks assigned to each half edge.
     for current_block_label, p in enumerate(closure.polygon_edge_idxs):
         for half_edge_idx in p:
-            v1_idx, v2_idx = closure.edge_idx_to_vertex_idx[half_edge_idx // 2]
-            if half_edge_idx % 2 == 0:
-                v2_idx, v1_idx = v1_idx, v2_idx
+            v1_idx, v2_idx = closure.get_half_edge_vertices(half_edge_idx)
             v1 = closure.vertices[v1_idx]
             v2 = closure.vertices[v2_idx]
             edge_vector = v2 - v1
@@ -322,3 +371,4 @@ def test_closure():
     closure_meridian = run_block_closure(np_segments_meridian)
     labels_meridian = get_segment_labels(closure_meridian)
     np.testing.assert_array_equal(labels_meridian, labels)
+

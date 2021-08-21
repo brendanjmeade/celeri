@@ -13,3 +13,5 @@ dependencies:
   - meshio
   - pytest
   - addict
+  - pip:
+    - spherical_geometry

@@ -373,22 +373,6 @@ def process_segment(segment, command, meshes):
     segment = celeri.segment_centroids(segment)
     return segment
 
-
-def in_polygon(xq, yq, xv, yv):
-    """
-    From:
-    https://stackoverflow.com/questions/31542843/inpolygon-for-python-examples-of-matplotlib-path-path-contains-points-method
-    """
-    shape = xq.shape
-    xq = xq.reshape(-1)
-    yq = yq.reshape(-1)
-    xv = xv.reshape(-1)
-    yv = yv.reshape(-1)
-    q = [(xq[i], yq[i]) for i in range(xq.shape[0])]
-    p = path.Path([(xv[i], yv[i]) for i in range(xv.shape[0])])
-    return p.contains_points(q).reshape(shape)
-
-
 def polygon_area(x, y):
     """
     From: https://newbedev.com/calculate-area-of-polygon-given-x-y-coordinates
@@ -401,7 +385,8 @@ def assign_block_labels(segment, station, block, mogi, sar):
     Ben Thompson's implementation of the half edge approach to the
     block labeling problem and east/west assignment.
     """
-
+    #segment = split_segments_crossing_meridian(segment)
+    
     np_segments = np.zeros((len(segment), 2, 2))
     np_segments[:, 0, 0] = segment.lon1.to_numpy()
     np_segments[:, 1, 0] = segment.lon2.to_numpy()
@@ -430,71 +415,67 @@ def assign_block_labels(segment, station, block, mogi, sar):
     external_block_idx = np.argmax(block.area_plate_carree)
 
     # Assign block labels points to block interior points
-    block["block_label"] = -1 * np.ones(len(block))
-    for i in range(closure.n_polygons()):
-        if i != external_block_idx:
-            vs = closure.polygon_vertices[i]
-            block_polygon = celeri.in_polygon(
-                block.interior_lon.to_numpy(),
-                block.interior_lat.to_numpy(),
-                vs[:, 0],
-                vs[:, 1],
-            )
-            block_polygon_idx = np.where(block_polygon == True)[0]
-            block.block_label.values[block_polygon_idx] = i
-    # Any unassigned interior point should be put on the external block
-    block.block_label.values[block.block_label == -1] = external_block_idx
-    block.block_label = block.block_label.astype(int)
+    block["block_label"] = closure.assign_points(block.interior_lon.to_numpy(), block.interior_lat.to_numpy())
 
     # Assign block labels to GPS stations
     if not station.empty:
-        station["block_label"] = -1 * np.ones(len(station))
-        for i in range(closure.n_polygons()):
-            if i != external_block_idx:
-                vs = closure.polygon_vertices[i]
-                stations_polygon = celeri.in_polygon(
-                    station.lon.to_numpy(), station.lat.to_numpy(), vs[:, 0], vs[:, 1]
-                )
-                stations_polygon_idx = np.where(stations_polygon == True)[0]
-                station.block_label.values[stations_polygon_idx] = i
-        # Any unassigned stations should be put on the external block
-        station.block_label.values[station.block_label == -1] = external_block_idx
-        station.block_label = station.block_label.astype(int)
+        station['block_label'] = closure.assign_points(
+            station.lon.to_numpy(), 
+            station.lat.to_numpy()
+        )
 
     # Assign block labels to SAR locations
     if not sar.empty:
-        sar["block_label"] = -1 * np.ones(len(sar))
-        for i in range(closure.n_polygons()):
-            if i != external_block_idx:
-                vs = closure.polygon_vertices[i]
-                sar_polygon = celeri.in_polygon(
-                    sar.lon.to_numpy(), sar.lat.to_numpy(), vs[:, 0], vs[:, 1]
-                )
-                sar_polygon_idx = np.where(sar_polygon == True)[0]
-                sar.block_label.values[sar_polygon_idx] = i
-
-        # Any unassigned stations should be put on the external block
-        sar.block_label.values[sar.block_label == -1] = external_block_idx
-        sar.block_label = sar.block_label.astype(int)
+        sar['block_label'] = closure.assign_points(sar.lon.to_numpy(), sar.lat.to_numpy())
 
     # Assign block labels to Mogi sources
     if not mogi.empty:
-        mogi["block_label"] = -1 * np.ones(len(mogi))
-        for i in range(closure.n_polygons()):
-            if i != external_block_idx:
-                vs = closure.polygon_vertices[i]
-                mogi_polygon = celeri.in_polygon(
-                    mogi.lon.to_numpy(), mogi.lat.to_numpy(), vs[:, 0], vs[:, 1]
-                )
-                mogi_polygon_idx = np.where(mogi_polygon == True)[0]
-                mogi.block_label.values[mogi_polygon_idx] = i
+        mogi["block_label"] = closure.assign_points(mogi.lon.to_numpy(), mogi.lat.to_numpy())
 
-        # Any unassigned stations should be put on the external block
-        mogi.block_label.values[mogi.block_label == -1] = external_block_idx
-        mogi.block_label = mogi.block_label.astype(int)
+    return segment, closure
 
-    return closure
+def split_segments_crossing_meridian(segment):
+    """
+    Splits segments along the prime meridian with one endpoint on the
+    prime meridian. All other segment properties are taken from
+    the original segment.
+    """
+    segment.lon1 = celeri.wrap2360(segment.lon1.values)
+    segment.lon2 = celeri.wrap2360(segment.lon2.values)
 
+    # Get longitude differences
+    prime_meridian_cross = np.abs(segment.lon1 - segment.lon2) > 180
+    split_idx = np.where(prime_meridian_cross)
+
+    if any(prime_meridian_cross):
+        #  Split those segments crossing the meridian
+        split_lat = great_circle_latitude_find(
+            segment.lon1.values[split_idx],
+            segment.lat1.values[split_idx],
+            segment.lon2.values[split_idx],
+            segment.lat2.values[split_idx],
+            360.0 * np.ones(len(split_idx)),
+        )
+        split_lat = np.rad2deg(split_lat)
+        # Replicate split segment properties and assign new endpoints
+        segment_whole = copy.copy(segment[~prime_meridian_cross])
+        segment_split = copy.copy(segment[prime_meridian_cross])
+        segment_split = pd.concat([segment_split, segment_split])
+        # Insert the split coordinates
+        segment_split.lon2.values[0 : len(split_lat)] = 0.0
+        segment_split.lat2.values[0 : len(split_lat)] = split_lat
+        segment_split.lon1.values[len(split_lat):] = 0.0
+        segment_split.lat1.values[len(split_lat):] = split_lat
+        # [segment_split.midLon, segment_split.midLat] = segmentmidpoint(split.lon1, split.lat1, split.lon2, split.lat2);
+        segment_split.x1, segment_split.y1, segment_split.z1 = celeri.sph2cart(
+            segment_split.lon1.values, segment_split.lat1.values, RADIUS_EARTH
+        )
+        segment_split.x2, segment_split.y2, segment_split.z2 = celeri.sph2cart(
+            segment_split.lon2.values, segment_split.lat2.values, RADIUS_EARTH
+        )
+        segment = pd.concat([segment_split, segment_whole])
+        segment = order_endpoints_sphere(segment)  # TODO: WHY IS THIS FAILING???
+    return segment
 
 def great_circle_latitude_find(lon1, lat1, lon2, lat2, lon):
     """
@@ -1108,4 +1089,3 @@ def test_end2end():
     assembly = celeri.merge_geodetic_data(assembly, station, sar)
     assembly, operators.block_motion_constraints = celeri.block_constraints(assembly, block, command)
     assembly, operators.slip_rate_constraints = celeri.slip_rate_constraints(assembly, segment, block, command)
-
