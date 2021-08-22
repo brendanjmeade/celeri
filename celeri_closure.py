@@ -103,6 +103,25 @@ class BoundingBox:
 
 
 def find_longitude_interval(lon):
+    """
+    Given a list of polygon longitude values, we want to identify the maximum
+    and minimum longitude for that polygon. On its face, that seems like a
+    simple (min, max), but the meridian means that the problem is not quite
+    that simple. First, we need to split all the intervals across the meridian.
+    Then, we combine the resulting intervals.
+
+    After combining the intervals, there should be either one or two intervals.
+
+     - If there is one interval, that polygon does not cross the meridian and
+       we return the actual (min, max) longitude.
+
+     - If there are two intervals, the polygon crosses the meridian and there
+       is a (X, 360) interval and a (0, Y) interval. As a result, we instead
+       return the inverse longitude interval of (Y, X) and specify the inverse
+       = True return value.
+    """
+
+    # Step 1) Split intervals.
     intervals = []
     for i in range(lon.shape[0] - 1):
         s1 = lon[i]
@@ -123,6 +142,7 @@ def find_longitude_interval(lon):
             intervals.append((s1, s2))
     intervals = np.array([(s1, s2) if s1 < s2 else (s2, s1) for s1, s2 in intervals])
 
+    # Step 2) Combine intervals
     # Fun classic intro algorithms problem: how to combine intervals in O(n log(n))?
     # Sort them by the first value, and then combine adjacent intervals.
     sorted_intervals = intervals[intervals[:, 0].argsort()]
@@ -136,6 +156,8 @@ def find_longitude_interval(lon):
             cur_interval[1] = max(cur_interval[1], next_interval[1])
     combined_intervals.append(cur_interval)
 
+    # Step 3) Determine if we want the specified interval or the inverse of the
+    # meridian-split interval.
     if len(combined_intervals) == 1:
         final_interval = combined_intervals[0]
         inverse = False
