@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 
 from celeri_util import sph2cart
 
+
 def angle_between_vectors(v1, v2, v3):
     """
     Compute the angle between the vector (v2, v3) and (v1, v2)
@@ -23,9 +24,9 @@ def angle_between_vectors(v1, v2, v3):
 
     # *Meridian handling*
     # The furthest longitudinal distance between any two points is 180 degrees,
-    # so if the distance is greater than that, then we subtract 360 degrees
-    # from the larger of the two values. Note that this solution should work well
-    # regardless of whether the longitude coordinate range is [0,360) or [-180,180)
+    # so if the distance is greater than that, then we subtract 360 degrees.
+    # Note that this solution should work well regardless of whether the longitude
+    # coordinate range is [0,360) or [-180,180)
     A1x = v3[0] - v2[0]
     if A1x > 180:
         A1x -= 360
@@ -50,6 +51,154 @@ def angle_between_vectors(v1, v2, v3):
 
 
 @dataclass()
+class BoundingBox:
+    """
+    A bounding box on a sphere can be defined by the minimum and maximum latitude
+    and longitude.
+
+    *Inverse longitude*:
+    In the case where the box crosses the meridian, we specify the inverse region
+    of longitude. As an example, suppose the box spans from 355 deg longitude to
+    5 degrees longitude, we instead store the [5,355] range of longitude and when
+    we do queries to identify if a point is inside the bounding box we exclude rather
+    than include values between min_lon and max_lon.
+    """
+
+    min_lon: float
+    max_lon: float
+    inverse_lon: bool
+    min_lat: float
+    max_lat: float
+
+    @classmethod
+    def from_polygon(cls, vertices):
+        return BoundingBox(
+            min_lon=0,
+            max_lon=0,
+            inverse_lon=False,
+            min_lat=np.min(vertices[:, 1]),
+            max_lat=np.max(vertices[:, 1]),
+        )
+
+    def contains(self, lon, lat):
+        return (self.min_lat < lat) & (lat < self.max_lat)
+
+
+@dataclass()
+class Polygon:
+    # The half edges on the boundary, in rightwards order.
+    edge_idxs: np.ndarray
+
+    # The vertex indices on the boundary, in rightwards order.
+    vertex_idxs: np.ndarray
+
+    # The actual vertices
+    vertices: np.ndarray = None
+
+    # The actual vertices in unit sphere x,y,z coordinates
+    vertices_xyz: np.ndarray = None
+
+    # an arbitrary point that is interior to the polygon
+    interior_xyz: np.ndarray = None
+
+    # A bounding box defining the minimum and maximum lon/lat used for
+    # a fast shortcircuiting of the in-polygon test.
+    bounds: BoundingBox = None
+
+    def contains_point(self, lon, lat):
+        """
+        Returns whether each point specified by (lon, lat) is within the
+        spherical polygon defined by polygon_idx.
+
+        The intermediate calculation uses a great circle intersection test.
+        An explanation of this calculation is copied from. The source code is
+        modified from the same source. The primary modification is to vectorize
+        over a list of points rather than a single test point.
+
+        https://github.com/spacetelescope/spherical_geometry/blob/e00f4ef619eb2871b305eded2a537a95c858b001/spherical_geometry/great_circle_arc.py#L91
+
+        A, B : (*x*, *y*, *z*) Nx3 arrays of triples
+            Endpoints of the first great circle arcs.
+
+        C, D : (*x*, *y*, *z*) Nx3 arrays of triples
+            Endpoints of the second great circle arcs.
+
+        Notes
+        -----
+        The basic intersection is computed using linear algebra as follows
+        [1]_:
+        .. math::
+            T = \\lVert(A × B) × (C × D)\rVert
+        To determine the correct sign (i.e. hemisphere) of the
+        intersection, the following four values are computed:
+        .. math::
+
+            s_1 = ((A × B) × A) \\cdot T
+
+            s_2 = (B × (A × B)) \\cdot T
+
+            s_3 = ((C × D) × C) \\cdot T
+
+            s_4 = (D × (C × D)) \\cdot T
+
+        For :math:`s_n`, if all positive :math:`T` is returned as-is.  If
+        all negative, :math:`T` is multiplied by :math:`-1`.  Otherwise
+        the intersection does not exist and is undefined.
+
+        References
+        ----------
+
+        .. [1] Method explained in an `e-mail
+            <http://www.mathworks.com/matlabcentral/newsreader/view_thread/276271>`_
+            by Roger Stafford.
+
+        http://www.mathworks.com/matlabcentral/newsreader/view_thread/276271
+        """
+        is_in_bounds = self.bounds.contains(lon, lat)
+        in_bounds_lon = lon[is_in_bounds]
+        in_bounds_lat = lat[is_in_bounds]
+
+        A = self.vertices_xyz[:-1, :]
+        B = self.vertices_xyz[1:, :]
+        x, y, z = sph2cart(in_bounds_lon, in_bounds_lat, 1.0)
+        C = np.hstack((x[:, None], y[:, None], z[:, None]))
+        D = self.interior_xyz[None, :]
+
+        ABX = np.cross(A, B)
+        CDX = np.cross(C, D)
+
+        T = np.cross(ABX[:, None, :], CDX[None, :, :], axis=2)
+        T /= np.linalg.norm(T, axis=2)[:, :, None]
+        s = np.zeros(T.shape[:2])
+
+        s += np.sign(np.sum(np.cross(ABX, A)[:, None, :] * T, axis=2))
+        s += np.sign(np.sum(np.cross(B, ABX)[:, None, :] * T, axis=2))
+        s += np.sign(np.sum(np.cross(CDX, C)[None, :, :] * T, axis=2))
+        s += np.sign(np.sum(np.cross(D, CDX)[None, :, :] * T, axis=2))
+        s3d = s[:, :, None]
+
+        cross = np.where(s3d == -4, -T, np.where(s3d == 4, T, np.nan))
+
+        equals = (
+            np.all(A[:, None] == C[None, :], axis=2)
+            | np.all(A[:, None] == D[None, :], axis=-1)
+            | np.all(B[:, None] == C[None, :], axis=-1)
+            | np.all(B[:, None] == D[None, :], axis=-1)
+        )
+
+        intersection = np.where(equals[:, :, None], np.nan, cross)
+
+        crossings = np.isfinite(intersection[..., 0])
+        n_crossings = np.sum(crossings, axis=0)
+
+        # The final result is a combination of the result from the bounds test
+        # and the more precise test.
+        contained = np.zeros(lat.shape[0], dtype=np.bool)
+        contained[is_in_bounds] = (n_crossings % 2) == 0
+        return contained
+
+
+@dataclass()
 class BlockClosureResult:
     # The vertices of the block geometry
     vertices: np.ndarray = None
@@ -60,20 +209,8 @@ class BlockClosureResult:
     # An array mapping from vertices to edges. The reverse of edge_idx_to_vertex_idx
     vertex_idx_to_edge_idx: np.ndarray = None
 
-    # For each polygon, a list of the half edges on its boundary, in order.
-    polygon_edge_idxs: List[List[int]] = None
-
-    # For each polygon, a list of the vertex indices on its boundary, in order.
-    polygon_vertex_idxs: List[List[int]] = None
-
-    # For each polygon, an array with the actual vertices
-    polygon_vertices: List[np.ndarray] = None
-
-    # For each polygon, an array with the actual vertices in unit sphere x,y,z coordinates
-    polygon_vertices_xyz: List[np.ndarray] = None
-
-    # For each polygon, an arbitrary point that is interior to the polygon.
-    polygon_interior_xyz: List[np.ndarray] = None
+    # The polygon blocks!
+    polygons: List[Polygon] = None
 
     def n_edges(self):
         return self.edge_idx_to_vertex_idx.shape[0]
@@ -82,7 +219,7 @@ class BlockClosureResult:
         return self.vertices.shape[0]
 
     def n_polygons(self):
-        return len(self.polygon_edge_idxs)
+        return len(self.polygons)
 
     def identify_rightward_half_edge(self, v1_idx, v2_idx, edge_idx):
         v1, v2 = self.vertices[[v1_idx, v2_idx]]
@@ -114,99 +251,10 @@ class BlockClosureResult:
             v2_idx, v1_idx = v1_idx, v2_idx
         return v1_idx, v2_idx
 
-    def in_polygon(self, polygon_idx, lon, lat):
-        """
-        Returns whether each point specified by (lon, lat) is within the
-        spherical polygon defined by polygon_idx.
-
-        The intermediate calculation uses a great circle intersection test.
-        An explanation of this calculation is copied from. The source code is
-        modified from the same source. The primary modification is to vectorize
-        over a list of points rather than a single test point.
-
-        https://github.com/spacetelescope/spherical_geometry/blob/e00f4ef619eb2871b305eded2a537a95c858b001/spherical_geometry/great_circle_arc.py#L91
-
-        A, B : (*x*, *y*, *z*) Nx3 arrays of triples
-            Endpoints of the first great circle arcs.
-
-        C, D : (*x*, *y*, *z*) Nx3 arrays of triples
-            Endpoints of the second great circle arcs.
-
-        Notes
-        -----
-        The basic intersection is computed using linear algebra as follows
-        [1]_:
-        .. math::
-            T = \lVert(A × B) × (C × D)\rVert
-        To determine the correct sign (i.e. hemisphere) of the
-        intersection, the following four values are computed:
-        .. math::
-
-            s_1 = ((A × B) × A) \cdot T
-
-            s_2 = (B × (A × B)) \cdot T
-
-            s_3 = ((C × D) × C) \cdot T
-
-            s_4 = (D × (C × D)) \cdot T
-
-        For :math:`s_n`, if all positive :math:`T` is returned as-is.  If
-        all negative, :math:`T` is multiplied by :math:`-1`.  Otherwise
-        the intersection does not exist and is undefined.
-
-        References
-        ----------
-
-        .. [1] Method explained in an `e-mail
-            <http://www.mathworks.com/matlabcentral/newsreader/view_thread/276271>`_
-            by Roger Stafford.
-
-        http://www.mathworks.com/matlabcentral/newsreader/view_thread/276271
-        """
-        A = self.polygon_vertices_xyz[polygon_idx][:-1, :]
-        B = self.polygon_vertices_xyz[polygon_idx][1:, :]
-        x, y, z = sph2cart(lon, lat, 1.0)
-        C = np.hstack((x[:, None], y[:, None], z[:, None]))
-        D = self.polygon_interior_xyz[polygon_idx][None, :]
-
-        ABX = np.cross(A, B)
-        CDX = np.cross(C, D)
-
-        T = np.cross(ABX[:, None, :], CDX[None, :, :], axis=2)
-        T /= np.linalg.norm(T, axis=2)[:, :, None]
-        s = np.zeros(T.shape[:2])
-
-        s += np.sign(np.sum(np.cross(ABX, A)[:, None, :] * T, axis=2))
-        s += np.sign(np.sum(np.cross(B, ABX)[:, None, :] * T, axis=2))
-        s += np.sign(np.sum(np.cross(CDX, C)[None, :, :] * T, axis=2))
-        s += np.sign(np.sum(np.cross(D, CDX)[None, :, :] * T, axis=2))
-        s3d = s[:, :, None]
-
-        cross = np.where(s3d == -4, -T, np.where(s3d == 4, T, np.nan))
-
-        equals = (
-            np.all(A[:, None] == C[None, :], axis=2)
-            | np.all(A[:, None] == D[None, :], axis=-1)
-            | np.all(B[:, None] == C[None, :], axis=-1)
-            | np.all(B[:, None] == D[None, :], axis=-1)
-        )
-
-        intersection = np.where(equals[:, :, None], np.nan, cross)
-
-        crossings = np.isfinite(intersection[..., 0])
-        n_crossings = np.sum(crossings, axis=0)
-
-        return (n_crossings % 2) == 0
-
     def assign_points(self, lon, lat):
-        # TODO: this is super slow because it's fundamentally an O(N^2) operation.
-        # This can be mitigated because most points will be nowhere near a given
-        # block so we can do a bounding box test to short-circuit the in_polygon
-        # test. An explanation of how to do this is provided here:
-        # https://gis.stackexchange.com/questions/17788/how-to-compute-the-bounding-box-of-multiple-layers-in-lat-long
         block_assignments = np.full(lat.shape[0], -1)
         for i in range(self.n_polygons()):
-            block_assignments[self.in_polygon(i, lon, lat)] = i
+            block_assignments[self.polygons[i].contains_point(lon, lat)] = i
         return block_assignments
 
 
@@ -224,7 +272,8 @@ def run_block_closure(np_segments):
     closure = decompose_segments_into_graph(np_segments)
 
     # Introducing... half edges!
-    # Now, the edge from v1_idx --> v2_idx will be different from the edge from v2_idx --> v1_idx.
+    # Now, the edge from v1_idx --> v2_idx will be different from the edge from
+    # v2_idx --> v1_idx.
     # half edge idx 2*edge_idx+0 refers to the edge (v2_idx, v1_idx0)
     # half edge idx 2*edge_idx+1 refers to the edge (v1_idx, v2_idx0)
     # Thus every edge corresponds to two oppositely ordered half edges.
@@ -248,30 +297,26 @@ def run_block_closure(np_segments):
         )
 
     # Lists specifying which half edges lie in each polygon.
-    closure.polygon_edge_idxs, closure.polygon_vertex_idxs = traverse_polygons(
-        closure, right_half_edge
-    )
+    closure.polygons = traverse_polygons(closure, right_half_edge)
 
-    closure.polygon_vertices = []
-    closure.polygon_vertices_xyz = []
-    for i in range(closure.n_polygons()):
-        p = closure.polygon_vertex_idxs[i]
-        vs = np.concatenate([closure.vertices[p], closure.vertices[p[0]][None, :]])
-        closure.polygon_vertices.append(vs)
+    for p in closure.polygons:
+        vs = np.concatenate(
+            [
+                closure.vertices[p.vertex_idxs],
+                closure.vertices[p.vertex_idxs[0]][None, :],
+            ]
+        )
 
         x, y, z = sph2cart(vs[:, 0], vs[:, 1], 1.0)
         xyz = np.hstack((x[:, None], y[:, None], z[:, None]))
-        closure.polygon_vertices_xyz.append(xyz)
 
-    closure.polygon_interior_xyz = []
-    for p in closure.polygon_vertices:
-        for i in range(p.shape[0]):
-            dx = p[i + 1, 0] - p[i + 1, 0]
+        for i in range(vs.shape[0] - 1):
+            dx = vs[i + 1, 0] - vs[i, 0]
 
             # Make sure we skip any meridian crossing edges.
             if -180 < dx < 180:
-                midpt = (p[i + 1, :] + p[i, :]) / 2
-                edge_vector = p[i + 1, :] - p[i, :]
+                midpt = (vs[i + 1, :] + vs[i, :]) / 2
+                edge_vector = vs[i + 1, :] - vs[i, :]
                 edge_right_normal = np.array([edge_vector[1], -edge_vector[0]])
 
                 # Offset only a small amount into the interior to avoid stepping
@@ -281,7 +326,11 @@ def run_block_closure(np_segments):
                 break
 
         x, y, z = sph2cart(interior_pt[0], interior_pt[1], 1.0)
-        closure.polygon_interior_xyz.append(np.array([x, y, z]))
+
+        p.vertices = vs
+        p.vertices_xyz = xyz
+        p.interior_xyz = np.array([x, y, z])
+        p.bounds = BoundingBox.from_polygon(p.vertices)
 
     return closure
 
@@ -370,22 +419,34 @@ def traverse_polygons(closure, right_half_edge):
                 v2_idx, v1_idx = v1_idx, v2_idx
             polygon_vertex_idxs[-1].append(v2_idx)
 
-    return polygon_edge_idxs, polygon_vertex_idxs
+    return [
+        Polygon(edge_idxs=polygon_edge_idxs[i], vertex_idxs=polygon_vertex_idxs[i])
+        for i in range(len(polygon_edge_idxs))
+    ]
+
+
+def get_right_normal(p1, p2):
+    dx = p2[0] - p1[0]
+    if dx > 180:
+        dx -= 360
+    elif dx < -180:
+        dx += 360
+
+    return [p2[1] - p1[1], -dx]
 
 
 def get_segment_labels(closure):
-    # use negative number as the default value so that it never accidentally collides with
-    # a real block label which will all have values >= 0
+    # use negative number as the default value so that it never accidentally
+    # collides with a real block label which will all have values >= 0
     segment_labels = np.full((closure.n_edges(), 2), -1)
 
     # Identify east and west labels based on the blocks assigned to each half edge.
-    for current_block_label, p in enumerate(closure.polygon_edge_idxs):
-        for half_edge_idx in p:
-            v1_idx, v2_idx = closure.get_half_edge_vertices(half_edge_idx)
-            v1 = closure.vertices[v1_idx]
-            v2 = closure.vertices[v2_idx]
-            edge_vector = v2 - v1
-            edge_right_normal = [edge_vector[1], -edge_vector[0]]
+    for current_block_label, p in enumerate(closure.polygons):
+        for half_edge_idx in p.edge_idxs:
+            p1_idx, p2_idx = closure.get_half_edge_vertices(half_edge_idx)
+            edge_right_normal = get_right_normal(
+                closure.vertices[p1_idx], closure.vertices[p2_idx]
+            )
 
             # East side because right-hand normal points east
             # And west side if not!
@@ -395,7 +456,8 @@ def get_segment_labels(closure):
                 segment_labels[half_edge_idx // 2, 1] = current_block_label
             elif edge_right_normal[0] == 0:
                 raise ValueError(
-                    "Segments lying precisely on lines of latitude are not yet supported."
+                    "Segments lying precisely on lines of latitude are not yet "
+                    "supported."
                 )
             else:
                 segment_labels[half_edge_idx // 2, 0] = current_block_label
@@ -444,13 +506,22 @@ def test_closure():
     correct_labels = np.array([[0, 1], [0, 2], [2, 1], [1, 2], [1, 0]])
     np.testing.assert_array_equal(labels, correct_labels)
 
-    # Then shift one of the points to lie on the other side of the meridian.
-    # Instead of (0,0), use (359,0). The labels should be the same because
-    # this change in position doesn't change the topology of the blocks
+    # Then shift the points to lie on the other side of the meridian by
+    # subtracting 0.1 degree longitude.
     np_segments_meridian = np_segments.copy()
-    np_segments[0, 0] = [359.9, 0]
-    np_segments[4, 1] = [359.9, 0]
+    np_segments_meridian[:, :, 0] -= 0.1
+    np_segments_meridian[:, :, 0] = np.where(
+        np_segments_meridian[:, :, 0] < 0,
+        np_segments_meridian[:, :, 0] + 360,
+        np_segments_meridian[:, :, 0],
+    )
 
     closure_meridian = run_block_closure(np_segments_meridian)
     labels_meridian = get_segment_labels(closure_meridian)
     np.testing.assert_array_equal(labels_meridian, labels)
+    plot_segment_labels(np_segments, labels_meridian)
+
+    assert closure_meridian.polygons[0].contains_point(np.array([0]), np.array([0.1]))
+    assert closure_meridian.polygons[0].contains_point(np.array([2]), np.array([2]))
+    assert closure_meridian.polygons[2].contains_point(np.array([8]), np.array([8]))
+    assert closure_meridian.polygons[1].contains_point(np.array([50]), np.array([50]))
