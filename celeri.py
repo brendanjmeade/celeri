@@ -5,14 +5,12 @@ import meshio
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import scipy.spatial
 from addict import Dict
-from numpy.lib.shape_base import split
 from pyproj import Geod
-from matplotlib import path
 
 import celeri
 import celeri_closure
+from celeri_util import sph2cart
 
 
 GEOID = Geod(ellps="WGS84")
@@ -53,17 +51,17 @@ def read_data(command_file_name):
         meshes[i].dep3 = meshes[i].points[meshes[i].verts[:, 2], 2]
         meshes[i].centroids = np.mean(meshes[i].points[meshes[i].verts, :], axis=1)
         # Cartesian coordinates in meters
-        meshes[i].x1, meshes[i].y1, meshes[i].z1 = celeri.sph2cart(
+        meshes[i].x1, meshes[i].y1, meshes[i].z1 = sph2cart(
             meshes[i].lon1,
             meshes[i].lat1,
             celeri.RADIUS_EARTH + KM2M * meshes[i].dep1,
         )
-        meshes[i].x2, meshes[i].y2, meshes[i].z2 = celeri.sph2cart(
+        meshes[i].x2, meshes[i].y2, meshes[i].z2 = sph2cart(
             meshes[i].lon2,
             meshes[i].lat2,
             celeri.RADIUS_EARTH + KM2M * meshes[i].dep2,
         )
-        meshes[i].x3, meshes[i].y3, meshes[i].z3 = celeri.sph2cart(
+        meshes[i].x3, meshes[i].y3, meshes[i].z3 = sph2cart(
             meshes[i].lon3,
             meshes[i].lat3,
             celeri.RADIUS_EARTH + KM2M * meshes[i].dep3,
@@ -166,12 +164,6 @@ def read_data(command_file_name):
     return command, segment, block, meshes, station, mogi, sar
 
 
-def sph2cart(lon, lat, radius):
-    x = radius * np.cos(np.deg2rad(lat)) * np.cos(np.deg2rad(lon))
-    y = radius * np.cos(np.deg2rad(lat)) * np.sin(np.deg2rad(lon))
-    z = radius * np.sin(np.deg2rad(lat))
-    return x, y, z
-
 
 def cart2sph(x, y, z):
     azimuth = np.arctan2(y, x)
@@ -192,7 +184,7 @@ def process_station(station, command):
         station.up_sig = np.ones_like(station.up_sig)
 
     station["depth"] = np.zeros_like(station.lon)
-    station["x"], station["y"], station["z"] = celeri.sph2cart(
+    station["x"], station["y"], station["z"] = sph2cart(
         station.lon, station.lat, celeri.RADIUS_EARTH
     )
     station = station.drop(np.where(station.flag == 0)[0])
@@ -332,10 +324,10 @@ def segment_centroids(segment):
 
 def process_segment(segment, command, meshes):
 
-    segment["x1"], segment["y1"], segment["z1"] = celeri.sph2cart(
+    segment["x1"], segment["y1"], segment["z1"] = sph2cart(
         segment.lon1, segment.lat1, celeri.RADIUS_EARTH
     )
-    segment["x2"], segment["y2"], segment["z2"] = celeri.sph2cart(
+    segment["x2"], segment["y2"], segment["z2"] = sph2cart(
         segment.lon2, segment.lat2, celeri.RADIUS_EARTH
     )
 
@@ -363,7 +355,7 @@ def process_segment(segment, command, meshes):
         )[0]
     segment.mid_lon.values[segment.mid_lon < 0.0] += 360.0
 
-    segment["mid_x"], segment["mid_y"], segment["mid_z"] = celeri.sph2cart(
+    segment["mid_x"], segment["mid_y"], segment["mid_z"] = sph2cart(
         segment.mid_lon, segment.mid_lat, celeri.RADIUS_EARTH
     )
     segment = celeri.locking_depth_manager(segment, command)
@@ -371,6 +363,7 @@ def process_segment(segment, command, meshes):
     # segment.locking_depth.values = PatchLDtoggle(segment.locking_depth, segment.patch_file_name, segment.patch_flag, Command.patchFileNames) % Set locking depth to zero on segments that are associated with patches # TODO: Write this after patches are read in.
     segment = celeri.segment_centroids(segment)
     return segment
+
 
 def polygon_area(x, y):
     """
@@ -384,7 +377,7 @@ def assign_block_labels(segment, station, block, mogi, sar):
     Ben Thompson's implementation of the half edge approach to the
     block labeling problem and east/west assignment.
     """
-    #segment = split_segments_crossing_meridian(segment)
+    # segment = split_segments_crossing_meridian(segment)
 
     np_segments = np.zeros((len(segment), 2, 2))
     np_segments[:, 0, 0] = segment.lon1.to_numpy()
@@ -411,27 +404,32 @@ def assign_block_labels(segment, station, block, mogi, sar):
     for i in range(closure.n_polygons()):
         vs = closure.polygon_vertices[i]
         block.area_plate_carree.values[i] = celeri.polygon_area(vs[:, 0], vs[:, 1])
-    external_block_idx = np.argmax(block.area_plate_carree)
 
     # Assign block labels points to block interior points
-    block["block_label"] = closure.assign_points(block.interior_lon.to_numpy(), block.interior_lat.to_numpy())
+    block["block_label"] = closure.assign_points(
+        block.interior_lon.to_numpy(), block.interior_lat.to_numpy()
+    )
 
     # Assign block labels to GPS stations
     if not station.empty:
-        station['block_label'] = closure.assign_points(
-            station.lon.to_numpy(),
-            station.lat.to_numpy()
+        station["block_label"] = closure.assign_points(
+            station.lon.to_numpy(), station.lat.to_numpy()
         )
 
     # Assign block labels to SAR locations
     if not sar.empty:
-        sar['block_label'] = closure.assign_points(sar.lon.to_numpy(), sar.lat.to_numpy())
+        sar["block_label"] = closure.assign_points(
+            sar.lon.to_numpy(), sar.lat.to_numpy()
+        )
 
     # Assign block labels to Mogi sources
     if not mogi.empty:
-        mogi["block_label"] = closure.assign_points(mogi.lon.to_numpy(), mogi.lat.to_numpy())
+        mogi["block_label"] = closure.assign_points(
+            mogi.lon.to_numpy(), mogi.lat.to_numpy()
+        )
 
     return closure
+
 
 def great_circle_latitude_find(lon1, lat1, lon2, lat2, lon):
     """
@@ -465,7 +463,7 @@ def process_sar(sar, command):
         sar.line_of_sight_change_sig = sar.line_of_sight_change_sig / np.sqrt(
             command.sar_weight
         )
-        sar["x"], sar["y"], sar["z"] = celeri.sph2cart(
+        sar["x"], sar["y"], sar["z"] = sph2cart(
             np.deg2rad(sar.lon), np.deg2rad(sar.lat), celeri.RADIUS_EARTH
         )
         sar["block_label"] = -1 * np.ones_like(sar.x)
@@ -608,7 +606,7 @@ def block_constraints(assembly, block, command):
             assembly.data.block_constraints[0::3],
             assembly.data.block_constraints[1::3],
             assembly.data.block_constraints[2::3],
-        ) = celeri.sph2cart(
+        ) = sph2cart(
             np.deg2rad(block.euler_lon[assembly.index.block_constraints_idx]),
             np.deg2rad(block.euler_lat[assembly.index.block_constraints_idx]),
             np.deg2rad(block.rotation_rate[assembly.index.block_constraints_idx]),
@@ -938,7 +936,12 @@ def plot_block_labels(segment, block, station, closure):
     plt.figure()
     plt.title("West and east labels")
     for i in range(closure.n_polygons()):
-        plt.plot(closure.polygon_vertices[i][:,0], closure.polygon_vertices[i][:,1], 'k-', linewidth=0.5)
+        plt.plot(
+            closure.polygon_vertices[i][:, 0],
+            closure.polygon_vertices[i][:, 1],
+            "k-",
+            linewidth=0.5,
+        )
 
     for i in range(len(segment)):
         plt.text(
@@ -983,13 +986,17 @@ def test_end2end():
     This doesn't actually check for correctness much at all,
     but just tests to make sure that a full block model run executes without errors.
     """
-    command_file_name = './data/western_north_america/western_north_america_command.json'
-    command, segment, block, meshes, station, mogi, sar = celeri.read_data(command_file_name)
+    command_file_name = (
+        "./data/western_north_america/western_north_america_command.json"
+    )
+    command, segment, block, meshes, station, mogi, sar = celeri.read_data(
+        command_file_name
+    )
     station = celeri.process_station(station, command)
     segment = celeri.process_segment(segment, command, meshes)
     sar = celeri.process_sar(sar, command)
     closure = celeri.assign_block_labels(segment, station, block, mogi, sar)
-    assert(len(closure.polygon_vertices) == 31)
+    assert len(closure.polygon_vertices) == 31
 
     assembly = Dict()
     operators = Dict()

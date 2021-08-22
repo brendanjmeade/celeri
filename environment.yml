@@ -7,7 +7,6 @@ dependencies:
   - matplotlib
   - pyproj
   - pandas
-  - networkx
   - jupyterlab
   - ipympl
   - meshio
