@@ -4,6 +4,7 @@ from typing import List
 import numpy as np
 import scipy.spatial
 import matplotlib.pyplot as plt
+from spherical_geometry.polygon import SingleSphericalPolygon
 
 from celeri_util import sph2cart
 
@@ -72,16 +73,83 @@ class BoundingBox:
 
     @classmethod
     def from_polygon(cls, vertices):
+        lon_interval, inverse = find_longitude_interval(vertices[:, 0])
         return BoundingBox(
-            min_lon=0,
-            max_lon=0,
-            inverse_lon=False,
+            min_lon=lon_interval[0],
+            max_lon=lon_interval[1],
+            inverse_lon=inverse,
             min_lat=np.min(vertices[:, 1]),
             max_lat=np.max(vertices[:, 1]),
         )
 
     def contains(self, lon, lat):
-        return (self.min_lat < lat) & (lat < self.max_lat)
+        in_lat = (self.min_lat <= lat) & (lat <= self.max_lat)
+        if not self.inverse_lon:
+            # If the polygon spans more than 180 degrees, don't trust the
+            # bounding box.  The possible failure mode here is that a
+            # circumpolar block can exclude points that are south of its
+            # southernmost edge.
+            if self.max_lon - self.min_lon > 180:
+                return np.ones_like(lon, dtype=bool)
+            in_lon = (self.min_lon <= lon) & (lon <= self.max_lon)
+        else:
+            # Same as above, but for an inverse min/max lon range, having
+            # max-min longitude < 180 is equivalent to having the true extent of
+            # the block greater than 180 degrees.
+            if self.max_lon - self.min_lon < 180:
+                return np.ones_like(lon, dtype=bool)
+            in_lon = (self.min_lon >= lon) | (lon >= self.max_lon)
+        return in_lat & in_lon
+
+
+def find_longitude_interval(lon):
+    intervals = []
+    for i in range(lon.shape[0] - 1):
+        s1 = lon[i]
+        s2 = lon[i + 1]
+
+        # If the longitudes are separated by more than 180 degrees, then
+        # this is a meridian crossing segment where s1 is <180 and s2 is
+        # >180 degrees. So use (s1, 0) and (360, s2).
+        if s2 - s1 > 180:
+            intervals.append((0, s1))
+            intervals.append((s2, 360))
+        # Similiarly, separated by -180 degrees suggests that s1 is >180
+        # and s2 is <180. So use (s1,360), (0,s2)
+        elif s2 - s1 < -180:
+            intervals.append((s1, 360))
+            intervals.append((0, s2))
+        else:
+            intervals.append((s1, s2))
+    intervals = np.array([(s1, s2) if s1 < s2 else (s2, s1) for s1, s2 in intervals])
+
+    # Fun classic intro algorithms problem: how to combine intervals in O(n log(n))?
+    # Sort them by the first value, and then combine adjacent intervals.
+    sorted_intervals = intervals[intervals[:, 0].argsort()]
+    combined_intervals = []
+    cur_interval = sorted_intervals[0]
+    for next_interval in sorted_intervals[1:]:
+        if next_interval[0] > cur_interval[1]:
+            combined_intervals.append(cur_interval)
+            cur_interval = next_interval
+        else:
+            cur_interval[1] = max(cur_interval[1], next_interval[1])
+    combined_intervals.append(cur_interval)
+
+    if len(combined_intervals) == 1:
+        final_interval = combined_intervals[0]
+        inverse = False
+    elif len(combined_intervals) == 2:
+        if combined_intervals[0][0] == 0:
+            final_interval = [combined_intervals[0][1], combined_intervals[1][0]]
+        else:
+            final_interval = [combined_intervals[1][0], combined_intervals[0][1]]
+        inverse = True
+    else:
+        raise Exception("More than two longitude intervals identified in "
+                        "find_longitude_intervals. This is an unexpected and "
+                        "surprising error that suggests a malformed polygon.")
+    return final_interval, inverse
 
 
 @dataclass()
@@ -93,17 +161,58 @@ class Polygon:
     vertex_idxs: np.ndarray
 
     # The actual vertices
-    vertices: np.ndarray = None
+    vertices: np.ndarray
 
     # The actual vertices in unit sphere x,y,z coordinates
     vertices_xyz: np.ndarray = None
 
     # an arbitrary point that is interior to the polygon
+
     interior_xyz: np.ndarray = None
 
     # A bounding box defining the minimum and maximum lon/lat used for
     # a fast shortcircuiting of the in-polygon test.
     bounds: BoundingBox = None
+
+    # The spherical_geometry has some useful tools so we store a reference to
+    # a spherical_geometry.polygon.SingleSphericalPolygon in case we need
+    # those methods.
+    _sg_polygon: SingleSphericalPolygon = None
+
+    # Angle in steradians. A full sphere is 4*pi, half sphere is 2*pi.
+    area_steradians: float = None
+
+    def __init__(self, edge_idxs, vertex_idxs, vs):
+        self.edge_idxs = edge_idxs
+        self.vertex_idxs = vertex_idxs
+        self.vertices = vs
+
+        x, y, z = sph2cart(vs[:, 0], vs[:, 1], 1.0)
+        xyz = np.hstack((x[:, None], y[:, None], z[:, None]))
+
+        for i in range(vs.shape[0] - 1):
+            dx = vs[i + 1, 0] - vs[i, 0]
+
+            # Make sure we skip any meridian crossing edges.
+            if -180 < dx < 180:
+                midpt = (vs[i + 1, :] + vs[i, :]) / 2
+                edge_vector = vs[i + 1, :] - vs[i, :]
+                edge_right_normal = np.array([edge_vector[1], -edge_vector[0]])
+
+                # Offset only a small amount into the interior to avoid stepping
+                # back across a different edge into the exterior.
+                interior_pt = midpt + edge_right_normal * 0.01
+                # Stop after we've found an acceptable interior point.
+                break
+
+        x, y, z = sph2cart(interior_pt[0], interior_pt[1], 1.0)
+
+        self.vertices = vs
+        self.vertices_xyz = xyz
+        self.interior_xyz = np.array([x, y, z])
+        self.bounds = BoundingBox.from_polygon(self.vertices)
+        self._sg_polygon = SingleSphericalPolygon(self.vertices_xyz, self.interior_xyz)
+        self.area_steradians = self._sg_polygon.area()
 
     def contains_point(self, lon, lat):
         """
@@ -154,7 +263,15 @@ class Polygon:
 
         http://www.mathworks.com/matlabcentral/newsreader/view_thread/276271
         """
-        is_in_bounds = self.bounds.contains(lon, lat)
+
+        # Start by throwing out points that aren't in the polygon's bounding box.
+        # This is purely an optimization and is not necessary for correctness.
+        # The bounding box approximation is only valid for a spherical polygon
+        # that takes up less than half the sphere.
+        if self.area_steradians < 2 * np.pi:
+            is_in_bounds = self.bounds.contains(lon, lat)
+        else:
+            is_in_bounds = np.ones(lon.shape[0], dtype=bool)
         in_bounds_lon = lon[is_in_bounds]
         in_bounds_lat = lat[is_in_bounds]
 
@@ -193,7 +310,7 @@ class Polygon:
 
         # The final result is a combination of the result from the bounds test
         # and the more precise test.
-        contained = np.zeros(lat.shape[0], dtype=np.bool)
+        contained = np.zeros(lat.shape[0], dtype=bool)
         contained[is_in_bounds] = (n_crossings % 2) == 0
         return contained
 
@@ -299,39 +416,6 @@ def run_block_closure(np_segments):
     # Lists specifying which half edges lie in each polygon.
     closure.polygons = traverse_polygons(closure, right_half_edge)
 
-    for p in closure.polygons:
-        vs = np.concatenate(
-            [
-                closure.vertices[p.vertex_idxs],
-                closure.vertices[p.vertex_idxs[0]][None, :],
-            ]
-        )
-
-        x, y, z = sph2cart(vs[:, 0], vs[:, 1], 1.0)
-        xyz = np.hstack((x[:, None], y[:, None], z[:, None]))
-
-        for i in range(vs.shape[0] - 1):
-            dx = vs[i + 1, 0] - vs[i, 0]
-
-            # Make sure we skip any meridian crossing edges.
-            if -180 < dx < 180:
-                midpt = (vs[i + 1, :] + vs[i, :]) / 2
-                edge_vector = vs[i + 1, :] - vs[i, :]
-                edge_right_normal = np.array([edge_vector[1], -edge_vector[0]])
-
-                # Offset only a small amount into the interior to avoid stepping
-                # back across a different edge into the exterior.
-                interior_pt = midpt + edge_right_normal * 0.01
-                # Stop after we've found an acceptable interior point.
-                break
-
-        x, y, z = sph2cart(interior_pt[0], interior_pt[1], 1.0)
-
-        p.vertices = vs
-        p.vertices_xyz = xyz
-        p.interior_xyz = np.array([x, y, z])
-        p.bounds = BoundingBox.from_polygon(p.vertices)
-
     return closure
 
 
@@ -419,10 +503,17 @@ def traverse_polygons(closure, right_half_edge):
                 v2_idx, v1_idx = v1_idx, v2_idx
             polygon_vertex_idxs[-1].append(v2_idx)
 
-    return [
-        Polygon(edge_idxs=polygon_edge_idxs[i], vertex_idxs=polygon_vertex_idxs[i])
-        for i in range(len(polygon_edge_idxs))
-    ]
+    polygons = []
+    for i in range(len(polygon_edge_idxs)):
+        vs = np.concatenate(
+            [
+                closure.vertices[polygon_vertex_idxs[i]],
+                closure.vertices[polygon_vertex_idxs[i][0]][None, :],
+            ]
+        )
+        polygons.append(Polygon(polygon_edge_idxs[i], polygon_vertex_idxs[i], vs))
+
+    return polygons
 
 
 def get_right_normal(p1, p2):
@@ -519,7 +610,7 @@ def test_closure():
     closure_meridian = run_block_closure(np_segments_meridian)
     labels_meridian = get_segment_labels(closure_meridian)
     np.testing.assert_array_equal(labels_meridian, labels)
-    plot_segment_labels(np_segments, labels_meridian)
+    # plot_segment_labels(np_segments, labels_meridian)
 
     assert closure_meridian.polygons[0].contains_point(np.array([0]), np.array([0.1]))
     assert closure_meridian.polygons[0].contains_point(np.array([2]), np.array([2]))
