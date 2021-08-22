@@ -164,7 +164,6 @@ def read_data(command_file_name):
     return command, segment, block, meshes, station, mogi, sar
 
 
-
 def cart2sph(x, y, z):
     azimuth = np.arctan2(y, x)
     elevation = np.arctan2(z, np.sqrt(x ** 2 + y ** 2))
@@ -402,7 +401,8 @@ def assign_block_labels(segment, station, block, mogi, sar):
     # Find relative areas of each block to identify an external block
     block["area_plate_carree"] = -1 * np.ones(len(block))
     for i in range(closure.n_polygons()):
-        vs = closure.polygon_vertices[i]
+        vs = closure.polygons[i].vertices
+        # TODO: can we use closure.polygons[i].area_steradians here?
         block.area_plate_carree.values[i] = celeri.polygon_area(vs[:, 0], vs[:, 1])
 
     # Assign block labels points to block interior points
@@ -937,8 +937,8 @@ def plot_block_labels(segment, block, station, closure):
     plt.title("West and east labels")
     for i in range(closure.n_polygons()):
         plt.plot(
-            closure.polygon_vertices[i][:, 0],
-            closure.polygon_vertices[i][:, 1],
+            closure.polygons[i].vertices[:, 0],
+            closure.polygons[i].vertices[:, 1],
             "k-",
             linewidth=0.5,
         )
@@ -996,7 +996,7 @@ def test_end2end():
     segment = celeri.process_segment(segment, command, meshes)
     sar = celeri.process_sar(sar, command)
     closure = celeri.assign_block_labels(segment, station, block, mogi, sar)
-    assert len(closure.polygon_vertices) == 31
+    assert closure.n_polygons() == 31
 
     assembly = Dict()
     operators = Dict()
