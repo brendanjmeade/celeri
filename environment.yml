@@ -12,6 +12,7 @@ dependencies:
   - meshio
   - pytest
   - addict
+  - fortran-compiler
   - pip
   - pip:
     - spherical_geometry
