@@ -15,3 +15,4 @@ dependencies:
   - pip
   - pip:
     - spherical_geometry
+    - okada_wrapper
