@@ -2,18 +2,17 @@ import addict
 import copy
 import json
 import meshio
+import pyproj
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from addict import Dict
-from pyproj import Geod
 
 import celeri
 import celeri_closure
 from celeri_util import sph2cart
 
 
-GEOID = Geod(ellps="WGS84")
+GEOID = pyproj.Geod(ellps="WGS84")
 KM2M = 1.0e3
 RADIUS_EARTH = np.float64((GEOID.a + GEOID.b) / 2)
 
@@ -881,6 +880,48 @@ def slip_rate_constraints(assembly, segment, block, command):
     return assembly, slip_rate_constraint_partials
 
 
+def get_segment_oblique_projection(lon1, lat1, lon2, lat2, skew=True):
+    """
+    Use pyproj oblique mercator: https://proj.org/operations/projections/omerc.html
+
+    According to: https://proj.org/operations/projections/omerc.html
+    This is this already rotated by the fault strike but the rotation can be undone with +no_rot
+    > +no_rot
+    > No rectification (not “no rotation” as one may well assume).
+    > Do not take the last step from the skew uv-plane to the map XY plane.
+    > Note: This option is probably only marginally useful,
+    > but remains for (mostly) historical reasons.
+
+    The version with north still pointing "up" appears to be called the
+    Rectified skew orthomorphic projection or Hotine oblique Mercator projection
+    https://pro.arcgis.com/en/pro-app/latest/help/mapping/properties/rectified-skew-orthomorphic.htm
+    """
+    if lon1 > 180.0:
+        lon1 = lon1 - 360
+    if lon2 > 180.0:
+        lon2 = lon2 - 360
+    projection_string = (
+        "+proj=omerc "
+        + "+lon_1="
+        + str(lon1)
+        + " "
+        + "+lat_1="
+        + str(lat1)
+        + " "
+        + "+lon_2="
+        + str(lon2)
+        + " "
+        + "+lat_2="
+        + str(lat2)
+        + " "
+        + "+ellps=WGS84"
+    )
+    if not skew:
+        projection_string += " +no_rot"
+    projection = pyproj.Proj(pyproj.CRS.from_proj4(projection_string))
+    return projection
+
+
 # def sphere_azimuth(lon1, lat1, lon2, lat2):
 #     """
 #     Calculates azimuth between sets of points on a sphere.
@@ -998,8 +1039,8 @@ def test_end2end():
     closure = celeri.assign_block_labels(segment, station, block, mogi, sar)
     assert closure.n_polygons() == 31
 
-    assembly = Dict()
-    operators = Dict()
+    assembly = addict.Dict()
+    operators = addict.Dict()
     assembly = celeri.merge_geodetic_data(assembly, station, sar)
     assembly, operators.block_motion_constraints = celeri.block_constraints(
         assembly, block, command
