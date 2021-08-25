@@ -4,6 +4,8 @@
     "reuse_elastic_file": "",
     "save_kernels": "no",
     "poissons_ratio": 0.25,
+    "material_lambda": 3e10,
+    "material_mu": 3e10,
     "unit_sigmas": "no",
     "locking_depth_flag2": 25,
     "locking_depth_flag3": 15,
