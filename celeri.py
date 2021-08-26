@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import okada_wrapper
 from loguru import logger
+from tqdm.notebook import tqdm
 
 import celeri
 import celeri_closure
@@ -1019,6 +1020,126 @@ def get_okada_displacements(
         np.einsum("ij,kj->ik", np.dstack((u_x, u_y))[0], rotation_matrix), 2
     )
     return u_east, u_north, u_up
+
+
+def get_segment_operator_okada(segment, station, command):
+    """
+    Calculates the elastic displacement partial derivatives based on the Okada
+    formulation, using the source and receiver geometries defined in
+    dicitonaries segment and stations. Before calculating the partials for
+    each segment, a local oblique Mercator project is done.
+
+    The linear operator is structured as ():
+
+                ss(segment1)  ds(segment1) ts(segment1) ... ss(segmentN) ds(segmentN) ts(segmentN)
+    ve(station 1)
+    vn(station 1)
+    vu(station 1)
+    .
+    .
+    .
+    ve(station N)
+    vn(station N)
+    vu(station N)
+
+    """
+    if not station.empty:
+        okada_segment_operator = np.ones((3 * len(station), 3 * len(segment)))
+        # Loop through each segment and calculate displacements for each slip component
+        for i in tqdm(
+            range(len(segment)), desc="Calculating Okada partials for segments"
+        ):
+            (
+                u_east_strike_slip,
+                u_north_strike_slip,
+                u_up_strike_slip,
+            ) = celeri.get_okada_displacements(
+                segment.lon1[i],
+                segment.lat1[i],
+                segment.lon2[i],
+                segment.lat2[i],
+                segment.locking_depth[i],
+                segment.burial_depth[i],
+                segment.dip[i],
+                command.material_lambda,
+                command.material_mu,
+                1,
+                0,
+                0,
+                station.lon,
+                station.lat,
+            )
+            (
+                u_east_dip_slip,
+                u_north_dip_slip,
+                u_up_dip_slip,
+            ) = celeri.get_okada_displacements(
+                segment.lon1[i],
+                segment.lat1[i],
+                segment.lon2[i],
+                segment.lat2[i],
+                segment.locking_depth[i],
+                segment.burial_depth[i],
+                segment.dip[i],
+                command.material_lambda,
+                command.material_mu,
+                0,
+                1,
+                0,
+                station.lon,
+                station.lat,
+            )
+            (
+                u_east_tensile_slip,
+                u_north_tensile_slip,
+                u_up_tensile_slip,
+            ) = celeri.get_okada_displacements(
+                segment.lon1[i],
+                segment.lat1[i],
+                segment.lon2[i],
+                segment.lat2[i],
+                segment.locking_depth[i],
+                segment.burial_depth[i],
+                segment.dip[i],
+                command.material_lambda,
+                command.material_mu,
+                0,
+                0,
+                1,
+                station.lon,
+                station.lat,
+            )
+            segment_column_start_idx = 3 * i
+            okada_segment_operator[0::3, segment_column_start_idx] = np.squeeze(
+                u_east_strike_slip
+            )
+            okada_segment_operator[1::3, segment_column_start_idx] = np.squeeze(
+                u_north_strike_slip
+            )
+            okada_segment_operator[2::3, segment_column_start_idx] = np.squeeze(
+                u_up_strike_slip
+            )
+            okada_segment_operator[0::3, segment_column_start_idx + 1] = np.squeeze(
+                u_east_dip_slip
+            )
+            okada_segment_operator[1::3, segment_column_start_idx + 1] = np.squeeze(
+                u_north_dip_slip
+            )
+            okada_segment_operator[2::3, segment_column_start_idx + 1] = np.squeeze(
+                u_up_dip_slip
+            )
+            okada_segment_operator[0::3, segment_column_start_idx + 2] = np.squeeze(
+                u_east_tensile_slip
+            )
+            okada_segment_operator[1::3, segment_column_start_idx + 2] = np.squeeze(
+                u_north_tensile_slip
+            )
+            okada_segment_operator[2::3, segment_column_start_idx + 2] = np.squeeze(
+                u_up_tensile_slip
+            )
+    else:
+        okada_segment_operator = np.empty(1)
+    return okada_segment_operator
 
 
 # def sphere_azimuth(lon1, lat1, lon2, lat2):
