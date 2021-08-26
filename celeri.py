@@ -1,22 +1,29 @@
 import addict
 import copy
+import datetime
 import json
 import meshio
+import os
 import pyproj
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import okada_wrapper
-
+from loguru import logger
 
 import celeri
 import celeri_closure
 from celeri_util import sph2cart
 
-
+# Global constants
 GEOID = pyproj.Geod(ellps="WGS84")
 KM2M = 1.0e3
 RADIUS_EARTH = np.float64((GEOID.a + GEOID.b) / 2)
+
+# Set up logging to file only
+RUN_NAME = datetime.datetime.now().strftime("%y-%m-%d-%H-%M-%S")
+logger.add(RUN_NAME + ".log")
+logger.info("test")
 
 
 def read_data(command_file_name):
@@ -823,12 +830,12 @@ def get_fault_slip_rate_partials(segment, block):
 
 
 def slip_rate_constraints(assembly, segment, block, command):
-    print("Isolating slip rate constraints")
+    logger.info("Isolating slip rate constraints")
     for i in range(len(segment.lon1)):
         if segment.ss_rate_flag[i] == 1:
-            "{:.2f}".format(segment.ss_rate[i])
-            print(
-                "- Strike-slip rate constraint on "
+            # "{:.2f}".format(segment.ss_rate[i])
+            logger.info(
+                "Strike-slip rate constraint on "
                 + segment.name[i].strip()
                 + ": rate = "
                 + "{:.2f}".format(segment.ss_rate[i])
@@ -837,8 +844,8 @@ def slip_rate_constraints(assembly, segment, block, command):
                 + " (mm/yr)"
             )
         if segment.ds_rate_flag[i] == 1:
-            print(
-                "- Dip-slip rate constraint on "
+            logger.info(
+                "Dip-slip rate constraint on "
                 + segment.name[i].strip()
                 + ": rate = "
                 + "{:.2f}".format(segment.ds_rate[i])
@@ -847,8 +854,8 @@ def slip_rate_constraints(assembly, segment, block, command):
                 + " (mm/yr)"
             )
         if segment.ts_rate_flag[i] == 1:
-            print(
-                "- Tensile-slip rate constraint on "
+            logger.info(
+                "Tensile-slip rate constraint on "
                 + segment.name[i].strip()
                 + ": rate = "
                 + "{:.2f}".format(segment.ts_rate[i])
