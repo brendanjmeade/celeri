@@ -266,24 +266,6 @@ def order_endpoints_sphere(segment):
     segment_copy.lon2.values[swap_endpoint_idx] = segment.lon1.values[swap_endpoint_idx]
     segment_copy.lat2.values[swap_endpoint_idx] = segment.lat1.values[swap_endpoint_idx]
     return segment_copy
-    # for i in range(x1.size):
-    #     cross_product = np.cross([x1[i], y1[i], z1[i]], [x2[i], y2[i], z2[i]])
-    #     if cross_product[2] <= 0:
-    #         print(i, "Reordering endpoints")
-    #         segment_copy.lon1.values[i] = segment.lon2.values[i]
-    #         segment_copy.lat1.values[i] = segment.lat2.values[i]
-    #         segment_copy.lon2.values[i] = segment.lon1.values[i]
-    #         segment_copy.lat2.values[i] = segment.lat1.values[i]
-
-    # segment_copy = copy.deepcopy(segment)
-    # for i in range(len(segment)):
-    #     if segment.lon1[i] > segment.lon2[i]:
-    #         # print(i, "Reordering endpoints for segment ", segment.name[i].strip())
-    #         segment_copy.lon1.values[i] = segment.lon2.values[i]
-    #         segment_copy.lat1.values[i] = segment.lat2.values[i]
-    #         segment_copy.lon2.values[i] = segment.lon1.values[i]
-    #         segment_copy.lat2.values[i] = segment.lat1.values[i]
-    # return segment_copy
 
 
 def segment_centroids(segment):
