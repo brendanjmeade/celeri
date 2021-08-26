@@ -12,9 +12,11 @@ dependencies:
   - meshio
   - pytest
   - addict
+  - tqdm
   - compilers
   - fortran-compiler
   - pip
   - pip:
     - spherical_geometry
+    - loguru
     - okada_wrapper
