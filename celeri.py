@@ -22,6 +22,7 @@ RADIUS_EARTH = np.float64((GEOID.a + GEOID.b) / 2)
 
 # Set up logging to file only
 RUN_NAME = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+logger.remove()  # Remove any existing loggers includeing default stderr
 logger.add(RUN_NAME + ".log")
 logger.info("RUN_NAME: " + RUN_NAME)
 
