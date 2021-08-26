@@ -6,6 +6,8 @@ import pyproj
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import okada_wrapper
+
 
 import celeri
 import celeri_closure
@@ -920,6 +922,113 @@ def get_segment_oblique_projection(lon1, lat1, lon2, lat2, skew=True):
         projection_string += " +no_rot"
     projection = pyproj.Proj(pyproj.CRS.from_proj4(projection_string))
     return projection
+
+
+def get_okada_displacements(
+    segment_lon1,
+    segment_lat1,
+    segment_lon2,
+    segment_lat2,
+    segment_locking_depth,
+    segment_burial_depth,
+    segment_dip,
+    material_lambda,
+    material_mu,
+    strike_slip,
+    dip_slip,
+    tensile_slip,
+    station_lon,
+    station_lat,
+):
+    """
+    Caculate elastic displacements in a homogeneous elastic half-space.
+    Inputs are in geographic coordinates and then projected into a local
+    xy-plane using a oblique Mercator projection that is tangent and parallel
+    to the trace of the fault segment.  The elastic calculation is the
+    original Okada 1992 Fortran code acceccesed through T. Ben Thompson's
+    okada_wrapper: https://github.com/tbenthompson/okada_wrapper
+
+    TODO: Locking depths are currently meters rather than KM in inputfiles!!!
+    TODO: Is there another XYZ to ENU conversion needed?
+    """
+    segment_locking_depth *= celeri.KM2M
+    segment_burial_depth *= celeri.KM2M
+
+    # Project coordinates to flat space using a local oblique Mercator projection
+    projection = celeri.get_segment_oblique_projection(
+        segment_lon1, segment_lat1, segment_lon2, segment_lat2
+    )
+    station_x, station_y = projection(station_lon, station_lat)
+    segment_x1, segment_y1 = projection(segment_lon1, segment_lat1)
+    segment_x2, segment_y2 = projection(segment_lon2, segment_lat2)
+
+    # Calculate geometric fault parameters
+    segment_strike = np.arctan2(
+        segment_y2 - segment_y1, segment_x2 - segment_x1
+    )  # radians
+    segment_length = np.sqrt(
+        (segment_y2 - segment_y1) ** 2.0 + (segment_x2 - segment_x1) ** 2.0
+    )
+    segment_up_dip_width = (segment_locking_depth - segment_burial_depth) / np.sin(
+        np.deg2rad(segment_dip)
+    )
+
+    # Translate stations and segment so that segment mid-point is at the origin
+    segment_x_mid = (segment_x1 + segment_x2) / 2.0
+    segment_y_mid = (segment_y1 + segment_y2) / 2.0
+    station_x -= segment_x_mid
+    station_y -= segment_y_mid
+    segment_x1 -= segment_x_mid
+    segment_x2 -= segment_x_mid
+    segment_y1 -= segment_y_mid
+    segment_y2 -= segment_y_mid
+
+    # Unrotate coordinates to eliminate strike, segment will lie along y = 0
+    rotation_matrix = np.array(
+        [
+            [np.cos(segment_strike), -np.sin(segment_strike)],
+            [np.sin(segment_strike), np.cos(segment_strike)],
+        ]
+    )
+    station_x_rotated, station_y_rotated = np.hsplit(
+        np.einsum("ij,kj->ik", np.dstack((station_x, station_y))[0], rotation_matrix.T),
+        2,
+    )
+
+    # Elastic displacements from Okada 1992
+    alpha = (material_lambda + material_mu) / (material_lambda + 2 * material_mu)
+    u_x = np.zeros_like(station_x)
+    u_y = np.zeros_like(station_x)
+    u_up = np.zeros_like(station_x)
+    for i in range(len(station_x)):
+        _, u, _ = okada_wrapper.dc3dwrapper(
+            alpha,  # (lambda + mu) / (lambda + 2 * mu)
+            [
+                station_x_rotated[i],
+                station_y_rotated[i],
+                0,
+            ],  # (meters) observation point
+            -segment_locking_depth,  # (meters) depth of the fault origin
+            segment_dip,  # (degrees) the dip-angle of the rectangular dislocation surface
+            [
+                -segment_length / 2,
+                segment_length / 2,
+            ],  # (meters) the along-strike range of the surface (al1,al2 in the original)
+            [
+                0,
+                segment_up_dip_width,
+            ],  # (meters) along-dip range of the surface (aw1, aw2 in the original)
+            [strike_slip, dip_slip, tensile_slip],
+        )  # (meters) strike-slip, dip-slip, tensile-slip
+        u_x[i] = u[0]
+        u_y[i] = u[1]
+        u_up[i] = u[2]
+
+    # Un-rotate displacement to account for projected fault strike
+    u_east, u_north = np.hsplit(
+        np.einsum("ij,kj->ik", np.dstack((u_x, u_y))[0], rotation_matrix), 2
+    )
+    return u_east, u_north, u_up
 
 
 # def sphere_azimuth(lon1, lat1, lon2, lat2):
