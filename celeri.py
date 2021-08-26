@@ -21,9 +21,9 @@ KM2M = 1.0e3
 RADIUS_EARTH = np.float64((GEOID.a + GEOID.b) / 2)
 
 # Set up logging to file only
-RUN_NAME = datetime.datetime.now().strftime("%y-%m-%d-%H-%M-%S")
+RUN_NAME = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
 logger.add(RUN_NAME + ".log")
-logger.info("test")
+logger.info("RUN_NAME: " + RUN_NAME)
 
 
 def read_data(command_file_name):
