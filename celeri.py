@@ -1082,6 +1082,54 @@ def get_okada_displacements(
 #     return plon, plat
 
 
+# def fault_parameters_to_okada_format(sx1, sy1, sx2, sy2, dip, D, bd):
+#     """
+#     This function takes fault trace, dip, and locking depth information
+#     and calculates the anchor coordinates, length, width and strike of
+#     the fault plane following (1985).
+
+#     Arguments:
+#         sx1 : x coord of fault trace endpoint 1
+#         sy1 : y coord of fault trace endpoint 1
+#         sx2 : x coord of fault trace endpoint 2
+#         sy2 : y coord of fault trace endpoint 2
+#         dip : dip of fault plane (degrees)
+#         D : fault locking depth
+#         bd : burial depth (top "locking depth")
+
+#     Returned variables:
+#         strike : stike of fault plane
+#         L : fault length
+#         W : fault width
+#         ofx : x coord of fault anchor
+#         ofy : y coord of fault anchor
+#         ofxe : x coord of other buried corner
+#         ofye : y coord of other buried corner
+#         tfx : x coord of fault anchor (top relative)
+#         tfy : y coord of fault anchor (top relative)
+#         tfxe : x coord of other buried corner (top relative)
+#         tfye : y coord of other buried corner (top relative)
+#     """
+
+#     okada_parameters = addict.Dict()
+#     okada_parameters.strike = np.arctan2(sy1 - sy2, sx1 - sx2) + np.pi # This is by convention
+#     okada_parameters.L = np.sqrt((sx2 - sx1)**2 + (sy2 - sy1)**2)
+#     okada_parameters.W = (D - bd) / np.sin(np.deg2rad(dip))
+
+#     # Calculate fault segment anchor and other buried point
+#     okada_parameters.ofx = sx1 + D / np.tan(np.deg2rad(dip)) * np.sin(np.deg2rad(okada_parameters.strike))
+#     okada_parameters.ofy = sy1 - D / np.tan(np.deg2rad(dip)) * np.cos(np.deg2rad(okada_parameters.strike))
+#     okada_parameters.ofxe = sx2 + D / np.tan(np.deg2rad(dip)) * np.sin(np.deg2rad(okada_parameters.strike))
+#     okada_parameters.ofye = sy2 - D / np.tan(np.deg2rad(dip)) * np.cos(np.deg2rad(okada_parameters.strike))
+
+#     # Calculate fault segment anchor and other buried point (top relative)
+#     okada_parameters.tfx = sx1 + bd / np.tan(np.deg2rad(dip)) * np.sin(np.deg2rad(okada_parameters.strike))
+#     okada_parameters.tfy = sy1 - bd / np.tan(np.deg2rad(dip)) * np.cos(np.deg2rad(okada_parameters.strike))
+#     okada_parameters.tfxe = sx2 + bd / np.tan(np.deg2rad(dip)) * np.sin(np.deg2rad(okada_parameters.strike))
+#     okada_parameters.tfye = sy2 - bd / np.tan(np.deg2rad(dip)) * np.cos(np.deg2rad(okada_parameters.strike))
+#     return okada_parameters
+
+
 def plot_block_labels(segment, block, station, closure):
     plt.figure()
     plt.title("West and east labels")
