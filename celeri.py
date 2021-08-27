@@ -1142,6 +1142,48 @@ def get_segment_station_operator_okada(segment, station, command):
     return okada_segment_operator
 
 
+def get_block_rotation_operator(station, block):
+    """
+    Get partial derivatives relating displacement to Euler pole rotation
+    TODO: Do I have to reoder the blocks dataframe so that block label 0 is at the top?
+    If so this should be done right after the block closure algorithm is run rather than here.
+    """
+    block_rotation_operator = np.zeros((3 * len(station), 3 * len(block)))
+    for i in range(len(station)):
+        start_row_idx = 3 + i
+        start_column_idx = 3 * station.block_label[i]
+        cross_product_operator = celeri.get_cross_partials(
+            [station.x[i], station.y[i], station.z[i]]
+        )
+        vn_wx, ve_wx, vu_wx = celeri.cartesian_vector_to_spherical_vector(
+            cross_product_operator[0, 0],
+            cross_product_operator[1, 0],
+            cross_product_operator[2, 0],
+            station.lon[i],
+            station.lat[i],
+        )
+        vn_wy, ve_wy, vu_wy = celeri.cartesian_vector_to_spherical_vector(
+            cross_product_operator[0, 1],
+            cross_product_operator[1, 1],
+            cross_product_operator[2, 1],
+            station.lon[i],
+            station.lat[i],
+        )
+        vn_wz, ve_wz, vu_wz = celeri.cartesian_vector_to_spherical_vector(
+            cross_product_operator[0, 2],
+            cross_product_operator[1, 2],
+            cross_product_operator[2, 2],
+            station.lon[i],
+            station.lat[i],
+        )
+        block_rotation_operator[
+            start_row_idx : start_row_idx + 3, start_column_idx : start_column_idx + 3
+        ] = np.array(
+            [[ve_wx, ve_wy, ve_wz], [vn_wx, vn_wy, vn_wz], [vu_wx, vu_wy, vu_wz]]
+        )
+    return block_rotation_operator
+
+
 # def sphere_azimuth(lon1, lat1, lon2, lat2):
 #     """
 #     Calculates azimuth between sets of points on a sphere.
