@@ -1022,7 +1022,7 @@ def get_okada_displacements(
     return u_east, u_north, u_up
 
 
-def get_segment_operator_okada(segment, station, command):
+def get_segment_station_operator_okada(segment, station, command):
     """
     Calculates the elastic displacement partial derivatives based on the Okada
     formulation, using the source and receiver geometries defined in
@@ -1287,6 +1287,57 @@ def plot_block_labels(segment, block, station, closure):
         )
 
     plt.gca().set_aspect("equal")
+    plt.show()
+
+
+def plot_segment_displacements(
+    segment,
+    station,
+    command,
+    segment_idx,
+    strike_slip,
+    dip_slip,
+    tensile_slip,
+    lon_min,
+    lon_max,
+    lat_min,
+    lat_max,
+    quiver_scale,
+):
+    u_east, u_north, u_up = celeri.get_okada_displacements(
+        segment.lon1.values[segment_idx],
+        segment.lat1[segment_idx],
+        segment.lon2[segment_idx],
+        segment.lat2[segment_idx],
+        segment.locking_depth[segment_idx],
+        segment.burial_depth[segment_idx],
+        segment.dip[segment_idx],
+        command.material_lambda,
+        command.material_mu,
+        strike_slip,
+        dip_slip,
+        tensile_slip,
+        station.lon,
+        station.lat,
+    )
+    plt.figure()
+    plt.plot(
+        [segment.lon1[segment_idx], segment.lon2[segment_idx]],
+        [segment.lat1[segment_idx], segment.lat2[segment_idx]],
+        "-r",
+    )
+    plt.quiver(
+        station.lon,
+        station.lat,
+        u_east,
+        u_north,
+        scale=quiver_scale,
+        scale_units="inches",
+    )
+    plt.xlim([lon_min, lon_max])
+    plt.ylim([lat_min, lat_max])
+    plt.gca().set_aspect("equal", adjustable="box")
+    plt.title("Okada displacements: longitude and latitude")
     plt.show()
 
 
