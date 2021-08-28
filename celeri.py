@@ -1184,6 +1184,24 @@ def get_block_rotation_operator(station, block):
     return block_rotation_operator
 
 
+def station_row_keep(assembly):
+    """
+    Determines which station rows should be retained based on up velocities
+    TODO: I do not understand this!!!
+    TODO: The logic in the first conditional seems to indicate that if there are
+    no vertical velocities as a part of the data then they should be eliminated.
+    TODO: Perhaps it would be better to make this a flag in command???
+    """
+    if np.sum(np.abs(assembly.data.up_vel)) == 0:
+        assembly.index.station_row_keep = np.setdiff1d(
+            np.arange(0, assembly.index.sz_rotation[0]),
+            np.arange(2, assembly.index.sz_rotation[0], 3),
+        )
+    else:
+        assembly.index.station_row_keep = np.arange(0, assembly.index.sz_rotation[1])
+    return assembly
+
+
 # def sphere_azimuth(lon1, lat1, lon2, lat2):
 #     """
 #     Calculates azimuth between sets of points on a sphere.
