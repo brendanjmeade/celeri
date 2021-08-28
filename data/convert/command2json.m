@@ -1,0 +1,69 @@
+% Read command
+command_file_name = "basic.command"
+command = ReadCommand(command_file_name);
+% Convert struct field names to celeri style
+
+command.file_name = 0;
+command.reuse_elastic = 0;
+command.reuse_elastic_file = 0; 
+command.save_kernels = 0;
+command.material_lambda = 3e10;
+command.material_mu = 3e10;
+command.unit_sigmas = 0;
+command.locking_depth_flag2 = 0; 
+command.locking_depth_flag3 = 0;
+command.locking_depth_flag4 = 0;
+command.locking_depth_flag5 = 0;
+command.locking_depth_override_flag = 0;
+command.locking_depth_overide_value = 0;
+command.apriori_block_name = 0;
+command.patch_file_names = 0;
+command.tri_smooth = 0;
+command.pmag_tri_smooth = 0;
+command.smooth_type = 0;
+command.n_iterations = 0;
+command.tri_edge = 0;
+command.tri_depth_tolerance = 0;
+command.tri_con_weight = 0;
+command.strain_method = 0;
+command.sar_file_name = 0;
+command.sar_ramp = 0;
+command.sar_weight = 0;
+command.tri_slip_constraint_type = 0;
+command.inversion_type = 0;
+command.inversion_param01 = 0;
+command.inversion_param02 = 0;
+command.inversion_param03 = 0;
+command.inversion_param04 = 0;
+command.inversion_param05 = 0;
+command.dump_all = 0;
+command.mogi_file_name = 0;
+command.solution_method = 0;
+command.ridge_param = 0;
+command.tri_full_coupling = 0;
+command.tvr_lambda = 0;
+command.tri_slip_sign = 0;
+command.n_eigs = 0;
+command.segment_file_name = 0;
+command.station_file_name = 0;
+command.block_file_name = 0;
+command.mesh_param_file_name = 0;
+command.fault_resolution = 0;
+command.station_data_weight = 0;
+command.station_data_weight_min = 0;
+command.station_data_weight_max = 0;
+command.station_data_weight_steps = 0;
+command.slip_constraint_weight = 0;
+command.slip_constraint_weight_min = 0;
+command.slip_constraint_weight_max = 0;
+command.slip_constraint_weight_steps = 0;
+command.block_constraint_weight = 0;
+command.block_constraint_weight_min = 0;
+command.block_constraint_weight_max = 0;
+command.block_constraint_weight_steps = 0;
+command.slip_file_names = 0;
+
+% Encode as JSON and save to file
+% jsonencode()
+json_file_name = append(strrep(command_file_name, ".", "_"), ".json");
+% struct2csv(segment, csv_file_name);

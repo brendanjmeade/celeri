@@ -14,6 +14,10 @@ block.rotation_rate = block.rotationRate;
 block.rotation_rate_sig = block.rotationRateSig;
 block.rotation_flag = block.rotationInfo;
 block.apriori_flag = block.aprioriTog;
+block.strain_rate = zeros(numel(block.interior_lon));
+block.strain_rate_sig = zeros(numel(block.interior_lon));
+block.strain_flag = zeros(numel(block.interior_lon));
+
 
 % Delete old field names
 block = rmfield(block, "interiorLon");
