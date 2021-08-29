@@ -1,6 +1,6 @@
-### celeri
+## celeri
 - Next generation earthquake cycle and surface deformation modeling
-- An python port, reworking, and extension of the Matlab-based [blocks](https://github.com/jploveless/Blocks).
+- A python port, reworking, and extension of the Matlab-based [blocks](https://github.com/jploveless/Blocks).
 
 To set up a development conda environment, run the following commands in the `celeri` folder.
 ```
