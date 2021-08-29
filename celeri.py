@@ -102,7 +102,7 @@ def read_data(command_file_name):
     #     meshes[i].dip_flag = meshes[i].dip != 90
 
     # Read mesh data - List of dictionary version
-    with open(command.mesh_param_file_name, "r") as f:
+    with open(command.mesh_parameters_file_name, "r") as f:
         mesh_param = json.load(f)
     meshes = []
     for i in range(len(mesh_param)):
