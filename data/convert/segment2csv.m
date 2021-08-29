@@ -1,13 +1,13 @@
 function segment2csv(segment_file_name)
 
-km2m = 1e3; % Convert kilometers to meters
+% km2m = 1e3; % Convert kilometers to meters
 
 % Read file from old .segment format
 segment = ReadSegmentTri(segment_file_name);
 
 % Create new field names
-segment.locking_depth = km2m * segment.lDep;
-segment.locking_depth_sig = km2m * segment.lDepSig;
+segment.locking_depth = segment.lDep;
+segment.locking_depth_sig = segment.lDepSig;
 segment.locking_depth_flag = segment.lDepTog;
 segment.dip_sig = segment.dipSig;
 segment.dip_flag = segment.dipTog;
@@ -20,8 +20,8 @@ segment.ds_rate_flag = segment.dsRateTog;
 segment.ts_rate = segment.tsRate;
 segment.ts_rate_sig = segment.tsRateSig;
 segment.ts_rate_flag = segment.tsRateTog;
-segment.burial_depth = km2m * segment.bDep;
-segment.burial_depth_sig = km2m * segment.bDepSig;
+segment.burial_depth = segment.bDep;
+segment.burial_depth_sig = segment.bDepSig;
 segment.burial_depth_flag = segment.bDepTog;
 segment.resolution_override = segment.resOver;
 segment.resolution_other = segment.resOther;
@@ -58,3 +58,4 @@ segment = rmfield(segment, "patchSlipTog");
 % Save as .csv
 csv_file_name = append(strrep(segment_file_name, ".", "_"), ".csv");
 struct2csv(segment, csv_file_name);
+fprintf(1, "Wrote %s \n", csv_file_name);

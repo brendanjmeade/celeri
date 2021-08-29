@@ -30,3 +30,4 @@ station = rmfield(station, "upAdj");
 % Save as .csv
 csv_file_name = append(strrep(stadata_file_name, ".", "_"), ".csv");
 struct2csv(station, csv_file_name);
+fprintf(1, "Wrote %s \n", csv_file_name);

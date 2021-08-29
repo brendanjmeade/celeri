@@ -18,7 +18,6 @@ block.strain_rate = zeros(numel(block.interior_lon));
 block.strain_rate_sig = zeros(numel(block.interior_lon));
 block.strain_flag = zeros(numel(block.interior_lon));
 
-
 % Delete old field names
 block = rmfield(block, "interiorLon");
 block = rmfield(block, "interiorLat");
@@ -34,3 +33,4 @@ block = rmfield(block, "aprioriTog");
 % Save as .csv
 csv_file_name = append(strrep(block_file_name, ".", "_"), ".csv");
 struct2csv(block, csv_file_name);
+fprintf(1, "Wrote %s \n", csv_file_name);

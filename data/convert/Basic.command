@@ -1,6 +1,6 @@
-Segment file name: ./segment/TVDN_00448_reweighted.segment
-Station file name: ./station/WithCascadia_clean.sta.data
-Block file name: ./blocks/TVDN_00448_reweighted.block
+Segment file name: TVDN_00448_reweighted.segment
+Station file name: WithCascadia_clean.sta.data
+Block file name: TVDN_00448_reweighted.block
 Reuse old elastic kernel: no
 Old elastic kernel file: ./0000000001/kernels.mat
 Save current elastic kernels: yes
