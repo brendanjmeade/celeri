@@ -1470,9 +1470,7 @@ def test_end2end():
     This doesn't actually check for correctness much at all,
     but just tests to make sure that a full block model run executes without errors.
     """
-    command_file_name = (
-        "./data/western_north_america/western_north_america_command.json"
-    )
+    command_file_name = "./data/western_north_america/basic_command.json"
     command, segment, block, meshes, station, mogi, sar = celeri.read_data(
         command_file_name
     )
