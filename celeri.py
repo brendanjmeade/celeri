@@ -237,12 +237,12 @@ def zero_mesh_segment_locking_depth(segment, meshes):
     less than the number of available mesh files.
     """
     segment = segment.copy(deep=True)
-    togg_off = np.where(
+    toggle_off = np.where(
         (segment.patch_flag != 0)
         & (segment.patch_file_name != 0)
         & (segment.patch_file_name <= len(meshes))
     )[0]
-    segment.locking_depth.values[togg_off] = 0
+    segment.locking_depth.values[toggle_off] = 0
     return segment
 
 
