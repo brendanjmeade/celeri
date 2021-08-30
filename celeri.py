@@ -1491,7 +1491,7 @@ def test_end2end():
     station = celeri.process_station(station, command)
     segment = celeri.process_segment(segment, command, meshes)
     sar = celeri.process_sar(sar, command)
-    closure = celeri.assign_block_labels(segment, station, block, mogi, sar)
+    closure, block = celeri.assign_block_labels(segment, station, block, mogi, sar)
     assert closure.n_polygons() == 31
 
     assembly = addict.Dict()
