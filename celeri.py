@@ -407,12 +407,9 @@ def assign_block_labels(segment, station, block, mogi, sar):
         block.interior_lon.to_numpy(), block.interior_lat.to_numpy()
     )
 
-    # TODO: #27 Understand why I have to return blocks when I rinclude the 6 lines below
-    # This works...but...I have to return blocks to get the changes to propagate back to the celeri.ipynb namespace???
-    # These two lines reoder the rows of blocks so that the block with label zero is not index 0
-    # and the block labels then increase sequentially.  I copied this from the bottom of:
+    # I copied this from the bottom of:
     # https://stackoverflow.com/questions/39992502/rearrange-rows-of-pandas-dataframe-based-on-list-and-keeping-the-order
-    # and I definitely don't understand it but emperically it seems to work.
+    # and I definitely don't understand it all but emperically it seems to work.
     block = (
         block.set_index(block.block_label, append=True)
         .sort_index(level=1)
