@@ -466,7 +466,7 @@ def assign_block_labels(segment, station, block, mogi, sar):
         block.interior_lon.to_numpy(), block.interior_lat.to_numpy()
     )
 
-    # TODO: Understand why I have to return blocks when I rinclude the 6 lines below
+    # TODO: #27 Understand why I have to return blocks when I rinclude the 6 lines below
     # This works...but...I have to return blocks to get the changes to propagate back to the celeri.ipynb namespace???
     # These two lines reoder the rows of blocks so that the block with label zero is not index 0
     # and the block labels then increase sequentially.  I copied this from the bottom of:
