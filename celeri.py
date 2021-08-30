@@ -1345,3 +1345,89 @@ def test_end2end():
     assembly, operators.slip_rate_constraints = celeri.slip_rate_constraints(
         assembly, segment, block, command
     )
+
+
+def test_global_closure():
+    """
+    This check to make sure that the closure algorithm returns a known
+    (and hopefully correct!) answer for the global closure problem.
+    Right now all this does is check for the correct number of blocks and
+    against one set of polygon edge indices
+    """
+    command_file_name = "./data/western_north_america/basic_command.json"
+    command, segment, block, meshes, station, mogi, sar = celeri.read_data(
+        command_file_name
+    )
+    station = celeri.process_station(station, command)
+    segment = celeri.process_segment(segment, command, meshes)
+    sar = celeri.process_sar(sar, command)
+    closure, block = celeri.assign_block_labels(segment, station, block, mogi, sar)
+    assert closure.n_polygons() == 31
+    saved_closure_polygons_0_edge_idxs = np.array(
+        [
+            0,
+            2,
+            1320,
+            1323,
+            1324,
+            1330,
+            1332,
+            1334,
+            1364,
+            1382,
+            1326,
+            1328,
+            1502,
+            1500,
+            1498,
+            1496,
+            1494,
+            1490,
+            1492,
+            1506,
+            1504,
+            17,
+            19,
+            21,
+            22,
+            24,
+            1588,
+            1586,
+            1584,
+            240,
+            624,
+            608,
+            626,
+            622,
+            620,
+            618,
+            114,
+            112,
+            706,
+            218,
+            584,
+            582,
+            580,
+            578,
+            1040,
+            1044,
+            978,
+            1354,
+            1385,
+            1315,
+            1317,
+            1319,
+            1285,
+            1282,
+            1281,
+            1279,
+            1277,
+            1274,
+            34,
+            32,
+            30,
+        ]
+    )
+    assert np.allclose(
+        np.array(closure.polygons[0].edge_idxs), saved_closure_polygons_0_edge_idxs
+    )
