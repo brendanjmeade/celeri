@@ -19,6 +19,7 @@ from celeri_util import sph2cart
 # Global constants
 GEOID = pyproj.Geod(ellps="WGS84")
 KM2M = 1.0e3
+M2MM = 1.0e3
 RADIUS_EARTH = np.float64((GEOID.a + GEOID.b) / 2)
 
 # Set up logging to file only
