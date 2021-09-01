@@ -1295,6 +1295,69 @@ def get_strain_rate_centroid_operator(block, station, segment):
     return block_strain_rate_operator, strain_rate_block_idx
 
 
+def mogi_forward(mogi_lon, mogi_lat, mogi_depth, poissons_ratio, obs_lon, obs_lat):
+    """
+    Calculate displacements from a single Mogi source using
+    equation 7.14 from "Earthquake and Volcano Deformation" by Paul Segall
+    """
+    u_east = np.zeros_like(obs_lon)
+    u_north = np.zeros_like(obs_lon)
+    u_up = np.zeros_like(obs_lon)
+    for i in range(obs_lon.size):
+        # Find angle between source and observation as well as distance betwen them
+        source_to_obs_forward_azimuth, _, source_to_obs_distance = celeri.GEOID.inv(
+            mogi_lon, mogi_lat, obs_lon[i], obs_lat[i]
+        )
+
+        # Mogi displacements in cylindrical coordinates
+        u_up[i] = (
+            (1 - poissons_ratio)
+            / np.pi
+            * mogi_depth
+            / ((source_to_obs_distance ** 2.0 + mogi_depth ** 2) ** 1.5)
+        )
+        u_radial = (
+            (1 - poissons_ratio)
+            / np.pi
+            * source_to_obs_distance
+            / ((source_to_obs_distance ** 2 + mogi_depth ** 2.0) ** 1.5)
+        )
+
+        # Convert radial displacement to east and north components
+        u_east[i] = u_radial * np.sin(np.deg2rad(source_to_obs_forward_azimuth))
+        u_north[i] = u_radial * np.cos(np.deg2rad(source_to_obs_forward_azimuth))
+    return u_east, u_north, u_up
+
+
+def get_mogi_operator(mogi, station, command):
+    """
+    Mogi volume change to station displacment operator
+    """
+    if mogi.empty:
+        mogi_operator = np.empty(0)
+    else:
+        poissons_ratio = command.material_mu / (
+            2 * (command.material_lambda + command.material_mu)
+        )
+        mogi_operator = np.zeros((3 * len(station), len(mogi)))
+        for i in range(len(mogi)):
+            mogi_depth = celeri.KM2M * mogi.depth[i]
+            u_east, u_north, u_up = mogi_forward(
+                mogi.lon[i],
+                mogi.lat[i],
+                mogi_depth,
+                poissons_ratio,
+                station.lon,
+                station.lat,
+            )
+
+            # Insert components into partials matrix
+            mogi_operator[0::3, i] = u_east
+            mogi_operator[1::3, i] = u_north
+            mogi_operator[2::3, i] = u_up
+    return mogi_operator
+
+
 def plot_block_labels(segment, block, station, closure):
     plt.figure()
     plt.title("West and east labels")
