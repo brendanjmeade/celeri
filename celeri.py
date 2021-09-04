@@ -320,6 +320,15 @@ def segment_centroids(segment):
 
 
 def process_segment(segment, command, meshes):
+    """
+    Add derived fields to segment dataframe
+    """
+
+    segment["length"] = np.zeros(len(segment))
+    for i in range(len(segment)):
+        _, _, segment.length.values[i] = celeri.GEOID.inv(
+            segment.lon1[i], segment.lat1[i], segment.lon2[i], segment.lat2[i]
+        )  # Segment length in meters
 
     segment["x1"], segment["y1"], segment["z1"] = sph2cart(
         segment.lon1, segment.lat1, celeri.RADIUS_EARTH
@@ -1381,7 +1390,6 @@ def plot_block_labels(segment, block, station, closure):
         )
 
     for i in range(len(station)):
-
         plt.text(
             station.lon.values[i],
             station.lat.values[i],
