@@ -1171,8 +1171,6 @@ def get_segment_station_operator_okada(segment, station, command):
 def get_block_rotation_operator(station, block):
     """
     Get partial derivatives relating displacement to Euler pole rotation
-    TODO: Do I have to reoder the blocks dataframe so that block label 0 is at the top?
-    If so this should be done right after the block closure algorithm is run rather than here.
     """
     block_rotation_operator = np.zeros((3 * len(station), 3 * len(block)))
     for i in range(len(station)):
@@ -1551,6 +1549,9 @@ def get_strain_rate_centroid_operator(block, station, segment):
     else:
         block_strain_rate_operator = np.empty(0)
     return block_strain_rate_operator, strain_rate_block_idx
+
+
+get_block_rotation_operator
 
 
 def plot_block_labels(segment, block, station, closure):
