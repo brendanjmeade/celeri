@@ -1367,6 +1367,192 @@ def get_mogi_operator(mogi, station, command):
     return mogi_operator
 
 
+def interleave2(array_1, array_2):
+    interleaved_array = np.empty((array_1.size + array_2.size), dtype=array_1.dtype)
+    interleaved_array[0::2] = array_1
+    interleaved_array[1::2] = array_2
+    return interleaved_array
+
+
+def interleave3(array_1, array_2, array_3):
+    interleaved_array = np.empty(
+        (array_1.size + array_2.size + array_3.size), dtype=array_1.dtype
+    )
+    interleaved_array[0::3] = array_1
+    interleaved_array[1::3] = array_2
+    interleaved_array[2::3] = array_3
+    return interleaved_array
+
+
+def latitude_to_colatitude(lat):
+    """
+    Convert from latitude to colatitude
+    NOTE: Not sure why I need to treat the scalar case differently but I do.
+    """
+    if lat.size == 1:  # Deal with the scalar case
+        if lat >= 0:
+            lat = 90.0 - lat
+        elif lat < 0:
+            lat = -90.0 - lat
+    else:  # Deal with the array case
+        lat[np.where(lat >= 0)[0]] = 90.0 - lat[np.where(lat >= 0)[0]]
+        lat[np.where(lat < 0)[0]] = -90.0 - lat[np.where(lat < 0)[0]]
+    return lat
+
+
+def get_block_centroid(segment, block_idx):
+    """
+    Calculate centroid of a block based on boundary polygon
+    We take all block vertices (including duplicates) and estimate
+    the centroid by taking the average of longitude and latitude
+    weighted by the length of the segment that each vertex is
+    attached to.
+    """
+    segments_with_block_idx = np.union1d(
+        np.where(segment.west_labels == block_idx)[0],
+        np.where(segment.east_labels == block_idx)[0],
+    )
+    lon0 = np.concatenate(
+        (segment.lon1[segments_with_block_idx], segment.lon2[segments_with_block_idx])
+    )
+    lat0 = np.concatenate(
+        (segment.lat1[segments_with_block_idx], segment.lat2[segments_with_block_idx])
+    )
+    lengths = np.concatenate(
+        (
+            segment.length[segments_with_block_idx],
+            segment.length[segments_with_block_idx],
+        )
+    )
+    block_centroid_lon = np.average(lon0, weights=lengths)
+    block_centroid_lat = np.average(lat0, weights=lengths)
+    return block_centroid_lon, block_centroid_lat
+
+
+def get_strain_rate_displacements(
+    station,
+    segment,
+    block_idx,
+    strain_rate_lon_lon,
+    strain_rate_lat_lat,
+    strain_rate_lon_lat,
+):
+    """
+    Calculate displacements within a signble block due to three
+    strain rate components within that block.  Velocities will be
+    zero on all blocks other than than the the current block.
+
+    Equations are from Savage (2001) and expressed concisely in McCaffrey (2005)
+    In McCaffrey (2005) these are the two unnumbered equations at the bottom
+    of page 2
+    """
+
+    # Find block centroids and convert to colatitude and radians
+    block_centroid_lon, block_centroid_lat = get_block_centroid(segment, block_idx)
+    block_centroid_lon = np.deg2rad(block_centroid_lon)
+    block_centroid_lat = latitude_to_colatitude(block_centroid_lat)
+    block_centroid_lat = np.deg2rad(block_centroid_lat)
+
+    # Find indices of stations on the current block and convert to colatitude and radians
+    station_block_idx = np.where(station.block_label == block_idx)[0]
+    stations_block_lon = station.lon[station_block_idx].to_numpy()
+    stations_block_lon = np.deg2rad(stations_block_lon)
+    stations_block_lat = station.lat[station_block_idx].to_numpy()
+    stations_block_lat = latitude_to_colatitude(stations_block_lat)
+    stations_block_lat = np.deg2rad(stations_block_lat)
+
+    # Calculate displacements from homogeneous strain
+    u_east = np.zeros(len(station))
+    u_north = np.zeros(len(station))
+    u_up = np.zeros(
+        len(station)
+    )  # Always zero here because we're assuming plane strain on the sphere
+    u_east_current_block = strain_rate_lon_lon * (
+        celeri.RADIUS_EARTH
+        * (stations_block_lon - block_centroid_lon)
+        * np.sin(block_centroid_lat)
+    ) + strain_rate_lon_lat * (
+        celeri.RADIUS_EARTH * (stations_block_lat - block_centroid_lat)
+    )
+    u_north_current_block = strain_rate_lon_lat * (
+        celeri.RADIUS_EARTH
+        * (stations_block_lon - block_centroid_lon)
+        * np.sin(block_centroid_lat)
+    ) + strain_rate_lat_lat * (
+        celeri.RADIUS_EARTH * (stations_block_lat - block_centroid_lat)
+    )
+    u_east[station_block_idx] = u_east_current_block
+    u_north[station_block_idx] = u_north_current_block
+    return u_east, u_north, u_up
+
+
+def get_strain_rate_centroid_operator(block, station, segment):
+    """
+    Calculate strain partial derivatives assuming a strain centroid at the center of each block
+    TODO: Return something related to assembly.index???
+    """
+    strain_rate_block_idx = np.where(block.strain_rate_flag.to_numpy() > 0)[0]
+    if strain_rate_block_idx.size > 0:
+        block_strain_rate_operator = np.zeros(
+            (3 * len(station), 3 * strain_rate_block_idx.size)
+        )
+        for i in range(strain_rate_block_idx.size):
+            # Calculate partials for each component of strain rate
+            (
+                vel_east_lon_lon,
+                vel_north_lon_lon,
+                vel_up_lon_lon,
+            ) = get_strain_rate_displacements(
+                station,
+                segment,
+                block_idx=strain_rate_block_idx[i],
+                strain_rate_lon_lon=1,
+                strain_rate_lat_lat=0,
+                strain_rate_lon_lat=0,
+            )
+            (
+                vel_east_lat_lat,
+                vel_north_lat_lat,
+                vel_up_lat_lat,
+            ) = get_strain_rate_displacements(
+                station,
+                segment,
+                block_idx=strain_rate_block_idx[i],
+                strain_rate_lon_lon=0,
+                strain_rate_lat_lat=1,
+                strain_rate_lon_lat=0,
+            )
+            (
+                vel_east_lon_lat,
+                vel_north_lon_lat,
+                vel_up_lon_lat,
+            ) = get_strain_rate_displacements(
+                station,
+                segment,
+                block_idx=strain_rate_block_idx[i],
+                strain_rate_lon_lon=0,
+                strain_rate_lat_lat=0,
+                strain_rate_lon_lat=1,
+            )
+
+            # Interleave velocities and insert columns into operator
+            vel_enu_lon_lon = interleave3(
+                vel_east_lon_lon, vel_north_lon_lon, vel_up_lon_lon
+            )
+            vel_enu_lat_lat = interleave3(
+                vel_east_lat_lat, vel_north_lat_lat, vel_up_lat_lat
+            )
+            vel_enu_lon_lat = interleave3(
+                vel_east_lon_lat, vel_north_lon_lat, vel_up_lon_lat
+            )
+            block_strain_rate_operator[:, 3 * i] = vel_enu_lon_lon
+            block_strain_rate_operator[:, 3 * i + 1] = vel_enu_lat_lat
+            block_strain_rate_operator[:, 3 * i + 2] = vel_enu_lon_lat
+    else:
+        block_strain_rate_operator = np.empty(0)
+    return block_strain_rate_operator, strain_rate_block_idx
+
+
 def plot_block_labels(segment, block, station, closure):
     plt.figure()
     plt.title("West and east labels")
@@ -1463,6 +1649,88 @@ def plot_segment_displacements(
     plt.ylim([lat_min, lat_max])
     plt.gca().set_aspect("equal", adjustable="box")
     plt.title("Okada displacements: longitude and latitude")
+    plt.show()
+
+
+def plot_strain_rate_components_for_block(closure, segment, station, block_idx):
+    plt.figure(figsize=(10, 3))
+    plt.subplot(1, 3, 1)
+    vel_east, vel_north, vel_up = get_strain_rate_displacements(
+        station,
+        segment,
+        block_idx=block_idx,
+        strain_rate_lon_lon=1,
+        strain_rate_lat_lat=0,
+        strain_rate_lon_lat=0,
+    )
+    for i in range(closure.n_polygons()):
+        plt.plot(
+            closure.polygons[i].vertices[:, 0],
+            closure.polygons[i].vertices[:, 1],
+            "k-",
+            linewidth=0.5,
+        )
+    plt.quiver(
+        station.lon,
+        station.lat,
+        vel_east,
+        vel_north,
+        scale=1e7,
+        scale_units="inches",
+        color="r",
+    )
+
+    plt.subplot(1, 3, 2)
+    vel_east, vel_north, vel_up = get_strain_rate_displacements(
+        station,
+        segment,
+        block_idx=block_idx,
+        strain_rate_lon_lon=0,
+        strain_rate_lat_lat=1,
+        strain_rate_lon_lat=0,
+    )
+    for i in range(closure.n_polygons()):
+        plt.plot(
+            closure.polygons[i].vertices[:, 0],
+            closure.polygons[i].vertices[:, 1],
+            "k-",
+            linewidth=0.5,
+        )
+    plt.quiver(
+        station.lon,
+        station.lat,
+        vel_east,
+        vel_north,
+        scale=1e7,
+        scale_units="inches",
+        color="r",
+    )
+
+    plt.subplot(1, 3, 3)
+    vel_east, vel_north, vel_up = get_strain_rate_displacements(
+        station,
+        segment,
+        block_idx=block_idx,
+        strain_rate_lon_lon=0,
+        strain_rate_lat_lat=0,
+        strain_rate_lon_lat=1,
+    )
+    for i in range(closure.n_polygons()):
+        plt.plot(
+            closure.polygons[i].vertices[:, 0],
+            closure.polygons[i].vertices[:, 1],
+            "k-",
+            linewidth=0.5,
+        )
+    plt.quiver(
+        station.lon,
+        station.lat,
+        vel_east,
+        vel_north,
+        scale=1e7,
+        scale_units="inches",
+        color="r",
+    )
     plt.show()
 
 
