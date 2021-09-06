@@ -1168,46 +1168,6 @@ def get_segment_station_operator_okada(segment, station, command):
     return okada_segment_operator
 
 
-# def get_block_rotation_operator(station, block):
-#     """
-#     Get partial derivatives relating displacement to Euler pole rotation
-#     """
-#     block_rotation_operator = np.zeros((3 * len(station), 3 * len(block)))
-#     for i in range(len(station)):
-#         start_row_idx = 3 + i
-#         start_column_idx = 3 * station.block_label[i]
-#         cross_product_operator = celeri.get_cross_partials(
-#             [station.x[i], station.y[i], station.z[i]]
-#         )
-#         vn_wx, ve_wx, vu_wx = celeri.cartesian_vector_to_spherical_vector(
-#             cross_product_operator[0, 0],
-#             cross_product_operator[1, 0],
-#             cross_product_operator[2, 0],
-#             station.lon[i],
-#             station.lat[i],
-#         )
-#         vn_wy, ve_wy, vu_wy = celeri.cartesian_vector_to_spherical_vector(
-#             cross_product_operator[0, 1],
-#             cross_product_operator[1, 1],
-#             cross_product_operator[2, 1],
-#             station.lon[i],
-#             station.lat[i],
-#         )
-#         vn_wz, ve_wz, vu_wz = celeri.cartesian_vector_to_spherical_vector(
-#             cross_product_operator[0, 2],
-#             cross_product_operator[1, 2],
-#             cross_product_operator[2, 2],
-#             station.lon[i],
-#             station.lat[i],
-#         )
-#         block_rotation_operator[
-#             start_row_idx : start_row_idx + 3, start_column_idx : start_column_idx + 3
-#         ] = np.array(
-#             [[ve_wx, ve_wy, ve_wz], [vn_wx, vn_wy, vn_wz], [vu_wx, vu_wy, vu_wz]]
-#         )
-#     return block_rotation_operator
-
-
 def station_row_keep(assembly):
     """
     Determines which station rows should be retained based on up velocities
@@ -1224,82 +1184,6 @@ def station_row_keep(assembly):
     else:
         assembly.index.station_row_keep = np.arange(0, assembly.index.sz_rotation[1])
     return assembly
-
-
-# def get_strain_rate_centroid_operator(block, station, segment):
-#     """
-#     Calculate strain partial derivatives assuming a strain centroid at the center of each block
-#     TODO: Return something related to assembly.index???
-#     """
-#     strain_rate_block_idx = np.where(block.strain_rate_flag.to_numpy() > 0)[0]
-#     if strain_rate_block_idx.size > 0:
-#         block_strain_rate_operator = np.zeros((3 * len(station), 3 * len(block)))
-#         earth_radius_mm = (
-#             celeri.RADIUS_EARTH * celeri.M2MM
-#         )  # radius of Earth in mm, TODO: Check these units
-
-#         # Convert station positions into radians and co-latitude
-#         station_lon = np.deg2rad(station.lon)
-#         station_lat = station.lat.to_numpy()
-#         station_lat[np.where(station_lat >= 0)[0]] = (
-#             90.0 - station_lat[np.where(station_lat >= 0)[0]]
-#         )
-#         station_lat[np.where(station_lat < 0)[0]] = (
-#             -90.0 - station_lat[np.where(station.lat < 0)[0]]
-#         )
-#         station_lat = np.deg2rad(station_lat)
-
-#         # Create array containing column index limits for the linear operator
-#         first_column_idx = 3 * station.block_label
-#         last_column_idx = 3 * station.block_label + 3
-
-#         for i in range(len(station)):
-#             if block.strain_rate_flag[station.block_label[i]] == 1:
-#                 # The block "centroid" is only an approximation given by the mean of its coordinates
-#                 # This should work reasonably well for the "chopped" case but is not exact or general
-#                 # TODO: replace this with proper centroid calculation perhaps from geopandas:
-#                 # https://geopandas.org/getting_started/introduction.html
-#                 idx = np.union(
-#                     np.where(segment.east_label == station.block_label[i])[0],
-#                     np.where(segment.west_label == station.block_label[i])[0],
-#                 )
-#                 lon0 = np.mean(np.concatenate(segment.lon1[idx], segment.lon2[idx]))
-#                 lat0 = np.mean(np.concatenate(segment.lat1[idx], segment.lat2[idx]))
-#                 lon0 = np.deg2rad(lon0)
-#                 if lat0 >= 0:
-#                     lat0 = 90.0 - lat0
-#                 elif lat0 < 0:
-#                     lat0 = -90.0 - lat0
-#                 lat0 = np.deg2rad(lat0)
-#                 block_strain_rate_operator[
-#                     3 * i : 3 * i + 3, first_column_idx[i] : last_column_idx[i]
-#                 ] = np.array(
-#                     [
-#                         [
-#                             earth_radius_mm * (station_lon[i] - lon0) * np.sin(lat0),
-#                             earth_radius_mm * (station_lat[i] - lat0),
-#                             0,
-#                         ],
-#                         [
-#                             0,
-#                             earth_radius_mm * (station_lon[i] - lon0) * np.sin(lat0),
-#                             earth_radius_mm * (station_lat[i] - lat0),
-#                         ],
-#                         [0, 0, 0],
-#                     ]
-#                 )
-
-#         # Keep only those columns with non-zero entries
-#         # Approach taken from: https://stackoverflow.com/questions/36233918/find-indices-of-columns-having-some-nonzero-element-in-a-2d-array
-#         keep_columns = np.nonzero(np.any(block_strain_rate_operator != 0, axis=0))[0]
-#         block_strain_rate_operator = block_strain_rate_operator[:, keep_columns]
-#     else:
-#         block_strain_rate_operator = np.empty(0)
-
-#     # TODO: Write a test here that checks the number of stations on each block that includes
-#     # internal strain.  Send an error if any of those blocks have less the command.min_n_stations_strain_rate_block
-
-#     return block_strain_rate_operator, strain_rate_block_idx
 
 
 def mogi_forward(mogi_lon, mogi_lat, mogi_depth, poissons_ratio, obs_lon, obs_lat):
