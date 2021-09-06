@@ -1311,60 +1311,162 @@ def get_block_centroid(segment, block_idx):
     return block_centroid_lon, block_centroid_lat
 
 
+# def get_strain_rate_displacements(
+#     station,
+#     segment,
+#     block_idx,
+#     strain_rate_lon_lon,
+#     strain_rate_lat_lat,
+#     strain_rate_lon_lat,
+# ):
+#     """
+#     Calculate displacements within a signble block due to three
+#     strain rate components within that block.  Velocities will be
+#     zero on all blocks other than than the the current block.
+
+#     Equations are from Savage (2001) and expressed concisely in McCaffrey (2005)
+#     In McCaffrey (2005) these are the two unnumbered equations at the bottom
+#     of page 2
+#     """
+
+#     # Find block centroids and convert to colatitude and radians
+#     block_centroid_lon, block_centroid_lat = get_block_centroid(segment, block_idx)
+#     block_centroid_lon = np.deg2rad(block_centroid_lon)
+#     block_centroid_lat = latitude_to_colatitude(block_centroid_lat)
+#     block_centroid_lat = np.deg2rad(block_centroid_lat)
+
+#     # Find indices of stations on the current block and convert to colatitude and radians
+#     station_block_idx = np.where(station.block_label == block_idx)[0]
+#     stations_block_lon = station.lon[station_block_idx].to_numpy()
+#     stations_block_lon = np.deg2rad(stations_block_lon)
+#     stations_block_lat = station.lat[station_block_idx].to_numpy()
+#     stations_block_lat = latitude_to_colatitude(stations_block_lat)
+#     stations_block_lat = np.deg2rad(stations_block_lat)
+
+#     # Calculate displacements from homogeneous strain
+#     u_east = np.zeros(len(station))
+#     u_north = np.zeros(len(station))
+#     u_up = np.zeros(
+#         len(station)
+#     )  # Always zero here because we're assuming plane strain on the sphere
+#     u_east_current_block = strain_rate_lon_lon * (
+#         celeri.RADIUS_EARTH
+#         * (stations_block_lon - block_centroid_lon)
+#         * np.sin(block_centroid_lat)
+#     ) + strain_rate_lon_lat * (
+#         celeri.RADIUS_EARTH * (stations_block_lat - block_centroid_lat)
+#     )
+#     u_north_current_block = strain_rate_lon_lat * (
+#         celeri.RADIUS_EARTH
+#         * (stations_block_lon - block_centroid_lon)
+#         * np.sin(block_centroid_lat)
+#     ) + strain_rate_lat_lat * (
+#         celeri.RADIUS_EARTH * (stations_block_lat - block_centroid_lat)
+#     )
+#     u_east[station_block_idx] = u_east_current_block
+#     u_north[station_block_idx] = u_north_current_block
+#     return u_east, u_north, u_up
+
+
+# def get_strain_rate_centroid_operator(block, station, segment):
+#     """
+#     Calculate strain partial derivatives assuming a strain centroid at the center of each block
+#     TODO: Return something related to assembly.index???
+#     """
+#     strain_rate_block_idx = np.where(block.strain_rate_flag.to_numpy() > 0)[0]
+#     if strain_rate_block_idx.size > 0:
+#         block_strain_rate_operator = np.zeros(
+#             (3 * len(station), 3 * strain_rate_block_idx.size)
+#         )
+#         for i in range(strain_rate_block_idx.size):
+#             # Calculate partials for each component of strain rate
+#             (
+#                 vel_east_lon_lon,
+#                 vel_north_lon_lon,
+#                 vel_up_lon_lon,
+#             ) = get_strain_rate_displacements(
+#                 station,
+#                 segment,
+#                 block_idx=strain_rate_block_idx[i],
+#                 strain_rate_lon_lon=1,
+#                 strain_rate_lat_lat=0,
+#                 strain_rate_lon_lat=0,
+#             )
+#             (
+#                 vel_east_lat_lat,
+#                 vel_north_lat_lat,
+#                 vel_up_lat_lat,
+#             ) = get_strain_rate_displacements(
+#                 station,
+#                 segment,
+#                 block_idx=strain_rate_block_idx[i],
+#                 strain_rate_lon_lon=0,
+#                 strain_rate_lat_lat=1,
+#                 strain_rate_lon_lat=0,
+#             )
+#             (
+#                 vel_east_lon_lat,
+#                 vel_north_lon_lat,
+#                 vel_up_lon_lat,
+#             ) = get_strain_rate_displacements(
+#                 station,
+#                 segment,
+#                 block_idx=strain_rate_block_idx[i],
+#                 strain_rate_lon_lon=0,
+#                 strain_rate_lat_lat=0,
+#                 strain_rate_lon_lat=1,
+#             )
+
+#             # Interleave velocities and insert columns into operator
+#             vel_enu_lon_lon = interleave3(
+#                 vel_east_lon_lon, vel_north_lon_lon, vel_up_lon_lon
+#             )
+#             vel_enu_lat_lat = interleave3(
+#                 vel_east_lat_lat, vel_north_lat_lat, vel_up_lat_lat
+#             )
+#             vel_enu_lon_lat = interleave3(
+#                 vel_east_lon_lat, vel_north_lon_lat, vel_up_lon_lat
+#             )
+#             block_strain_rate_operator[:, 3 * i] = vel_enu_lon_lon
+#             block_strain_rate_operator[:, 3 * i + 1] = vel_enu_lat_lat
+#             block_strain_rate_operator[:, 3 * i + 2] = vel_enu_lon_lat
+#     else:
+#         block_strain_rate_operator = np.empty(0)
+#     return block_strain_rate_operator, strain_rate_block_idx
+
+
 def get_strain_rate_displacements(
-    station,
-    segment,
-    block_idx,
+    lon_obs,
+    lat_obs,
+    centroid_lon,
+    centroid_lat,
     strain_rate_lon_lon,
     strain_rate_lat_lat,
     strain_rate_lon_lat,
 ):
     """
-    Calculate displacements within a signble block due to three
-    strain rate components within that block.  Velocities will be
-    zero on all blocks other than than the the current block.
-
+    Calculate displacements due to three strain rate components.
     Equations are from Savage (2001) and expressed concisely in McCaffrey (2005)
     In McCaffrey (2005) these are the two unnumbered equations at the bottom
     of page 2
     """
-
-    # Find block centroids and convert to colatitude and radians
-    block_centroid_lon, block_centroid_lat = get_block_centroid(segment, block_idx)
-    block_centroid_lon = np.deg2rad(block_centroid_lon)
-    block_centroid_lat = latitude_to_colatitude(block_centroid_lat)
-    block_centroid_lat = np.deg2rad(block_centroid_lat)
-
-    # Find indices of stations on the current block and convert to colatitude and radians
-    station_block_idx = np.where(station.block_label == block_idx)[0]
-    stations_block_lon = station.lon[station_block_idx].to_numpy()
-    stations_block_lon = np.deg2rad(stations_block_lon)
-    stations_block_lat = station.lat[station_block_idx].to_numpy()
-    stations_block_lat = latitude_to_colatitude(stations_block_lat)
-    stations_block_lat = np.deg2rad(stations_block_lat)
+    centroid_lon = np.deg2rad(centroid_lon)
+    centroid_lat = celeri.latitude_to_colatitude(centroid_lat)
+    centroid_lat = np.deg2rad(centroid_lat)
+    lon_obs = np.deg2rad(lon_obs)
+    lat_obs = celeri.latitude_to_colatitude(lat_obs)
+    lat_obs = np.deg2rad(lat_obs)
 
     # Calculate displacements from homogeneous strain
-    u_east = np.zeros(len(station))
-    u_north = np.zeros(len(station))
     u_up = np.zeros(
-        len(station)
+        lon_obs.size
     )  # Always zero here because we're assuming plane strain on the sphere
-    u_east_current_block = strain_rate_lon_lon * (
-        celeri.RADIUS_EARTH
-        * (stations_block_lon - block_centroid_lon)
-        * np.sin(block_centroid_lat)
-    ) + strain_rate_lon_lat * (
-        celeri.RADIUS_EARTH * (stations_block_lat - block_centroid_lat)
-    )
-    u_north_current_block = strain_rate_lon_lat * (
-        celeri.RADIUS_EARTH
-        * (stations_block_lon - block_centroid_lon)
-        * np.sin(block_centroid_lat)
-    ) + strain_rate_lat_lat * (
-        celeri.RADIUS_EARTH * (stations_block_lat - block_centroid_lat)
-    )
-    u_east[station_block_idx] = u_east_current_block
-    u_north[station_block_idx] = u_north_current_block
+    u_east = strain_rate_lon_lon * (
+        celeri.RADIUS_EARTH * (lon_obs - centroid_lon) * np.sin(centroid_lat)
+    ) + strain_rate_lon_lat * (celeri.RADIUS_EARTH * (lat_obs - centroid_lat))
+    u_north = strain_rate_lon_lat * (
+        celeri.RADIUS_EARTH * (lon_obs - centroid_lon) * np.sin(centroid_lat)
+    ) + strain_rate_lat_lat * (celeri.RADIUS_EARTH * (lat_obs - centroid_lat))
     return u_east, u_north, u_up
 
 
@@ -1379,15 +1481,26 @@ def get_strain_rate_centroid_operator(block, station, segment):
             (3 * len(station), 3 * strain_rate_block_idx.size)
         )
         for i in range(strain_rate_block_idx.size):
+            # Find centroid of current block
+            block_centroid_lon, block_centroid_lat = celeri.get_block_centroid(
+                segment, strain_rate_block_idx[i]
+            )
+
+            # Find stations on current block
+            station_idx = np.where(station.block_label == strain_rate_block_idx[i])[0]
+            stations_block_lon = station.lon[station_idx].to_numpy()
+            stations_block_lat = station.lat[station_idx].to_numpy()
+
             # Calculate partials for each component of strain rate
             (
                 vel_east_lon_lon,
                 vel_north_lon_lon,
                 vel_up_lon_lon,
             ) = get_strain_rate_displacements(
-                station,
-                segment,
-                block_idx=strain_rate_block_idx[i],
+                stations_block_lon,
+                stations_block_lat,
+                block_centroid_lon,
+                block_centroid_lat,
                 strain_rate_lon_lon=1,
                 strain_rate_lat_lat=0,
                 strain_rate_lon_lat=0,
@@ -1397,9 +1510,10 @@ def get_strain_rate_centroid_operator(block, station, segment):
                 vel_north_lat_lat,
                 vel_up_lat_lat,
             ) = get_strain_rate_displacements(
-                station,
-                segment,
-                block_idx=strain_rate_block_idx[i],
+                stations_block_lon,
+                stations_block_lat,
+                block_centroid_lon,
+                block_centroid_lat,
                 strain_rate_lon_lon=0,
                 strain_rate_lat_lat=1,
                 strain_rate_lon_lat=0,
@@ -1409,27 +1523,27 @@ def get_strain_rate_centroid_operator(block, station, segment):
                 vel_north_lon_lat,
                 vel_up_lon_lat,
             ) = get_strain_rate_displacements(
-                station,
-                segment,
-                block_idx=strain_rate_block_idx[i],
+                stations_block_lon,
+                stations_block_lat,
+                block_centroid_lon,
+                block_centroid_lat,
                 strain_rate_lon_lon=0,
                 strain_rate_lat_lat=0,
                 strain_rate_lon_lat=1,
             )
-
-            # Interleave velocities and insert columns into operator
-            vel_enu_lon_lon = interleave3(
-                vel_east_lon_lon, vel_north_lon_lon, vel_up_lon_lon
-            )
-            vel_enu_lat_lat = interleave3(
-                vel_east_lat_lat, vel_north_lat_lat, vel_up_lat_lat
-            )
-            vel_enu_lon_lat = interleave3(
-                vel_east_lon_lat, vel_north_lon_lat, vel_up_lon_lat
-            )
-            block_strain_rate_operator[:, 3 * i] = vel_enu_lon_lon
-            block_strain_rate_operator[:, 3 * i + 1] = vel_enu_lat_lat
-            block_strain_rate_operator[:, 3 * i + 2] = vel_enu_lon_lat
+            block_strain_rate_operator[3 * station_idx, 3 * i] = vel_east_lon_lon
+            block_strain_rate_operator[3 * station_idx, 3 * i + 1] = vel_east_lat_lat
+            block_strain_rate_operator[3 * station_idx, 3 * i + 2] = vel_east_lon_lat
+            block_strain_rate_operator[3 * station_idx + 1, 3 * i] = vel_north_lon_lon
+            block_strain_rate_operator[
+                3 * station_idx + 1, 3 * i + 1
+            ] = vel_north_lat_lat
+            block_strain_rate_operator[
+                3 * station_idx + 1, 3 * i + 2
+            ] = vel_north_lon_lat
+            block_strain_rate_operator[3 * station_idx + 2, 3 * i] = vel_up_lon_lon
+            block_strain_rate_operator[3 * station_idx + 2, 3 * i + 1] = vel_up_lat_lat
+            block_strain_rate_operator[3 * station_idx + 2, 3 * i + 2] = vel_up_lon_lat
     else:
         block_strain_rate_operator = np.empty(0)
     return block_strain_rate_operator, strain_rate_block_idx
