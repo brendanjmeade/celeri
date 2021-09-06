@@ -1168,44 +1168,44 @@ def get_segment_station_operator_okada(segment, station, command):
     return okada_segment_operator
 
 
-def get_block_rotation_operator(station, block):
-    """
-    Get partial derivatives relating displacement to Euler pole rotation
-    """
-    block_rotation_operator = np.zeros((3 * len(station), 3 * len(block)))
-    for i in range(len(station)):
-        start_row_idx = 3 + i
-        start_column_idx = 3 * station.block_label[i]
-        cross_product_operator = celeri.get_cross_partials(
-            [station.x[i], station.y[i], station.z[i]]
-        )
-        vn_wx, ve_wx, vu_wx = celeri.cartesian_vector_to_spherical_vector(
-            cross_product_operator[0, 0],
-            cross_product_operator[1, 0],
-            cross_product_operator[2, 0],
-            station.lon[i],
-            station.lat[i],
-        )
-        vn_wy, ve_wy, vu_wy = celeri.cartesian_vector_to_spherical_vector(
-            cross_product_operator[0, 1],
-            cross_product_operator[1, 1],
-            cross_product_operator[2, 1],
-            station.lon[i],
-            station.lat[i],
-        )
-        vn_wz, ve_wz, vu_wz = celeri.cartesian_vector_to_spherical_vector(
-            cross_product_operator[0, 2],
-            cross_product_operator[1, 2],
-            cross_product_operator[2, 2],
-            station.lon[i],
-            station.lat[i],
-        )
-        block_rotation_operator[
-            start_row_idx : start_row_idx + 3, start_column_idx : start_column_idx + 3
-        ] = np.array(
-            [[ve_wx, ve_wy, ve_wz], [vn_wx, vn_wy, vn_wz], [vu_wx, vu_wy, vu_wz]]
-        )
-    return block_rotation_operator
+# def get_block_rotation_operator(station, block):
+#     """
+#     Get partial derivatives relating displacement to Euler pole rotation
+#     """
+#     block_rotation_operator = np.zeros((3 * len(station), 3 * len(block)))
+#     for i in range(len(station)):
+#         start_row_idx = 3 + i
+#         start_column_idx = 3 * station.block_label[i]
+#         cross_product_operator = celeri.get_cross_partials(
+#             [station.x[i], station.y[i], station.z[i]]
+#         )
+#         vn_wx, ve_wx, vu_wx = celeri.cartesian_vector_to_spherical_vector(
+#             cross_product_operator[0, 0],
+#             cross_product_operator[1, 0],
+#             cross_product_operator[2, 0],
+#             station.lon[i],
+#             station.lat[i],
+#         )
+#         vn_wy, ve_wy, vu_wy = celeri.cartesian_vector_to_spherical_vector(
+#             cross_product_operator[0, 1],
+#             cross_product_operator[1, 1],
+#             cross_product_operator[2, 1],
+#             station.lon[i],
+#             station.lat[i],
+#         )
+#         vn_wz, ve_wz, vu_wz = celeri.cartesian_vector_to_spherical_vector(
+#             cross_product_operator[0, 2],
+#             cross_product_operator[1, 2],
+#             cross_product_operator[2, 2],
+#             station.lon[i],
+#             station.lat[i],
+#         )
+#         block_rotation_operator[
+#             start_row_idx : start_row_idx + 3, start_column_idx : start_column_idx + 3
+#         ] = np.array(
+#             [[ve_wx, ve_wy, ve_wz], [vn_wx, vn_wy, vn_wz], [vu_wx, vu_wy, vu_wz]]
+#         )
+#     return block_rotation_operator
 
 
 def station_row_keep(assembly):
@@ -1226,80 +1226,80 @@ def station_row_keep(assembly):
     return assembly
 
 
-def get_strain_rate_centroid_operator(block, station, segment):
-    """
-    Calculate strain partial derivatives assuming a strain centroid at the center of each block
-    TODO: Return something related to assembly.index???
-    """
-    strain_rate_block_idx = np.where(block.strain_rate_flag.to_numpy() > 0)[0]
-    if strain_rate_block_idx.size > 0:
-        block_strain_rate_operator = np.zeros((3 * len(station), 3 * len(block)))
-        earth_radius_mm = (
-            celeri.RADIUS_EARTH * celeri.M2MM
-        )  # radius of Earth in mm, TODO: Check these units
+# def get_strain_rate_centroid_operator(block, station, segment):
+#     """
+#     Calculate strain partial derivatives assuming a strain centroid at the center of each block
+#     TODO: Return something related to assembly.index???
+#     """
+#     strain_rate_block_idx = np.where(block.strain_rate_flag.to_numpy() > 0)[0]
+#     if strain_rate_block_idx.size > 0:
+#         block_strain_rate_operator = np.zeros((3 * len(station), 3 * len(block)))
+#         earth_radius_mm = (
+#             celeri.RADIUS_EARTH * celeri.M2MM
+#         )  # radius of Earth in mm, TODO: Check these units
 
-        # Convert station positions into radians and co-latitude
-        station_lon = np.deg2rad(station.lon)
-        station_lat = station.lat.to_numpy()
-        station_lat[np.where(station_lat >= 0)[0]] = (
-            90.0 - station_lat[np.where(station_lat >= 0)[0]]
-        )
-        station_lat[np.where(station_lat < 0)[0]] = (
-            -90.0 - station_lat[np.where(station.lat < 0)[0]]
-        )
-        station_lat = np.deg2rad(station_lat)
+#         # Convert station positions into radians and co-latitude
+#         station_lon = np.deg2rad(station.lon)
+#         station_lat = station.lat.to_numpy()
+#         station_lat[np.where(station_lat >= 0)[0]] = (
+#             90.0 - station_lat[np.where(station_lat >= 0)[0]]
+#         )
+#         station_lat[np.where(station_lat < 0)[0]] = (
+#             -90.0 - station_lat[np.where(station.lat < 0)[0]]
+#         )
+#         station_lat = np.deg2rad(station_lat)
 
-        # Create array containing column index limits for the linear operator
-        first_column_idx = 3 * station.block_label
-        last_column_idx = 3 * station.block_label + 3
+#         # Create array containing column index limits for the linear operator
+#         first_column_idx = 3 * station.block_label
+#         last_column_idx = 3 * station.block_label + 3
 
-        for i in range(len(station)):
-            if block.strain_rate_flag[station.block_label[i]] == 1:
-                # The block "centroid" is only an approximation given by the mean of its coordinates
-                # This should work reasonably well for the "chopped" case but is not exact or general
-                # TODO: replace this with proper centroid calculation perhaps from geopandas:
-                # https://geopandas.org/getting_started/introduction.html
-                idx = np.union(
-                    np.where(segment.east_label == station.block_label[i])[0],
-                    np.where(segment.west_label == station.block_label[i])[0],
-                )
-                lon0 = np.mean(np.concatenate(segment.lon1[idx], segment.lon2[idx]))
-                lat0 = np.mean(np.concatenate(segment.lat1[idx], segment.lat2[idx]))
-                lon0 = np.deg2rad(lon0)
-                if lat0 >= 0:
-                    lat0 = 90.0 - lat0
-                elif lat0 < 0:
-                    lat0 = -90.0 - lat0
-                lat0 = np.deg2rad(lat0)
-                block_strain_rate_operator[
-                    3 * i : 3 * i + 3, first_column_idx[i] : last_column_idx[i]
-                ] = np.array(
-                    [
-                        [
-                            earth_radius_mm * (station_lon[i] - lon0) * np.sin(lat0),
-                            earth_radius_mm * (station_lat[i] - lat0),
-                            0,
-                        ],
-                        [
-                            0,
-                            earth_radius_mm * (station_lon[i] - lon0) * np.sin(lat0),
-                            earth_radius_mm * (station_lat[i] - lat0),
-                        ],
-                        [0, 0, 0],
-                    ]
-                )
+#         for i in range(len(station)):
+#             if block.strain_rate_flag[station.block_label[i]] == 1:
+#                 # The block "centroid" is only an approximation given by the mean of its coordinates
+#                 # This should work reasonably well for the "chopped" case but is not exact or general
+#                 # TODO: replace this with proper centroid calculation perhaps from geopandas:
+#                 # https://geopandas.org/getting_started/introduction.html
+#                 idx = np.union(
+#                     np.where(segment.east_label == station.block_label[i])[0],
+#                     np.where(segment.west_label == station.block_label[i])[0],
+#                 )
+#                 lon0 = np.mean(np.concatenate(segment.lon1[idx], segment.lon2[idx]))
+#                 lat0 = np.mean(np.concatenate(segment.lat1[idx], segment.lat2[idx]))
+#                 lon0 = np.deg2rad(lon0)
+#                 if lat0 >= 0:
+#                     lat0 = 90.0 - lat0
+#                 elif lat0 < 0:
+#                     lat0 = -90.0 - lat0
+#                 lat0 = np.deg2rad(lat0)
+#                 block_strain_rate_operator[
+#                     3 * i : 3 * i + 3, first_column_idx[i] : last_column_idx[i]
+#                 ] = np.array(
+#                     [
+#                         [
+#                             earth_radius_mm * (station_lon[i] - lon0) * np.sin(lat0),
+#                             earth_radius_mm * (station_lat[i] - lat0),
+#                             0,
+#                         ],
+#                         [
+#                             0,
+#                             earth_radius_mm * (station_lon[i] - lon0) * np.sin(lat0),
+#                             earth_radius_mm * (station_lat[i] - lat0),
+#                         ],
+#                         [0, 0, 0],
+#                     ]
+#                 )
 
-        # Keep only those columns with non-zero entries
-        # Approach taken from: https://stackoverflow.com/questions/36233918/find-indices-of-columns-having-some-nonzero-element-in-a-2d-array
-        keep_columns = np.nonzero(np.any(block_strain_rate_operator != 0, axis=0))[0]
-        block_strain_rate_operator = block_strain_rate_operator[:, keep_columns]
-    else:
-        block_strain_rate_operator = np.empty(0)
+#         # Keep only those columns with non-zero entries
+#         # Approach taken from: https://stackoverflow.com/questions/36233918/find-indices-of-columns-having-some-nonzero-element-in-a-2d-array
+#         keep_columns = np.nonzero(np.any(block_strain_rate_operator != 0, axis=0))[0]
+#         block_strain_rate_operator = block_strain_rate_operator[:, keep_columns]
+#     else:
+#         block_strain_rate_operator = np.empty(0)
 
-    # TODO: Write a test here that checks the number of stations on each block that includes
-    # internal strain.  Send an error if any of those blocks have less the command.min_n_stations_strain_rate_block
+#     # TODO: Write a test here that checks the number of stations on each block that includes
+#     # internal strain.  Send an error if any of those blocks have less the command.min_n_stations_strain_rate_block
 
-    return block_strain_rate_operator, strain_rate_block_idx
+#     return block_strain_rate_operator, strain_rate_block_idx
 
 
 def mogi_forward(mogi_lon, mogi_lat, mogi_depth, poissons_ratio, obs_lon, obs_lat):
@@ -1551,7 +1551,137 @@ def get_strain_rate_centroid_operator(block, station, segment):
     return block_strain_rate_operator, strain_rate_block_idx
 
 
-get_block_rotation_operator
+def get_rotation_displacements(lon_obs, lat_obs, omega_x, omega_y, omega_z):
+    """
+    Get displacments at at longitude and latitude coordinates given rotation
+    vector components (omega_x, omega_y, omega_z)
+    """
+    vel_east = np.zeros(lon_obs.size)
+    vel_north = np.zeros(lon_obs.size)
+    vel_up = np.zeros(lon_obs.size)
+    x, y, z = celeri.sph2cart(lon_obs, lat_obs, celeri.RADIUS_EARTH)
+    for i in range(lon_obs.size):
+        cross_product_operator = celeri.get_cross_partials([x[i], y[i], z[i]])
+        (
+            vel_north_from_omega_x,
+            vel_east_from_omega_x,
+            vel_up_from_omega_x,
+        ) = celeri.cartesian_vector_to_spherical_vector(
+            cross_product_operator[0, 0],
+            cross_product_operator[1, 0],
+            cross_product_operator[2, 0],
+            lon_obs[i],
+            lat_obs[i],
+        )
+        (
+            vel_north_from_omega_y,
+            vel_east_from_omega_y,
+            vel_up_from_omega_y,
+        ) = celeri.cartesian_vector_to_spherical_vector(
+            cross_product_operator[0, 1],
+            cross_product_operator[1, 1],
+            cross_product_operator[2, 1],
+            lon_obs[i],
+            lat_obs[i],
+        )
+        (
+            vel_north_from_omega_z,
+            vel_east_from_omega_z,
+            vel_up_from_omega_z,
+        ) = celeri.cartesian_vector_to_spherical_vector(
+            cross_product_operator[0, 2],
+            cross_product_operator[1, 2],
+            cross_product_operator[2, 2],
+            lon_obs[i],
+            lat_obs[i],
+        )
+        vel_east[i] = (
+            omega_x * vel_east_from_omega_x
+            + omega_y * vel_east_from_omega_y
+            + omega_z * vel_east_from_omega_z
+        )
+        vel_north[i] = (
+            omega_x * vel_north_from_omega_x
+            + omega_y * vel_north_from_omega_y
+            + omega_z * vel_north_from_omega_z
+        )
+    return vel_east, vel_north, vel_up
+
+
+def get_block_rotation_operator(station):
+    """
+    Calculate block rotation partials operator for stations in dataframe
+    station.
+    """
+    n_blocks = (
+        np.max(station.block_label.values) + 1
+    )  # +1 required so that a single block with index zero still propagates
+    block_rotation_operator = np.zeros((3 * len(station), 3 * n_blocks))
+    for i in range(n_blocks):
+        station_idx = np.where(station.block_label == i)[0]
+        (
+            vel_east_omega_x,
+            vel_north_omega_x,
+            vel_up_omega_x,
+        ) = get_rotation_displacements(
+            station.lon.values[station_idx],
+            station.lat.values[station_idx],
+            omega_x=1,
+            omega_y=0,
+            omega_z=0,
+        )
+        (
+            vel_east_omega_y,
+            vel_north_omega_y,
+            vel_up_omega_y,
+        ) = get_rotation_displacements(
+            station.lon.values[station_idx],
+            station.lat.values[station_idx],
+            omega_x=0,
+            omega_y=1,
+            omega_z=0,
+        )
+        (
+            vel_east_omega_z,
+            vel_north_omega_z,
+            vel_up_omega_z,
+        ) = get_rotation_displacements(
+            station.lon.values[station_idx],
+            station.lat.values[station_idx],
+            omega_x=0,
+            omega_y=0,
+            omega_z=1,
+        )
+        block_rotation_operator[3 * station_idx, 3 * i] = vel_east_omega_x
+        block_rotation_operator[3 * station_idx, 3 * i + 1] = vel_east_omega_y
+        block_rotation_operator[3 * station_idx, 3 * i + 2] = vel_east_omega_z
+        block_rotation_operator[3 * station_idx + 1, 3 * i] = vel_north_omega_x
+        block_rotation_operator[3 * station_idx + 1, 3 * i + 1] = vel_north_omega_y
+        block_rotation_operator[3 * station_idx + 1, 3 * i + 2] = vel_north_omega_z
+        block_rotation_operator[3 * station_idx + 2, 3 * i] = vel_up_omega_x
+        block_rotation_operator[3 * station_idx + 2, 3 * i + 1] = vel_up_omega_y
+        block_rotation_operator[3 * station_idx + 2, 3 * i + 2] = vel_up_omega_z
+    return block_rotation_operator
+
+
+def get_global_float_block_rotation_operator(station):
+    """
+    Return a linear operator for the rotations of all stations assuming they
+    are the on the same block (i.e., the globe). The purpose of this is to
+    allow all of the stations to "float" in the inverse problem reducing the
+    dependence on reference frame specification. This is done by making a
+    copy of the station data frame, setting "block_label" for all stations
+    equal to zero and then calling the standard block rotation operator
+    function. The matrix returned here only has 3 columns
+    """
+    station_all_on_one_block = station.copy()
+    station_all_on_one_block.block_label.values[
+        :
+    ] = 0  # Force all stations to be on one block
+    global_float_block_rotation_operator = get_block_rotation_operator(
+        station_all_on_one_block
+    )
+    return global_float_block_rotation_operator
 
 
 def plot_block_labels(segment, block, station, closure):
@@ -1715,6 +1845,85 @@ def plot_strain_rate_components_for_block(closure, segment, station, block_idx):
         strain_rate_lon_lon=0,
         strain_rate_lat_lat=0,
         strain_rate_lon_lat=1,
+    )
+    for i in range(closure.n_polygons()):
+        plt.plot(
+            closure.polygons[i].vertices[:, 0],
+            closure.polygons[i].vertices[:, 1],
+            "k-",
+            linewidth=0.5,
+        )
+    plt.quiver(
+        station.lon,
+        station.lat,
+        vel_east,
+        vel_north,
+        scale=1e7,
+        scale_units="inches",
+        color="r",
+    )
+    plt.show()
+
+
+def plot_rotation_components(closure, station):
+    plt.figure(figsize=(10, 3))
+    plt.subplot(1, 3, 1)
+    vel_east, vel_north, vel_up = get_rotation_displacements(
+        station.lon.values,
+        station.lat.values,
+        omega_x=1,
+        omega_y=0,
+        omega_z=0,
+    )
+    for i in range(closure.n_polygons()):
+        plt.plot(
+            closure.polygons[i].vertices[:, 0],
+            closure.polygons[i].vertices[:, 1],
+            "k-",
+            linewidth=0.5,
+        )
+    plt.quiver(
+        station.lon,
+        station.lat,
+        vel_east,
+        vel_north,
+        scale=1e7,
+        scale_units="inches",
+        color="r",
+    )
+
+    plt.subplot(1, 3, 2)
+    vel_east, vel_north, vel_up = get_rotation_displacements(
+        station.lon.values,
+        station.lat.values,
+        omega_x=0,
+        omega_y=1,
+        omega_z=0,
+    )
+    for i in range(closure.n_polygons()):
+        plt.plot(
+            closure.polygons[i].vertices[:, 0],
+            closure.polygons[i].vertices[:, 1],
+            "k-",
+            linewidth=0.5,
+        )
+    plt.quiver(
+        station.lon,
+        station.lat,
+        vel_east,
+        vel_north,
+        scale=1e7,
+        scale_units="inches",
+        color="r",
+    )
+
+    plt.subplot(1, 3, 3)
+    vel_east, vel_north, vel_up = get_rotation_displacements(
+        station.lon.values,
+        station.lat.values,
+        omega_x=0,
+        omega_y=0,
+        omega_z=1,
     )
     for i in range(closure.n_polygons()):
         plt.plot(
