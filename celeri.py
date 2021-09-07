@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import okada_wrapper
+import cutde.halfspace as cutde_halfspace
 from loguru import logger
 from tqdm.notebook import tqdm
 
@@ -1604,6 +1605,166 @@ def plot_block_labels(segment, block, station, closure):
 
     plt.gca().set_aspect("equal")
     plt.show()
+
+
+def get_transverse_projection(lon0, lat0):
+    """
+    Use pyproj oblique mercator: https://proj.org/operations/projections/tmerc.html
+    """
+    if lon0 > 180.0:
+        lon0 = lon0 - 360
+    projection_string = (
+        "+proj=tmerc "
+        + "+lon_0="
+        + str(lon0)
+        + " "
+        + "+lat_0="
+        + str(lat0)
+        + " "
+        + "+ellps=WGS84"
+    )
+    projection = pyproj.Proj(pyproj.CRS.from_proj4(projection_string))
+    return projection
+
+
+def get_tri_displacements(
+    obs_lon,
+    obs_lat,
+    meshes,
+    material_lambda,
+    material_mu,
+    tri_idx,
+    strike_slip,
+    dip_slip,
+    tensile_slip,
+):
+    """
+    Calculate surface displacments due to slip on a triangular dislocation
+    element in a half space.  Includes projection from longitude and
+    latitude to locally tangent planar coordinate system.
+    """
+    poissons_ratio = material_mu / (2 * (material_mu + material_lambda))
+
+    # Project coordinates
+    tri_centroid_lon = meshes[0].centroids[tri_idx, 0]
+    tri_centroid_lat = meshes[0].centroids[tri_idx, 1]
+    projection = get_transverse_projection(tri_centroid_lon, tri_centroid_lat)
+    obs_x, obs_y = projection(obs_lon, obs_lat)
+    tri_x1, tri_y1 = projection(meshes[0].lon1[tri_idx], meshes[0].lat1[tri_idx])
+    tri_x2, tri_y2 = projection(meshes[0].lon2[tri_idx], meshes[0].lat2[tri_idx])
+    tri_x3, tri_y3 = projection(meshes[0].lon3[tri_idx], meshes[0].lat3[tri_idx])
+    tri_z1 = celeri.KM2M * meshes[0].dep1[tri_idx]
+    tri_z2 = celeri.KM2M * meshes[0].dep2[tri_idx]
+    tri_z3 = celeri.KM2M * meshes[0].dep3[tri_idx]
+
+    # Package coordinates for cutde call
+    obs_coords = np.vstack((obs_x, obs_y, np.zeros_like(obs_x))).T
+    tri_coords = np.array(
+        [[tri_x1, tri_y1, tri_z1], [tri_x2, tri_y2, tri_z2], [tri_x3, tri_y3, tri_z3]]
+    )
+
+    # Call cutde, multiply by displacements, and package for the return
+    disp_mat = cutde_halfspace.disp_matrix(
+        obs_pts=obs_coords, tris=np.array([tri_coords]), nu=poissons_ratio
+    )
+    slip = np.array([[strike_slip, dip_slip, tensile_slip]])
+    disp = disp_mat.reshape((-1, 3)).dot(slip.flatten())
+    vel_east = disp[0::3]
+    vel_north = disp[1::3]
+    vel_up = disp[2::3]
+    return vel_east, vel_north, vel_up
+
+
+def get_tri_station_operator_okada(meshes, station, command):
+    """
+    Calculates the elastic displacement partial derivatives based on the
+    T. Ben Thomposon cutde of the Nikhool and Walters (2015) equations
+    for the displacements resulting from slip on a triangular
+    dislocation in a homogeneous elastic half space.
+
+    The linear operator is structured as ():
+
+                ss(tri1)  ds(tri1) ts(tri1) ... ss(triN) ds(triN) ts(triN)
+    ve(station 1)
+    vn(station 1)
+    vu(station 1)
+    .
+    .
+    .
+    ve(station N)
+    vn(station N)
+    vu(station N)
+
+    """
+    if len(meshes) > 0:
+        n_tris = meshes[0].lon1.size
+        if not station.empty:
+            tri_operator = np.zeros((3 * len(station), 3 * n_tris))
+
+            # Loop through each segment and calculate displacements for each slip component
+            for i in tqdm(
+                range(n_tris), desc="Calculating cutde partials for triangles"
+            ):
+                # for i in tqdm(range(100), desc="Calculating cutde partials for triangles"):
+                (
+                    vel_east_strike_slip,
+                    vel_north_strike_slip,
+                    vel_up_strike_slip,
+                ) = get_tri_displacements(
+                    station.lon.to_numpy(),
+                    station.lat.to_numpy(),
+                    meshes,
+                    command.material_lambda,
+                    command.material_mu,
+                    tri_idx=i,
+                    strike_slip=1,
+                    dip_slip=0,
+                    tensile_slip=0,
+                )
+                (
+                    vel_east_dip_slip,
+                    vel_north_dip_slip,
+                    vel_up_dip_slip,
+                ) = get_tri_displacements(
+                    station.lon.to_numpy(),
+                    station.lat.to_numpy(),
+                    meshes,
+                    command.material_lambda,
+                    command.material_mu,
+                    tri_idx=i,
+                    strike_slip=0,
+                    dip_slip=1,
+                    tensile_slip=0,
+                )
+                (
+                    vel_east_tensile_slip,
+                    vel_north_tensile_slip,
+                    vel_up_tensile_slip,
+                ) = get_tri_displacements(
+                    station.lon.to_numpy(),
+                    station.lat.to_numpy(),
+                    meshes,
+                    command.material_lambda,
+                    command.material_mu,
+                    tri_idx=i,
+                    strike_slip=0,
+                    dip_slip=0,
+                    tensile_slip=1,
+                )
+                tri_operator[0::3, 3 * i] = np.squeeze(vel_east_strike_slip)
+                tri_operator[1::3, 3 * i] = np.squeeze(vel_north_strike_slip)
+                tri_operator[2::3, 3 * i] = np.squeeze(vel_up_strike_slip)
+                tri_operator[0::3, 3 * i + 1] = np.squeeze(vel_east_dip_slip)
+                tri_operator[1::3, 3 * i + 1] = np.squeeze(vel_north_dip_slip)
+                tri_operator[2::3, 3 * i + 1] = np.squeeze(vel_up_dip_slip)
+                tri_operator[0::3, 3 * i + 2] = np.squeeze(vel_east_tensile_slip)
+                tri_operator[1::3, 3 * i + 2] = np.squeeze(vel_north_tensile_slip)
+                tri_operator[2::3, 3 * i + 2] = np.squeeze(vel_up_tensile_slip)
+        else:
+            tri_operator = np.empty(0)
+    else:
+        tri_operator = np.empty(0)
+    return tri_operator
 
 
 def plot_segment_displacements(
