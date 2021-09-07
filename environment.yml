@@ -15,6 +15,7 @@ dependencies:
   - tqdm
   - compilers
   - fortran-compiler
+  - cutde
   - pip
   - pip:
     - spherical_geometry
