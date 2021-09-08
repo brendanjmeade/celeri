@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.com/brendanjmeade/celeri.svg?branch=master)](https://travis-ci.com/brendanjmeade/celeri)
+
 ## celeri
 - Next generation earthquake cycle and surface deformation modeling
 - A python port, reworking, and extension of the Matlab-based [blocks](https://github.com/jploveless/Blocks).
