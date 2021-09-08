@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.com/brendanjmeade/celeri.svg?branch=master)](https://travis-ci.com/brendanjmeade/celeri)
+![example workflow](https://github.com/brendanjmeade/celeri/actions/workflows/test.yml/badge.svg)
 
 ## celeri
 - Next generation earthquake cycle and surface deformation modeling
