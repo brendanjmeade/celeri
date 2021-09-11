@@ -21,3 +21,4 @@ dependencies:
     - spherical_geometry
     - loguru
     - okada_wrapper
+    - pygmt
