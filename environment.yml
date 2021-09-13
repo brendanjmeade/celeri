@@ -16,6 +16,7 @@ dependencies:
   - compilers
   - fortran-compiler
   - cutde
+  - ghostscript
   - pip
   - pip:
     - spherical_geometry
