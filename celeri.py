@@ -1911,6 +1911,25 @@ def get_tri_smoothing_matrix(share, tri_shared_sides_distances):
     return smoothing_matrix
 
 
+def get_all_mesh_smoothing_matrices(meshes):
+    """
+    Build smoothing matrices for each of the triangular meshes
+    stored in meshes
+    """
+    for i in range(len(meshes)):
+        # Get smoothing operator for a single mesh.
+        meshes[i].share = celeri.get_shared_sides(meshes[i].verts)
+        meshes[i].tri_shared_sides_distances = celeri.get_tri_shared_sides_distances(
+            meshes[i].share,
+            meshes[i].x_centroid,
+            meshes[i].x_centroid,
+            meshes[i].x_centroid,
+        )
+        meshes[i].smoothing_matrix = celeri.get_tri_smoothing_matrix(
+            meshes[i].share, meshes[i].tri_shared_sides_distances
+        )
+
+
 def plot_segment_displacements(
     segment,
     station,
