@@ -3,7 +3,7 @@ import copy
 import datetime
 import json
 import meshio
-import os
+import scipy
 import pyproj
 import matplotlib.pyplot as plt
 import numpy as np
@@ -81,6 +81,12 @@ def read_data(command_file_name):
             meshes[i].lat3,
             celeri.RADIUS_EARTH + KM2M * meshes[i].dep3,
         )
+
+        # Cartesian triangle centroids
+        meshes[i].x_centroid = (meshes[i].x1 + meshes[i].x2 + meshes[i].x3) / 3.0
+        meshes[i].y_centroid = (meshes[i].y1 + meshes[i].y2 + meshes[i].y3) / 3.0
+        meshes[i].z_centroid = (meshes[i].z1 + meshes[i].z2 + meshes[i].z3) / 3.0
+
         # Cross products for orientations
         tri_leg1 = np.transpose(
             [
@@ -1668,7 +1674,9 @@ def get_tri_displacements(
         obs_pts=obs_coords, tris=np.array([tri_coords]), nu=poissons_ratio
     )
     slip = np.array([[strike_slip, dip_slip, tensile_slip]])
-    disp = disp_mat.reshape((-1, 3)).dot(slip.flatten())
+    disp = disp_mat.reshape((-1, 3)).dot(
+        slip.flatten()
+    )  # TODO: #35 Ben what are the slip components for cutde?
     vel_east = disp[0::3]
     vel_north = disp[1::3]
     vel_up = disp[2::3]
@@ -1765,6 +1773,142 @@ def get_tri_station_operator_okada(meshes, station, command):
     else:
         tri_operator = np.empty(0)
     return tri_operator
+
+
+def get_shared_sides(vertices):
+    """
+    Determine the indices of the triangular elements sharing
+    one side with a particular element.
+    Inputs:
+    vertices: n x 3 array containing the 3 vertex indices of the n elements,
+        assumes that values increase monotonically from 1:n
+
+    Outputs:
+    share: n x 3 array containing the indices of the m elements sharing a
+        side with each of the n elements.  "-1" values in the array
+        indicate elements with fewer than m neighbors (i.e., on
+        the edge of the geometry).
+
+    In general, elements will have 1 (mesh corners), 2 (mesh edges), or 3
+    (mesh interiors) neighbors, but in the case of branching faults that
+    have been adjusted with mergepatches, it's for edges and corners to
+    also up to 3 neighbors.
+    """
+    # Make side arrays containing vertex indices of sides
+    side_1 = np.sort(np.vstack((vertices[:, 0], vertices[:, 1])).T, 1)
+    side_2 = np.sort(np.vstack((vertices[:, 1], vertices[:, 2])).T, 1)
+    side_3 = np.sort(np.vstack((vertices[:, 0], vertices[:, 2])).T, 1)
+    sides_all = np.vstack((side_1, side_2, side_3))
+
+    # Find the unique sides - each side can part of at most 2 elements
+    _, first_occurence_idx = np.unique(sides_all, return_index=True, axis=0)
+    _, last_occurence_idx = np.unique(np.flipud(sides_all), return_index=True, axis=0)
+    last_occurence_idx = sides_all.shape[0] - last_occurence_idx - 1
+
+    # Shared sides are those whose first and last indices are not equal
+    shared = np.where((last_occurence_idx - first_occurence_idx) != 0)[0]
+
+    # These are the indices of the shared sides
+    sside1 = first_occurence_idx[shared]  # What should I name these variables?
+    sside2 = last_occurence_idx[shared]
+
+    el1, sh1 = np.unravel_index(
+        sside1, vertices.shape, order="F"
+    )  # "F" is for fortran ordering.  What should I call this variables?
+    el2, sh2 = np.unravel_index(sside2, vertices.shape, order="F")
+    share = -1 * np.ones((vertices.shape[0], 3))
+    for i in range(el1.size):
+        share[el1[i], sh1[i]] = el2[i]
+        share[el2[i], sh2[i]] = el1[i]
+    share = share.astype(int)
+    return share
+
+
+def get_tri_shared_sides_distances(share, x_centroid, y_centroid, z_centroid):
+    """
+    Calculates the distances between the centroids of adjacent triangular
+    elements, for use in smoothing algorithms.
+
+    Inputs:
+    share: n x 3 array output from ShareSides, containing the indices
+        of up to 3 elements that share a side with each of the n elements.
+    x_centroid: x coordinates of element centroids
+    y_centroid: y coordinates of element centroids
+    z_centroid: z coordinates of element centroids
+
+    Outputs:
+    dists: n x 3 array containing distance between each of the n elements
+        and its 3 or fewer neighbors.  A distance of 0 does not imply
+        collocated elements, but rather implies that there are fewer
+        than 3 elements that share a side with the element in that row.
+    """
+    tri_shared_sides_distances = np.zeros(share.shape)
+    for i in range(share.shape[0]):
+        share[i, np.where(share[i, :] == -1)[0]] = i
+        tri_shared_sides_distances[i, :] = np.sqrt(
+            (x_centroid[i] - x_centroid[share[i, :]]) ** 2.0
+            + (y_centroid[i] - y_centroid[share[i, :]]) ** 2.0
+            + (z_centroid[i] - z_centroid[share[i, :]]) ** 2.0
+        )
+    return tri_shared_sides_distances
+
+
+def get_tri_smoothing_matrix(share, tri_shared_sides_distances):
+    """
+    Produces a smoothing matrix based on the scale-dependent
+    umbrella operator (e.g., Desbrun et al., 1999; Resor, 2004).
+
+    Inputs:
+    share: n x 3 array of indices of the up to 3 elements sharing a side
+        with each of the n elements
+    tri_shared_sides_distances: n x 3 array of distances between each of the
+        n elements and its up to 3 neighbors
+
+    Outputs:
+    smoothing matrix: 3n x 3n smoothing matrix
+    """
+
+    # Allocate sparse matrix for contructing smoothing matrix
+    n_shared_tris = share.shape[0]
+    smoothing_matrix = scipy.sparse.lil_matrix((3 * n_shared_tris, 3 * n_shared_tris))
+
+    # Create a design matrix for Laplacian construction
+    share_copy = copy.deepcopy(share)
+    share_copy[np.where(share != 0)[0]] = 1
+
+    # Sum the distances between each element and its neighbors
+    share_distances = np.sum(tri_shared_sides_distances, axis=1)
+    leading_coefficient = 2.0 / share_distances
+
+    # Replace zero distances with 1 to avoid divide by zero.  TODO: should this be capped at a maximum value?
+    tri_shared_sides_distances[np.where(tri_shared_sides_distances == 0)] = 1
+
+    # Take the reciprocal of the distances
+    inverse_tri_shared_sides_distances = 1.0 / tri_shared_sides_distances
+
+    # Diagonal terms # TODO: Defnitely not sure about his line!!!
+    diagonal_terms = -leading_coefficient * np.sum(
+        inverse_tri_shared_sides_distances
+        * np.vstack((share_distances, share_distances, share_distances)).T,
+        1,
+    )
+
+    # Off-diagonal terms
+    off_diagonal_terms = (
+        np.vstack((leading_coefficient, leading_coefficient, leading_coefficient)).T
+        * inverse_tri_shared_sides_distances
+        * share_copy
+    )
+
+    # Place the weights into the smoothing operator
+    for j in range(3):
+        for i in range(10):
+            smoothing_matrix[3 * i + j, 3 * i + j] = diagonal_terms[i]
+            if share[i, j] != 0:
+                k = 3 * i + np.array([0, 1, 2])
+                m = 3 * share[i, j] + np.array([0, 1, 2])
+                smoothing_matrix[k, m] = off_diagonal_terms[i, j]
+    return smoothing_matrix
 
 
 def plot_segment_displacements(
