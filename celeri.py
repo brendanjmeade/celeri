@@ -1870,46 +1870,44 @@ def get_tri_smoothing_matrix(share, tri_shared_sides_distances):
 
     # Allocate sparse matrix for contructing smoothing matrix
     n_shared_tris = share.shape[0]
-    smoothing_matrix = np.zeros((3 * n_shared_tris, 3* n_shared_tris))
-    
+    smoothing_matrix = scipy.sparse.lil_matrix((3 * n_shared_tris, 3 * n_shared_tris))
+
     # Create a design matrix for Laplacian construction
     share_copy = celeri.copy.deepcopy(share)
     share_copy[np.where(share == -1)] = 0
     share_copy[np.where(share != -1)] = 1
-    
+
     # Sum the distances between each element and its neighbors
     share_distances = np.sum(tri_shared_sides_distances, axis=1)
     leading_coefficient = 2.0 / share_distances
-    
-    # Replace zero distances with 1 to avoid divide by zero.  TODO: should this be capped at a 
+
+    # Replace zero distances with 1 to avoid divide by zero.  TODO: should this be capped at a
     tri_shared_sides_distances[np.where(tri_shared_sides_distances == 0)] = 1
-    
+
     # Take the reciprocal of the distances
     inverse_tri_shared_sides_distances = 1.0 / tri_shared_sides_distances
-    
+
     # Diagonal terms # TODO: Defnitely not sure about his line!!!
     diagonal_terms = -leading_coefficient * np.sum(
-        inverse_tri_shared_sides_distances
-        * share_copy,
+        inverse_tri_shared_sides_distances * share_copy,
         axis=1,
-    	)
-    
+    )
+
     # Off-diagonal terms
     off_diagonal_terms = (
         np.vstack((leading_coefficient, leading_coefficient, leading_coefficient)).T
         * inverse_tri_shared_sides_distances
         * share_copy
-        )
-    
+    )
+
     # Place the weights into the smoothing operator
     for j in range(3):
         for i in range(n_shared_tris):
             smoothing_matrix[3 * i + j, 3 * i + j] = diagonal_terms[i]
             if share[i, j] != -1:
-                k = 3 * i + np.array([0, 1, 2]) 
+                k = 3 * i + np.array([0, 1, 2])
                 m = 3 * share[i, j] + np.array([0, 1, 2])
-                off_diagonal_index = np.ravel_multi_index((k, m), dims=(smoothing_matrix.shape), order='F')
-                smoothing_matrix.flat[off_diagonal_index] = off_diagonal_terms[i, j]	
+                smoothing_matrix[k, m] = off_diagonal_terms[i, j]
     return smoothing_matrix
 
 
