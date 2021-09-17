@@ -1,12 +1,13 @@
 [
     {
         "mesh_filename": "./data/western_north_america/slab_contours_GCS_WGS84-trench_LL.msh",
-        "smoothing": 400.0,
+        "smoothing_weight": 1e5,
         "edge_constraints": [
             0,
             1,
             0
         ],
+        "n_eigenvalues": 20,
         "a_priori_slip_filename": ""
     }
 ]

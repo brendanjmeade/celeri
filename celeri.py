@@ -47,9 +47,13 @@ def read_data(command_file_name):
     # Read mesh data - List of dictionary version
     with open(command.mesh_parameters_file_name, "r") as f:
         mesh_param = json.load(f)
+
     meshes = []
     for i in range(len(mesh_param)):
         meshes.append(addict.Dict())
+        meshes[i].smoothing_weight = mesh_param[i]["smoothing_weight"]
+        meshes[i].n_eigenvalues = mesh_param[i]["n_eigenvalues"]
+        meshes[i].edge_constraints = mesh_param[i]["edge_constraints"]
         meshes[i].meshio_object = meshio.read(mesh_param[i]["mesh_filename"])
         meshes[i].verts = meshes[i].meshio_object.get_cells_type("triangle")
         # Expand mesh coordinates
