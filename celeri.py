@@ -6,6 +6,7 @@ import meshio
 import scipy
 import pyproj
 import matplotlib.pyplot as plt
+import warnings
 import numpy as np
 import pandas as pd
 import okada_wrapper
@@ -51,9 +52,6 @@ def read_data(command_file_name):
     meshes = []
     for i in range(len(mesh_param)):
         meshes.append(addict.Dict())
-        meshes[i].smoothing_weight = mesh_param[i]["smoothing_weight"]
-        meshes[i].n_eigenvalues = mesh_param[i]["n_eigenvalues"]
-        meshes[i].edge_constraints = mesh_param[i]["edge_constraints"]
         meshes[i].meshio_object = meshio.read(mesh_param[i]["mesh_filename"])
         meshes[i].verts = meshes[i].meshio_object.get_cells_type("triangle")
         # Expand mesh coordinates
@@ -117,6 +115,9 @@ def read_data(command_file_name):
         meshes[i].strike = celeri.wrap2360(-np.rad2deg(azimuth))
         meshes[i].dip = 90 - np.rad2deg(elevation)
         meshes[i].dip_flag = meshes[i].dip != 90
+        meshes[i].smoothing_weight = mesh_param[i]["smoothing_weight"]
+        meshes[i].n_eigenvalues = mesh_param[i]["n_eigenvalues"]
+        meshes[i].edge_constraints = mesh_param[i]["edge_constraints"]
 
     # Read station data
     if (
@@ -1674,13 +1675,13 @@ def get_tri_displacements(
     )
 
     # Call cutde, multiply by displacements, and package for the return
-    disp_mat = cutde_halfspace.disp_matrix(
-        obs_pts=obs_coords, tris=np.array([tri_coords]), nu=poissons_ratio
-    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        disp_mat = cutde_halfspace.disp_matrix(
+            obs_pts=obs_coords, tris=np.array([tri_coords]), nu=poissons_ratio
+        )
     slip = np.array([[strike_slip, dip_slip, tensile_slip]])
-    disp = disp_mat.reshape((-1, 3)).dot(
-        slip.flatten()
-    )  # TODO: #35 Ben what are the slip components for cutde?
+    disp = disp_mat.reshape((-1, 3)).dot(slip.flatten())
     vel_east = disp[0::3]
     vel_north = disp[1::3]
     vel_up = disp[2::3]
