@@ -2328,4 +2328,6 @@ def test_okada_equals_cutde():
     # plt.colorbar()
     # plt.show()
 
-    np.testing.assert_almost_equal(field_cutde, field_okada)
+    np.testing.assert_almost_equal(u_cutde[:,0], u_x_okada)
+    np.testing.assert_almost_equal(u_cutde[:,1], u_y_okada)
+    np.testing.assert_almost_equal(u_cutde[:,2], u_z_okada)
