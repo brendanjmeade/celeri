@@ -2317,14 +2317,15 @@ def test_okada_equals_cutde():
     # for every observation point.
     u_cutde = np.sum(disp_mat.dot(slip[0]), axis=2)
 
-    field_cutde = u_cutde[:,0].reshape((nx, ny))
-    field_okada = u_x_okada.reshape((nx, ny))
-    plt.subplot(1,2,1)
-    plt.contourf(x_obs_mat, y_obs_mat, field_cutde)
-    plt.colorbar()
-    plt.subplot(1,2,2)
-    plt.contourf(x_obs_mat, y_obs_mat, field_okada)
-    plt.colorbar()
-    plt.show()
+    # Uncomment to plot.
+    # field_cutde = u_cutde[:,0].reshape((nx, ny))
+    # field_okada = u_x_okada.reshape((nx, ny))
+    # plt.subplot(1,2,1)
+    # plt.contourf(x_obs_mat, y_obs_mat, field_cutde)
+    # plt.colorbar()
+    # plt.subplot(1,2,2)
+    # plt.contourf(x_obs_mat, y_obs_mat, field_okada)
+    # plt.colorbar()
+    # plt.show()
 
     np.testing.assert_almost_equal(field_cutde, field_okada)
