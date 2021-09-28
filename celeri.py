@@ -2208,8 +2208,11 @@ def test_okada_equals_cutde():
     x_obs = np.array([2.0])
     y_obs = np.array([1.0])
     z_obs = np.array([0.0])
-    x_obs_vec = np.linspace(-5.0, 5.0, 10)
-    y_obs_vec = np.linspace(-5.0, 5.0, 10)
+
+    nx = ny = 100
+    x_obs_vec = np.linspace(-1.0, 1.0, nx)
+    y_obs_vec = np.linspace(-1.0, 1.0, ny)
+
     x_obs_mat, y_obs_mat = np.meshgrid(x_obs_vec, y_obs_vec)
     x_obs = x_obs_mat.flatten()
     y_obs = y_obs_mat.flatten()
@@ -2219,9 +2222,6 @@ def test_okada_equals_cutde():
     u_x_okada = np.zeros_like(x_obs)
     u_y_okada = np.zeros_like(y_obs)
     u_z_okada = np.zeros_like(z_obs)
-    u_x_cutde = np.zeros_like(x_obs)
-    u_y_cutde = np.zeros_like(y_obs)
-    u_z_cutde = np.zeros_like(z_obs)
 
     # Material properties
     material_lambda = 3e10
@@ -2237,7 +2237,7 @@ def test_okada_equals_cutde():
     # Parameters for Okada
     segment_locking_depth = 1.0
     segment_dip = 90
-    segment_length = 0.5
+    segment_length = 1.0
     segment_up_dip_width = segment_locking_depth
 
     # Okada
@@ -2249,7 +2249,7 @@ def test_okada_equals_cutde():
                 y_obs[i],
                 z_obs[i],
             ],  # (meters) observation point
-            -segment_locking_depth,  # (meters) depth of the fault origin
+            segment_locking_depth,  # (meters) depth of the fault origin
             segment_dip,  # (degrees) the dip-angle of the rectangular dislocation surface
             [
                 -segment_length / 2,
@@ -2271,10 +2271,10 @@ def test_okada_equals_cutde():
     tri_z1 = np.array([0, 0])
     tri_x2 = np.array([0.5, 0.5])
     tri_y2 = np.array([0, 0.0])
-    tri_z2 = np.array([0, 1])
+    tri_z2 = np.array([0, -1])
     tri_x3 = np.array([0.5, -0.5])
     tri_y3 = np.array([0, 0])
-    tri_z3 = np.array([1, 1])
+    tri_z3 = np.array([-1, -1])
 
     # Package coordinates for cutde call
     obs_coords = np.vstack((x_obs, y_obs, np.zeros_like(x_obs))).T
@@ -2290,17 +2290,44 @@ def test_okada_equals_cutde():
             obs_pts=obs_coords, tris=tri_coords, nu=poissons_ratio
         )
     slip = np.array([[strike_slip, dip_slip, tensile_slip]])
-    disp = disp_mat.reshape((-1, 3)).dot(
-        slip.flatten()
-    )  # TODO: #42 I think this and the line below are wrong???
-    u_cutde = np.sum(disp.reshape(-1, 3), axis=1)
-    # u_x_cutde[i] = 0
-    # u_y_cutde[i] = 0
-    # u_z_cutde[i] = 0
 
-    # TODO: Try grid of observation points
-    # TODO: Try positive z thing again
-    # TODO: Check sign of slip
-    print(disp_mat.shape)
-    print(disp.shape)
-    print(u_cutde.shape)
+    # What to do with array dimensions here? We want to compute the
+    # displacements at the observation points due to the slip specified
+    # in the slip array. That will involve a dot product of the disp_mat with slip.
+    # But, it's not that simple. First, take a look at the array shapes:
+    # disp_mat has shape (10000, 3, 2, 3)
+    # Why?
+    # dimension #1: 10000 is the number of observation points
+    # dimension #2: 3 is the number of components of the displacement vector
+    # dimension #3: 2 is the number of source triangles
+    # dimension #3: 3 is the number of components of the slip vector.
+    #
+    # Then, slip has shape (1, 3)
+    # This is sort of "wrong" in that the first dimension should be the number of triangles.
+    # But, since we're applying the same slip to both triangles, it's okay.
+    #
+    # So, to apply that slip to both triangles, we want to first do a do dot product
+    # between disp_mat and slip[0] which will multiply and sum the last axis of both arrays
+    #
+    # Then, we will have a (10000, 3, 2) shape array.
+    # Next, since we want the displacement due to the sum of both arrays, let's sum over that
+    # last axis with two elements.
+    #
+    # The final result "u_cutde" will be a (10000, 3) array with the components of displacement
+    # for every observation point.
+    u_cutde = np.sum(disp_mat.dot(slip[0]), axis=2)
+
+    # Uncomment to plot.
+    # field_cutde = u_cutde[:,0].reshape((nx, ny))
+    # field_okada = u_x_okada.reshape((nx, ny))
+    # plt.subplot(1,2,1)
+    # plt.contourf(x_obs_mat, y_obs_mat, field_cutde)
+    # plt.colorbar()
+    # plt.subplot(1,2,2)
+    # plt.contourf(x_obs_mat, y_obs_mat, field_okada)
+    # plt.colorbar()
+    # plt.show()
+
+    np.testing.assert_almost_equal(u_cutde[:,0], u_x_okada)
+    np.testing.assert_almost_equal(u_cutde[:,1], u_y_okada)
+    np.testing.assert_almost_equal(u_cutde[:,2], u_z_okada)
