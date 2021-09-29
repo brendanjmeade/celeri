@@ -613,11 +613,13 @@ def get_block_constraint_partials(block):
     Partials for a priori block motion constraints.
     Essentially a set of eye(3) matrices
     """
-    apriori_block_idx = np.where(block.apriori_flag.to_numpy() == 1)[0]
-    operator = np.zeros((3 * len(apriori_block_idx), 3 * len(block)))
-    for i in range(len(apriori_block_idx)):
+    # apriori_block_idx = np.where(block.apriori_flag.to_numpy() == 1)[0]
+    apriori_rotation_block_idx = np.where(block.rotation_flag.to_numpy() == 1)[0]
+
+    operator = np.zeros((3 * len(apriori_rotation_block_idx), 3 * len(block)))
+    for i in range(len(apriori_rotation_block_idx)):
         start_row = 3 * i
-        start_column = 3 * apriori_block_idx[i]
+        start_column = 3 * apriori_rotation_block_idx[i]
         operator[start_row : start_row + 3, start_column : start_column + 3] = np.eye(3)
     return operator
 
@@ -627,8 +629,10 @@ def block_constraints(assembly, block, command):
     Applying a priori block motion constraints
     """
     block_constraint_partials = get_block_constraint_partials(block)
-    assembly.index.block_constraints_idx = np.where(block.apriori_flag == 1)[0]
-    assembly.data.n_block_constraints = 3 * len(assembly.index.block_constraints_idx)
+    # assembly.index.block_constraints_idx = np.where(block.apriori_flag == 1)[0]
+    assembly.index.block_constraints_idx = np.where(block.rotation_flag == 1)[0]
+
+    assembly.data.n_block_constraints = len(assembly.index.block_constraints_idx)
     assembly.data.block_constraints = np.zeros(block_constraint_partials.shape[0])
     assembly.sigma.block_constraints = np.zeros(block_constraint_partials.shape[0])
     if assembly.data.n_block_constraints > 0:
@@ -2328,6 +2332,6 @@ def test_okada_equals_cutde():
     # plt.colorbar()
     # plt.show()
 
-    np.testing.assert_almost_equal(u_cutde[:,0], u_x_okada)
-    np.testing.assert_almost_equal(u_cutde[:,1], u_y_okada)
-    np.testing.assert_almost_equal(u_cutde[:,2], u_z_okada)
+    np.testing.assert_almost_equal(u_cutde[:, 0], u_x_okada)
+    np.testing.assert_almost_equal(u_cutde[:, 1], u_y_okada)
+    np.testing.assert_almost_equal(u_cutde[:, 2], u_z_okada)
