@@ -814,7 +814,9 @@ def get_fault_slip_rate_partials(segment, block):
                 ]
             )
         else:
-            scale_factor = -1
+            scale_factor = (
+                -1
+            )  # This is for consistency with the Okada convention for tensile faulting
             slip_rate_matrix = np.array(
                 [
                     [
