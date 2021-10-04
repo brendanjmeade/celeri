@@ -1041,7 +1041,8 @@ def get_okada_displacements(
                 station_y_rotated[i],
                 0,
             ],  # (meters) observation point
-            -segment_locking_depth,  # (meters) depth of the fault origin
+            # -segment_locking_depth,  # (meters) depth of the fault origin
+            segment_locking_depth,  # (meters) depth of the fault origin
             segment_dip,  # (degrees) the dip-angle of the rectangular dislocation surface
             [
                 -segment_length / 2,
