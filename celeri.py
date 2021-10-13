@@ -1941,6 +1941,45 @@ def get_all_mesh_smoothing_matrices(meshes):
         )
 
 
+def get_tri_smoothing_matrix_simple(share, n_dim):
+    """
+    Produces a smoothing matrix based without scale-dependent
+    weighting.
+
+    Inputs:
+    share: n x 3 array of indices of the up to 3 elements sharing a side
+        with each of the n elements
+
+    Outputs:
+    smoothing matrix: n_dim * n x n_dim * n smoothing matrix
+    """
+
+    # Allocate sparse matrix for contructing smoothing matrix
+    n_shared_tri = share.shape[0]
+    smoothing_matrix = scipy.sparse.lil_matrix(
+        (n_dim * n_shared_tri, n_dim * n_shared_tri)
+    )
+
+    # Place the weights into the smoothing operator
+    # TODO: Replace 3 with n_slip_dimensions
+    # for j in range(3):
+    #     for i in range(n_shared_tris):
+    #         smoothing_matrix[3 * i + j, 3 * i + j] = 3
+    #         if share[i, j] != -1:
+    #             k = 3 * i + np.array([0, 1, 2])
+    #             m = 3 * share[i, j] + np.array([0, 1, 2])
+    #             smoothing_matrix[k, m] = -1
+
+    for j in range(n_dim):
+        for i in range(n_shared_tri):
+            smoothing_matrix[n_dim * i + j, n_dim * i + j] = 3
+            if share[i, j] != -1:
+                k = n_dim * i + np.array([0, 1, 2])
+                m = n_dim * share[i, j] + np.array([0, 1, 2])
+                smoothing_matrix[k, m] = -1
+    return smoothing_matrix
+
+
 def plot_segment_displacements(
     segment,
     station,
