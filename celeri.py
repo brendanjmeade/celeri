@@ -1974,8 +1974,8 @@ def get_tri_smoothing_matrix_simple(share, n_dim):
         for i in range(n_shared_tri):
             smoothing_matrix[n_dim * i + j, n_dim * i + j] = 3
             if share[i, j] != -1:
-                k = n_dim * i + np.array([0, 1, 2])
-                m = n_dim * share[i, j] + np.array([0, 1, 2])
+                k = n_dim * i + np.arange(n_dim)
+                m = n_dim * share[i, j] + np.arange(n_dim)
                 smoothing_matrix[k, m] = -1
     return smoothing_matrix
 
