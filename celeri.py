@@ -1941,6 +1941,26 @@ def get_all_mesh_smoothing_matrices(meshes):
         )
 
 
+def get_all_mesh_smoothing_matrices_simple(meshes, n_dim):
+    """
+    Build smoothing matrices for each of the triangular meshes
+    stored in meshes
+    These are the simple not distance weighted meshes
+    """
+    for i in range(len(meshes)):
+        # Get smoothing operator for a single mesh.
+        meshes[i].share = celeri.get_shared_sides(meshes[i].verts)
+        meshes[i].tri_shared_sides_distances = celeri.get_tri_shared_sides_distances(
+            meshes[i].share,
+            meshes[i].x_centroid,
+            meshes[i].y_centroid,
+            meshes[i].z_centroid,
+        )
+        meshes[i].smoothing_matrix_simple = celeri.get_tri_smoothing_matrix_simple(
+            meshes[i].share, n_dim
+        )
+
+
 def get_tri_smoothing_matrix_simple(share, n_dim):
     """
     Produces a smoothing matrix based without scale-dependent
