@@ -13,6 +13,7 @@ import okada_wrapper
 import cutde.halfspace as cutde_halfspace
 from loguru import logger
 from tqdm.notebook import tqdm
+from typing import List, Dict, Tuple
 
 import celeri
 import celeri_closure
@@ -2209,6 +2210,173 @@ def plot_rotation_components(closure, station):
         scale_units="inches",
         color="r",
     )
+    plt.show()
+
+
+def plot_estimation_summary(
+    segment: pd.DataFrame,
+    station: pd.DataFrame,
+    estimation: Dict,
+    lon_range: Tuple,
+    lat_range: Tuple,
+    quiver_scale: float,
+):
+    """Plot overview figures showing observed and modeled velocities as well
+    as velocity decomposition and estimates slip rates.
+
+    Args:
+        segment (pd.DataFrame): Fault segments
+        station (pd.DataFrame): GPS observations
+        estimation (Dict): All estimated values
+        lon_range (Tuple): Latitude range (min, max)
+        lat_range (Tuple): Latitude range (min, max)
+        quiver_scale (float): Scaling for velocity arrows
+    """
+
+    def common_plot_elements(segment: pd.DataFrame, lon_range: Tuple, lat_range: Tuple):
+        """Elements common to all subplots
+
+        Args:
+            segment (pd.DataFrame): Fault segments
+            lon_range (Tuple): Longitude range (min, max)
+            lat_range (Tuple): Latitude range (min, max)
+        """
+        for i in range(len(segment)):
+            plt.plot(
+                [segment.lon1[i], segment.lon2[i]],
+                [segment.lat1[i], segment.lat2[i]],
+                "-k",
+                linewidth=0.5,
+            )
+        plt.xlim([lon_range[0], lon_range[1]])
+        plt.ylim([lat_range[0], lat_range[1]])
+        plt.gca().set_aspect("equal", adjustable="box")
+
+    n_subplot_rows = 3
+    n_subplot_cols = 3
+    plt.figure(figsize=(12, 14))
+    ax1 = plt.subplot(n_subplot_rows, n_subplot_cols, 1)
+    plt.title("observed velocities")
+    common_plot_elements(segment, lon_range, lat_range)
+    plt.quiver(
+        station.lon,
+        station.lat,
+        station.east_vel,
+        station.north_vel,
+        scale=quiver_scale,
+        scale_units="inches",
+        color="red",
+    )
+
+    plt.subplot(n_subplot_rows, n_subplot_cols, 2, sharex=ax1, sharey=ax1)
+    plt.title("model velocities")
+    common_plot_elements(segment, lon_range, lat_range)
+    plt.quiver(
+        station.lon,
+        station.lat,
+        estimation.east_vel,
+        estimation.north_vel,
+        scale=quiver_scale,
+        scale_units="inches",
+        color="blue",
+    )
+
+    plt.subplot(n_subplot_rows, n_subplot_cols, 3, sharex=ax1, sharey=ax1)
+    plt.title("residual velocities")
+    common_plot_elements(segment, lon_range, lat_range)
+    plt.quiver(
+        station.lon,
+        station.lat,
+        estimation.east_vel_residual,
+        estimation.north_vel_residual,
+        scale=quiver_scale,
+        scale_units="inches",
+        color="green",
+    )
+
+    plt.subplot(n_subplot_rows, n_subplot_cols, 4, sharex=ax1, sharey=ax1)
+    plt.title("rotation velocities")
+    common_plot_elements(segment, lon_range, lat_range)
+    plt.quiver(
+        station.lon,
+        station.lat,
+        estimation.east_vel_rotation,
+        estimation.north_vel_rotation,
+        scale=quiver_scale,
+        scale_units="inches",
+        color="orange",
+    )
+
+    plt.subplot(n_subplot_rows, n_subplot_cols, 5, sharex=ax1, sharey=ax1)
+    plt.title("elastic segment velocities")
+    common_plot_elements(segment, lon_range, lat_range)
+    plt.quiver(
+        station.lon,
+        station.lat,
+        estimation.east_vel_elastic_segment,
+        estimation.north_vel_elastic_segment,
+        scale=quiver_scale,
+        scale_units="inches",
+        color="magenta",
+    )
+
+    plt.subplot(n_subplot_rows, n_subplot_cols, 6, sharex=ax1, sharey=ax1)
+    plt.title("elastic tde velocities")
+    common_plot_elements(segment, lon_range, lat_range)
+    plt.quiver(
+        station.lon,
+        station.lat,
+        estimation.east_vel_tde,
+        estimation.north_vel_tde,
+        scale=quiver_scale,
+        scale_units="inches",
+        color="black",
+    )
+
+    plt.subplot(n_subplot_rows, n_subplot_cols, 7, sharex=ax1, sharey=ax1)
+    plt.title("segment strike-slip (negative right-lateral)")
+    common_plot_elements(segment, lon_range, lat_range)
+    for i in range(len(segment)):
+        plt.text(
+            segment.mid_lon_plate_carree[i],
+            segment.mid_lat_plate_carree[i],
+            f"{estimation.strike_slip_rates[i]:.1f}({estimation.strike_slip_rate_sigma[i]:.1f})",
+            color="red",
+            clip_on=True,
+            horizontalalignment="center",
+            verticalalignment="center",
+            fontsize=7,
+        )
+
+    plt.subplot(n_subplot_rows, n_subplot_cols, 8, sharex=ax1, sharey=ax1)
+    plt.title("segment dip-slip (positive convergences)")
+    common_plot_elements(segment, lon_range, lat_range)
+    for i in range(len(segment)):
+        plt.text(
+            segment.mid_lon_plate_carree[i],
+            segment.mid_lat_plate_carree[i],
+            f"{estimation.dip_slip_rates[i]:.1f}({estimation.dip_slip_rate_sigma[i]:.1f})",
+            color="blue",
+            clip_on=True,
+            horizontalalignment="center",
+            verticalalignment="center",
+            fontsize=7,
+        )
+
+    plt.subplot(n_subplot_rows, n_subplot_cols, 9, sharex=ax1, sharey=ax1)
+    plt.title("segment tensile-slip (negative convergences)")
+    common_plot_elements(segment, lon_range, lat_range)
+    for i in range(len(segment)):
+        plt.text(
+            segment.mid_lon_plate_carree[i],
+            segment.mid_lat_plate_carree[i],
+            f"{estimation.tensile_slip_rates[i]:.1f}({estimation.tensile_slip_rate_sigma[i]:.1f})",
+            color="green",
+            clip_on=True,
+            horizontalalignment="center",
+            verticalalignment="center",
+            fontsize=7,
+        )
     plt.show()
 
 
