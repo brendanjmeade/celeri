@@ -2252,6 +2252,7 @@ def plot_estimation_summary(
         plt.ylim([lat_range[0], lat_range[1]])
         plt.gca().set_aspect("equal", adjustable="box")
 
+    max_sigma_cutoff = 99.0
     n_subplot_rows = 3
     n_subplot_cols = 3
     plt.figure(figsize=(12, 14))
@@ -2337,46 +2338,82 @@ def plot_estimation_summary(
     plt.title("segment strike-slip (negative right-lateral)")
     common_plot_elements(segment, lon_range, lat_range)
     for i in range(len(segment)):
-        plt.text(
-            segment.mid_lon_plate_carree[i],
-            segment.mid_lat_plate_carree[i],
-            f"{estimation.strike_slip_rates[i]:.1f}({estimation.strike_slip_rate_sigma[i]:.1f})",
-            color="red",
-            clip_on=True,
-            horizontalalignment="center",
-            verticalalignment="center",
-            fontsize=7,
-        )
+        if estimation.strike_slip_rate_sigma[i] < max_sigma_cutoff:
+            plt.text(
+                segment.mid_lon_plate_carree[i],
+                segment.mid_lat_plate_carree[i],
+                f"{estimation.strike_slip_rates[i]:.1f}({estimation.strike_slip_rate_sigma[i]:.1f})",
+                color="red",
+                clip_on=True,
+                horizontalalignment="center",
+                verticalalignment="center",
+                fontsize=7,
+            )
+        else:
+            plt.text(
+                segment.mid_lon_plate_carree[i],
+                segment.mid_lat_plate_carree[i],
+                f"{estimation.strike_slip_rates[i]:.1f}(*)",
+                color="red",
+                clip_on=True,
+                horizontalalignment="center",
+                verticalalignment="center",
+                fontsize=7,
+            )
 
     plt.subplot(n_subplot_rows, n_subplot_cols, 8, sharex=ax1, sharey=ax1)
     plt.title("segment dip-slip (positive convergences)")
     common_plot_elements(segment, lon_range, lat_range)
     for i in range(len(segment)):
-        plt.text(
-            segment.mid_lon_plate_carree[i],
-            segment.mid_lat_plate_carree[i],
-            f"{estimation.dip_slip_rates[i]:.1f}({estimation.dip_slip_rate_sigma[i]:.1f})",
-            color="blue",
-            clip_on=True,
-            horizontalalignment="center",
-            verticalalignment="center",
-            fontsize=7,
-        )
+        if estimation.dip_slip_rate_sigma[i] < max_sigma_cutoff:
+            plt.text(
+                segment.mid_lon_plate_carree[i],
+                segment.mid_lat_plate_carree[i],
+                f"{estimation.dip_slip_rates[i]:.1f}({estimation.dip_slip_rate_sigma[i]:.1f})",
+                color="blue",
+                clip_on=True,
+                horizontalalignment="center",
+                verticalalignment="center",
+                fontsize=7,
+            )
+        else:
+            plt.text(
+                segment.mid_lon_plate_carree[i],
+                segment.mid_lat_plate_carree[i],
+                f"{estimation.dip_slip_rates[i]:.1f}(*)",
+                color="blue",
+                clip_on=True,
+                horizontalalignment="center",
+                verticalalignment="center",
+                fontsize=7,
+            )
 
     plt.subplot(n_subplot_rows, n_subplot_cols, 9, sharex=ax1, sharey=ax1)
     plt.title("segment tensile-slip (negative convergences)")
     common_plot_elements(segment, lon_range, lat_range)
     for i in range(len(segment)):
-        plt.text(
-            segment.mid_lon_plate_carree[i],
-            segment.mid_lat_plate_carree[i],
-            f"{estimation.tensile_slip_rates[i]:.1f}({estimation.tensile_slip_rate_sigma[i]:.1f})",
-            color="green",
-            clip_on=True,
-            horizontalalignment="center",
-            verticalalignment="center",
-            fontsize=7,
-        )
+        if estimation.tensile_slip_rate_sigma[i] < max_sigma_cutoff:
+            plt.text(
+                segment.mid_lon_plate_carree[i],
+                segment.mid_lat_plate_carree[i],
+                f"{estimation.tensile_slip_rates[i]:.1f}({estimation.tensile_slip_rate_sigma[i]:.1f})",
+                color="green",
+                clip_on=True,
+                horizontalalignment="center",
+                verticalalignment="center",
+                fontsize=7,
+            )
+        else:
+            plt.text(
+                segment.mid_lon_plate_carree[i],
+                segment.mid_lat_plate_carree[i],
+                f"{estimation.tensile_slip_rates[i]:.1f}(*)",
+                color="green",
+                clip_on=True,
+                horizontalalignment="center",
+                verticalalignment="center",
+                fontsize=7,
+            )
     plt.show()
 
 
