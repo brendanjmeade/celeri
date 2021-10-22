@@ -6,4 +6,7 @@ __pycache__/
 *.jpg
 *.pdf
 *.log
+*.npz
+*.pkl
+*.pickle
 
