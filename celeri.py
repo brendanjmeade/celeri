@@ -494,9 +494,7 @@ def process_sar(sar, command):
         sar.line_of_sight_change_sig = sar.line_of_sight_change_sig / np.sqrt(
             command.sar_weight
         )
-        sar["x"], sar["y"], sar["z"] = sph2cart(
-            np.deg2rad(sar.lon), np.deg2rad(sar.lat), celeri.RADIUS_EARTH
-        )
+        sar["x"], sar["y"], sar["z"] = sph2cart(sar.lon, sar.lat, celeri.RADIUS_EARTH)
         sar["block_label"] = -1 * np.ones_like(sar.x)
     else:
         sar["dep"] = []
@@ -625,12 +623,11 @@ def get_block_constraint_partials(block):
     return operator
 
 
-def block_constraints(assembly, block, command):
+def block_constraints(assembly: Dict, block: pd.DataFrame, command: Dict):
     """
     Applying a priori block motion constraints
     """
     block_constraint_partials = get_block_constraint_partials(block)
-    # assembly.index.block_constraints_idx = np.where(block.apriori_flag == 1)[0]
     assembly.index.block_constraints_idx = np.where(block.rotation_flag == 1)[0]
 
     assembly.data.n_block_constraints = len(assembly.index.block_constraints_idx)
@@ -642,11 +639,10 @@ def block_constraints(assembly, block, command):
             assembly.data.block_constraints[1::3],
             assembly.data.block_constraints[2::3],
         ) = sph2cart(
-            np.deg2rad(block.euler_lon[assembly.index.block_constraints_idx]),
-            np.deg2rad(block.euler_lat[assembly.index.block_constraints_idx]),
-            np.deg2rad(block.rotation_rate[assembly.index.block_constraints_idx]),
+            block.euler_lon[assembly.index.block_constraints_idx],
+            block.euler_lat[assembly.index.block_constraints_idx],
+            block.rotation_rate[assembly.index.block_constraints_idx],
         )
-
         euler_pole_covariance_all = np.diag(
             np.concatenate(
                 (
@@ -672,7 +668,6 @@ def block_constraints(assembly, block, command):
             assembly.data.block_constraints[2::3],
             euler_pole_covariance_all,
         )
-
     assembly.sigma.block_constraint_weight = command.block_constraint_weight
     return assembly, block_constraint_partials
 
