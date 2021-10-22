@@ -1,8 +1,9 @@
 {
     "file_name": "basic.command",
-    "reuse_elastic": "no",
-    "reuse_elastic_file": "./0000000001/kernels.mat",
-    "save_kernels": "yes",
+    "reuse_elastic": "yes",
+    "reuse_elastic_file": "./celeri_elastic_operators.npz",
+    "save_elastic": "yes",
+    "save_elastic_file": "./celeri_elastic_operators.npz",
     "material_lambda": 3.0E+10,
     "material_mu": 3.0E+10,
     "unit_sigmas": "no",
