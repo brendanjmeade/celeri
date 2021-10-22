@@ -1981,16 +1981,6 @@ def get_tri_smoothing_matrix_simple(share, n_dim):
         (n_dim * n_shared_tri, n_dim * n_shared_tri)
     )
 
-    # Place the weights into the smoothing operator
-    # TODO: Replace 3 with n_slip_dimensions
-    # for j in range(3):
-    #     for i in range(n_shared_tris):
-    #         smoothing_matrix[3 * i + j, 3 * i + j] = 3
-    #         if share[i, j] != -1:
-    #             k = 3 * i + np.array([0, 1, 2])
-    #             m = 3 * share[i, j] + np.array([0, 1, 2])
-    #             smoothing_matrix[k, m] = -1
-
     for j in range(n_dim):
         for i in range(n_shared_tri):
             smoothing_matrix[n_dim * i + j, n_dim * i + j] = 3
