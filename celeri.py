@@ -1690,10 +1690,10 @@ def get_tri_displacements(
     return vel_east, vel_north, vel_up
 
 
-def get_tri_station_operator_okada(meshes, station, command):
+def get_tde_velocities(meshes, station, command):
     """
     Calculates the elastic displacement partial derivatives based on the
-    T. Ben Thomposon cutde of the Nikhool and Walters (2015) equations
+    T. Ben Thomposen cutde of the Nikhool and Walters (2015) equations
     for the displacements resulting from slip on a triangular
     dislocation in a homogeneous elastic half space.
 
