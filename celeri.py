@@ -24,6 +24,7 @@ GEOID = pyproj.Geod(ellps="WGS84")
 KM2M = 1.0e3
 M2MM = 1.0e3
 RADIUS_EARTH = np.float64((GEOID.a + GEOID.b) / 2)
+N_MESH_DIM = 3
 
 # Set up logging to file only
 RUN_NAME = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
@@ -1918,7 +1919,7 @@ def get_tri_smoothing_matrix(share, tri_shared_sides_distances):
     return smoothing_matrix
 
 
-def get_all_mesh_smoothing_matrices(meshes):
+def get_all_mesh_smoothing_matrices(meshes: List, operators: Dict):
     """
     Build smoothing matrices for each of the triangular meshes
     stored in meshes
@@ -1932,12 +1933,12 @@ def get_all_mesh_smoothing_matrices(meshes):
             meshes[i].y_centroid,
             meshes[i].z_centroid,
         )
-        meshes[i].smoothing_matrix = celeri.get_tri_smoothing_matrix(
+        operators.meshes[i].smoothing_matrix = celeri.get_tri_smoothing_matrix(
             meshes[i].share, meshes[i].tri_shared_sides_distances
         )
 
 
-def get_all_mesh_smoothing_matrices_simple(meshes, n_dim):
+def get_all_mesh_smoothing_matrices_simple(meshes: List, operators: Dict):
     """
     Build smoothing matrices for each of the triangular meshes
     stored in meshes
@@ -1952,8 +1953,10 @@ def get_all_mesh_smoothing_matrices_simple(meshes, n_dim):
             meshes[i].y_centroid,
             meshes[i].z_centroid,
         )
-        meshes[i].smoothing_matrix_simple = celeri.get_tri_smoothing_matrix_simple(
-            meshes[i].share, n_dim
+        operators.meshes[
+            i
+        ].smoothing_matrix_simple = celeri.get_tri_smoothing_matrix_simple(
+            meshes[i].share, N_MESH_DIM
         )
 
 
