@@ -1691,10 +1691,67 @@ def get_tri_displacements(
     return vel_east, vel_north, vel_up
 
 
-def get_tde_velocities(meshes, station, command):
+def get_tri_displacements_single_mesh(
+    obs_lon,
+    obs_lat,
+    meshes,
+    material_lambda,
+    material_mu,
+    tri_idx,
+    strike_slip,
+    dip_slip,
+    tensile_slip,
+    mesh_idx,
+):
+    """
+    Calculate surface displacments due to slip on a triangular dislocation
+    element in a half space.  Includes projection from longitude and
+    latitude to locally tangent planar coordinate system.
+    """
+    poissons_ratio = material_mu / (2 * (material_mu + material_lambda))
+
+    # Project coordinates
+    tri_centroid_lon = meshes[mesh_idx].centroids[tri_idx, 0]
+    tri_centroid_lat = meshes[mesh_idx].centroids[tri_idx, 1]
+    projection = get_transverse_projection(tri_centroid_lon, tri_centroid_lat)
+    obs_x, obs_y = projection(obs_lon, obs_lat)
+    tri_x1, tri_y1 = projection(
+        meshes[mesh_idx].lon1[tri_idx], meshes[mesh_idx].lat1[tri_idx]
+    )
+    tri_x2, tri_y2 = projection(
+        meshes[mesh_idx].lon2[tri_idx], meshes[mesh_idx].lat2[tri_idx]
+    )
+    tri_x3, tri_y3 = projection(
+        meshes[mesh_idx].lon3[tri_idx], meshes[mesh_idx].lat3[tri_idx]
+    )
+    tri_z1 = celeri.KM2M * meshes[mesh_idx].dep1[tri_idx]
+    tri_z2 = celeri.KM2M * meshes[mesh_idx].dep2[tri_idx]
+    tri_z3 = celeri.KM2M * meshes[mesh_idx].dep3[tri_idx]
+
+    # Package coordinates for cutde call
+    obs_coords = np.vstack((obs_x, obs_y, np.zeros_like(obs_x))).T
+    tri_coords = np.array(
+        [[tri_x1, tri_y1, tri_z1], [tri_x2, tri_y2, tri_z2], [tri_x3, tri_y3, tri_z3]]
+    )
+
+    # Call cutde, multiply by displacements, and package for the return
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        disp_mat = cutde_halfspace.disp_matrix(
+            obs_pts=obs_coords, tris=np.array([tri_coords]), nu=poissons_ratio
+        )
+    slip = np.array([[strike_slip, dip_slip, tensile_slip]])
+    disp = disp_mat.reshape((-1, 3)).dot(slip.flatten())
+    vel_east = disp[0::3]
+    vel_north = disp[1::3]
+    vel_up = disp[2::3]
+    return vel_east, vel_north, vel_up
+
+
+def get_tde_to_velocities(meshes, station, command):
     """
     Calculates the elastic displacement partial derivatives based on the
-    T. Ben Thomposen cutde of the Nikhool and Walters (2015) equations
+    T. Ben Thompson cutde of the Nikhool and Walters (2015) equations
     for the displacements resulting from slip on a triangular
     dislocation in a homogeneous elastic half space.
 
@@ -1766,6 +1823,101 @@ def get_tde_velocities(meshes, station, command):
                     strike_slip=0,
                     dip_slip=0,
                     tensile_slip=1,
+                )
+                tri_operator[0::3, 3 * i] = np.squeeze(vel_east_strike_slip)
+                tri_operator[1::3, 3 * i] = np.squeeze(vel_north_strike_slip)
+                tri_operator[2::3, 3 * i] = np.squeeze(vel_up_strike_slip)
+                tri_operator[0::3, 3 * i + 1] = np.squeeze(vel_east_dip_slip)
+                tri_operator[1::3, 3 * i + 1] = np.squeeze(vel_north_dip_slip)
+                tri_operator[2::3, 3 * i + 1] = np.squeeze(vel_up_dip_slip)
+                tri_operator[0::3, 3 * i + 2] = np.squeeze(vel_east_tensile_slip)
+                tri_operator[1::3, 3 * i + 2] = np.squeeze(vel_north_tensile_slip)
+                tri_operator[2::3, 3 * i + 2] = np.squeeze(vel_up_tensile_slip)
+        else:
+            tri_operator = np.empty(0)
+    else:
+        tri_operator = np.empty(0)
+    return tri_operator
+
+
+def get_tde_to_velocities_single_mesh(meshes, station, command, mesh_idx):
+    """
+    Calculates the elastic displacement partial derivatives based on the
+    T. Ben Thompson cutde of the Nikhool and Walters (2015) equations
+    for the displacements resulting from slip on a triangular
+    dislocation in a homogeneous elastic half space.
+
+    The linear operator is structured as ():
+
+                ss(tri1)  ds(tri1) ts(tri1) ... ss(triN) ds(triN) ts(triN)
+    ve(station 1)
+    vn(station 1)
+    vu(station 1)
+    .
+    .
+    .
+    ve(station N)
+    vn(station N)
+    vu(station N)
+
+    """
+    if len(meshes) > 0:
+        n_tris = meshes[mesh_idx].lon1.size
+        if not station.empty:
+            tri_operator = np.zeros((3 * len(station), 3 * n_tris))
+
+            # Loop through each segment and calculate displacements for each slip component
+            for i in tqdm(
+                range(n_tris), desc="Calculating cutde partials for triangles"
+            ):
+                # for i in tqdm(range(100), desc="Calculating cutde partials for triangles"):
+                (
+                    vel_east_strike_slip,
+                    vel_north_strike_slip,
+                    vel_up_strike_slip,
+                ) = get_tri_displacements_single_mesh(
+                    station.lon.to_numpy(),
+                    station.lat.to_numpy(),
+                    meshes,
+                    command.material_lambda,
+                    command.material_mu,
+                    tri_idx=i,
+                    strike_slip=1,
+                    dip_slip=0,
+                    tensile_slip=0,
+                    mesh_idx=mesh_idx,
+                )
+                (
+                    vel_east_dip_slip,
+                    vel_north_dip_slip,
+                    vel_up_dip_slip,
+                ) = get_tri_displacements_single_mesh(
+                    station.lon.to_numpy(),
+                    station.lat.to_numpy(),
+                    meshes,
+                    command.material_lambda,
+                    command.material_mu,
+                    tri_idx=i,
+                    strike_slip=0,
+                    dip_slip=1,
+                    tensile_slip=0,
+                    mesh_idx=mesh_idx,
+                )
+                (
+                    vel_east_tensile_slip,
+                    vel_north_tensile_slip,
+                    vel_up_tensile_slip,
+                ) = get_tri_displacements_single_mesh(
+                    station.lon.to_numpy(),
+                    station.lat.to_numpy(),
+                    meshes,
+                    command.material_lambda,
+                    command.material_mu,
+                    tri_idx=i,
+                    strike_slip=0,
+                    dip_slip=0,
+                    tensile_slip=1,
+                    mesh_idx=mesh_idx,
                 )
                 tri_operator[0::3, 3 * i] = np.squeeze(vel_east_strike_slip)
                 tri_operator[1::3, 3 * i] = np.squeeze(vel_north_strike_slip)
