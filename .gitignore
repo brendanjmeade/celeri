@@ -9,4 +9,7 @@ __pycache__/
 *.npz
 *.pkl
 *.pickle
+*.hdf
+*.h5
+*.hdf5
 

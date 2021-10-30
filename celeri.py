@@ -120,6 +120,7 @@ def read_data(command_file_name):
         meshes[i].smoothing_weight = mesh_param[i]["smoothing_weight"]
         meshes[i].n_eigenvalues = mesh_param[i]["n_eigenvalues"]
         meshes[i].edge_constraints = mesh_param[i]["edge_constraints"]
+        meshes[i].n_tde = meshes[i].lon1.size
 
     # Read station data
     if (
