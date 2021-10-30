@@ -13,6 +13,7 @@ dependencies:
   - pytest
   - addict
   - tqdm
+  - h5py
   - compilers
   - fortran-compiler
   - cutde
