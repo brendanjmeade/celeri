@@ -2241,6 +2241,24 @@ def get_ordered_edge_nodes(meshes: List) -> None:
             )
 
 
+def get_keep_idx_12(length_of_array: int) -> np.array:
+    """Calculate an indexing array that given and array:
+    [1, 2, 3, 4, 5, 6, 7, 8, 9]
+    returns
+    [1, 2, 4, 5, 7, 8]
+    This is useful for selecting only indices associated with
+    horizontal motions
+
+    Args:
+        length_of_array (int): Length of initial array.  Should be divisible by 3
+
+    Returns:
+        idx (np.array): Array of indices to return
+    """
+    idx = np.delete(np.arange(0, length_of_array), np.arange(2, length_of_array, 3))
+    return idx
+
+
 def plot_segment_displacements(
     segment,
     station,
