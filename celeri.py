@@ -1,6 +1,7 @@
 import addict
 import copy
 import datetime
+import h5py
 import json
 import meshio
 import scipy
@@ -1182,6 +1183,64 @@ def get_segment_station_operator_okada(segment, station, command):
     else:
         okada_segment_operator = np.empty(1)
     return okada_segment_operator
+
+
+def get_elastic_operators(
+    operators: Dict,
+    meshes: List,
+    segment: pd.DataFrame,
+    station: pd.DataFrame,
+    command: Dict,
+) -> None:
+    """Calculate (or load previously calculated) elastic operators from
+    both fully locked segments and TDE parameterizes surfaces
+
+    Args:
+        operators (Dict): Elastic operators will be added to this data structure
+        meshes (List): Geometries of meshes
+        segment (pd.DataFrame): All segment data
+        station (pd.DataFrame): All station data
+        command (Dict): All command data
+    """
+
+    if command.reuse_elastic == "yes":
+        hdf5_file = h5py.File(command.reuse_elastic_file, "r")
+        operators.slip_rate_to_okada_to_velocities = np.array(
+            hdf5_file.get("slip_rate_to_okada_to_velocities")
+        )
+        for i in range(len(meshes)):
+            operators.meshes[i].tde_to_velocities = np.array(
+                hdf5_file.get("tde_to_velocities_" + str(i))
+            )
+        hdf5_file.close()
+
+    elif command.reuse_elastic == "no":
+        # Calculate Okada partials for all segments
+        operators.slip_rate_to_okada_to_velocities = (
+            celeri.get_segment_station_operator_okada(segment, station, command)
+        )
+
+        # Calculate cutde partials for each mesh
+        for i in range(len(meshes)):
+            operators.meshes[
+                i
+            ].tde_to_velocities = celeri.get_tde_to_velocities_single_mesh(
+                meshes, station, command, mesh_idx=i
+            )
+
+        # Save elastic to velocity matrices
+        if command.save_elastic == "yes":
+            hdf5_file = h5py.File(command.save_elastic_file, "w")
+            hdf5_file.create_dataset(
+                "slip_rate_to_okada_to_velocities",
+                data=operators.slip_rate_to_okada_to_velocities,
+            )
+            for i in range(len(meshes)):
+                hdf5_file.create_dataset(
+                    "tde_to_velocities_" + str(i),
+                    data=operators.meshes[i].tde_to_velocities,
+                )
+            hdf5_file.close()
 
 
 def station_row_keep(assembly):
