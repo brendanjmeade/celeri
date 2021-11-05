@@ -2259,6 +2259,86 @@ def get_keep_idx_12(length_of_array: int) -> np.array:
     return idx
 
 
+def post_process_estimation(
+    estimation: Dict, operators: Dict, station: pd.DataFrame, idx: Dict
+) -> None:
+    """Calculate derived values derived from the block model linear estimate (e.g., velocities, undertainties)
+
+    Args:
+        estimation (Dict): Estimated state vector and model covariance
+        operators (Dict): Al linear operators
+        station (pd.DataFrame): GPS station data
+        idx (Dict): Indices and counts of data and array sizes
+    """
+
+    estimation.predictions = estimation.operator @ estimation.state_vector
+    estimation.vel = estimation.predictions[0 : 2 * idx.n_stations]
+    estimation.east_vel = estimation.vel[0::2]
+    estimation.north_vel = estimation.vel[1::2]
+
+    # Estimate slip rate uncertainties
+    estimation.slip_rate_sigma = np.sqrt(
+        np.diag(
+            operators.rotation_to_slip_rate
+            @ estimation.state_covariance_matrix[
+                0 : 3 * idx.n_blocks, 0 : 3 * idx.n_blocks
+            ]
+            @ operators.rotation_to_slip_rate.T
+        )
+    )  # I don't think this is correct because for the case when there is a rotation vector a priori
+    estimation.strike_slip_rate_sigma = estimation.slip_rate_sigma[0::3]
+    estimation.dip_slip_rate_sigma = estimation.slip_rate_sigma[1::3]
+    estimation.tensile_slip_rate_sigma = estimation.slip_rate_sigma[2::3]
+
+    # Calculate mean squared residual velocity
+    estimation.east_vel_residual = estimation.east_vel - station.east_vel
+    estimation.north_vel_residual = estimation.north_vel - station.north_vel
+
+    # Extract TDE slip rates from state vector
+    estimation.tde_rates = estimation.state_vector[
+        3 * idx.n_blocks : 3 * idx.n_blocks + 2 * idx.n_tde
+    ]
+    estimation.tde_strike_slip_rates = estimation.tde_rates[0::2]
+    estimation.tde_dip_slip_rates = estimation.tde_rates[1::2]
+
+    # Extract segment slip rates from state vector
+    estimation.slip_rates = (
+        operators.rotation_to_slip_rate @ estimation.state_vector[0 : 3 * idx.n_blocks]
+    )
+    estimation.strike_slip_rates = estimation.slip_rates[0::3]
+    estimation.dip_slip_rates = estimation.slip_rates[1::3]
+    estimation.tensile_slip_rates = estimation.slip_rates[2::3]
+
+    # Calculate rotation only velocities
+    estimation.vel_rotation = (
+        operators.rotation_to_velocities @ estimation.state_vector[0 : 3 * idx.n_blocks]
+    )
+    estimation.east_vel_rotation = estimation.vel_rotation[0::2]
+    estimation.north_vel_rotation = estimation.vel_rotation[1::2]
+
+    # Calculate fully locked segment velocities
+    estimation.vel_elastic_segment = (
+        operators.rotation_to_slip_rate_to_okada_to_velocities
+        @ estimation.state_vector[0 : 3 * idx.n_blocks]
+    )
+    estimation.east_vel_elastic_segment = estimation.vel_elastic_segment[0::2]
+    estimation.north_vel_elastic_segment = estimation.vel_elastic_segment[1::2]
+
+    # Calculate TDE velocities
+    tde_keep_row_idx = celeri.get_keep_idx_12(
+        operators.meshes[0].tde_to_velocities.shape[0]
+    )
+    tde_keep_col_idx = celeri.get_keep_idx_12(
+        operators.meshes[0].tde_to_velocities.shape[1]
+    )
+    estimation.vel_tde = (
+        operators.meshes[0].tde_to_velocities[tde_keep_row_idx, :][:, tde_keep_col_idx]
+        @ estimation.state_vector[3 * idx.n_blocks :]
+    )
+    estimation.east_vel_tde = estimation.vel_tde[0::2]
+    estimation.north_vel_tde = estimation.vel_tde[1::2]
+
+
 def plot_segment_displacements(
     segment,
     station,
