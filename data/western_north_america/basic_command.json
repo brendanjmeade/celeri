@@ -49,7 +49,7 @@
     "n_eigs": 50,
     "segment_file_name": "./data/western_north_america/TVDN_00448_reweighted_segment.csv",
     "station_file_name": "./data/western_north_america/WithCascadia_clean_sta_data.csv",
-    "block_file_name": "./data/western_north_america/TVDN_00448_reweighted_block.csv",
+    "block_file_name": "./data/western_north_america/TVDN_00448_reweighted_block_reduced_columns.csv",
     "mesh_parameters_file_name": "./data/western_north_america/mesh_parameters.json",
     "fault_resolution": 500,
     "station_data_weight": 1,
