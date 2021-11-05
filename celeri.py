@@ -2296,7 +2296,7 @@ def post_process_estimation(
 
     # Extract TDE slip rates from state vector
     estimation.tde_rates = estimation.state_vector[
-        3 * idx.n_blocks : 3 * idx.n_blocks + 2 * idx.n_tde
+        3 * idx.n_blocks : 3 * idx.n_blocks + 2 * idx.meshes[0].n_tde
     ]
     estimation.tde_strike_slip_rates = estimation.tde_rates[0::2]
     estimation.tde_dip_slip_rates = estimation.tde_rates[1::2]
