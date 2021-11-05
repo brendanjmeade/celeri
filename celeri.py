@@ -2271,6 +2271,7 @@ def post_process_estimation(
         idx (Dict): Indices and counts of data and array sizes
     """
 
+    station_row_keep_idx = get_keep_idx_12(3 * len(station))
     estimation.predictions = estimation.operator @ estimation.state_vector
     estimation.vel = estimation.predictions[0 : 2 * idx.n_stations]
     estimation.east_vel = estimation.vel[0::2]
@@ -2311,14 +2312,15 @@ def post_process_estimation(
 
     # Calculate rotation only velocities
     estimation.vel_rotation = (
-        operators.rotation_to_velocities @ estimation.state_vector[0 : 3 * idx.n_blocks]
+        operators.rotation_to_velocities[station_row_keep_idx, :]
+        @ estimation.state_vector[0 : 3 * idx.n_blocks]
     )
     estimation.east_vel_rotation = estimation.vel_rotation[0::2]
     estimation.north_vel_rotation = estimation.vel_rotation[1::2]
 
     # Calculate fully locked segment velocities
     estimation.vel_elastic_segment = (
-        operators.rotation_to_slip_rate_to_okada_to_velocities
+        operators.rotation_to_slip_rate_to_okada_to_velocities[station_row_keep_idx, :]
         @ estimation.state_vector[0 : 3 * idx.n_blocks]
     )
     estimation.east_vel_elastic_segment = estimation.vel_elastic_segment[0::2]
