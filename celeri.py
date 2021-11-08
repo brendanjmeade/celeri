@@ -2586,21 +2586,34 @@ def plot_estimation_summary(
             lat_range (Tuple): Latitude range (min, max)
         """
         for i in range(len(segment)):
-            plt.plot(
-                [segment.lon1[i], segment.lon2[i]],
-                [segment.lat1[i], segment.lat2[i]],
-                "-k",
-                linewidth=0.5,
-            )
+            if segment.dip[i] == 90.0:
+                plt.plot(
+                    [segment.lon1[i], segment.lon2[i]],
+                    [segment.lat1[i], segment.lat2[i]],
+                    "-k",
+                    linewidth=0.5,
+                )
+            else:
+                plt.plot(
+                    [segment.lon1[i], segment.lon2[i]],
+                    [segment.lat1[i], segment.lat2[i]],
+                    "-r",
+                    linewidth=0.5,
+                )
+
         plt.xlim([lon_range[0], lon_range[1]])
         plt.ylim([lat_range[0], lat_range[1]])
         plt.gca().set_aspect("equal", adjustable="box")
 
     max_sigma_cutoff = 99.0
-    n_subplot_rows = 3
+    n_subplot_rows = 4
     n_subplot_cols = 3
-    plt.figure(figsize=(12, 14))
-    ax1 = plt.subplot(n_subplot_rows, n_subplot_cols, 1)
+    subplot_index = 0
+
+    plt.figure(figsize=(12, 16))
+
+    subplot_index += 1
+    ax1 = plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index)
     plt.title("observed velocities")
     common_plot_elements(segment, lon_range, lat_range)
     plt.quiver(
@@ -2679,7 +2692,7 @@ def plot_estimation_summary(
     )
 
     plt.subplot(n_subplot_rows, n_subplot_cols, 7, sharex=ax1, sharey=ax1)
-    plt.title("segment strike-slip (negative right-lateral)")
+    plt.title("segment strike-slip \n (negative right-lateral)")
     common_plot_elements(segment, lon_range, lat_range)
     for i in range(len(segment)):
         if estimation.strike_slip_rate_sigma[i] < max_sigma_cutoff:
@@ -2706,7 +2719,7 @@ def plot_estimation_summary(
             )
 
     plt.subplot(n_subplot_rows, n_subplot_cols, 8, sharex=ax1, sharey=ax1)
-    plt.title("segment dip-slip (positive convergences)")
+    plt.title("segment dip-slip \n (positive convergences)")
     common_plot_elements(segment, lon_range, lat_range)
     for i in range(len(segment)):
         if estimation.dip_slip_rate_sigma[i] < max_sigma_cutoff:
@@ -2733,7 +2746,7 @@ def plot_estimation_summary(
             )
 
     plt.subplot(n_subplot_rows, n_subplot_cols, 9, sharex=ax1, sharey=ax1)
-    plt.title("segment tensile-slip (negative convergences)")
+    plt.title("segment tensile-slip \n (negative convergences)")
     common_plot_elements(segment, lon_range, lat_range)
     for i in range(len(segment)):
         if estimation.tensile_slip_rate_sigma[i] < max_sigma_cutoff:
@@ -2758,12 +2771,62 @@ def plot_estimation_summary(
                 verticalalignment="center",
                 fontsize=7,
             )
+
+    # Plot a priori slip rate constraints
+    plt.subplot(n_subplot_rows, n_subplot_cols, 10, sharex=ax1, sharey=ax1)
+    plt.title("strike-slip rate constraints")
+    common_plot_elements(segment, lon_range, lat_range)
+    for i in range(len(segment)):
+        if segment.ss_rate_flag[i] == 1:
+            plt.text(
+                segment.mid_lon_plate_carree[i],
+                segment.mid_lat_plate_carree[i],
+                f"{segment.ss_rate[i]:.1f}({segment.ss_rate_sig[i]:.1f})",
+                color="red",
+                clip_on=True,
+                horizontalalignment="center",
+                verticalalignment="center",
+                fontsize=7,
+            )
+
+    plt.subplot(n_subplot_rows, n_subplot_cols, 11, sharex=ax1, sharey=ax1)
+    plt.title("dip-slip rate constraints")
+    common_plot_elements(segment, lon_range, lat_range)
+    for i in range(len(segment)):
+        if segment.ds_rate_flag[i] == 1:
+            plt.text(
+                segment.mid_lon_plate_carree[i],
+                segment.mid_lat_plate_carree[i],
+                f"{segment.ds_rate[i]:.1f}({segment.ds_rate_sig[i]:.1f})",
+                color="blue",
+                clip_on=True,
+                horizontalalignment="center",
+                verticalalignment="center",
+                fontsize=7,
+            )
+
+    plt.subplot(n_subplot_rows, n_subplot_cols, 12, sharex=ax1, sharey=ax1)
+    plt.title("tensile-slip rate constraints")
+    common_plot_elements(segment, lon_range, lat_range)
+    for i in range(len(segment)):
+        if segment.ts_rate_flag[i] == 1:
+            plt.text(
+                segment.mid_lon_plate_carree[i],
+                segment.mid_lat_plate_carree[i],
+                f"{segment.ts_rate[i]:.1f}({segment.ts_rate_sig[i]:.1f})",
+                color="green",
+                clip_on=True,
+                horizontalalignment="center",
+                verticalalignment="center",
+                fontsize=7,
+            )
+
     plt.show()
 
 
 def test_end2end():
     """
-    This doesn't actually check for correctness much at all,
+    This does not actually check for correctness much at all,
     but just tests to make sure that a full block model run executes without errors.
     """
     command_file_name = "./data/western_north_america/basic_command.json"
