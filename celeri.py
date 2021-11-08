@@ -2241,7 +2241,7 @@ def get_ordered_edge_nodes(meshes: List) -> None:
             )
 
 
-def get_keep_idx_12(length_of_array: int) -> np.array:
+def get_keep_index_12(length_of_array: int) -> np.array:
     """Calculate an indexing array that given and array:
     [1, 2, 3, 4, 5, 6, 7, 8, 9]
     returns
@@ -2260,7 +2260,7 @@ def get_keep_idx_12(length_of_array: int) -> np.array:
 
 
 def post_process_estimation(
-    estimation: Dict, operators: Dict, station: pd.DataFrame, idx: Dict
+    estimation: Dict, operators: Dict, station: pd.DataFrame, index: Dict
 ) -> None:
     """Calculate derived values derived from the block model linear estimate (e.g., velocities, undertainties)
 
@@ -2272,7 +2272,7 @@ def post_process_estimation(
     """
 
     estimation.predictions = estimation.operator @ estimation.state_vector
-    estimation.vel = estimation.predictions[0 : 2 * idx.n_stations]
+    estimation.vel = estimation.predictions[0 : 2 * index.n_stations]
     estimation.east_vel = estimation.vel[0::2]
     estimation.north_vel = estimation.vel[1::2]
 
@@ -2281,7 +2281,7 @@ def post_process_estimation(
         np.diag(
             operators.rotation_to_slip_rate
             @ estimation.state_covariance_matrix[
-                0 : 3 * idx.n_blocks, 0 : 3 * idx.n_blocks
+                0 : 3 * index.n_blocks, 0 : 3 * index.n_blocks
             ]
             @ operators.rotation_to_slip_rate.T
         )
@@ -2296,14 +2296,15 @@ def post_process_estimation(
 
     # Extract TDE slip rates from state vector
     estimation.tde_rates = estimation.state_vector[
-        3 * idx.n_blocks : 3 * idx.n_blocks + 2 * idx.meshes[0].n_tde
+        3 * index.n_blocks : 3 * index.n_blocks + 2 * index.meshes[0].n_tde
     ]
     estimation.tde_strike_slip_rates = estimation.tde_rates[0::2]
     estimation.tde_dip_slip_rates = estimation.tde_rates[1::2]
 
     # Extract segment slip rates from state vector
     estimation.slip_rates = (
-        operators.rotation_to_slip_rate @ estimation.state_vector[0 : 3 * idx.n_blocks]
+        operators.rotation_to_slip_rate
+        @ estimation.state_vector[0 : 3 * index.n_blocks]
     )
     estimation.strike_slip_rates = estimation.slip_rates[0::3]
     estimation.dip_slip_rates = estimation.slip_rates[1::3]
@@ -2311,8 +2312,8 @@ def post_process_estimation(
 
     # Calculate rotation only velocities
     estimation.vel_rotation = (
-        operators.rotation_to_velocities[idx.station_row_keep_idx, :]
-        @ estimation.state_vector[0 : 3 * idx.n_blocks]
+        operators.rotation_to_velocities[index.station_row_keep_index, :]
+        @ estimation.state_vector[0 : 3 * index.n_blocks]
     )
     estimation.east_vel_rotation = estimation.vel_rotation[0::2]
     estimation.north_vel_rotation = estimation.vel_rotation[1::2]
@@ -2320,23 +2321,25 @@ def post_process_estimation(
     # Calculate fully locked segment velocities
     estimation.vel_elastic_segment = (
         operators.rotation_to_slip_rate_to_okada_to_velocities[
-            idx.station_row_keep_idx, :
+            index.station_row_keep_index, :
         ]
-        @ estimation.state_vector[0 : 3 * idx.n_blocks]
+        @ estimation.state_vector[0 : 3 * index.n_blocks]
     )
     estimation.east_vel_elastic_segment = estimation.vel_elastic_segment[0::2]
     estimation.north_vel_elastic_segment = estimation.vel_elastic_segment[1::2]
 
     # Calculate TDE velocities
-    tde_keep_row_idx = celeri.get_keep_idx_12(
+    tde_keep_row_index = celeri.get_keep_index_12(
         operators.meshes[0].tde_to_velocities.shape[0]
     )
-    tde_keep_col_idx = celeri.get_keep_idx_12(
+    tde_keep_col_index = celeri.get_keep_index_12(
         operators.meshes[0].tde_to_velocities.shape[1]
     )
     estimation.vel_tde = (
-        operators.meshes[0].tde_to_velocities[tde_keep_row_idx, :][:, tde_keep_col_idx]
-        @ estimation.state_vector[3 * idx.n_blocks :]
+        operators.meshes[0].tde_to_velocities[tde_keep_row_index, :][
+            :, tde_keep_col_index
+        ]
+        @ estimation.state_vector[3 * index.n_blocks :]
     )
     estimation.east_vel_tde = estimation.vel_tde[0::2]
     estimation.north_vel_tde = estimation.vel_tde[1::2]
