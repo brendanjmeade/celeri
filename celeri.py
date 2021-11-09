@@ -2626,7 +2626,8 @@ def plot_estimation_summary(
         color="red",
     )
 
-    plt.subplot(n_subplot_rows, n_subplot_cols, 2, sharex=ax1, sharey=ax1)
+    subplot_index += 1
+    plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
     plt.title("model velocities")
     common_plot_elements(segment, lon_range, lat_range)
     plt.quiver(
@@ -2639,7 +2640,8 @@ def plot_estimation_summary(
         color="blue",
     )
 
-    plt.subplot(n_subplot_rows, n_subplot_cols, 3, sharex=ax1, sharey=ax1)
+    subplot_index += 1
+    plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
     plt.title("residual velocities")
     common_plot_elements(segment, lon_range, lat_range)
     plt.quiver(
@@ -2652,7 +2654,8 @@ def plot_estimation_summary(
         color="green",
     )
 
-    plt.subplot(n_subplot_rows, n_subplot_cols, 4, sharex=ax1, sharey=ax1)
+    subplot_index += 1
+    plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
     plt.title("rotation velocities")
     common_plot_elements(segment, lon_range, lat_range)
     plt.quiver(
@@ -2665,7 +2668,8 @@ def plot_estimation_summary(
         color="orange",
     )
 
-    plt.subplot(n_subplot_rows, n_subplot_cols, 5, sharex=ax1, sharey=ax1)
+    subplot_index += 1
+    plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
     plt.title("elastic segment velocities")
     common_plot_elements(segment, lon_range, lat_range)
     plt.quiver(
@@ -2678,7 +2682,8 @@ def plot_estimation_summary(
         color="magenta",
     )
 
-    plt.subplot(n_subplot_rows, n_subplot_cols, 6, sharex=ax1, sharey=ax1)
+    subplot_index += 1
+    plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
     plt.title("elastic tde velocities")
     common_plot_elements(segment, lon_range, lat_range)
     plt.quiver(
@@ -2691,7 +2696,8 @@ def plot_estimation_summary(
         color="black",
     )
 
-    plt.subplot(n_subplot_rows, n_subplot_cols, 7, sharex=ax1, sharey=ax1)
+    subplot_index += 1
+    plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
     plt.title("segment strike-slip \n (negative right-lateral)")
     common_plot_elements(segment, lon_range, lat_range)
     for i in range(len(segment)):
@@ -2718,7 +2724,8 @@ def plot_estimation_summary(
                 fontsize=7,
             )
 
-    plt.subplot(n_subplot_rows, n_subplot_cols, 8, sharex=ax1, sharey=ax1)
+    subplot_index += 1
+    plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
     plt.title("segment dip-slip \n (positive convergences)")
     common_plot_elements(segment, lon_range, lat_range)
     for i in range(len(segment)):
@@ -2745,7 +2752,8 @@ def plot_estimation_summary(
                 fontsize=7,
             )
 
-    plt.subplot(n_subplot_rows, n_subplot_cols, 9, sharex=ax1, sharey=ax1)
+    subplot_index += 1
+    plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
     plt.title("segment tensile-slip \n (negative convergences)")
     common_plot_elements(segment, lon_range, lat_range)
     for i in range(len(segment)):
@@ -2773,7 +2781,8 @@ def plot_estimation_summary(
             )
 
     # Plot a priori slip rate constraints
-    plt.subplot(n_subplot_rows, n_subplot_cols, 10, sharex=ax1, sharey=ax1)
+    subplot_index += 1
+    plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
     plt.title("strike-slip rate constraints")
     common_plot_elements(segment, lon_range, lat_range)
     for i in range(len(segment)):
@@ -2789,7 +2798,8 @@ def plot_estimation_summary(
                 fontsize=7,
             )
 
-    plt.subplot(n_subplot_rows, n_subplot_cols, 11, sharex=ax1, sharey=ax1)
+    subplot_index += 1
+    plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
     plt.title("dip-slip rate constraints")
     common_plot_elements(segment, lon_range, lat_range)
     for i in range(len(segment)):
@@ -2805,7 +2815,8 @@ def plot_estimation_summary(
                 fontsize=7,
             )
 
-    plt.subplot(n_subplot_rows, n_subplot_cols, 12, sharex=ax1, sharey=ax1)
+    subplot_index += 1
+    plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
     plt.title("tensile-slip rate constraints")
     common_plot_elements(segment, lon_range, lat_range)
     for i in range(len(segment)):
@@ -2820,7 +2831,6 @@ def plot_estimation_summary(
                 verticalalignment="center",
                 fontsize=7,
             )
-
     plt.show()
 
 
