@@ -892,27 +892,47 @@ def slip_rate_constraints(assembly, segment, block, command):
             )
 
     slip_rate_constraint_partials = get_fault_slip_rate_partials(segment, block)
-    slip_rate_constraint_flag = np.concatenate(
-        (segment.ss_rate_flag, segment.ds_rate_flag, segment.ts_rate_flag)
+
+    # slip_rate_constraint_flag = np.concatenate(
+    #     (segment.ss_rate_flag, segment.ds_rate_flag, segment.ts_rate_flag)
+    # )
+
+    slip_rate_constraint_flag = interleave3(
+        segment.ss_rate_flag, segment.ds_rate_flag, segment.ts_rate_flag
     )
     assembly.index.slip_rate_constraints = np.where(slip_rate_constraint_flag == 1)[0]
     assembly.data.n_slip_rate_constraints = len(assembly.index.slip_rate_constraints)
-    assembly.data.slip_rate_constraints = np.concatenate(
-        (segment.ss_rate, segment.ds_rate, segment.ts_rate)
+    # assembly.data.slip_rate_constraints = np.concatenate(
+    #     (segment.ss_rate, segment.ds_rate, segment.ts_rate)
+    # )
+
+    assembly.data.slip_rate_constraints = interleave3(
+        segment.ss_rate, segment.ds_rate, segment.ts_rate
     )
+
     assembly.data.slip_rate_constraints = assembly.data.slip_rate_constraints[
         assembly.index.slip_rate_constraints
     ]
-    assembly.sigma.slip_rate_constraints = np.concatenate(
-        (segment.ss_rate_sig, segment.ds_rate_sig, segment.ts_rate_sig)
+
+    # assembly.sigma.slip_rate_constraints = np.concatenate(
+    #     (segment.ss_rate_sig, segment.ds_rate_sig, segment.ts_rate_sig)
+    # )
+    assembly.sigma.slip_rate_constraints = interleave3(
+        segment.ss_rate_sig, segment.ds_rate_sig, segment.ts_rate_sig
     )
+
     assembly.sigma.slip_rate_constraints = assembly.sigma.slip_rate_constraints[
         assembly.index.slip_rate_constraints
     ]
+
     slip_rate_constraint_partials = slip_rate_constraint_partials[
         assembly.index.slip_rate_constraints, :
     ]
     assembly.sigma.slip_rate_constraint_weight = command.slip_constraint_weight
+
+    print("asdf")
+    print(assembly.index.slip_rate_constraints)
+    print(slip_rate_constraint_partials)
     return assembly, slip_rate_constraint_partials
 
 
