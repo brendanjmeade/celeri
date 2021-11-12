@@ -929,10 +929,6 @@ def slip_rate_constraints(assembly, segment, block, command):
         assembly.index.slip_rate_constraints, :
     ]
     assembly.sigma.slip_rate_constraint_weight = command.slip_constraint_weight
-
-    print("asdf")
-    print(assembly.index.slip_rate_constraints)
-    print(slip_rate_constraint_partials)
     return assembly, slip_rate_constraint_partials
 
 
