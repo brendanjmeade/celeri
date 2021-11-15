@@ -3008,6 +3008,8 @@ def test_end2end():
     # hashlib.sha256(segment.values.tobytes()).hexdigest()
 
     # Get all elastic operators for segments and TDEs
+    # Force the calculation of elastic partials rather than reading stored version
+    command.reuse_elastic == "no"
     celeri.get_elastic_operators(operators, meshes, segment, station, command)
 
     # Get TDE smoothing operators
