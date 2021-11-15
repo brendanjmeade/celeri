@@ -1,6 +1,7 @@
 import addict
 import copy
 import datetime
+import hashlib
 import h5py
 import json
 import meshio
@@ -3005,12 +3006,17 @@ def test_end2end():
     # This is tricky because the partials are ~350 MB for the Cascadia only case.
     # Do I want to store this?  Can I hash a matrix?
     # import hashlib
-    # hashlib.sha256(segment.values.tobytes()).hexdigest()
+    # hashlib.sha256(operators.meshes[0].tde_to_velocities).hexdigest() should equal
+    # "6c2da83baf12f521132dbb63e6818b602eecc3c8b90e1b79b3f8f5a672ffd145"
 
     # Get all elastic operators for segments and TDEs
     # Force the calculation of elastic partials rather than reading stored version
     command.reuse_elastic == "no"
     celeri.get_elastic_operators(operators, meshes, segment, station, command)
+    assert (
+        hashlib.sha256(operators.meshes[0].tde_to_velocities).hexdigest()
+        == "6c2da83baf12f521132dbb63e6818b602eecc3c8b90e1b79b3f8f5a672ffd145"
+    )
 
     # Get TDE smoothing operators
     celeri.get_all_mesh_smoothing_matrices(meshes, operators)
