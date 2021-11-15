@@ -307,8 +307,10 @@ def segment_centroids(segment):
         segment_down_dip_azimuth = segment_forward_azimuth + 90.0 * np.sign(
             np.cos(np.deg2rad(segment.dip[i]))
         )
-        azx = (segment.y2[i] - segment.y1[i]) / (segment.x2[i] - segment.x1[i])
-        azx = np.arctan(-1.0 / azx)  # TODO: MAKE THIS VARIABLE NAME DESCRIPTIVE
+        azimuth_xy_cartesian = (segment.y2[i] - segment.y1[i]) / (
+            segment.x2[i] - segment.x1[i]
+        )
+        azimuth_xy_cartesian = np.arctan(-1.0 / azimuth_xy_cartesian)
         segment.centroid_z.values[i] = (
             segment.locking_depth[i] - segment.burial_depth[i]
         ) / 2.0
@@ -327,10 +329,10 @@ def segment_centroids(segment):
         )
         segment.centroid_x.values[i] = segment.mid_x[i] + np.sign(
             np.cos(np.deg2rad(segment.dip[i]))
-        ) * segment_down_dip_distance * np.cos(azx)
+        ) * segment_down_dip_distance * np.cos(azimuth_xy_cartesian)
         segment.centroid_y.values[i] = segment.mid_y[i] + np.sign(
             np.cos(np.deg2rad(segment.dip[i]))
-        ) * segment_down_dip_distance * np.sin(azx)
+        ) * segment_down_dip_distance * np.sin(azimuth_xy_cartesian)
     segment.centroid_lon.values[segment.centroid_lon < 0.0] += 360.0
     return segment
 
@@ -382,7 +384,9 @@ def process_segment(segment, command, meshes):
     )
     segment = celeri.locking_depth_manager(segment, command)
     segment = celeri.zero_mesh_segment_locking_depth(segment, meshes)
-    # segment.locking_depth.values = PatchLDtoggle(segment.locking_depth, segment.patch_file_name, segment.patch_flag, Command.patchFileNames) % Set locking depth to zero on segments that are associated with patches # TODO: Write this after patches are read in.
+    # TODO: #50 Write this after patches are read in
+    # Set locking depth to zero on segments that are associated with patches
+    # segment.locking_depth.values = patch_locking_depth_toggle(segment.locking_depth, segment.patch_file_name, segment.patch_flag, command.patch_file_names)
     segment = celeri.segment_centroids(segment)
     return segment
 
@@ -422,10 +426,11 @@ def assign_block_labels(segment, station, block, mogi, sar):
         print("Found unproccessed indices")
 
     # Find relative areas of each block to identify an external block
+    block["area_steradians"] = -1 * np.ones(len(block))
     block["area_plate_carree"] = -1 * np.ones(len(block))
     for i in range(closure.n_polygons()):
         vs = closure.polygons[i].vertices
-        # TODO: can we use closure.polygons[i].area_steradians here?
+        block.area_steradians.values[i] = closure.polygons[i].area_steradians
         block.area_plate_carree.values[i] = celeri.polygon_area(vs[:, 0], vs[:, 1])
 
     # Assign block labels points to block interior points
@@ -987,9 +992,6 @@ def get_okada_displacements(
     to the trace of the fault segment.  The elastic calculation is the
     original Okada 1992 Fortran code acceccesed through T. Ben Thompson's
     okada_wrapper: https://github.com/tbenthompson/okada_wrapper
-
-    TODO: Locking depths are currently meters rather than KM in inputfiles!!!
-    TODO: Is there another XYZ to ENU conversion needed?
     """
     segment_locking_depth *= celeri.KM2M
     segment_burial_depth *= celeri.KM2M
@@ -1430,7 +1432,6 @@ def get_strain_rate_displacements(
 def get_strain_rate_centroid_operator(block, station, segment):
     """
     Calculate strain partial derivatives assuming a strain centroid at the center of each block
-    TODO: Return something related to assembly.index???
     """
     strain_rate_block_idx = np.where(block.strain_rate_flag.to_numpy() > 0)[0]
     if strain_rate_block_idx.size > 0:
@@ -2107,7 +2108,7 @@ def get_tri_smoothing_matrix(share, tri_shared_sides_distances):
     share_distances = np.sum(tri_shared_sides_distances, axis=1)
     leading_coefficient = 2.0 / share_distances
 
-    # Replace zero distances with 1 to avoid divide by zero.  TODO: should this be capped at a
+    # Replace zero distances with 1 to avoid divide by zero
     tri_shared_sides_distances[np.where(tri_shared_sides_distances == 0)] = 1
 
     # Take the reciprocal of the distances
@@ -2746,7 +2747,7 @@ def plot_input_summary(
                 fontsize=7,
             )
 
-    # TODO: Plot mesh geometries and slip rate constraints
+    # TODO: #49 Plot mesh geometries and slip rate constraints
     plt.suptitle("inputs")
     plt.show()
 
@@ -3001,6 +3002,17 @@ def test_end2end():
         assembly, segment, block, command
     )
     # TODO: Compute TDE partials: check with npy file like block closure
+    # This is tricky because the partials are ~350 MB for the Cascadia only case.
+    # Do I want to store this?  Can I hash a matrix?
+    # import hashlib
+    # hashlib.sha256(segment.values.tobytes()).hexdigest()
+
+    # Get all elastic operators for segments and TDEs
+    celeri.get_elastic_operators(operators, meshes, segment, station, command)
+
+    # Get TDE smoothing operators
+    celeri.get_all_mesh_smoothing_matrices(meshes, operators)
+    celeri.get_all_mesh_smoothing_matrices_simple(meshes, operators)
 
 
 def test_global_closure():
