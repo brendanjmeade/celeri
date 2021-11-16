@@ -3003,20 +3003,14 @@ def test_end2end():
         assembly, segment, block, command
     )
     # TODO: Compute TDE partials: check with npy file like block closure
-    # This is tricky because the partials are ~350 MB for the Cascadia only case.
-    # Do I want to store this?  Can I hash a matrix?
-    # import hashlib
-    # hashlib.sha256(operators.meshes[0].tde_to_velocities).hexdigest() should equal
-    # "6c2da83baf12f521132dbb63e6818b602eecc3c8b90e1b79b3f8f5a672ffd145"
 
     # Get all elastic operators for segments and TDEs
     # Force the calculation of elastic partials rather than reading stored version
     command.reuse_elastic = "no"
     celeri.get_elastic_operators(operators, meshes, segment, station, command)
-    # assert (
-    #     hashlib.sha256(operators.meshes[0].tde_to_velocities).hexdigest()
-    #     == "6c2da83baf12f521132dbb63e6818b602eecc3c8b90e1b79b3f8f5a672ffd145"
-    # )
+    assert np.allclose(
+        -1.1692932114810847e-08, operators.meshes[0].tde_to_velocities[0, 0]
+    )
 
     # Get TDE smoothing operators
     celeri.get_all_mesh_smoothing_matrices(meshes, operators)
