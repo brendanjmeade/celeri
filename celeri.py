@@ -1211,6 +1211,7 @@ def get_elastic_operators(
         station (pd.DataFrame): All station data
         command (Dict): All command data
     """
+    print(command.reuse_elastic)
 
     if command.reuse_elastic == "yes":
         hdf5_file = h5py.File(command.reuse_elastic_file, "r")
@@ -3011,7 +3012,7 @@ def test_end2end():
 
     # Get all elastic operators for segments and TDEs
     # Force the calculation of elastic partials rather than reading stored version
-    command.reuse_elastic == "no"
+    command.reuse_elastic = "no"
     celeri.get_elastic_operators(operators, meshes, segment, station, command)
     assert (
         hashlib.sha256(operators.meshes[0].tde_to_velocities).hexdigest()
