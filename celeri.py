@@ -259,7 +259,6 @@ def zero_mesh_segment_locking_depth(segment, meshes):
     and patch_file_name fields must not be equal to zero but also
     less than the number of available mesh files.
     """
-    segment = segment.copy(deep=True)
     toggle_off = np.where(
         (segment.patch_flag != 0)
         & (segment.patch_file_name != 0)
@@ -385,9 +384,6 @@ def process_segment(segment, command, meshes):
     )
     segment = celeri.locking_depth_manager(segment, command)
     segment = celeri.zero_mesh_segment_locking_depth(segment, meshes)
-    # TODO: #50 Write this after patches are read in
-    # Set locking depth to zero on segments that are associated with patches
-    # segment.locking_depth.values = patch_locking_depth_toggle(segment.locking_depth, segment.patch_file_name, segment.patch_flag, command.patch_file_names)
     segment = celeri.segment_centroids(segment)
     return segment
 
@@ -3002,7 +2998,6 @@ def test_end2end():
     assembly, operators.slip_rate_constraints = celeri.slip_rate_constraints(
         assembly, segment, block, command
     )
-    # TODO: Compute TDE partials: check with npy file like block closure
 
     # Get all elastic operators for segments and TDEs
     # Force the calculation of elastic partials rather than reading stored version
