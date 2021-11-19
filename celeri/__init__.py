@@ -22,6 +22,10 @@ from .celeri import (
     plot_estimation_summary,
 )
 
+
+from .celeri_vis import plot_input_summary
+
+
 try:
     __version__ = pkg_resources.get_distribution(__name__).version
 except Exception:
