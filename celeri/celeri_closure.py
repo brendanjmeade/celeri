@@ -6,7 +6,7 @@ import scipy.spatial
 import matplotlib.pyplot as plt
 from spherical_geometry.polygon import SingleSphericalPolygon
 
-from celeri_util import sph2cart
+from .celeri_util import sph2cart
 
 
 def angle_between_vectors(v1, v2, v3):
@@ -168,9 +168,11 @@ def find_longitude_interval(lon):
             final_interval = [combined_intervals[1][0], combined_intervals[0][1]]
         inverse = True
     else:
-        raise Exception("More than two longitude intervals identified in "
-                        "find_longitude_intervals. This is an unexpected and "
-                        "surprising error that suggests a malformed polygon.")
+        raise Exception(
+            "More than two longitude intervals identified in "
+            "find_longitude_intervals. This is an unexpected and "
+            "surprising error that suggests a malformed polygon."
+        )
     return final_interval, inverse
 
 

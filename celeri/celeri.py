@@ -7,6 +7,7 @@ import json
 import meshio
 import scipy
 import pyproj
+import os
 import matplotlib.pyplot as plt
 import warnings
 import numpy as np
@@ -17,9 +18,9 @@ from loguru import logger
 from tqdm.notebook import tqdm
 from typing import List, Dict, Tuple
 
-import celeri
-import celeri_closure
-from celeri_util import sph2cart
+# import celeri
+from . import celeri_closure
+from .celeri_util import sph2cart
 
 # Global constants
 GEOID = pyproj.Geod(ellps="WGS84")
@@ -40,23 +41,26 @@ def read_data(command_file_name):
     with open(command_file_name, "r") as f:
         command = json.load(f)
     command = addict.Dict(command)  # Convert to dot notation dictionary
+    base_folder = os.path.dirname(command_file_name)
 
     # Read segment data
-    segment = pd.read_csv(command.segment_file_name)
+    segment = pd.read_csv(os.path.join(base_folder, command.segment_file_name))
     segment = segment.loc[:, ~segment.columns.str.match("Unnamed")]
 
     # Read block data
-    block = pd.read_csv(command.block_file_name)
+    block = pd.read_csv(os.path.join(base_folder, command.block_file_name))
     block = block.loc[:, ~block.columns.str.match("Unnamed")]
 
     # Read mesh data - List of dictionary version
-    with open(command.mesh_parameters_file_name, "r") as f:
+    with open(os.path.join(base_folder, command.mesh_parameters_file_name)) as f:
         mesh_param = json.load(f)
 
     meshes = []
     for i in range(len(mesh_param)):
         meshes.append(addict.Dict())
-        meshes[i].meshio_object = meshio.read(mesh_param[i]["mesh_filename"])
+        meshes[i].meshio_object = meshio.read(
+            os.path.join(base_folder, mesh_param[i]["mesh_filename"])
+        )
         meshes[i].verts = meshes[i].meshio_object.get_cells_type("triangle")
         # Expand mesh coordinates
         meshes[i].lon1 = meshes[i].meshio_object.points[meshes[i].verts[:, 0], 0]
@@ -75,17 +79,17 @@ def read_data(command_file_name):
         meshes[i].x1, meshes[i].y1, meshes[i].z1 = sph2cart(
             meshes[i].lon1,
             meshes[i].lat1,
-            celeri.RADIUS_EARTH + KM2M * meshes[i].dep1,
+            RADIUS_EARTH + KM2M * meshes[i].dep1,
         )
         meshes[i].x2, meshes[i].y2, meshes[i].z2 = sph2cart(
             meshes[i].lon2,
             meshes[i].lat2,
-            celeri.RADIUS_EARTH + KM2M * meshes[i].dep2,
+            RADIUS_EARTH + KM2M * meshes[i].dep2,
         )
         meshes[i].x3, meshes[i].y3, meshes[i].z3 = sph2cart(
             meshes[i].lon3,
             meshes[i].lat3,
-            celeri.RADIUS_EARTH + KM2M * meshes[i].dep3,
+            RADIUS_EARTH + KM2M * meshes[i].dep3,
         )
 
         # Cartesian triangle centroids
@@ -98,25 +102,25 @@ def read_data(command_file_name):
             [
                 np.deg2rad(meshes[i].lon2 - meshes[i].lon1),
                 np.deg2rad(meshes[i].lat2 - meshes[i].lat1),
-                (1 + KM2M * meshes[i].dep2 / celeri.RADIUS_EARTH)
-                - (1 + KM2M * meshes[i].dep1 / celeri.RADIUS_EARTH),
+                (1 + KM2M * meshes[i].dep2 / RADIUS_EARTH)
+                - (1 + KM2M * meshes[i].dep1 / RADIUS_EARTH),
             ]
         )
         tri_leg2 = np.transpose(
             [
                 np.deg2rad(meshes[i].lon3 - meshes[i].lon1),
                 np.deg2rad(meshes[i].lat3 - meshes[i].lat1),
-                (1 + KM2M * meshes[i].dep3 / celeri.RADIUS_EARTH)
-                - (1 + KM2M * meshes[i].dep1 / celeri.RADIUS_EARTH),
+                (1 + KM2M * meshes[i].dep3 / RADIUS_EARTH)
+                - (1 + KM2M * meshes[i].dep1 / RADIUS_EARTH),
             ]
         )
         meshes[i].nv = np.cross(tri_leg1, tri_leg2)
-        azimuth, elevation, r = celeri.cart2sph(
+        azimuth, elevation, r = cart2sph(
             meshes[i].nv[:, 0],
             meshes[i].nv[:, 1],
             meshes[i].nv[:, 2],
         )
-        meshes[i].strike = celeri.wrap2360(-np.rad2deg(azimuth))
+        meshes[i].strike = wrap2360(-np.rad2deg(azimuth))
         meshes[i].dip = 90 - np.rad2deg(elevation)
         meshes[i].dip_flag = meshes[i].dip != 90
         meshes[i].smoothing_weight = mesh_param[i]["smoothing_weight"]
@@ -154,7 +158,7 @@ def read_data(command_file_name):
             ]
         )
     else:
-        station = pd.read_csv(command.station_file_name)
+        station = pd.read_csv(os.path.join(base_folder, command.station_file_name))
         station = station.loc[:, ~station.columns.str.match("Unnamed")]
 
     # Read Mogi source data
@@ -171,7 +175,7 @@ def read_data(command_file_name):
             ]
         )
     else:
-        mogi = pd.read_csv(command.mogi_file_name)
+        mogi = pd.read_csv(os.path.join(base_folder, command.mogi_file_name))
         mogi = mogi.loc[:, ~mogi.columns.str.match("Unnamed")]
 
     # Read SAR data
@@ -192,7 +196,7 @@ def read_data(command_file_name):
         )
 
     else:
-        sar = pd.read_csv(command.sar_file_name)
+        sar = pd.read_csv(os.path.join(base_folder, command.sar_file_name))
         sar = sar.loc[:, ~sar.columns.str.match("Unnamed")]
     return command, segment, block, meshes, station, mogi, sar
 
@@ -217,7 +221,7 @@ def process_station(station, command):
 
     station["depth"] = np.zeros_like(station.lon)
     station["x"], station["y"], station["z"] = sph2cart(
-        station.lon, station.lat, celeri.RADIUS_EARTH
+        station.lon, station.lat, RADIUS_EARTH
     )
     station = station.drop(np.where(station.flag == 0)[0])
     station = station.reset_index(drop=True)
@@ -301,7 +305,7 @@ def segment_centroids(segment):
     segment["centroid_lat"] = np.zeros_like(segment.lon1)
 
     for i in range(len(segment)):
-        segment_forward_azimuth, _, _ = celeri.GEOID.inv(
+        segment_forward_azimuth, _, _ = GEOID.inv(
             segment.lon1[i], segment.lat1[i], segment.lon2[i], segment.lat2[i]
         )
         segment_down_dip_azimuth = segment_forward_azimuth + 90.0 * np.sign(
@@ -321,7 +325,7 @@ def segment_centroids(segment):
             segment.centroid_lon.values[i],
             segment.centroid_lat.values[i],
             _,
-        ) = celeri.GEOID.fwd(
+        ) = GEOID.fwd(
             segment.mid_lon[i],
             segment.mid_lat[i],
             segment_down_dip_azimuth,
@@ -344,18 +348,18 @@ def process_segment(segment, command, meshes):
 
     segment["length"] = np.zeros(len(segment))
     for i in range(len(segment)):
-        _, _, segment.length.values[i] = celeri.GEOID.inv(
+        _, _, segment.length.values[i] = GEOID.inv(
             segment.lon1[i], segment.lat1[i], segment.lon2[i], segment.lat2[i]
         )  # Segment length in meters
 
     segment["x1"], segment["y1"], segment["z1"] = sph2cart(
-        segment.lon1, segment.lat1, celeri.RADIUS_EARTH
+        segment.lon1, segment.lat1, RADIUS_EARTH
     )
     segment["x2"], segment["y2"], segment["z2"] = sph2cart(
-        segment.lon2, segment.lat2, celeri.RADIUS_EARTH
+        segment.lon2, segment.lat2, RADIUS_EARTH
     )
 
-    segment = celeri.order_endpoints_sphere(segment)
+    segment = order_endpoints_sphere(segment)
 
     # This calculation needs to account for the periodic nature of longitude.
     # Calculate the periodic longitudinal separation.
@@ -374,17 +378,17 @@ def process_segment(segment, command, meshes):
     segment["mid_lat"] = np.zeros_like(segment.lon1)
 
     for i in range(len(segment)):
-        segment.mid_lon.values[i], segment.mid_lat.values[i] = celeri.GEOID.npts(
+        segment.mid_lon.values[i], segment.mid_lat.values[i] = GEOID.npts(
             segment.lon1[i], segment.lat1[i], segment.lon2[i], segment.lat2[i], 1
         )[0]
     segment.mid_lon.values[segment.mid_lon < 0.0] += 360.0
 
     segment["mid_x"], segment["mid_y"], segment["mid_z"] = sph2cart(
-        segment.mid_lon, segment.mid_lat, celeri.RADIUS_EARTH
+        segment.mid_lon, segment.mid_lat, RADIUS_EARTH
     )
-    segment = celeri.locking_depth_manager(segment, command)
-    segment = celeri.zero_mesh_segment_locking_depth(segment, meshes)
-    segment = celeri.segment_centroids(segment)
+    segment = locking_depth_manager(segment, command)
+    segment = zero_mesh_segment_locking_depth(segment, meshes)
+    segment = segment_centroids(segment)
     return segment
 
 
@@ -428,7 +432,7 @@ def assign_block_labels(segment, station, block, mogi, sar):
     for i in range(closure.n_polygons()):
         vs = closure.polygons[i].vertices
         block.area_steradians.values[i] = closure.polygons[i].area_steradians
-        block.area_plate_carree.values[i] = celeri.polygon_area(vs[:, 0], vs[:, 1])
+        block.area_plate_carree.values[i] = polygon_area(vs[:, 0], vs[:, 1])
 
     # Assign block labels points to block interior points
     block["block_label"] = closure.assign_points(
@@ -499,7 +503,7 @@ def process_sar(sar, command):
         sar.line_of_sight_change_sig = sar.line_of_sight_change_sig / np.sqrt(
             command.sar_weight
         )
-        sar["x"], sar["y"], sar["z"] = sph2cart(sar.lon, sar.lat, celeri.RADIUS_EARTH)
+        sar["x"], sar["y"], sar["z"] = sph2cart(sar.lon, sar.lat, RADIUS_EARTH)
         sar["block_label"] = -1 * np.ones_like(sar.x)
     else:
         sar["dep"] = []
@@ -763,7 +767,7 @@ def get_fault_slip_rate_partials(segment, block):
 
         # Build unit vector for the fault
         # Projection on to fault strike
-        segment_azimuth, _, _ = celeri.GEOID.inv(
+        segment_azimuth, _, _ = GEOID.inv(
             segment.lon1[i], segment.lat1[i], segment.lon2[i], segment.lat2[i]
         )  # TODO: Need to check this vs. matlab azimuth for consistency
         unit_x_parallel = np.cos(np.deg2rad(90 - segment_azimuth))
@@ -990,11 +994,11 @@ def get_okada_displacements(
     original Okada 1992 Fortran code acceccesed through T. Ben Thompson's
     okada_wrapper: https://github.com/tbenthompson/okada_wrapper
     """
-    segment_locking_depth *= celeri.KM2M
-    segment_burial_depth *= celeri.KM2M
+    segment_locking_depth *= KM2M
+    segment_burial_depth *= KM2M
 
     # Project coordinates to flat space using a local oblique Mercator projection
-    projection = celeri.get_segment_oblique_projection(
+    projection = get_segment_oblique_projection(
         segment_lon1, segment_lat1, segment_lon2, segment_lat2
     )
     station_x, station_y = projection(station_lon, station_lat)
@@ -1101,7 +1105,7 @@ def get_segment_station_operator_okada(segment, station, command):
                 u_east_strike_slip,
                 u_north_strike_slip,
                 u_up_strike_slip,
-            ) = celeri.get_okada_displacements(
+            ) = get_okada_displacements(
                 segment.lon1[i],
                 segment.lat1[i],
                 segment.lon2[i],
@@ -1121,7 +1125,7 @@ def get_segment_station_operator_okada(segment, station, command):
                 u_east_dip_slip,
                 u_north_dip_slip,
                 u_up_dip_slip,
-            ) = celeri.get_okada_displacements(
+            ) = get_okada_displacements(
                 segment.lon1[i],
                 segment.lat1[i],
                 segment.lon2[i],
@@ -1141,7 +1145,7 @@ def get_segment_station_operator_okada(segment, station, command):
                 u_east_tensile_slip,
                 u_north_tensile_slip,
                 u_up_tensile_slip,
-            ) = celeri.get_okada_displacements(
+            ) = get_okada_displacements(
                 segment.lon1[i],
                 segment.lat1[i],
                 segment.lon2[i],
@@ -1222,14 +1226,14 @@ def get_elastic_operators(
     elif command.reuse_elastic == "no":
         # Calculate Okada partials for all segments
         operators.slip_rate_to_okada_to_velocities = (
-            celeri.get_segment_station_operator_okada(segment, station, command)
+            get_segment_station_operator_okada(segment, station, command)
         )
 
         # Calculate cutde partials for each mesh
         for i in range(len(meshes)):
             operators.meshes[
                 i
-            ].tde_to_velocities = celeri.get_tde_to_velocities_single_mesh(
+            ].tde_to_velocities = get_tde_to_velocities_single_mesh(
                 meshes, station, command, mesh_idx=i
             )
 
@@ -1276,7 +1280,7 @@ def mogi_forward(mogi_lon, mogi_lat, mogi_depth, poissons_ratio, obs_lon, obs_la
     u_up = np.zeros_like(obs_lon)
     for i in range(obs_lon.size):
         # Find angle between source and observation as well as distance betwen them
-        source_to_obs_forward_azimuth, _, source_to_obs_distance = celeri.GEOID.inv(
+        source_to_obs_forward_azimuth, _, source_to_obs_distance = GEOID.inv(
             mogi_lon, mogi_lat, obs_lon[i], obs_lat[i]
         )
 
@@ -1312,7 +1316,7 @@ def get_mogi_operator(mogi, station, command):
         )
         mogi_operator = np.zeros((3 * len(station), len(mogi)))
         for i in range(len(mogi)):
-            mogi_depth = celeri.KM2M * mogi.depth[i]
+            mogi_depth = KM2M * mogi.depth[i]
             u_east, u_north, u_up = mogi_forward(
                 mogi.lon[i],
                 mogi.lat[i],
@@ -1407,10 +1411,10 @@ def get_strain_rate_displacements(
     of page 2
     """
     centroid_lon = np.deg2rad(centroid_lon)
-    centroid_lat = celeri.latitude_to_colatitude(centroid_lat)
+    centroid_lat = latitude_to_colatitude(centroid_lat)
     centroid_lat = np.deg2rad(centroid_lat)
     lon_obs = np.deg2rad(lon_obs)
-    lat_obs = celeri.latitude_to_colatitude(lat_obs)
+    lat_obs = latitude_to_colatitude(lat_obs)
     lat_obs = np.deg2rad(lat_obs)
 
     # Calculate displacements from homogeneous strain
@@ -1418,11 +1422,11 @@ def get_strain_rate_displacements(
         lon_obs.size
     )  # Always zero here because we're assuming plane strain on the sphere
     u_east = strain_rate_lon_lon * (
-        celeri.RADIUS_EARTH * (lon_obs - centroid_lon) * np.sin(centroid_lat)
-    ) + strain_rate_lon_lat * (celeri.RADIUS_EARTH * (lat_obs - centroid_lat))
+        RADIUS_EARTH * (lon_obs - centroid_lon) * np.sin(centroid_lat)
+    ) + strain_rate_lon_lat * (RADIUS_EARTH * (lat_obs - centroid_lat))
     u_north = strain_rate_lon_lat * (
-        celeri.RADIUS_EARTH * (lon_obs - centroid_lon) * np.sin(centroid_lat)
-    ) + strain_rate_lat_lat * (celeri.RADIUS_EARTH * (lat_obs - centroid_lat))
+        RADIUS_EARTH * (lon_obs - centroid_lon) * np.sin(centroid_lat)
+    ) + strain_rate_lat_lat * (RADIUS_EARTH * (lat_obs - centroid_lat))
     return u_east, u_north, u_up
 
 
@@ -1437,7 +1441,7 @@ def get_strain_rate_centroid_operator(block, station, segment):
         )
         for i in range(strain_rate_block_idx.size):
             # Find centroid of current block
-            block_centroid_lon, block_centroid_lat = celeri.get_block_centroid(
+            block_centroid_lon, block_centroid_lat = get_block_centroid(
                 segment, strain_rate_block_idx[i]
             )
 
@@ -1512,14 +1516,14 @@ def get_rotation_displacements(lon_obs, lat_obs, omega_x, omega_y, omega_z):
     vel_east = np.zeros(lon_obs.size)
     vel_north = np.zeros(lon_obs.size)
     vel_up = np.zeros(lon_obs.size)
-    x, y, z = celeri.sph2cart(lon_obs, lat_obs, celeri.RADIUS_EARTH)
+    x, y, z = sph2cart(lon_obs, lat_obs, RADIUS_EARTH)
     for i in range(lon_obs.size):
-        cross_product_operator = celeri.get_cross_partials([x[i], y[i], z[i]])
+        cross_product_operator = get_cross_partials([x[i], y[i], z[i]])
         (
             vel_north_from_omega_x,
             vel_east_from_omega_x,
             vel_up_from_omega_x,
-        ) = celeri.cartesian_vector_to_spherical_vector(
+        ) = cartesian_vector_to_spherical_vector(
             cross_product_operator[0, 0],
             cross_product_operator[1, 0],
             cross_product_operator[2, 0],
@@ -1530,7 +1534,7 @@ def get_rotation_displacements(lon_obs, lat_obs, omega_x, omega_y, omega_z):
             vel_north_from_omega_y,
             vel_east_from_omega_y,
             vel_up_from_omega_y,
-        ) = celeri.cartesian_vector_to_spherical_vector(
+        ) = cartesian_vector_to_spherical_vector(
             cross_product_operator[0, 1],
             cross_product_operator[1, 1],
             cross_product_operator[2, 1],
@@ -1541,7 +1545,7 @@ def get_rotation_displacements(lon_obs, lat_obs, omega_x, omega_y, omega_z):
             vel_north_from_omega_z,
             vel_east_from_omega_z,
             vel_up_from_omega_z,
-        ) = celeri.cartesian_vector_to_spherical_vector(
+        ) = cartesian_vector_to_spherical_vector(
             cross_product_operator[0, 2],
             cross_product_operator[1, 2],
             cross_product_operator[2, 2],
@@ -1731,9 +1735,9 @@ def get_tri_displacements(
     tri_x1, tri_y1 = projection(meshes[0].lon1[tri_idx], meshes[0].lat1[tri_idx])
     tri_x2, tri_y2 = projection(meshes[0].lon2[tri_idx], meshes[0].lat2[tri_idx])
     tri_x3, tri_y3 = projection(meshes[0].lon3[tri_idx], meshes[0].lat3[tri_idx])
-    tri_z1 = celeri.KM2M * meshes[0].dep1[tri_idx]
-    tri_z2 = celeri.KM2M * meshes[0].dep2[tri_idx]
-    tri_z3 = celeri.KM2M * meshes[0].dep3[tri_idx]
+    tri_z1 = KM2M * meshes[0].dep1[tri_idx]
+    tri_z2 = KM2M * meshes[0].dep2[tri_idx]
+    tri_z3 = KM2M * meshes[0].dep3[tri_idx]
 
     # Package coordinates for cutde call
     obs_coords = np.vstack((obs_x, obs_y, np.zeros_like(obs_x))).T
@@ -1788,9 +1792,9 @@ def get_tri_displacements_single_mesh(
     tri_x3, tri_y3 = projection(
         meshes[mesh_idx].lon3[tri_idx], meshes[mesh_idx].lat3[tri_idx]
     )
-    tri_z1 = celeri.KM2M * meshes[mesh_idx].dep1[tri_idx]
-    tri_z2 = celeri.KM2M * meshes[mesh_idx].dep2[tri_idx]
-    tri_z3 = celeri.KM2M * meshes[mesh_idx].dep3[tri_idx]
+    tri_z1 = KM2M * meshes[mesh_idx].dep1[tri_idx]
+    tri_z2 = KM2M * meshes[mesh_idx].dep2[tri_idx]
+    tri_z3 = KM2M * meshes[mesh_idx].dep3[tri_idx]
 
     # Package coordinates for cutde call
     obs_coords = np.vstack((obs_x, obs_y, np.zeros_like(obs_x))).T
@@ -2097,7 +2101,7 @@ def get_tri_smoothing_matrix(share, tri_shared_sides_distances):
     smoothing_matrix = scipy.sparse.lil_matrix((3 * n_shared_tris, 3 * n_shared_tris))
 
     # Create a design matrix for Laplacian construction
-    share_copy = celeri.copy.deepcopy(share)
+    share_copy = copy.deepcopy(share)
     share_copy[np.where(share == -1)] = 0
     share_copy[np.where(share != -1)] = 1
 
@@ -2142,14 +2146,14 @@ def get_all_mesh_smoothing_matrices(meshes: List, operators: Dict):
     """
     for i in range(len(meshes)):
         # Get smoothing operator for a single mesh.
-        meshes[i].share = celeri.get_shared_sides(meshes[i].verts)
-        meshes[i].tri_shared_sides_distances = celeri.get_tri_shared_sides_distances(
+        meshes[i].share = get_shared_sides(meshes[i].verts)
+        meshes[i].tri_shared_sides_distances = get_tri_shared_sides_distances(
             meshes[i].share,
             meshes[i].x_centroid,
             meshes[i].y_centroid,
             meshes[i].z_centroid,
         )
-        operators.meshes[i].smoothing_matrix = celeri.get_tri_smoothing_matrix(
+        operators.meshes[i].smoothing_matrix = get_tri_smoothing_matrix(
             meshes[i].share, meshes[i].tri_shared_sides_distances
         )
 
@@ -2162,8 +2166,8 @@ def get_all_mesh_smoothing_matrices_simple(meshes: List, operators: Dict):
     """
     for i in range(len(meshes)):
         # Get smoothing operator for a single mesh.
-        meshes[i].share = celeri.get_shared_sides(meshes[i].verts)
-        meshes[i].tri_shared_sides_distances = celeri.get_tri_shared_sides_distances(
+        meshes[i].share = get_shared_sides(meshes[i].verts)
+        meshes[i].tri_shared_sides_distances = get_tri_shared_sides_distances(
             meshes[i].share,
             meshes[i].x_centroid,
             meshes[i].y_centroid,
@@ -2171,7 +2175,7 @@ def get_all_mesh_smoothing_matrices_simple(meshes: List, operators: Dict):
         )
         operators.meshes[
             i
-        ].smoothing_matrix_simple = celeri.get_tri_smoothing_matrix_simple(
+        ].smoothing_matrix_simple = get_tri_smoothing_matrix_simple(
             meshes[i].share, N_MESH_DIM
         )
 
@@ -2333,10 +2337,10 @@ def post_process_estimation(
     estimation.north_vel_elastic_segment = estimation.vel_elastic_segment[1::2]
 
     # Calculate TDE velocities
-    tde_keep_row_index = celeri.get_keep_index_12(
+    tde_keep_row_index = get_keep_index_12(
         operators.meshes[0].tde_to_velocities.shape[0]
     )
-    tde_keep_col_index = celeri.get_keep_index_12(
+    tde_keep_col_index = get_keep_index_12(
         operators.meshes[0].tde_to_velocities.shape[1]
     )
     estimation.vel_tde = (
@@ -2363,7 +2367,7 @@ def plot_segment_displacements(
     lat_max,
     quiver_scale,
 ):
-    u_east, u_north, u_up = celeri.get_okada_displacements(
+    u_east, u_north, u_up = get_okada_displacements(
         segment.lon1.values[segment_idx],
         segment.lat1[segment_idx],
         segment.lon2[segment_idx],
