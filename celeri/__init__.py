@@ -17,6 +17,8 @@ from .celeri import (
     get_fault_slip_rate_partials,
     get_strain_rate_centroid_operator,
     get_mogi_operator,
+    get_keep_index_12,
+    interleave2,
     post_process_estimation,
     plot_input_summary,
     plot_estimation_summary,
