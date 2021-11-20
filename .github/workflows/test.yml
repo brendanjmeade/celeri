@@ -25,4 +25,4 @@ jobs:
         python-version: ${{ matrix.python-version }}
     - name: Test
       run: |
-        pytest celeri.py celeri_closure.py
+        pytest .tests/test_basic.py .celeri/celeri_closure.py
