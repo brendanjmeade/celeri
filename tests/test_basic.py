@@ -1,5 +1,16 @@
+# import numpy as np
+# from .context import celeri
+
+import addict
+import sys
+import warnings
 import numpy as np
-from .context import celeri
+
+import okada_wrapper
+import cutde.halfspace as cutde_halfspace
+
+sys.path.append("../")
+import celeri
 
 
 def test_end2end():
