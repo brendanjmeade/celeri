@@ -23,7 +23,7 @@ from .celeri import (
     get_keep_index_12,
     interleave2,
     post_process_estimation,
-    plot_mesh,
+    plot_meshes,
     plot_input_summary,
     plot_estimation_summary,
 )

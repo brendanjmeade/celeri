@@ -2440,7 +2440,7 @@ def get_mesh_edge_elements(meshes: List):
         meshes[i].side_elements = sides
 
 
-def plot_mesh(meshes: List, fill_value, ax):
+def plot_meshes(meshes: List, fill_value: np.array, ax):
     for i in range(len(meshes)):
         x_coords = meshes[i].meshio_object.points[:, 0]
         y_coords = meshes[i].meshio_object.points[:, 1]
@@ -2458,13 +2458,11 @@ def plot_mesh(meshes: List, fill_value, ax):
         ax.autoscale()
 
         # Add mesh edge
-        ax.plot(
-            x_coords[meshes[i].ordered_edge_nodes[:, 0]],
-            y_coords[meshes[i].ordered_edge_nodes[:, 0]],
-            color="black",
-        )
-        ax.set_aspect("equal")
-        plt.show()
+        x_edge = x_coords[meshes[i].ordered_edge_nodes[:, 0]]
+        y_edge = y_coords[meshes[i].ordered_edge_nodes[:, 0]]
+        x_edge = np.append(x_edge, x_coords[meshes[0].ordered_edge_nodes[0, 0]])
+        y_edge = np.append(y_edge, y_coords[meshes[0].ordered_edge_nodes[0, 0]])
+        plt.plot(x_edge, y_edge, color="black", linewidth=1)
 
 
 def plot_segment_displacements(
