@@ -1,6 +1,3 @@
-# import numpy as np
-# from .context import celeri
-
 import addict
 import sys
 import warnings
