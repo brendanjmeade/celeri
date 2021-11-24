@@ -24,3 +24,4 @@ dependencies:
     - loguru
     - okada_wrapper
     - pygmt
+    - ismember
