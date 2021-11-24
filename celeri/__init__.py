@@ -12,6 +12,9 @@ from .celeri import (
     get_all_mesh_smoothing_matrices_simple,
     get_block_rotation_operator,
     get_global_float_block_rotation_operator,
+    get_tri_displacements,
+    get_ordered_edge_nodes,
+    get_mesh_edge_elements,
     block_constraints,
     slip_rate_constraints,
     get_fault_slip_rate_partials,
@@ -20,12 +23,13 @@ from .celeri import (
     get_keep_index_12,
     interleave2,
     post_process_estimation,
+    plot_mesh,
     plot_input_summary,
     plot_estimation_summary,
 )
 
 
-from .celeri_vis import plot_input_summary
+# from .celeri_vis import plot_input_summary
 
 
 try:
