@@ -55,6 +55,9 @@ def test_global_closure():
     Right now all this does is check for the correct number of blocks and
     against one set of polygon edge indices
     """
+    import os
+
+    print(os.getcwd())
     command_file_name = "./data/global/global_command.json"
     command, segment, block, meshes, station, mogi, sar = celeri.read_data(
         command_file_name
@@ -71,7 +74,7 @@ def test_global_closure():
             (all_edge_idxs, np.array(closure.polygons[i].edge_idxs))
         )
 
-    with open("global_closure_test_data.npy", "rb") as f:
+    with open("./tests/global_closure_test_data.npy", "rb") as f:
         all_edge_idxs_stored = np.load(f)
 
     assert np.allclose(all_edge_idxs, all_edge_idxs_stored)
