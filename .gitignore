@@ -1,4 +1,6 @@
 __pycache__/
+celeri.egg-info/
+UNKNOWN.egg-info/
 *.py[cod]
 .ipynb_checkpoints
 .DS_Store
