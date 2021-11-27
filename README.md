@@ -1,5 +1,9 @@
 <img src="https://user-images.githubusercontent.com/4225359/132613223-257e6e17-83bd-49a4-8bbc-326cc117f6ec.png" width=400 align=center>
 
+<p align="center">
+  <img src="https://user-images.githubusercontent.com/4225359/132613223-257e6e17-83bd-49a4-8bbc-326cc117f6ec.png" width=400 />
+</p>
+
 ## celeri - Next generation earthquake cycle and surface deformation modeling
 A python port, reworking, and extension of the Matlab-based [blocks](https://github.com/jploveless/Blocks) featuring:
 - Much smaller memory footprint
