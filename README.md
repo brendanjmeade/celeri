@@ -8,6 +8,7 @@ To set up a development conda environment, run the following commands in the `ce
 ```
 conda config --prepend channels conda-forge
 conda env create
+pip install --no-use-pep517 -e .
 ```
 
-Then run Jupyter with `jupyter lab`.
+Then start your favorite notebook viewer (`jupyter lab` of `vscode`) and open and run `celeri.ipynb`.
