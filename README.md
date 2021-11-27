@@ -1,6 +1,6 @@
 ![celeri logo](https://user-images.githubusercontent.com/4225359/132613223-257e6e17-83bd-49a4-8bbc-326cc117f6ec.png)
 
-<img src="https://some-img-host.com/1234567/image.png" width=300 align=right>
+<img src="https://user-images.githubusercontent.com/4225359/132613223-257e6e17-83bd-49a4-8bbc-326cc117f6ec.png" width=300 align=right>
 
 ## celeri
 - Next generation earthquake cycle and surface deformation modeling
