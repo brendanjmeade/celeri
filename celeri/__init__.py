@@ -29,7 +29,7 @@ from .celeri import (
 )
 
 
-# from .celeri_vis import plot_input_summary
+from .celeri_vis import test_plot, plot_matrix_abs_log
 
 
 try:
