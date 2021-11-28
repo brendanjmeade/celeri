@@ -6,7 +6,6 @@ import numpy as np
 import okada_wrapper
 import cutde.halfspace as cutde_halfspace
 
-sys.path.append("../")
 import celeri
 
 
