@@ -129,6 +129,7 @@ def read_data(command_file_name):
             meshes[i].n_eigenvalues = mesh_param[i]["n_eigenvalues"]
             meshes[i].edge_constraints = mesh_param[i]["edge_constraints"]
             meshes[i].n_tde = meshes[i].lon1.size
+            get_mesh_edge_elements(meshes)
 
     # Read station data
     if (
@@ -2456,6 +2457,7 @@ def plot_meshes(meshes: List, fill_value: np.array, ax):
         pc.set_array(fill_value)
         ax.add_collection(pc)
         ax.autoscale()
+        plt.colorbar(pc, label="slip (mm/yr)")
 
         # Add mesh edge
         x_edge = x_coords[meshes[i].ordered_edge_nodes[:, 0]]
@@ -2868,6 +2870,7 @@ def plot_input_summary(
 def plot_estimation_summary(
     segment: pd.DataFrame,
     station: pd.DataFrame,
+    meshes: List,
     estimation: Dict,
     lon_range: Tuple,
     lat_range: Tuple,
@@ -2879,6 +2882,7 @@ def plot_estimation_summary(
     Args:
         segment (pd.DataFrame): Fault segments
         station (pd.DataFrame): GPS observations
+        meshes (List): List of mesh dictionaries
         estimation (Dict): All estimated values
         lon_range (Tuple): Latitude range (min, max)
         lat_range (Tuple): Latitude range (min, max)
@@ -3087,4 +3091,17 @@ def plot_estimation_summary(
                 verticalalignment="center",
                 fontsize=7,
             )
+
+    subplot_index += 1
+    plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
+    plt.title("TDE slip (strike-slip)")
+    common_plot_elements(segment, lon_range, lat_range)
+    plot_meshes(meshes, estimation.tde_strike_slip_rates, plt.gca())
+
+    subplot_index += 1
+    plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
+    plt.title("TDE slip (dip-slip)")
+    common_plot_elements(segment, lon_range, lat_range)
+    plot_meshes(meshes, estimation.tde_dip_slip_rates, plt.gca())
+
     plt.show()
