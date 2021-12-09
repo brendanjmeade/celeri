@@ -20,8 +20,6 @@ from loguru import logger
 from tqdm.notebook import tqdm
 from typing import List, Dict, Tuple
 
-# import celeri
-
 from . import celeri_closure
 from .celeri_util import sph2cart
 
