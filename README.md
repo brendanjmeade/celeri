@@ -13,6 +13,7 @@ To set up a development conda environment, run the following commands in the `ce
 ```
 conda config --prepend channels conda-forge
 conda env create
+conda activate celeri
 pip install --no-use-pep517 -e .
 ```
 
