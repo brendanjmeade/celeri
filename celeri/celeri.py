@@ -2306,7 +2306,6 @@ def get_2component_index(indices: np.array) -> np.array:
     idx = np.sort(np.append(2 * (indices + 1) - 2, 2 * (indices + 1) - 1))
     return idx
 
-
 def get_3component_index(indices: np.array) -> np.array:
     """Returns indices into 3-component array, where each entry of input array 
     corresponds to three entries in the 3-component array
@@ -2324,7 +2323,6 @@ def get_3component_index(indices: np.array) -> np.array:
     """
     idx = np.sort(np.append(3 * (indices + 1) - 3, (3 * (indices + 1) - 2, 3 * (indices + 1) - 1)))
     return idx
-
 
 def post_process_estimation(
     estimation: Dict, operators: Dict, station: pd.DataFrame, index: Dict
