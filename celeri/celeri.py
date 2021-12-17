@@ -2265,13 +2265,16 @@ def get_keep_index_12(length_of_array: int) -> np.array:
     idx = np.delete(np.arange(0, length_of_array), np.arange(2, length_of_array, 3))
     return idx
 
+
 def get_2component_index(indices: np.array) -> np.array:
-    idx = np.sort(np.append(2*indices-1, 2*indices))
-    return idx 
+    idx = np.sort(np.append(2 * indices - 1, 2 * indices))
+    return idx
+
 
 def get_3component_index(indices: np.array) -> np.array:
-    idx = np.sort(np.append(3*indices-2, (3*indices-1, 3*indices)))
-    return idx 
+    idx = np.sort(np.append(3 * indices - 2, (3 * indices - 1, 3 * indices)))
+    return idx
+
 
 def post_process_estimation(
     estimation: Dict, operators: Dict, station: pd.DataFrame, index: Dict
