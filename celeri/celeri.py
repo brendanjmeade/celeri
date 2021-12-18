@@ -127,7 +127,9 @@ def read_data(command_file_name):
             meshes[i].dip_flag = meshes[i].dip != 90
             meshes[i].smoothing_weight = mesh_param[i]["smoothing_weight"]
             meshes[i].n_eigenvalues = mesh_param[i]["n_eigenvalues"]
-            meshes[i].edge_constraints = mesh_param[i]["edge_constraints"]
+            meshes[i].top_slip_rate_constraint = mesh_param[i]["top_slip_rate_constraint"]
+            meshes[i].bot_slip_rate_constraint = mesh_param[i]["bot_slip_rate_constraint"]
+            meshes[i].side_slip_rate_constraint = mesh_param[i]["side_slip_rate_constraint"]
             meshes[i].n_tde = meshes[i].lon1.size
             get_mesh_edge_elements(meshes)
 
@@ -1333,24 +1335,6 @@ def get_mogi_operator(mogi, station, command):
             mogi_operator[2::3, i] = u_up
     return mogi_operator
 
-
-def interleave2(array_1, array_2):
-    interleaved_array = np.empty((array_1.size + array_2.size), dtype=array_1.dtype)
-    interleaved_array[0::2] = array_1
-    interleaved_array[1::2] = array_2
-    return interleaved_array
-
-
-def interleave3(array_1, array_2, array_3):
-    interleaved_array = np.empty(
-        (array_1.size + array_2.size + array_3.size), dtype=array_1.dtype
-    )
-    interleaved_array[0::3] = array_1
-    interleaved_array[1::3] = array_2
-    interleaved_array[2::3] = array_3
-    return interleaved_array
-
-
 def latitude_to_colatitude(lat):
     """
     Convert from latitude to colatitude
@@ -2265,6 +2249,80 @@ def get_keep_index_12(length_of_array: int) -> np.array:
     idx = np.delete(np.arange(0, length_of_array), np.arange(2, length_of_array, 3))
     return idx
 
+def interleave2(array_1, array_2):
+    """Interleaves two arrays, with alternating entries. 
+    Given array_1 = [0, 2, 4, 6] and array_2 = [1, 3, 5, 7]
+    returns
+    [0, 1, 2, 3, 4, 5, 6, 7]
+    This is useful for assembling velocity/slip components into a combined array.
+
+    Args:
+        array_1, array_2 (np.array): Arrays to interleave. Should be equal length
+
+    Returns:
+        interleaved_array (np.array): Interleaved array
+    """
+    interleaved_array = np.empty((array_1.size + array_2.size), dtype=array_1.dtype)
+    interleaved_array[0::2] = array_1
+    interleaved_array[1::2] = array_2
+    return interleaved_array
+
+def interleave3(array_1, array_2, array_3):
+    """Interleaves three arrays, with alternating entries. 
+    Given array_1 = [0, 3, 6, 9], array_2 = [1, 4, 7, 10], and array_3 = [2, 5, 8, 11]
+    returns
+    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    This is useful for assembling velocity/slip components into a combined array.
+
+    Args:
+        array_1, array_2, array_3 (np.array): Arrays to interleave. Should be equal length
+
+    Returns:
+        interleaved_array (np.array): Interleaved array
+    """
+    interleaved_array = np.empty(
+        (array_1.size + array_2.size + array_3.size), dtype=array_1.dtype
+    )
+    interleaved_array[0::3] = array_1
+    interleaved_array[1::3] = array_2
+    interleaved_array[2::3] = array_3
+    return interleaved_array
+
+def get_2component_index(indices: np.array) -> np.array:
+    """Returns indices into 2-component array, where each entry of input array 
+    corresponds to two entries in the 2-component array
+    Given indices = [0, 2, 10, 6]  
+    returns
+    [0, 1, 4, 5, 20, 21, 12, 13]
+    This is useful for referencing velocity/slip components corresponding to a set 
+    of stations/faults.
+
+    Args:
+        indices (np.array): Element index array
+
+    Returns:
+        idx (np.array): Component index array (2 * length of indices)
+    """
+    idx = np.sort(np.append(2 * (indices + 1) - 2, 2 * (indices + 1) - 1))
+    return idx
+
+def get_3component_index(indices: np.array) -> np.array:
+    """Returns indices into 3-component array, where each entry of input array 
+    corresponds to three entries in the 3-component array
+    Given indices = [0, 2, 10, 6]  
+    returns
+    [0, 1, 2, 6, 7, 8, 27, 28, 29, 15, 16, 17]
+    This is useful for referencing velocity/slip components corresponding to a set 
+    of stations/faults.
+
+    Args:
+        indices (np.array): Element index array
+
+    Returns:
+        idx (np.array): Component index array (3 * length of indices)
+    """
+    idx = np.sort(np.append(3 * (indices + 1) - 3, (3 * (indices + 1) - 2, 3 * (indices + 1) - 1)))
+    return idx
 
 def post_process_estimation(
     estimation: Dict, operators: Dict, station: pd.DataFrame, index: Dict

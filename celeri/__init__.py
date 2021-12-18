@@ -21,6 +21,8 @@ from .celeri import (
     get_strain_rate_centroid_operator,
     get_mogi_operator,
     get_keep_index_12,
+    get_2component_index,
+    get_3component_index,
     interleave2,
     post_process_estimation,
     plot_meshes,
