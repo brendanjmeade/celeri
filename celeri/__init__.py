@@ -20,6 +20,7 @@ from .celeri import (
     get_fault_slip_rate_partials,
     get_strain_rate_centroid_operator,
     get_mogi_operator,
+    get_tde_slip_rate_constraints,
     get_keep_index_12,
     get_2component_index,
     get_3component_index,
