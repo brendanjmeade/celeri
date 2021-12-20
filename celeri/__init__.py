@@ -25,13 +25,19 @@ from .celeri import (
     get_3component_index,
     interleave2,
     post_process_estimation,
-    plot_meshes,
-    plot_input_summary,
-    plot_estimation_summary,
 )
 
 
-from .celeri_vis import test_plot, plot_matrix_abs_log
+from .vis import (
+    test_plot,
+    plot_matrix_abs_log,
+    plot_input_summary,
+    plot_estimation_summary,
+    plot_meshes,
+    plot_rotation_components,
+    plot_strain_rate_components_for_block,
+    plot_segment_displacements,
+)
 
 
 try:
