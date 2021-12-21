@@ -2236,6 +2236,51 @@ def get_ordered_edge_nodes(meshes: List) -> None:
                 next_row  # Update last_row so that it's excluded in the next iteration
             )
 
+def get_tde_slip_rate_constraints(meshes: List, operators: Dict) -> None:
+    """Construct TDE slip rate constraint matrices for each mesh.
+    These are essentially identity matrices, used to set TDE slip
+    rates on elements lining the edges of the mesh, as controlled
+    by input parameters 
+    top_slip_rate_constraint, 
+    bot_slip_rate_constraint,
+    side_slip_rate_constraint 
+
+    Args:
+        meshes (List): list of mesh dictionaries
+        operators (Dict): dictionary of linear operators
+    """
+    for i in range(len(meshes)):
+        # Empty constraint matrix
+        tde_slip_rate_constraints = np.zeros(
+            (2 * meshes[i].n_tde, 2 * meshes[i].n_tde)
+        )
+        # Top constraints
+        if meshes[i].top_slip_rate_constraint > 0:
+            # Indices of top elements
+            top_indices = np.asarray(np.where(meshes[i].top_elements))
+            # Indices of top elements' 2 slip components
+            top_idx = get_2component_index(top_indices)
+            tde_slip_rate_constraints[top_idx, top_idx] = 1
+        # Bottom constraints
+        if meshes[i].bot_slip_rate_constraint > 0:
+            # Indices of bottom elements
+            bot_indices = np.asarray(np.where(meshes[i].bot_elements))
+            # Indices of bottom elements' 2 slip components
+            bot_idx = get_2component_index(bot_indices)
+            tde_slip_rate_constraints[bot_idx, bot_idx] = 1
+        # Side constraints
+        if meshes[i].side_slip_rate_constraint > 0:
+            # Indices of side elements
+            side_indices = np.asarray(np.where(meshes[i].side_elements))
+            # Indices of side elements' 2 slip components
+            side_idx = get_2component_index(side_indices)
+            tde_slip_rate_constraints[side_idx, side_idx] = 1
+        # Eliminate blank rows
+        sum_constraint_columns = np.sum(tde_slip_rate_constraints, 1)
+        tde_slip_rate_constraints = tde_slip_rate_constraints[sum_constraint_columns > 0, :]
+        operators.meshes[i].tde_slip_rate_constraints = tde_slip_rate_constraints
+        meshes[i].n_tde_constraints = np.sum(sum_constraint_columns > 0)
+
 
 def get_keep_index_12(length_of_array: int) -> np.array:
     """Calculate an indexing array that given and array:
