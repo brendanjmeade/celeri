@@ -625,7 +625,7 @@ def euler_pole_covariance_to_rotation_vector_covariance(
     return omega_x_sig, omega_y_sig, omega_z_sig
 
 
-def get_block_constraint_partials(block):
+def get_block_motion_constraint_partials(block):
     """
     Partials for a priori block motion constraints.
     Essentially a set of eye(3) matrices
@@ -641,11 +641,11 @@ def get_block_constraint_partials(block):
     return operator
 
 
-def block_constraints(assembly: Dict, block: pd.DataFrame, command: Dict):
+def get_block_motion_constraints(assembly: Dict, block: pd.DataFrame, command: Dict):
     """
     Applying a priori block motion constraints
     """
-    block_constraint_partials = get_block_constraint_partials(block)
+    block_constraint_partials = get_block_motion_constraint_partials(block)
     assembly.index.block_constraints_idx = np.where(block.rotation_flag == 1)[0]
 
     assembly.data.n_block_constraints = len(assembly.index.block_constraints_idx)
@@ -739,9 +739,9 @@ def cartesian_vector_to_spherical_vector(vel_x, vel_y, vel_z, lon, lat):
     return vel_north, vel_east, vel_up
 
 
-def get_fault_slip_rate_partials(segment, block):
+def get_rotation_to_slip_rate_partials(segment, block):
     """
-    Calculate partial derivatives for slip rate constraints
+    Calculate partial derivatives relating relative block motion to fault slip rates
     """
     n_segments = len(segment)
     n_blocks = len(block)
@@ -871,7 +871,7 @@ def get_fault_slip_rate_partials(segment, block):
     return fault_slip_rate_partials
 
 
-def slip_rate_constraints(assembly, segment, block, command):
+def get_slip_rate_constraints(assembly, segment, block, command):
     logger.info("Isolating slip rate constraints")
     for i in range(len(segment.lon1)):
         if segment.ss_rate_flag[i] == 1:
@@ -906,7 +906,7 @@ def slip_rate_constraints(assembly, segment, block, command):
                 + " (mm/yr)"
             )
 
-    slip_rate_constraint_partials = get_fault_slip_rate_partials(segment, block)
+    slip_rate_constraint_partials = get_rotation_to_slip_rate_partials(segment, block)
 
     slip_rate_constraint_flag = interleave3(
         segment.ss_rate_flag, segment.ds_rate_flag, segment.ts_rate_flag
@@ -1311,7 +1311,7 @@ def mogi_forward(mogi_lon, mogi_lat, mogi_depth, poissons_ratio, obs_lon, obs_la
     return u_east, u_north, u_up
 
 
-def get_mogi_operator(mogi, station, command):
+def get_mogi_to_velocities_partials(mogi, station, command):
     """
     Mogi volume change to station displacment operator
     """
@@ -1420,7 +1420,7 @@ def get_strain_rate_displacements(
     return u_east, u_north, u_up
 
 
-def get_strain_rate_centroid_operator(block, station, segment):
+def get_block_strain_rate_to_velocities_partials(block, station, segment):
     """
     Calculate strain partial derivatives assuming a strain centroid at the center of each block
     """
@@ -1555,7 +1555,7 @@ def get_rotation_displacements(lon_obs, lat_obs, omega_x, omega_y, omega_z):
     return vel_east, vel_north, vel_up
 
 
-def get_block_rotation_operator(station):
+def get_rotation_to_velocities_partials(station):
     """
     Calculate block rotation partials operator for stations in dataframe
     station.
@@ -1611,7 +1611,7 @@ def get_block_rotation_operator(station):
     return block_rotation_operator
 
 
-def get_global_float_block_rotation_operator(station):
+def get_global_float_block_rotation_partials(station):
     """
     Return a linear operator for the rotations of all stations assuming they
     are the on the same block (i.e., the globe). The purpose of this is to
@@ -1625,7 +1625,7 @@ def get_global_float_block_rotation_operator(station):
     station_all_on_one_block.block_label.values[
         :
     ] = 0  # Force all stations to be on one block
-    global_float_block_rotation_operator = get_block_rotation_operator(
+    global_float_block_rotation_operator = get_rotation_to_velocities_partials(
         station_all_on_one_block
     )
     return global_float_block_rotation_operator
@@ -2236,14 +2236,15 @@ def get_ordered_edge_nodes(meshes: List) -> None:
                 next_row  # Update last_row so that it's excluded in the next iteration
             )
 
+
 def get_tde_slip_rate_constraints(meshes: List, operators: Dict) -> None:
     """Construct TDE slip rate constraint matrices for each mesh.
     These are essentially identity matrices, used to set TDE slip
     rates on elements lining the edges of the mesh, as controlled
-    by input parameters 
-    top_slip_rate_constraint, 
+    by input parameters
+    top_slip_rate_constraint,
     bot_slip_rate_constraint,
-    side_slip_rate_constraint 
+    side_slip_rate_constraint
 
     Args:
         meshes (List): list of mesh dictionaries
@@ -2251,9 +2252,7 @@ def get_tde_slip_rate_constraints(meshes: List, operators: Dict) -> None:
     """
     for i in range(len(meshes)):
         # Empty constraint matrix
-        tde_slip_rate_constraints = np.zeros(
-            (2 * meshes[i].n_tde, 2 * meshes[i].n_tde)
-        )
+        tde_slip_rate_constraints = np.zeros((2 * meshes[i].n_tde, 2 * meshes[i].n_tde))
         # Top constraints
         if meshes[i].top_slip_rate_constraint > 0:
             # Indices of top elements
@@ -2277,7 +2276,9 @@ def get_tde_slip_rate_constraints(meshes: List, operators: Dict) -> None:
             tde_slip_rate_constraints[side_idx, side_idx] = 1
         # Eliminate blank rows
         sum_constraint_columns = np.sum(tde_slip_rate_constraints, 1)
-        tde_slip_rate_constraints = tde_slip_rate_constraints[sum_constraint_columns > 0, :]
+        tde_slip_rate_constraints = tde_slip_rate_constraints[
+            sum_constraint_columns > 0, :
+        ]
         operators.meshes[i].tde_slip_rate_constraints = tde_slip_rate_constraints
         meshes[i].n_tde_constraints = np.sum(sum_constraint_columns > 0)
 
