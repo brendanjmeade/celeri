@@ -27,10 +27,10 @@ def test_end2end():
     assembly = addict.Dict()
     operators = addict.Dict()
     assembly = celeri.merge_geodetic_data(assembly, station, sar)
-    assembly, operators.block_motion_constraints = celeri.block_constraints(
+    assembly, operators.block_motion_constraints = celeri.get_block_motion_constraints(
         assembly, block, command
     )
-    assembly, operators.slip_rate_constraints = celeri.slip_rate_constraints(
+    assembly, operators.slip_rate_constraints = celeri.get_slip_rate_constraints(
         assembly, segment, block, command
     )
 
