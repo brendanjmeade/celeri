@@ -231,7 +231,28 @@ def plot_input_summary(
                 fontsize=7,
             )
 
-    # TODO: #49 Plot mesh geometries and slip rate constraints
+    subplot_index += 1
+    plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
+    plt.title("slip rate constraints")
+    common_plot_elements(segment, lon_range, lat_range)
+    for i in range(len(meshes)):
+        is_constrained_edge = np.zeros(meshes[i].n_tde)
+        is_constrained_edge[meshes[i].top_elements] = 1
+        is_constrained_edge[meshes[i].bot_elements] = 1
+        is_constrained_edge[meshes[i].side_elements] = 1
+        x_coords = meshes[i].meshio_object.points[:, 0]
+        y_coords = meshes[i].meshio_object.points[:, 1]
+        vertex_array = np.asarray(meshes[i].verts)
+        ax = plt.gca()
+        xy = np.c_[x_coords, y_coords]
+        verts = xy[vertex_array]
+        pc = matplotlib.collections.PolyCollection(
+            verts, edgecolor="none", linewidth=0.25, cmap="Oranges"
+        )
+        pc.set_array(is_constrained_edge)
+        ax.add_collection(pc)
+        ax.autoscale()
+
     plt.suptitle("inputs")
     plt.show()
 
