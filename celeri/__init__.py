@@ -26,6 +26,8 @@ from .celeri import (
     get_3component_index,
     interleave2,
     post_process_estimation,
+    get_tde_to_velocities,
+    get_shared_sides,
 )
 
 
