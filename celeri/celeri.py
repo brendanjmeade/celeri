@@ -35,6 +35,20 @@ logger.add(RUN_NAME + ".log")
 logger.info("RUN_NAME: " + RUN_NAME)
 
 
+def get_mesh_perimeter(meshes):
+    for i in range(len(meshes)):
+        x_coords = meshes[i].meshio_object.points[:, 0]
+        y_coords = meshes[i].meshio_object.points[:, 1]
+        meshes[i].x_perimeter = x_coords[meshes[i].ordered_edge_nodes[:, 0]]
+        meshes[i].y_perimeter = y_coords[meshes[i].ordered_edge_nodes[:, 0]]
+        meshes[i].x_perimeter = np.append(
+            meshes[i].x_perimeter, x_coords[meshes[i].ordered_edge_nodes[0, 0]]
+        )
+        meshes[i].y_perimeter = np.append(
+            meshes[i].y_perimeter, y_coords[meshes[i].ordered_edge_nodes[0, 0]]
+        )
+
+
 def read_data(command_file_name):
     # Read command data
     with open(command_file_name, "r") as f:
@@ -136,6 +150,7 @@ def read_data(command_file_name):
             ]
             meshes[i].n_tde = meshes[i].lon1.size
             get_mesh_edge_elements(meshes)
+        get_mesh_perimeter(meshes)
 
     # Read station data
     if (
