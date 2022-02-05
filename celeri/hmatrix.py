@@ -22,8 +22,9 @@ class Tree:
     """
     The tree construction re-orders the original inputs so that the points
     within each TreeNode are contained in a contiguous block of indices.
-    `ordered_idxs` is the mapping from the original indices to the 
+    `ordered_idxs` is the mapping from the original indices to the
     """
+
     ordered_idxs: np.ndarray
     pts: np.ndarray
     radii: np.ndarray
@@ -309,23 +310,58 @@ class HMatrix:
         """
         n_obs = self.shape[0] // 2
         y_tree = np.zeros((n_obs, 2))
+
+        # Step 1) transform from the input index ordering to src_tree index ordering.
         x_tree = x.reshape((-1, 2))[self.src_tree.ordered_idxs]
+
+        # Step 2) Multiply the direct blocks.
         for i, (obs_node, src_node) in enumerate(self.direct_pairs):
-            x_block = x_tree[src_node.idx_start : src_node.idx_end]
-            y_tree[obs_node.idx_start : obs_node.idx_end] += np.tensordot(
-                self.direct_blocks[i], x_block, axes=2
+            x_block = x_tree[src_node.idx_start : src_node.idx_end].ravel()
+            y_tree[obs_node.idx_start : obs_node.idx_end] += (
+                self.direct_blocks[i].dot(x_block.ravel()).reshape((-1, 2))
             )
 
+        # Step 3) Multiply the approx blocks.
         for i, (obs_node, src_node) in enumerate(self.approx_pairs):
             x_block = x_tree[src_node.idx_start : src_node.idx_end]
             U, V = self.approx_blocks[i]
-            # print(obs_node.idx_start, obs_node.idx_end, U.shape, V.shape, x_block.shape)
             y_tree[obs_node.idx_start : obs_node.idx_end] += U.dot(
                 V.dot(x_block.ravel())
             ).reshape((-1, 2))
+
+        # Transform back to the original output index ordering from the obs_tree
+        # index ordering.
         y_h = np.zeros((n_obs, 2))
         y_h[self.obs_tree.ordered_idxs] = y_tree
-        return y_h.flatten()
+        return y_h.ravel()
+
+    def transpose_dot(self, y):
+        # TODO: Better to name rmatvec and matvec for consistency with scipy.sparse?
+        # TODO: Better to name rmatvec and matvec for consistency with scipy.sparse?
+        n_src = self.shape[1] // 2
+        x_tree = np.zeros((n_src, 2))
+
+        # Step 1) transform from the input index ordering to obs_tree index ordering.
+        y_tree = y.reshape((-1, 2))[self.obs_tree.ordered_idxs]
+
+        # Step 2) Multiply the direct blocks.
+        for i, (obs_node, src_node) in enumerate(self.direct_pairs):
+            y_block = y_tree[obs_node.idx_start : obs_node.idx_end].ravel()
+            x_tree[src_node.idx_start : src_node.idx_end] += (
+                y_block.ravel() @ self.direct_blocks[i]
+            ).reshape((-1, 2))
+
+        # Step 3) Multiply the approx blocks.
+        for i, (obs_node, src_node) in enumerate(self.approx_pairs):
+            y_block = y_tree[obs_node.idx_start : obs_node.idx_end]
+            U, V = self.approx_blocks[i]
+            x_tree[src_node.idx_start : src_node.idx_end] += ((y_block.ravel() @ U) @ V).reshape((-1, 2))
+
+        # Step 4) Transform back to the original output index ordering from the src_tree
+        # index ordering.
+        x_h = np.zeros((n_src, 2))
+        x_h[self.src_tree.ordered_idxs] = x_tree
+        return x_h.ravel()
 
 
 def build_hmatrix(
@@ -381,7 +417,14 @@ def build_hmatrix(
         obs_idxs = obs_tree.ordered_idxs[obs_node.idx_start : obs_node.idx_end]
         src_idxs = src_tree.ordered_idxs[src_node.idx_start : src_node.idx_end]
         d_block = reshaped[obs_idxs, :][:, :, src_idxs]
-        direct_blocks.append(d_block)
+        direct_blocks.append(
+            d_block.reshape(
+                (
+                    d_block.shape[0] * d_block.shape[1],
+                    d_block.shape[2] * d_block.shape[3],
+                )
+            )
+        )
 
     # Step 5) Build the HMatrix data object and return it.
     return HMatrix(
