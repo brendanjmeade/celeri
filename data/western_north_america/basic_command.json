@@ -1,6 +1,6 @@
 {
     "file_name": "basic.command",
-    "reuse_elastic": "no",
+    "reuse_elastic": "yes",
     "reuse_elastic_file": "./celeri_elastic_operators.hdf5",
     "save_elastic": "yes",
     "save_elastic_file": "./celeri_elastic_operators.hdf5",
