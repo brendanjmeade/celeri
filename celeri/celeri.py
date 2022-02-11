@@ -1254,10 +1254,23 @@ def get_elastic_operators(
         )
 
         # Calculate cutde partials for each mesh
+        # i = 0
+        # while i < len(meshes):
+        #     operators.meshes[i].tde_to_velocities = get_tde_to_velocities_single_mesh(
+        #         meshes, station, command, mesh_idx=i
+        #     )
+        #     print(i, operators.meshes[i].tde_to_velocities.shape)
+        #     i = i + 1
+
         for i in range(len(meshes)):
             operators.meshes[i].tde_to_velocities = get_tde_to_velocities_single_mesh(
                 meshes, station, command, mesh_idx=i
             )
+            print(i, operators.meshes[i].tde_to_velocities.shape)
+
+        print(operators.meshes[0].tde_to_velocities.shape)
+        print(operators.meshes[1].tde_to_velocities.shape)
+        print(operators.meshes[2].tde_to_velocities.shape)
 
         # Save elastic to velocity matrices
         if command.save_elastic == "yes":
