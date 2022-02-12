@@ -1263,14 +1263,14 @@ def get_elastic_operators(
         #     i = i + 1
 
         for i in range(len(meshes)):
-            operators.meshes[i].tde_to_velocities = get_tde_to_velocities_single_mesh(
+            operators.tde_to_velocities[i] = get_tde_to_velocities_single_mesh(
                 meshes, station, command, mesh_idx=i
             )
-            print(i, operators.meshes[i].tde_to_velocities.shape)
+            print(i, operators.tde_to_velocities[i].shape)
 
-        print(operators.meshes[0].tde_to_velocities.shape)
-        print(operators.meshes[1].tde_to_velocities.shape)
-        print(operators.meshes[2].tde_to_velocities.shape)
+        print(operators.tde_to_velocities[0].shape)
+        print(operators.tde_to_velocities[1].shape)
+        print(operators.tde_to_velocities[2].shape)
 
         # Save elastic to velocity matrices
         if command.save_elastic == "yes":
@@ -2171,7 +2171,7 @@ def get_all_mesh_smoothing_matrices(meshes: List, operators: Dict):
             meshes[i].y_centroid,
             meshes[i].z_centroid,
         )
-        operators.meshes[i].smoothing_matrix = get_tri_smoothing_matrix(
+        operators.smoothing_matrix[i] = get_tri_smoothing_matrix(
             meshes[i].share, meshes[i].tri_shared_sides_distances
         )
 
@@ -2191,7 +2191,7 @@ def get_all_mesh_smoothing_matrices_simple(meshes: List, operators: Dict):
             meshes[i].y_centroid,
             meshes[i].z_centroid,
         )
-        operators.meshes[i].smoothing_matrix_simple = get_tri_smoothing_matrix_simple(
+        operators.smoothing_matrix_simple[i] = get_tri_smoothing_matrix_simple(
             meshes[i].share, N_MESH_DIM
         )
 
@@ -2307,7 +2307,7 @@ def get_tde_slip_rate_constraints(meshes: List, operators: Dict) -> None:
         tde_slip_rate_constraints = tde_slip_rate_constraints[
             sum_constraint_columns > 0, :
         ]
-        operators.meshes[i].tde_slip_rate_constraints = tde_slip_rate_constraints
+        operators.tde_slip_rate_constraints[i] = tde_slip_rate_constraints
         meshes[i].n_tde_constraints = np.sum(sum_constraint_columns > 0)
 
 
@@ -2447,7 +2447,7 @@ def post_process_estimation(
 
     # Extract TDE slip rates from state vector
     estimation.tde_rates = estimation.state_vector[
-        3 * index.n_blocks : 3 * index.n_blocks + 2 * index.meshes[0].n_tde
+        3 * index.n_blocks : 3 * index.n_blocks + 2 * index.n_tde_total
     ]
     estimation.tde_strike_slip_rates = estimation.tde_rates[0::2]
     estimation.tde_dip_slip_rates = estimation.tde_rates[1::2]
@@ -2480,18 +2480,20 @@ def post_process_estimation(
     estimation.north_vel_elastic_segment = estimation.vel_elastic_segment[1::2]
 
     # Calculate TDE velocities
-    tde_keep_row_index = get_keep_index_12(
-        operators.meshes[0].tde_to_velocities.shape[0]
-    )
-    tde_keep_col_index = get_keep_index_12(
-        operators.meshes[0].tde_to_velocities.shape[1]
-    )
-    estimation.vel_tde = (
-        operators.meshes[0].tde_to_velocities[tde_keep_row_index, :][
-            :, tde_keep_col_index
-        ]
-        @ estimation.state_vector[3 * index.n_blocks :]
-    )
+    estimation.vel_tde = np.zeros(2 * index.n_stations)
+    for i in range(len(operators.tde_to_velocities)):
+        tde_keep_row_index = get_keep_index_12(
+            operators.tde_to_velocities[i].shape[0]
+        )
+        tde_keep_col_index = get_keep_index_12(
+            operators.tde_to_velocities[i].shape[1]
+        )
+        estimation.vel_tde += (
+            operators.tde_to_velocities[i][tde_keep_row_index, :][
+                :, tde_keep_col_index
+            ]
+            @ estimation.state_vector[index.start_tde_col[i]:index.end_tde_col[i]]
+        )
     estimation.east_vel_tde = estimation.vel_tde[0::2]
     estimation.north_vel_tde = estimation.vel_tde[1::2]
 
