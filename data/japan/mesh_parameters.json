@@ -1,7 +1,7 @@
 [
     {
         "mesh_filename": "HirosePSP2008-new_0-50_LL.msh",
-        "smoothing_weight": 1e15,
+        "smoothing_weight": 1e24,
         "top_slip_rate_constraint": 1,
         "bot_slip_rate_constraint": 1,
         "side_slip_rate_constraint": 1,
@@ -10,7 +10,7 @@
     },
     {
         "mesh_filename": "JapanTrench0-40-100_smooth_clipped_c15_LL.msh",
-        "smoothing_weight": 1e15,
+        "smoothing_weight": 1e24,
         "top_slip_rate_constraint": 1,
         "bot_slip_rate_constraint": 1,
         "side_slip_rate_constraint": 1,
@@ -19,7 +19,7 @@
     },
     {
         "mesh_filename": "toda_stein_c15_LL.msh",
-        "smoothing_weight": 1e15,
+        "smoothing_weight": 1e24,
         "top_slip_rate_constraint": 1,
         "bot_slip_rate_constraint": 1,
         "side_slip_rate_constraint": 1,
