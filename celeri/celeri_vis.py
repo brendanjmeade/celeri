@@ -281,7 +281,6 @@ def plot_estimation_summary(
 
     def common_plot_elements(segment: pd.DataFrame, lon_range: Tuple, lat_range: Tuple):
         """Elements common to all subplots
-
         Args:
             segment (pd.DataFrame): Fault segments
             lon_range (Tuple): Longitude range (min, max)
@@ -302,7 +301,6 @@ def plot_estimation_summary(
                     "-r",
                     linewidth=0.5,
                 )
-
         plt.xlim([lon_range[0], lon_range[1]])
         plt.ylim([lat_range[0], lat_range[1]])
         plt.gca().set_aspect("equal", adjustable="box")
@@ -313,7 +311,6 @@ def plot_estimation_summary(
     subplot_index = 0
 
     plt.figure(figsize=(12, 16))
-
     subplot_index += 1
     ax1 = plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index)
     plt.title("observed velocities")
@@ -486,14 +483,13 @@ def plot_estimation_summary(
     plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
     plt.title("TDE slip (strike-slip)")
     common_plot_elements(segment, lon_range, lat_range)
-    plot_meshes(meshes, estimation.tde_strike_slip_rates, plt.gca())
+    # plot_meshes(meshes, estimation.tde_strike_slip_rates, plt.gca())
 
     subplot_index += 1
     plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
     plt.title("TDE slip (dip-slip)")
     common_plot_elements(segment, lon_range, lat_range)
-    plot_meshes(meshes, estimation.tde_dip_slip_rates, plt.gca())
-
+    # plot_meshes(meshes, estimation.tde_dip_slip_rates, plt.gca())
     plt.show()
 
 
