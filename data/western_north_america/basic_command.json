@@ -1,8 +1,8 @@
 {
     "file_name": "basic.command",
-    "reuse_elastic": "yes",
+    "reuse_elastic": "no",
     "reuse_elastic_file": "./celeri_elastic_operators.hdf5",
-    "save_elastic": "yes",
+    "save_elastic": "no",
     "save_elastic_file": "./celeri_elastic_operators.hdf5",
     "material_lambda": 3.0E+10,
     "material_mu": 3.0E+10,
