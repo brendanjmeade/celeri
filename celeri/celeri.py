@@ -1257,10 +1257,12 @@ def get_elastic_operators(
             operators.tde_to_velocities[i] = get_tde_to_velocities_single_mesh(
                 meshes, station, command, mesh_idx=i
             )
-            print(i, operators.tde_to_velocities[i].shape)
 
         # Save elastic to velocity matrices
         if command.save_elastic == "yes":
+            print(
+                "Saving elastic to velocity matrices to :" + command.save_elastic_file
+            )
             hdf5_file = h5py.File(command.save_elastic_file, "w")
             hdf5_file.create_dataset(
                 "slip_rate_to_okada_to_velocities",
