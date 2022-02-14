@@ -251,7 +251,7 @@ def plot_input_summary(
         )
         pc.set_array(is_constrained_edge)
         ax.add_collection(pc)
-        ax.autoscale()
+        # ax.autoscale()
 
     plt.suptitle("inputs")
     plt.show()
