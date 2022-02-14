@@ -1242,7 +1242,7 @@ def get_elastic_operators(
             hdf5_file.get("slip_rate_to_okada_to_velocities")
         )
         for i in range(len(meshes)):
-            operators.meshes[i].tde_to_velocities = np.array(
+            operators.tde_to_velocities[i] = np.array(
                 hdf5_file.get("tde_to_velocities_" + str(i))
             )
         hdf5_file.close()
@@ -1253,24 +1253,11 @@ def get_elastic_operators(
             segment, station, command
         )
 
-        # Calculate cutde partials for each mesh
-        # i = 0
-        # while i < len(meshes):
-        #     operators.meshes[i].tde_to_velocities = get_tde_to_velocities_single_mesh(
-        #         meshes, station, command, mesh_idx=i
-        #     )
-        #     print(i, operators.meshes[i].tde_to_velocities.shape)
-        #     i = i + 1
-
         for i in range(len(meshes)):
             operators.tde_to_velocities[i] = get_tde_to_velocities_single_mesh(
                 meshes, station, command, mesh_idx=i
             )
             print(i, operators.tde_to_velocities[i].shape)
-
-        print(operators.tde_to_velocities[0].shape)
-        print(operators.tde_to_velocities[1].shape)
-        print(operators.tde_to_velocities[2].shape)
 
         # Save elastic to velocity matrices
         if command.save_elastic == "yes":
@@ -1282,7 +1269,7 @@ def get_elastic_operators(
             for i in range(len(meshes)):
                 hdf5_file.create_dataset(
                     "tde_to_velocities_" + str(i),
-                    data=operators.meshes[i].tde_to_velocities,
+                    data=operators.tde_to_velocities[i],
                 )
             hdf5_file.close()
 
@@ -2482,17 +2469,11 @@ def post_process_estimation(
     # Calculate TDE velocities
     estimation.vel_tde = np.zeros(2 * index.n_stations)
     for i in range(len(operators.tde_to_velocities)):
-        tde_keep_row_index = get_keep_index_12(
-            operators.tde_to_velocities[i].shape[0]
-        )
-        tde_keep_col_index = get_keep_index_12(
-            operators.tde_to_velocities[i].shape[1]
-        )
+        tde_keep_row_index = get_keep_index_12(operators.tde_to_velocities[i].shape[0])
+        tde_keep_col_index = get_keep_index_12(operators.tde_to_velocities[i].shape[1])
         estimation.vel_tde += (
-            operators.tde_to_velocities[i][tde_keep_row_index, :][
-                :, tde_keep_col_index
-            ]
-            @ estimation.state_vector[index.start_tde_col[i]:index.end_tde_col[i]]
+            operators.tde_to_velocities[i][tde_keep_row_index, :][:, tde_keep_col_index]
+            @ estimation.state_vector[index.start_tde_col[i] : index.end_tde_col[i]]
         )
     estimation.east_vel_tde = estimation.vel_tde[0::2]
     estimation.north_vel_tde = estimation.vel_tde[1::2]
