@@ -19,7 +19,7 @@ from tqdm.notebook import tqdm
 from typing import List, Dict, Tuple
 
 from . import celeri_closure
-from .celeri_util import sph2cart
+from .celeri_util import sph2cart, cart2sph
 
 # Global constants
 GEOID = pyproj.Geod(ellps="WGS84")
@@ -226,12 +226,6 @@ def read_data(command_file_name):
         sar = sar.loc[:, ~sar.columns.str.match("Unnamed")]
     return command, segment, block, meshes, station, mogi, sar
 
-
-def cart2sph(x, y, z):
-    azimuth = np.arctan2(y, x)
-    elevation = np.arctan2(z, np.sqrt(x ** 2 + y ** 2))
-    r = np.sqrt(x ** 2 + y ** 2 + z ** 2)
-    return azimuth, elevation, r
 
 
 def wrap2360(lon):

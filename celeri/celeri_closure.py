@@ -315,14 +315,18 @@ class Polygon:
         http://www.mathworks.com/matlabcentral/newsreader/view_thread/276271
         """
 
+        # TODO: Currently, the bounding box test is turned off!
+        # TODO: Currently, the bounding box test is turned off!
+        # TODO: Currently, the bounding box test is turned off!
         # Start by throwing out points that aren't in the polygon's bounding box.
         # This is purely an optimization and is not necessary for correctness.
         # The bounding box approximation is only valid for a spherical polygon
         # that takes up less than half the sphere.
-        if self.area_steradians < 2 * np.pi:
-            is_in_bounds = self.bounds.contains(lon, lat)
-        else:
-            is_in_bounds = np.ones(lon.shape[0], dtype=bool)
+        # if self.area_steradians < 2 * np.pi:
+        #     is_in_bounds = self.bounds.contains(lon, lat)
+        # else:
+        #     is_in_bounds = np.ones(lon.shape[0], dtype=bool)
+        is_in_bounds = np.ones(lon.shape[0], dtype=bool)
         in_bounds_lon = lon[is_in_bounds]
         in_bounds_lat = lat[is_in_bounds]
 
