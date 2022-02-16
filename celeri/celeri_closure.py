@@ -225,13 +225,14 @@ class Polygon:
 
                 # Offset only a small amount into the interior to avoid stepping
                 # back across a different edge into the exterior.
-                interior_pt = midpt + edge_right_normal * 0.01
+                interior_pt = midpt + edge_right_normal * 0.05
                 # Stop after we've found an acceptable interior point.
                 break
 
         x, y, z = sph2cart(interior_pt[0], interior_pt[1], 1.0)
 
         self.vertices = vs
+        self.interior = interior_pt
         self.vertices_xyz = xyz
         self.interior_xyz = np.array([x, y, z])
         self.bounds = BoundingBox.from_polygon(self.vertices)
