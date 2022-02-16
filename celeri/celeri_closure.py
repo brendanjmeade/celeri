@@ -5,6 +5,7 @@ import numpy as np
 import scipy.spatial
 import matplotlib.pyplot as plt
 from spherical_geometry.polygon import SingleSphericalPolygon
+from spherical_geometry.great_circle_arc import intersection
 
 from .celeri_util import sph2cart
 
@@ -223,11 +224,36 @@ class Polygon:
                 edge_vector = vs[i + 1, :] - vs[i, :]
                 edge_right_normal = np.array([edge_vector[1], -edge_vector[0]])
 
-                # Offset only a small amount into the interior to avoid stepping
-                # back across a different edge into the exterior.
-                interior_pt = midpt + edge_right_normal * 0.05
-                # Stop after we've found an acceptable interior point.
-                break
+                # Offset into the interior. Note that edge_right_normal is not
+                # normalized so this scales the distance with respect to the
+                # length of the current edge.
+                interior_pt = midpt + edge_right_normal / 4
+
+                # Check to make sure the arc from midpt to interior_pt does not
+                # intersect any other edges of this polygon
+                has_intersection = False
+                for j in range(vs.shape[0] - 1):
+                    if i == j:
+                        continue
+                    Ipt = intersection(
+                        sph2cart(*midpt, 1.0),
+                        sph2cart(*interior_pt, 1.0),
+                        sph2cart(*vs[j], 1.0),
+                        sph2cart(*vs[j + 1], 1.0),
+                    )
+                    # intersection returns nans if the two great circles do not
+                    # intersect
+                    if not np.all(np.isnan(Ipt)):
+                        has_intersection = True
+
+                if has_intersection:
+                    # Look at the next potential interior point.
+                    continue
+                else:
+                    # Stop after we've found an acceptable interior point.
+                    if i == vs.shape[0] - 2:
+                        raise ValueError("Failed to find a valid interior point for this polygon.")
+                    break
 
         x, y, z = sph2cart(interior_pt[0], interior_pt[1], 1.0)
 
@@ -289,14 +315,18 @@ class Polygon:
         http://www.mathworks.com/matlabcentral/newsreader/view_thread/276271
         """
 
+        # TODO: Currently, the bounding box test is turned off!
+        # TODO: Currently, the bounding box test is turned off!
+        # TODO: Currently, the bounding box test is turned off!
         # Start by throwing out points that aren't in the polygon's bounding box.
         # This is purely an optimization and is not necessary for correctness.
         # The bounding box approximation is only valid for a spherical polygon
         # that takes up less than half the sphere.
-        if self.area_steradians < 2 * np.pi:
-            is_in_bounds = self.bounds.contains(lon, lat)
-        else:
-            is_in_bounds = np.ones(lon.shape[0], dtype=bool)
+        # if self.area_steradians < 2 * np.pi:
+        #     is_in_bounds = self.bounds.contains(lon, lat)
+        # else:
+        #     is_in_bounds = np.ones(lon.shape[0], dtype=bool)
+        is_in_bounds = np.ones(lon.shape[0], dtype=bool)
         in_bounds_lon = lon[is_in_bounds]
         in_bounds_lat = lat[is_in_bounds]
 
@@ -601,43 +631,3 @@ def plot_segment_labels(segments, labels):
             verticalalignment="center",
         )
     plt.show()
-
-
-def test_closure():
-    # First test a simple two triangle geometry.
-    np_segments = np.array(
-        [
-            [[0, 0], [9, 1]],
-            [[9, 1], [1, 10]],
-            [[9, 1], [10, 11]],
-            [[10, 11], [1, 10]],
-            [[1, 10], [0, 0]],
-        ],
-        dtype=np.float64,
-    )
-
-    closure = run_block_closure(np_segments)
-    labels = get_segment_labels(closure)
-
-    correct_labels = np.array([[0, 1], [0, 2], [2, 1], [1, 2], [1, 0]])
-    np.testing.assert_array_equal(labels, correct_labels)
-
-    # Then shift the points to lie on the other side of the meridian by
-    # subtracting 0.1 degree longitude.
-    np_segments_meridian = np_segments.copy()
-    np_segments_meridian[:, :, 0] -= 0.1
-    np_segments_meridian[:, :, 0] = np.where(
-        np_segments_meridian[:, :, 0] < 0,
-        np_segments_meridian[:, :, 0] + 360,
-        np_segments_meridian[:, :, 0],
-    )
-
-    closure_meridian = run_block_closure(np_segments_meridian)
-    labels_meridian = get_segment_labels(closure_meridian)
-    np.testing.assert_array_equal(labels_meridian, labels)
-    # plot_segment_labels(np_segments, labels_meridian)
-
-    assert closure_meridian.polygons[0].contains_point(np.array([0]), np.array([0.1]))
-    assert closure_meridian.polygons[0].contains_point(np.array([2]), np.array([2]))
-    assert closure_meridian.polygons[2].contains_point(np.array([8]), np.array([8]))
-    assert closure_meridian.polygons[1].contains_point(np.array([50]), np.array([50]))

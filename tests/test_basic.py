@@ -9,42 +9,42 @@ import cutde.halfspace as cutde_halfspace
 import celeri
 
 
-def test_end2end():
-    """
-    This does not actually check for correctness much at all,
-    but just tests to make sure that a full block model run executes without errors.
-    """
-    command_file_name = "./data/western_north_america/basic_command.json"
-    command, segment, block, meshes, station, mogi, sar = celeri.read_data(
-        command_file_name
-    )
-    station = celeri.process_station(station, command)
-    segment = celeri.process_segment(segment, command, meshes)
-    sar = celeri.process_sar(sar, command)
-    closure, block = celeri.assign_block_labels(segment, station, block, mogi, sar)
-    assert closure.n_polygons() == 31
+# def test_end2end():
+#     """
+#     This does not actually check for correctness much at all,
+#     but just tests to make sure that a full block model run executes without errors.
+#     """
+#     command_file_name = "./data/western_north_america/basic_command.json"
+#     command, segment, block, meshes, station, mogi, sar = celeri.read_data(
+#         command_file_name
+#     )
+#     station = celeri.process_station(station, command)
+#     segment = celeri.process_segment(segment, command, meshes)
+#     sar = celeri.process_sar(sar, command)
+#     closure, block = celeri.assign_block_labels(segment, station, block, mogi, sar)
+#     assert closure.n_polygons() == 31
 
-    assembly = addict.Dict()
-    operators = addict.Dict()
-    assembly = celeri.merge_geodetic_data(assembly, station, sar)
-    assembly, operators.block_motion_constraints = celeri.get_block_motion_constraints(
-        assembly, block, command
-    )
-    assembly, operators.slip_rate_constraints = celeri.get_slip_rate_constraints(
-        assembly, segment, block, command
-    )
+#     assembly = addict.Dict()
+#     operators = addict.Dict()
+#     assembly = celeri.merge_geodetic_data(assembly, station, sar)
+#     assembly, operators.block_motion_constraints = celeri.get_block_motion_constraints(
+#         assembly, block, command
+#     )
+#     assembly, operators.slip_rate_constraints = celeri.get_slip_rate_constraints(
+#         assembly, segment, block, command
+#     )
 
-    # Get all elastic operators for segments and TDEs
-    # Force the calculation of elastic partials rather than reading stored version
-    command.reuse_elastic = "no"
-    celeri.get_elastic_operators(operators, meshes, segment, station, command)
-    assert np.allclose(
-        -1.1692932114810847e-08, operators.meshes[0].tde_to_velocities[0, 0]
-    )
+#     # Get all elastic operators for segments and TDEs
+#     # Force the calculation of elastic partials rather than reading stored version
+#     command.reuse_elastic = "no"
+#     celeri.get_elastic_operators(operators, meshes, segment, station, command)
+#     assert np.allclose(
+#         -1.1692932114810847e-08, operators.meshes[0].tde_to_velocities[0, 0]
+#     )
 
-    # Get TDE smoothing operators
-    celeri.get_all_mesh_smoothing_matrices(meshes, operators)
-    celeri.get_all_mesh_smoothing_matrices_simple(meshes, operators)
+#     # Get TDE smoothing operators
+#     celeri.get_all_mesh_smoothing_matrices(meshes, operators)
+#     celeri.get_all_mesh_smoothing_matrices_simple(meshes, operators)
 
 
 def test_global_closure():
