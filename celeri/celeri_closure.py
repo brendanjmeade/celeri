@@ -6,7 +6,6 @@ import scipy.spatial
 import matplotlib.pyplot as plt
 from spherical_geometry.polygon import SingleSphericalPolygon
 from spherical_geometry.great_circle_arc import intersection
-from spherical_geometry.great_circle_arc import length as arc_length
 
 from .celeri_util import sph2cart
 
