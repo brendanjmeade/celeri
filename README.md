@@ -32,7 +32,7 @@ flowchart TB
     subgraph three
     c1-->c2
     end
-    one --> two
+    input files --> two
     three --> two
     two --> c2
 ```
