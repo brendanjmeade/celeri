@@ -53,4 +53,5 @@ flowchart TD
     subgraph celeri
     notebook.ipynb
     end
+    input files --> celeri
 ```
