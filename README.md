@@ -56,6 +56,7 @@ flowchart TD
     subgraph output_files
     velocties.csv
     end
+    elastic.hdf5 --> output_files
     input_files --> celeri
     celeri --> output_files
 ```
