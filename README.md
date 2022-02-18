@@ -23,7 +23,7 @@ Then start your favorite notebook viewer (`jupyter lab` or `vscode`) and open an
 ```mermaid
 flowchart TB
     c1<-->a2
-    subgraph input files
+    subgraph input_files
     a1<-->a2
     end
     subgraph two
@@ -32,7 +32,7 @@ flowchart TB
     subgraph three
     c1-->c2
     end
-    input files --> two
+    input_files --> two
     three --> two
     two --> c2
 ```
