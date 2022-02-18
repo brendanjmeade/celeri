@@ -57,6 +57,10 @@ flowchart TD
     model_block.csv
     model_velocties.csv
     elastic.hdf5
+    subgraph velocities
+      rotation
+      elastic
+    end
   end
   input_files --> celeri
   celeri --> output_files
