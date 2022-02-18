@@ -39,7 +39,7 @@ flowchart TB
 
 ```mermaid
 flowchart TD
-    subgraph input files
+    subgraph input_files
     command.json-->segment.csv
     command.json-->station.csv
     command.json-->block.csv
@@ -53,5 +53,5 @@ flowchart TD
     subgraph celeri
     notebook.ipynb
     end
-    input files --> celeri
+    input_files --> celeri
 ```
