@@ -22,7 +22,7 @@ Then start your favorite notebook viewer (`jupyter lab` or `vscode`) and open an
 ### Relationships of input files
 ```mermaid
   graph TD;
-      command.json-->segment.csv;
+      command.json<-->segment.csv;
       command.json-->station.csv;
       command.json-->block.csv;
       command.json-->mesh_parameters.json;
