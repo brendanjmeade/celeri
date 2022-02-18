@@ -19,11 +19,13 @@ pip install --no-use-pep517 -e .
 
 Then start your favorite notebook viewer (`jupyter lab` or `vscode`) and open and run `celeri.ipynb`.
 
-### Relationships of input papers
+### Relationships of input files
 ```mermaid
   graph TD;
-      A-->B;
-      A-->C;
+      command.json-->segment.csv;
+      command.json-->station.csv;
+      command.json-->block.csv;
+      command.json-->mesh_parameters.json;
       B-->D;
       C-->D;
 ```
