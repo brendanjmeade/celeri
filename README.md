@@ -50,9 +50,12 @@ flowchart TD
     mesh_parameters.json-->mesh_2.msh
     mesh_parameters.json-->mesh_N.msh
     end
-    subgraph output files
-    mesh_parameters.json-->mesh_1.msh
-    mesh_parameters.json-->mesh_2.msh
-    mesh_parameters.json-->mesh_N.msh
+    subgraph celeri
+    notebook.ipynb
     end
+    subgraph output files
+    notebook.ipynb
+    end
+    input files --> celeri
+    celeri --> output files
 ```
