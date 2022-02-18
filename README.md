@@ -19,23 +19,7 @@ pip install --no-use-pep517 -e .
 
 Then start your favorite notebook viewer (`jupyter lab` or `vscode`) and open and run `celeri.ipynb`.
 
-### Relationships of input files
-```mermaid
-flowchart TB
-    c1<-->a2
-    subgraph input_files
-    a1<-->a2
-    end
-    subgraph two
-    b1-->b2
-    end
-    subgraph three
-    c1-->c2
-    end
-    input_files --> two
-    three --> two
-    two --> c2
-```
+### The flow of files in and out of celeri
 
 ```mermaid
 flowchart TD
@@ -77,10 +61,6 @@ flowchart TD
       tde_los.csv
       elastic_los.csv
     end
-  end
-  subgraph key
-    required:::required
-    optional
   end
   input_files --> celeri
   celeri --> output_files
