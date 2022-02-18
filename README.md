@@ -23,12 +23,13 @@ Then start your favorite notebook viewer (`jupyter lab` or `vscode`) and open an
 ```mermaid
   flowchart TD;
       command.json-->segment.csv;
-      command.json<-->elastic.hdf5;
       command.json-->station.csv;
       command.json-->block.csv;
       command.json-->los.csv;
+      command.json<-->elastic.hdf5;
       command.json-->mesh_parameters.json;
       mesh_parameters.json-->mesh_1.msh;
       mesh_parameters.json-->mesh_2.msh;
       mesh_parameters.json-->mesh_?.msh;
+      subgraph input files
 ```
