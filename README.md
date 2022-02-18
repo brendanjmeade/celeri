@@ -39,7 +39,7 @@ flowchart TB
 
 ```mermaid
 flowchart TD
-    subgraph "input files"
+  subgraph input_files
     command.json --> segment.csv
     command.json --> block.csv
     command.json --> station.csv
@@ -49,17 +49,17 @@ flowchart TD
     mesh_parameters.json --> mesh_2.msh
     mesh_parameters.json --> mesh_N.msh
     command.json --> elastic.hdf5
-    end
-    subgraph celeri
+  end
+  subgraph celeri
     notebook.ipynb
-    end
-    subgraph output_files
+  end
+  subgraph output_files
     model_segment.csv
     model_block.csv
     model_velocties.csv
     model_los.csv
     elastic2.hdf5
-    end
-    "input files" --> celeri
-    celeri --> output_files
+  end
+  input_files --> celeri
+  celeri --> output_files
 ```
