@@ -38,7 +38,7 @@ flowchart TB
 ```
 
 ```mermaid
-flowchart TD
+graph TD
     subgraph input_files
     command.json-->segment.csv
     command.json-->block.csv
