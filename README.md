@@ -38,7 +38,7 @@ flowchart TB
 ```
 
 ```mermaid
-graph TD
+flowchart TD
     subgraph input_files
     command.json-->segment.csv
     command.json-->block.csv
@@ -60,7 +60,6 @@ graph TD
     model_los.csv
     elastic2.hdf5
     end
-    elastic.hdf5 --> output_files
     input_files --> celeri
     celeri --> output_files
 ```
