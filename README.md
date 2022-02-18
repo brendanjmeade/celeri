@@ -20,7 +20,7 @@ pip install --no-use-pep517 -e .
 Then start your favorite notebook viewer (`jupyter lab` or `vscode`) and open and run `celeri.ipynb`.
 
 ### The flow of files in and out of celeri
-
+Files with dark orange background shading are required (automatically generated) and those with light blue background shading are optional (not automatically generated)
 ```mermaid
 flowchart TD
   classDef required fill:#f96;
