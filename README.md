@@ -39,6 +39,7 @@ flowchart TB
 
 ```mermaid
 flowchart TD
+    subgraph input files
     command.json-->segment.csv
     command.json-->station.csv
     command.json-->block.csv
@@ -48,11 +49,10 @@ flowchart TD
     mesh_parameters.json-->mesh_1.msh
     mesh_parameters.json-->mesh_2.msh
     mesh_parameters.json-->mesh_N.msh
-    subgraph input files
     end
+    subgraph output files
     mesh_parameters.json-->mesh_1.msh
     mesh_parameters.json-->mesh_2.msh
     mesh_parameters.json-->mesh_N.msh
-    subgraph output files
     end
 ```
