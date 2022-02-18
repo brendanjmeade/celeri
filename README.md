@@ -41,20 +41,23 @@ flowchart TB
 flowchart TD
     subgraph input_files
     command.json-->segment.csv
-    command.json-->station.csv
     command.json-->block.csv
+    command.json-->station.csv
     command.json-->los.csv
     command.json-->mesh_parameters.json
     mesh_parameters.json-->mesh_1.msh
     mesh_parameters.json-->mesh_2.msh
     mesh_parameters.json-->mesh_N.msh
-    command.json<-->elastic.hdf5
+    command.json-->elastic.hdf5
     end
     subgraph celeri
     notebook.ipynb
     end
     subgraph output_files
-    velocties.csv
+    model_segment.csv
+    model_block.csv
+    model_velocties.csv
+    model_los.csv
     end
     elastic.hdf5 --> output_files
     input_files --> celeri
