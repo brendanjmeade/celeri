@@ -18,3 +18,12 @@ pip install --no-use-pep517 -e .
 ```
 
 Then start your favorite notebook viewer (`jupyter lab` or `vscode`) and open and run `celeri.ipynb`.
+
+### Relationships of input papers
+```mermaid
+  graph TD;
+      A-->B;
+      A-->C;
+      B-->D;
+      C-->D;
+```
