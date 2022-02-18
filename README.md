@@ -39,28 +39,48 @@ flowchart TB
 
 ```mermaid
 flowchart TD
+  classDef required fill:#f96;
   subgraph input_files
-    command.json --> segment.csv
-    command.json --> block.csv
-    command.json --> station.csv
-    command.json --> mesh_parameters.json
-    mesh_parameters.json --> mesh_1.msh
-    mesh_parameters.json --> mesh_2.msh
-    mesh_parameters.json --> mesh_N.msh
-    command.json --> elastic_precomputed.hdf5
+    command.json:::required --> segment.csv:::required
+    command.json:::required --> block.csv:::required
+    command.json:::required --> station.csv:::required
+    subgraph meshes
+      mesh_parameters.json
+      mesh_parameters.json --> mesh_1.msh
+      mesh_parameters.json --> mesh_2.msh
+      mesh_parameters.json --> mesh_N.msh
+    end
+    command.json --> meshes
+    command.json --> elastic_operators_precomputed.hdf5
+    command.json --> los.csv
   end
   subgraph celeri
-    notebook.ipynb
+    notebook.ipynb:::required
   end
   subgraph output_files
-    model_segment.csv
-    model_block.csv
-    model_velocties.csv
-    elastic.hdf5
+    model_segment.csv:::required
+    model_block.csv:::required
+    elastic_operators.hdf5
     subgraph velocities
-      rotation
-      elastic
+      model_velocity.csv:::required
+      rotation_velocity.csv:::required
+      strain_rate_velocity.csv:::required
+      okada_velocity.csv:::required
+      tde_velocity.csv:::required
+      elastic_velocity.csv:::required
     end
+    subgraph los
+      model_los.csv
+      rotation_los.csv
+      strain_rate_los.csv
+      okada_los.csv
+      tde_los.csv
+      elastic_los.csv
+    end
+  end
+  subgraph key
+    required:::required
+    optional
   end
   input_files --> celeri
   celeri --> output_files
