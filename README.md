@@ -48,6 +48,11 @@ flowchart TD
     mesh_parameters.json-->mesh_1.msh
     mesh_parameters.json-->mesh_2.msh
     mesh_parameters.json-->mesh_N.msh
-    subgraph one
+    subgraph input files
+    end
+    mesh_parameters.json-->mesh_1.msh
+    mesh_parameters.json-->mesh_2.msh
+    mesh_parameters.json-->mesh_N.msh
+    subgraph output files
     end
 ```
