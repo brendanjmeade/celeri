@@ -40,6 +40,7 @@ flowchart TB
 ```mermaid
 flowchart TD
   subgraph input_files
+    direction TB
     command.json --> segment.csv
     command.json --> block.csv
     command.json --> station.csv
@@ -55,13 +56,7 @@ flowchart TD
   subgraph output_files
     model_segment.csv
     model_block.csv
-    model_velocties.csv
-    model_velocties.csv
-    model_tde_velocities.csv
-    model_okada_velocities.csv
-    model_elastic_velocities.csv
-    model_rotation_velocities.csv
-    model_strain_velocities.csv
+    model_velocties.csv (and velocites)
     elastic.hdf5
   end
   input_files --> celeri
