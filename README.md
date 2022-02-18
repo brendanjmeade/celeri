@@ -44,14 +44,18 @@ flowchart TD
     command.json-->station.csv
     command.json-->block.csv
     command.json-->los.csv
-    command.json<-->elastic.hdf5
     command.json-->mesh_parameters.json
     mesh_parameters.json-->mesh_1.msh
     mesh_parameters.json-->mesh_2.msh
     mesh_parameters.json-->mesh_N.msh
+    command.json<-->elastic.hdf5
     end
     subgraph celeri
     notebook.ipynb
     end
+    subgraph output_files
+    velocties.csv
+    end
     input_files --> celeri
+    celeri --> output_files
 ```
