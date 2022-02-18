@@ -58,7 +58,7 @@ flowchart TD
     model_block.csv
     model_velocties.csv
     model_los.csv
-    elastic.hdf5
+    elastic2.hdf5
     end
     elastic.hdf5 --> output_files
     input_files --> celeri
