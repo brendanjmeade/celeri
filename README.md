@@ -19,6 +19,22 @@ pip install --no-use-pep517 -e .
 
 Then start your favorite notebook viewer (`jupyter lab` or `vscode`) and open and run `celeri.ipynb`.
 
+
+### Folder structure and file locations for applications
+```
+.
+├── dir1
+│   ├── file11.ext
+│   └── file12.ext
+├── dir2
+│   ├── file21.ext
+│   ├── file22.ext
+│   └── file23.ext
+├── dir3
+├── file_in_root.ext
+└── README.md
+```
+
 ### The flow of files in and out of celeri
 Files with dark orange background shading are required (automatically generated) and those with light blue background shading are optional (not automatically generated)
 ```mermaid
@@ -65,3 +81,5 @@ flowchart TD
   input_files --> celeri
   celeri --> output_files
 ```
+
+
