@@ -67,6 +67,7 @@ flowchart TD
 ```
 
 ### Folder structure and file locations for applications
+```
 .
 ├── dir1
 
@@ -87,3 +88,4 @@ flowchart TD
 ├── file_in_root.ext
 
 └── README.md
+```
