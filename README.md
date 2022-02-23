@@ -2,15 +2,16 @@
   <img src="https://user-images.githubusercontent.com/4225359/132613223-257e6e17-83bd-49a4-8bbc-326cc117f6ec.png" width=400 />
 </p>
 
-## celeri - Next generation earthquake cycle and surface deformation modeling
-A python port, reworking, and extension of the Matlab-based [blocks](https://github.com/jploveless/Blocks) featuring:
-- Much smaller memory footprint
-- Much faster elastic calculations
+# `celeri` - Next generation earthquake cycle imaging
+`celeri` is a python based library designed to image earthquake cycle and plate tectonic activity including the spatial and time varying fault coupling across geometrically complex fault systems at large scales. 
+
+This is a python reimagining, and extension, of the Matlab-based [blocks](https://github.com/jploveless/Blocks) featuring:
+- Much smaller memory footprint (via H-matrix compression)
+- Much faster elastic calculations (via [Ben Thompson's](https://github.com/tbenthompson) [C-based triangular dislocation calculations](https://github.com/tbenthompson/cutde))
 - Much faster block closure
-- Eigenfunction expansion for partial coupling
+- Much easier IO with standard file types (.csv, .json, .hdf5)
 
 
----
 ## Getting started
 
 To set up a development conda environment, run the following commands in the `celeri` folder.
