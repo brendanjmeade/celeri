@@ -12,7 +12,7 @@ This is a python reimagining, and extension, of the Matlab-based [blocks](https:
 - Much easier IO with standard file types (.csv, .json, .hdf5)
 
 
-## Getting started
+# Getting started
 
 To set up a development conda environment, run the following commands in the `celeri` folder.
 ```
