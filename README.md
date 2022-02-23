@@ -9,6 +9,10 @@ A python port, reworking, and extension of the Matlab-based [blocks](https://git
 - Much faster block closure
 - Eigenfunction expansion for partial coupling
 
+
+---
+## Getting started
+
 To set up a development conda environment, run the following commands in the `celeri` folder.
 ```
 conda config --prepend channels conda-forge
@@ -21,22 +25,58 @@ Then start your favorite notebook viewer (`jupyter lab` or `vscode`) and open an
 
 
 ### Folder structure and file locations for applications
+A large number of input files can be involved in a model run.  We assume that a project is arranged using the following folder structure:
 ```
-.
-├── dir1
-│   ├── file11.ext
-│   └── file12.ext
-├── dir2
-│   ├── file21.ext
-│   ├── file22.ext
-│   └── file23.ext
-├── dir3
-├── file_in_root.ext
-└── README.md
+project_name
+├── README.md
+├── notebooks
+│   ├── block_model.ipynb
+│   ├── visualize_results.ipynb
+│   └── resolution_tests.ipynb
+├── command
+│   ├── command_001.json
+│   └── command_NNN.json
+├── segment
+│   ├── segment_001.csv
+│   └── segment_NNN.csv
+├── block
+│   ├── block_001.csv
+│   └── block_NNN.csv
+├── station
+│   ├── station_001.csv
+│   └── station_NNN.csv
+├── mesh
+│   ├── mesh_params_001.json
+│   ├── mesh_params_NNN.json
+│   ├── mesh_001.msh
+│   └── mesh_NNN.msh
+└── output
+    ├── 2022-02-20-17-01-39
+    │  ├── 2022-02-20-17-01-39.log
+    │  ├── elastic_operators.hdf5
+    │  ├── model_segment.csv
+    │  ├── model_block.csv
+    │  ├── model_velocity.csv
+    │  ├── rotation_velocity.csv
+    │  ├── strain_rate_velocity.csv
+    │  ├── okada_velocity.csv
+    │  ├── tri_velocity.csv
+    │  └── elastic_velocity.csv
+    └── NNNN-NN-NN-NN-NN-NN
+       ├── NNNN-NN-NN-NN-NN-NN.log
+       ├── elastic_operators.hdf5
+       ├── model_segment.csv
+       ├── model_block.csv
+       ├── model_velocity.csv
+       ├── rotation_velocity.csv
+       ├── strain_rate_velocity.csv
+       ├── okada_velocity.csv
+       ├── tri_velocity.csv
+       └── elastic_velocity.csv
 ```
 
 ### The flow of files in and out of celeri
-Files with dark orange background shading are required (automatically generated) and those with light blue background shading are optional (not automatically generated)
+The files listed above flow into celeri through `command.json` file. Files with dark orange background shading are required (automatically generated) and those with light blue background shading are optional (not automatically generated)
 ```mermaid
 flowchart TD
   classDef required fill:#f96;
