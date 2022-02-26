@@ -1,6 +1,7 @@
 __pycache__/
 celeri.egg-info/
 UNKNOWN.egg-info/
+output/
 *.py[cod]
 .ipynb_checkpoints
 .DS_Store
@@ -14,4 +15,3 @@ UNKNOWN.egg-info/
 *.hdf
 *.h5
 *.hdf5
-
