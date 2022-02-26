@@ -30,8 +30,10 @@ N_MESH_DIM = 3
 
 # Set up logging to file only
 RUN_NAME = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+OUTPUT_PATH = os.path.join("../output/", RUN_NAME)
+os.mkdir(OUTPUT_PATH)
 logger.remove()  # Remove any existing loggers includeing default stderr
-logger.add(RUN_NAME + ".log")
+logger.add(OUTPUT_PATH + "/" + RUN_NAME + ".log")
 logger.info("RUN_NAME: " + RUN_NAME)
 
 
@@ -56,7 +58,6 @@ def read_data(command_file_name):
     command = addict.Dict(command)  # Convert to dot notation dictionary
     command.file_name = command_file_name
     base_folder = os.path.dirname(command.file_name)
-
 
     # Read segment data
     segment = pd.read_csv(os.path.join(base_folder, command.segment_file_name))
@@ -225,7 +226,6 @@ def read_data(command_file_name):
         sar = pd.read_csv(os.path.join(base_folder, command.sar_file_name))
         sar = sar.loc[:, ~sar.columns.str.match("Unnamed")]
     return command, segment, block, meshes, station, mogi, sar
-
 
 
 def wrap2360(lon):
@@ -1234,7 +1234,9 @@ def get_elastic_operators(
     base_folder = os.path.dirname(command.file_name)
 
     if command.reuse_elastic == "yes":
-        hdf5_file = h5py.File(os.path.join(base_folder, command.reuse_elastic_file), "r")
+        hdf5_file = h5py.File(
+            os.path.join(base_folder, command.reuse_elastic_file), "r"
+        )
         operators.slip_rate_to_okada_to_velocities = np.array(
             hdf5_file.get("slip_rate_to_okada_to_velocities")
         )
@@ -1260,7 +1262,9 @@ def get_elastic_operators(
             print(
                 "Saving elastic to velocity matrices to :" + command.save_elastic_file
             )
-            hdf5_file = h5py.File(os.path.join(base_folder, command.save_elastic_file), "w")
+            hdf5_file = h5py.File(
+                os.path.join(base_folder, command.save_elastic_file), "w"
+            )
             hdf5_file.create_dataset(
                 "slip_rate_to_okada_to_velocities",
                 data=operators.slip_rate_to_okada_to_velocities,
@@ -2476,6 +2480,17 @@ def post_process_estimation(
         )
     estimation.east_vel_tde = estimation.vel_tde[0::2]
     estimation.north_vel_tde = estimation.vel_tde[1::2]
+
+
+def write_output(estimation: Dict) -> None:
+    print("Made it here")
+
+    # TODO: Write output files here
+    output_file_name = "NNN"
+
+    # TODO: ADD velcoties to station dataframe?
+
+    # TODO: ADD slip rates to segment dataframe?
 
 
 def get_mesh_edge_elements(meshes: List):
