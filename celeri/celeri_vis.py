@@ -496,7 +496,13 @@ def plot_estimation_summary(
         pc = matplotlib.collections.PolyCollection(
             verts, edgecolor="none", cmap="rainbow"
         )
-        pc.set_array(fill_value)
+        if i == 0:
+           tde_slip_component_start = 0
+           tde_slip_component_end = meshes[i].n_tde
+        else:
+           tde_slip_component_start = tde_slip_component_end
+           tde_slip_component_end = tde_slip_component_start + meshes[i].n_tde
+        pc.set_array(fill_value[tde_slip_component_start:tde_slip_component_end])
         ax.add_collection(pc)
         # ax.autoscale()
         if i == len(meshes) - 1:
@@ -526,7 +532,13 @@ def plot_estimation_summary(
         pc = matplotlib.collections.PolyCollection(
             verts, edgecolor="none", cmap="rainbow"
         )
-        pc.set_array(fill_value)
+        if i == 0:
+           tde_slip_component_start = 0
+           tde_slip_component_end = meshes[i].n_tde
+        else:
+           tde_slip_component_start = tde_slip_component_end
+           tde_slip_component_end = tde_slip_component_start + meshes[i].n_tde
+        pc.set_array(fill_value[tde_slip_component_start:tde_slip_component_end])
         ax.add_collection(pc)
         # ax.autoscale()
         if i == len(meshes) - 1:
