@@ -6,6 +6,7 @@ import json
 import meshio
 import scipy
 import pyproj
+import pytest
 import os
 import matplotlib.pyplot as plt
 import warnings
@@ -29,12 +30,22 @@ RADIUS_EARTH = np.float64((GEOID.a + GEOID.b) / 2)
 N_MESH_DIM = 3
 
 # Set up logging to file only
+# TODO: Need to put this in a function for organization and so that I
+# can skip it during testing
+# Add run_name and logger to command dictionary so that they are availabe everywhere
+# @pytest.mark.skip(reason="Writing output to disk")
+# def create_output_targets():
+
 RUN_NAME = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
 OUTPUT_PATH = os.path.join("../output/", RUN_NAME)
-os.mkdir(OUTPUT_PATH)
 logger.remove()  # Remove any existing loggers includeing default stderr
-logger.add(OUTPUT_PATH + "/" + RUN_NAME + ".log")
+logger.add(RUN_NAME + ".log")
 logger.info("RUN_NAME: " + RUN_NAME)
+
+
+@pytest.mark.skip(reason="Writing output to disk")
+def create_output_folder():
+    os.mkdir(OUTPUT_PATH)
 
 
 def get_mesh_perimeter(meshes):
@@ -2407,7 +2418,7 @@ def post_process_estimation(
 
     Args:
         estimation (Dict): Estimated state vector and model covariance
-        operators (Dict): Al linear operators
+        operators (Dict): All linear operators
         station (pd.DataFrame): GPS station data
         idx (Dict): Indices and counts of data and array sizes
     """
@@ -2482,13 +2493,18 @@ def post_process_estimation(
     estimation.north_vel_tde = estimation.vel_tde[1::2]
 
 
-def write_output(estimation: Dict) -> None:
+@pytest.mark.skip(reason="Writing output to disk")
+def write_output(
+    estimation: Dict, station: pd.DataFrame, segment: pd.DataFrame, block: pd.DataFrame
+) -> None:
     print("Made it here")
 
     # TODO: Write output files here
     output_file_name = "NNN"
 
-    # TODO: ADD velcoties to station dataframe?
+    # TODO: ADD velocities to station dataframe?
+    station["east_vel_tde"] = estimation.east_vel_tde
+    station["north_vel_tde"] = estimation.north_vel_tde
 
     # TODO: ADD slip rates to segment dataframe?
 
