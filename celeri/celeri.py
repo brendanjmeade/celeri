@@ -29,13 +29,7 @@ M2MM = 1.0e3
 RADIUS_EARTH = np.float64((GEOID.a + GEOID.b) / 2)
 N_MESH_DIM = 3
 
-# Set up logging to file only
-# TODO: Need to put this in a function for organization and so that I
-# can skip it during testing
-# Add run_name and logger to command dictionary so that they are availabe everywhere
-# @pytest.mark.skip(reason="Writing output to disk")
-# def create_output_targets():
-
+# Set up logging to file:
 RUN_NAME = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
 OUTPUT_PATH = os.path.join("../output/", RUN_NAME)
 logger.remove()  # Remove any existing loggers includeing default stderr
@@ -2480,6 +2474,10 @@ def post_process_estimation(
     estimation.east_vel_elastic_segment = estimation.vel_elastic_segment[0::2]
     estimation.north_vel_elastic_segment = estimation.vel_elastic_segment[1::2]
 
+    # TODO: Calculate block strain rate velocities
+    estimation.east_vel_block_strain_rate = np.zeros(len(station))
+    estimation.north_vel_block_strain_rate = np.zeros(len(station))
+
     # Calculate TDE velocities
     estimation.vel_tde = np.zeros(2 * index.n_stations)
     for i in range(len(operators.tde_to_velocities)):
@@ -2493,20 +2491,36 @@ def post_process_estimation(
     estimation.north_vel_tde = estimation.vel_tde[1::2]
 
 
-@pytest.mark.skip(reason="Writing output to disk")
+@pytest.mark.skip(reason="Writing output files")
 def write_output(
     estimation: Dict, station: pd.DataFrame, segment: pd.DataFrame, block: pd.DataFrame
 ) -> None:
-    print("Made it here")
+    # Add model velocities to station dataframe and write .csv
+    station["model_east_vel"] = estimation.east_vel
+    station["model_north_vel"] = estimation.north_vel
+    station["model_east_vel_residual"] = estimation.east_vel_residual
+    station["model_east_vel_residual"] = estimation.north_vel_residual
+    station["model_east_vel_rotation"] = estimation.east_vel_rotation
+    station["model_north_vel_rotation"] = estimation.north_vel_rotation
+    station["model_east_elastic_segment"] = estimation.east_vel_elastic_segment
+    station["model_north_elastic_segment"] = estimation.north_vel_elastic_segment
+    station["model_east_vel_tde"] = estimation.east_vel_tde
+    station["model_north_vel_tde"] = estimation.north_vel_tde
+    station["model_east_vel_block_strain_rate"] = estimation.east_vel_block_strain_rate
+    station[
+        "model_north_vel_block_strain_rate"
+    ] = estimation.north_vel_block_strain_rate
+    station_output_file_name = OUTPUT_PATH + "/" + "model_station.csv"
+    station.to_csv(station_output_file_name, index=False)
 
-    # TODO: Write output files here
-    output_file_name = "NNN"
+    # TODO: Add estimated slip rates to segment dataframe and write .csv
 
-    # TODO: ADD velocities to station dataframe?
-    station["east_vel_tde"] = estimation.east_vel_tde
-    station["north_vel_tde"] = estimation.north_vel_tde
+    # TODO: Add rotation rates and block strain rate block dataframe and write .csv
 
-    # TODO: ADD slip rates to segment dataframe?
+    # Move .log file to output folder
+    source_file = RUN_NAME + ".log"
+    target_file = OUTPUT_PATH + "/" + RUN_NAME + ".log"
+    os.rename(source_file, target_file)
 
 
 def get_mesh_edge_elements(meshes: List):
