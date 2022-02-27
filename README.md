@@ -28,37 +28,37 @@ Then start your favorite notebook viewer (`jupyter lab` or `vscode`) and open an
 ### Folder structure and file locations for applications
 A large number of input files can be involved in a model run.  We assume that a project is arranged using the following folder structure:
 ```
-project_name
+project_name/
 ├── README.md
-├── notebooks
+├── notebooks/
 │   ├── block_model.ipynb
 │   ├── visualize_results.ipynb
 │   └── resolution_tests.ipynb
-├── command
+├── command/
 │   ├── command_001.json
 │   └── command_NNN.json
-├── segment
+├── segment/
 │   ├── segment_001.csv
 │   └── segment_NNN.csv
-├── block
+├── block/
 │   ├── block_001.csv
 │   └── block_NNN.csv
-├── station
+├── station/
 │   ├── station_001.csv
 │   └── station_NNN.csv
-├── mesh
+├── mesh/
 │   ├── mesh_params_001.json
 │   ├── mesh_params_NNN.json
 │   ├── mesh_001.msh
 │   └── mesh_NNN.msh
-└── output
-    ├── 2022-02-20-17-01-39
+└── output/
+    ├── 2022-02-20-17-01-39/
     │  ├── 2022-02-20-17-01-39.log
     │  ├── elastic_operators.hdf5
     │  ├── model_segment.csv
     │  ├── model_block.csv
     │  └── model_station.csv
-    └── NNNN-NN-NN-NN-NN-NN
+    └── NNNN-NN-NN-NN-NN-NN/
        ├── NNNN-NN-NN-NN-NN-NN.log
        ├── elastic_operators.hdf5
        ├── model_segment.csv
