@@ -102,25 +102,9 @@ flowchart TD
     model_segment.csv:::required
     model_block.csv:::required
     elastic_operators.hdf5
-    subgraph velocities
-      model_velocity.csv:::required
-      rotation_velocity.csv:::required
-      strain_rate_velocity.csv:::required
-      okada_velocity.csv:::required
-      tde_velocity.csv:::required
-      elastic_velocity.csv:::required
-    end
-    subgraph los
-      model_los.csv
-      rotation_los.csv
-      strain_rate_los.csv
-      okada_los.csv
-      tde_los.csv
-      elastic_los.csv
-    end
+    model_station.csv:::required
+    model_los.csv
   end
   input_files --> celeri
   celeri --> output_files
 ```
-
-
