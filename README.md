@@ -57,23 +57,13 @@ project_name
     │  ├── elastic_operators.hdf5
     │  ├── model_segment.csv
     │  ├── model_block.csv
-    │  ├── model_velocity.csv
-    │  ├── rotation_velocity.csv
-    │  ├── strain_rate_velocity.csv
-    │  ├── okada_velocity.csv
-    │  ├── tri_velocity.csv
-    │  └── elastic_velocity.csv
+    │  └── model_station.csv
     └── NNNN-NN-NN-NN-NN-NN
        ├── NNNN-NN-NN-NN-NN-NN.log
        ├── elastic_operators.hdf5
        ├── model_segment.csv
        ├── model_block.csv
-       ├── model_velocity.csv
-       ├── rotation_velocity.csv
-       ├── strain_rate_velocity.csv
-       ├── okada_velocity.csv
-       ├── tri_velocity.csv
-       └── elastic_velocity.csv
+       └── model_station.csv
 ```
 
 ### The flow of files in and out of celeri
@@ -87,9 +77,8 @@ flowchart TD
     command.json:::required --> station.csv:::required
     subgraph meshes
       mesh_parameters.json
-      mesh_parameters.json --> mesh_1.msh
-      mesh_parameters.json --> mesh_2.msh
-      mesh_parameters.json --> mesh_N.msh
+      mesh_parameters.json --> mesh_001.msh
+      mesh_parameters.json --> mesh_NNN.msh
     end
     command.json --> meshes
     command.json --> elastic_operators_precomputed.hdf5
