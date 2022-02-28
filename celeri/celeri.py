@@ -32,7 +32,7 @@ N_MESH_DIM = 3
 
 # Set up logging to file:
 RUN_NAME = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-OUTPUT_PATH = os.path.join("../output/", RUN_NAME)
+OUTPUT_PATH = os.path.join("../runs/", RUN_NAME)
 logger.remove()  # Remove any existing loggers includeing default stderr
 logger.add(RUN_NAME + ".log")
 logger.info("RUN_NAME: " + RUN_NAME)
