@@ -34,7 +34,7 @@ project_name/
 │   ├── block_model.ipynb
 │   ├── visualize_results.ipynb
 │   └── resolution_tests.ipynb
-├── input/
+├── data/
 |   ├── command/
 │   |   ├── command_001.json
 │   |   └── command_NNN.json
@@ -47,12 +47,15 @@ project_name/
 │   ├── station/
 │   │   ├── station_001.csv
 │   │   └── station_NNN.csv
-│   └── mesh/
-│       ├── mesh_params_001.json
-│       ├── mesh_params_NNN.json
-│       ├── mesh_001.msh
-│       └── mesh_NNN.msh
-└── output/
+│   ├── mesh/
+│   |   ├── mesh_params_001.json
+│   |   ├── mesh_params_NNN.json
+│   |   ├── mesh_001.msh
+│   |   └── mesh_NNN.msh
+|   └── operators/
+│       ├── elastic_001.hdf5
+│       └── elastic_NNN.hdf5
+└── runs/
     ├── 2022-02-20-17-01-39/
     │  ├── 2022-02-20-17-01-39.log
     │  ├── elastic_operators.hdf5
