@@ -63,29 +63,26 @@ def read_data(command_file_name):
         command = json.load(f)
     command = addict.Dict(command)  # Convert to dot notation dictionary
     command.file_name = command_file_name
-    # base_folder = os.path.dirname(command.file_name)
-    base_folder = ""
 
     # Read segment data
-    segment = pd.read_csv(os.path.join(base_folder, command.segment_file_name))
+    segment = pd.read_csv(command.segment_file_name)
     segment = segment.loc[:, ~segment.columns.str.match("Unnamed")]
 
     # Read block data
-    block = pd.read_csv(os.path.join(base_folder, command.block_file_name))
+    block = pd.read_csv(command.block_file_name)
     block = block.loc[:, ~block.columns.str.match("Unnamed")]
 
     # Read mesh data - List of dictionary version
-    with open(os.path.join(base_folder, command.mesh_parameters_file_name)) as f:
+    with open(command.mesh_parameters_file_name) as f:
         mesh_param = json.load(f)
 
     meshes = []
     if len(mesh_param) > 0:
         for i in range(len(mesh_param)):
             meshes.append(addict.Dict())
-            meshes[i].meshio_object = meshio.read(
-                os.path.join(base_folder, mesh_param[i]["mesh_filename"])
-            )
+            meshes[i].meshio_object = meshio.read(mesh_param[i]["mesh_filename"])
             meshes[i].verts = meshes[i].meshio_object.get_cells_type("triangle")
+
             # Expand mesh coordinates
             meshes[i].lon1 = meshes[i].meshio_object.points[meshes[i].verts[:, 0], 0]
             meshes[i].lon2 = meshes[i].meshio_object.points[meshes[i].verts[:, 1], 0]
@@ -192,7 +189,7 @@ def read_data(command_file_name):
             ]
         )
     else:
-        station = pd.read_csv(os.path.join(base_folder, command.station_file_name))
+        station = pd.read_csv(command.station_file_name)
         station = station.loc[:, ~station.columns.str.match("Unnamed")]
 
     # Read Mogi source data
@@ -209,7 +206,7 @@ def read_data(command_file_name):
             ]
         )
     else:
-        mogi = pd.read_csv(os.path.join(base_folder, command.mogi_file_name))
+        mogi = pd.read_csv(command.mogi_file_name)
         mogi = mogi.loc[:, ~mogi.columns.str.match("Unnamed")]
 
     # Read SAR data
@@ -230,7 +227,7 @@ def read_data(command_file_name):
         )
 
     else:
-        sar = pd.read_csv(os.path.join(base_folder, command.sar_file_name))
+        sar = pd.read_csv(command.sar_file_name)
         sar = sar.loc[:, ~sar.columns.str.match("Unnamed")]
     return command, segment, block, meshes, station, mogi, sar
 
