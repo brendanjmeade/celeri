@@ -1238,13 +1238,9 @@ def get_elastic_operators(
         station (pd.DataFrame): All station data
         command (Dict): All command data
     """
-    base_folder = os.path.dirname(command.file_name)
-    base_folder = ""
-
     if command.reuse_elastic == "yes":
-        hdf5_file = h5py.File(
-            os.path.join(base_folder, command.reuse_elastic_file), "r"
-        )
+        hdf5_file = h5py.File(command.reuse_elastic_file, "r")
+
         operators.slip_rate_to_okada_to_velocities = np.array(
             hdf5_file.get("slip_rate_to_okada_to_velocities")
         )
@@ -1269,10 +1265,9 @@ def get_elastic_operators(
         if command.save_elastic == "yes":
             print(
                 "Saving elastic to velocity matrices to :" + command.save_elastic_file
-            )
-            hdf5_file = h5py.File(
-                os.path.join(base_folder, command.save_elastic_file), "w"
-            )
+            )  # TODO: Move to logging
+            hdf5_file = h5py.File(command.save_elastic_file, "w")
+
             hdf5_file.create_dataset(
                 "slip_rate_to_okada_to_velocities",
                 data=operators.slip_rate_to_okada_to_velocities,
