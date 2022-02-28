@@ -63,7 +63,8 @@ def read_data(command_file_name):
         command = json.load(f)
     command = addict.Dict(command)  # Convert to dot notation dictionary
     command.file_name = command_file_name
-    base_folder = os.path.dirname(command.file_name)
+    # base_folder = os.path.dirname(command.file_name)
+    base_folder = ""
 
     # Read segment data
     segment = pd.read_csv(os.path.join(base_folder, command.segment_file_name))
@@ -1238,6 +1239,7 @@ def get_elastic_operators(
         command (Dict): All command data
     """
     base_folder = os.path.dirname(command.file_name)
+    base_folder = ""
 
     if command.reuse_elastic == "yes":
         hdf5_file = h5py.File(
