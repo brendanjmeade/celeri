@@ -27,6 +27,7 @@ GEOID = pyproj.Geod(ellps="WGS84")
 KM2M = 1.0e3
 M2MM = 1.0e3
 RADIUS_EARTH = np.float64((GEOID.a + GEOID.b) / 2)
+DEG_PER_MYR_TO_RAD_PER_YR = 1 / 1e6  # TODO: What should this conversion be?
 N_MESH_DIM = 3
 
 # Set up logging to file:
@@ -2610,3 +2611,183 @@ def get_mesh_edge_elements(meshes: List):
         sides[np.where(tops != 0)] = False
         sides[np.where(bots != 0)] = False
         meshes[i].side_elements = sides
+
+
+def assemble_and_solve_dense(command, assembly, operators, station, block, meshes):
+    # Create dictionary to store indices and sizes for operator building
+    index = addict.Dict()
+    index.n_stations = assembly.data.n_stations
+    index.vertical_velocities = np.arange(2, 3 * index.n_stations, 3)
+    index.n_blocks = len(block)
+    index.n_block_constraints = assembly.data.n_block_constraints
+    index.station_row_keep_index = get_keep_index_12(3 * len(station))
+    index.start_station_row = 0
+    index.end_station_row = 2 * len(station)
+    index.start_block_col = 0
+    index.end_block_col = 3 * len(block)
+    index.start_block_constraints_row = index.end_station_row
+    index.end_block_constraints_row = (
+        index.start_block_constraints_row + 3 * index.n_block_constraints
+    )
+    index.n_slip_rate_constraints = assembly.data.slip_rate_constraints.size
+    index.start_slip_rate_constraints_row = index.end_block_constraints_row
+    index.end_slip_rate_constraints_row = (
+        index.start_slip_rate_constraints_row + index.n_slip_rate_constraints
+    )
+
+    index.n_tde_total = 0
+    index.n_tde_constraints_total = 0
+    for i in range(len(meshes)):
+        index.n_tde[i] = meshes[i].n_tde
+        index.n_tde_total += index.n_tde[i]
+        index.n_tde_constraints[i] = meshes[i].n_tde_constraints
+        index.n_tde_constraints_total += index.n_tde_constraints[i]
+        if i == 0:
+            index.start_tde_col[i] = index.end_block_col
+            index.end_tde_col[i] = index.start_tde_col[i] + 2 * index.n_tde[i]
+            index.start_tde_smoothing_row[i] = index.end_slip_rate_constraints_row
+            index.end_tde_smoothing_row[i] = (
+                index.start_tde_smoothing_row[i] + 2 * index.n_tde[i]
+            )
+            index.start_tde_constraint_row[i] = index.end_tde_smoothing_row[i]
+            index.end_tde_constraint_row[i] = (
+                index.start_tde_constraint_row[i] + index.n_tde_constraints[i]
+            )
+        else:
+            index.start_tde_col[i] = index.end_tde_col[i - 1]
+            index.end_tde_col[i] = index.start_tde_col[i] + 2 * index.n_tde[i]
+            index.start_tde_smoothing_row[i] = index.end_tde_smoothing_row[i - 1]
+            index.end_tde_smoothing_row[i] = (
+                index.start_tde_smoothing_row[i] + 2 * index.n_tde[i]
+            )
+            index.start_tde_constraint_row[i] = index.end_tde_smoothing_row[i - 1]
+            index.end_tde_constraint_row[i] = (
+                index.start_tde_constraint_row[i] + index.n_tde_constraints[i]
+            )
+
+    # Initialize data vector
+    estimation = addict.Dict()
+    estimation.data_vector = np.zeros(
+        2 * index.n_stations
+        + 3 * index.n_block_constraints
+        + index.n_slip_rate_constraints
+        + 2 * index.n_tde_total
+        + index.n_tde_constraints_total
+    )
+
+    # Add GPS stations to data vector
+    estimation.data_vector[
+        index.start_station_row : index.end_station_row
+    ] = interleave2(assembly.data.east_vel, assembly.data.north_vel)
+
+    # Add block motion constraints to data vector
+    estimation.data_vector[
+        index.start_block_constraints_row : index.end_block_constraints_row
+    ] = (DEG_PER_MYR_TO_RAD_PER_YR * assembly.data.block_constraints)
+
+    # Add slip rate constraints to data vector
+    estimation.data_vector[
+        index.start_slip_rate_constraints_row : index.end_slip_rate_constraints_row
+    ] = assembly.data.slip_rate_constraints
+
+    # Initialize and build weighting matrix
+    estimation.weighting_vector = np.ones(
+        2 * index.n_stations
+        + 3 * index.n_block_constraints
+        + index.n_slip_rate_constraints
+        + 2 * index.n_tde_total
+        + index.n_tde_constraints_total
+    )
+    estimation.weighting_vector[
+        index.start_station_row : index.end_station_row
+    ] = interleave2(1 / (station.east_sig ** 2), 1 / (station.north_sig ** 2))
+    estimation.weighting_vector[
+        index.start_block_constraints_row : index.end_block_constraints_row
+    ] = 1.0
+    estimation.weighting_vector[
+        index.start_slip_rate_constraints_row : index.end_slip_rate_constraints_row
+    ] = command.slip_constraint_weight * np.ones(index.n_slip_rate_constraints)
+
+    # Initialize linear operator
+    estimation.operator = np.zeros(
+        (
+            2 * index.n_stations
+            + 3 * index.n_block_constraints
+            + index.n_slip_rate_constraints
+            + 2 * index.n_tde_total
+            + index.n_tde_constraints_total,
+            3 * index.n_blocks + 2 * index.n_tde_total,
+        )
+    )
+
+    # Insert block rotations and elastic velocities from fully locked segments
+    operators.rotation_to_slip_rate_to_okada_to_velocities = (
+        operators.slip_rate_to_okada_to_velocities @ operators.rotation_to_slip_rate
+    )
+    estimation.operator[
+        index.start_station_row : index.end_station_row,
+        index.start_block_col : index.end_block_col,
+    ] = (
+        operators.rotation_to_velocities[index.station_row_keep_index, :]
+        - operators.rotation_to_slip_rate_to_okada_to_velocities[
+            index.station_row_keep_index, :
+        ]
+    )
+
+    # Insert block motion constraints
+    estimation.operator[
+        index.start_block_constraints_row : index.end_block_constraints_row,
+        index.start_block_col : index.end_block_col,
+    ] = operators.block_motion_constraints
+
+    # Insert slip rate constraints
+    estimation.operator[
+        index.start_slip_rate_constraints_row : index.end_slip_rate_constraints_row,
+        index.start_block_col : index.end_block_col,
+    ] = operators.slip_rate_constraints
+
+    # Insert TDE to velocity matrix
+    for i in range(len(meshes)):
+        # Insert TDE to velocity matrix
+        tde_keep_row_index = get_keep_index_12(operators.tde_to_velocities[i].shape[0])
+        tde_keep_col_index = get_keep_index_12(operators.tde_to_velocities[i].shape[1])
+        estimation.operator[
+            index.start_station_row : index.end_station_row,
+            index.start_tde_col[i] : index.end_tde_col[i],
+        ] = -operators.tde_to_velocities[i][tde_keep_row_index, :][
+            :, tde_keep_col_index
+        ]
+
+        # Insert TDE smoothing matrix
+        smoothing_keep_index = get_keep_index_12(
+            operators.tde_to_velocities[i].shape[1]
+        )
+        estimation.operator[
+            index.start_tde_smoothing_row[i] : index.end_tde_smoothing_row[i],
+            index.start_tde_col[i] : index.end_tde_col[i],
+        ] = operators.smoothing_matrix_simple[i].toarray()[smoothing_keep_index, :][
+            :, smoothing_keep_index
+        ]
+
+        # Insert smoothing weight into weighting vector
+        estimation.weighting_vector[
+            index.start_tde_smoothing_row[i] : index.end_tde_smoothing_row[i]
+        ] = meshes[i].smoothing_weight * np.ones(2 * index.n_tde[i])
+        # print(estimation.weighting_vector[index.start_tde_smoothing_row[i]])
+        # Insert TDE slip rate constraints into estimation operator
+        estimation.operator[
+            index.start_tde_constraint_row[i] : index.end_tde_constraint_row[i],
+            index.start_tde_col[i] : index.end_tde_col[i],
+        ] = operators.tde_slip_rate_constraints[i]
+
+    # Solve the overdetermined linear system using only a weighting vector rather than matrix
+    estimation.state_covariance_matrix = np.linalg.inv(
+        estimation.operator.T * estimation.weighting_vector @ estimation.operator
+    )
+    estimation.state_vector = (
+        estimation.state_covariance_matrix
+        @ estimation.operator.T
+        * estimation.weighting_vector
+        @ estimation.data_vector
+    )
+    return index, estimation

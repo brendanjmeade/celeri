@@ -30,6 +30,7 @@ from .celeri import (
     get_shared_sides,
     write_output,
     create_output_folder,
+    assemble_and_solve_dense,
     RUN_NAME,
 )
 
