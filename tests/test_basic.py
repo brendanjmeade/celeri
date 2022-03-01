@@ -56,10 +56,7 @@ def test_global_closure():
     """
     import os
 
-    print(os.getcwd())
-    # command_file_name = "./data/global/global_command.json"
     command_file_name = "./data/command/global_command.json"
-
     command, segment, block, meshes, station, mogi, sar = celeri.read_data(
         command_file_name
     )
