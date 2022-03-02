@@ -2216,7 +2216,7 @@ def get_tri_smoothing_matrix_simple(share, n_dim):
     return smoothing_matrix
 
 
-def get_ordered_edge_nodes(meshes: List) -> None:
+def get_ordered_edge_nodes(meshes: List):
     """Find exterior edges of each mesh and return them in the dictionary
     for each mesh.
 
@@ -2256,7 +2256,7 @@ def get_ordered_edge_nodes(meshes: List) -> None:
             )
 
 
-def get_tde_slip_rate_constraints(meshes: List, operators: Dict) -> None:
+def get_tde_slip_rate_constraints(meshes: List, operators: Dict):
     """Construct TDE slip rate constraint matrices for each mesh.
     These are essentially identity matrices, used to set TDE slip
     rates on elements lining the edges of the mesh, as controlled
@@ -2302,7 +2302,7 @@ def get_tde_slip_rate_constraints(meshes: List, operators: Dict) -> None:
         meshes[i].n_tde_constraints = np.sum(sum_constraint_columns > 0)
 
 
-def get_keep_index_12(length_of_array: int) -> np.array:
+def get_keep_index_12(length_of_array: int):
     """Calculate an indexing array that given and array:
     [1, 2, 3, 4, 5, 6, 7, 8, 9]
     returns
@@ -2361,7 +2361,7 @@ def interleave3(array_1, array_2, array_3):
     return interleaved_array
 
 
-def get_2component_index(indices: np.array) -> np.array:
+def get_2component_index(indices: np.array):
     """Returns indices into 2-component array, where each entry of input array
     corresponds to two entries in the 2-component array
     Given indices = [0, 2, 10, 6]
@@ -2380,7 +2380,7 @@ def get_2component_index(indices: np.array) -> np.array:
     return idx
 
 
-def get_3component_index(indices: np.array) -> np.array:
+def get_3component_index(indices: np.array):
     """Returns indices into 3-component array, where each entry of input array
     corresponds to three entries in the 3-component array
     Given indices = [0, 2, 10, 6]
@@ -2403,7 +2403,7 @@ def get_3component_index(indices: np.array) -> np.array:
 
 def post_process_estimation(
     estimation: Dict, operators: Dict, station: pd.DataFrame, index: Dict
-) -> None:
+):
     """Calculate derived values derived from the block model linear estimate (e.g., velocities, undertainties)
 
     Args:
@@ -2490,7 +2490,7 @@ def post_process_estimation(
 @pytest.mark.skip(reason="Writing output files")
 def write_output(
     estimation: Dict, station: pd.DataFrame, segment: pd.DataFrame, block: pd.DataFrame
-) -> None:
+):
     # Add model velocities to station dataframe and write .csv
     station["model_east_vel"] = estimation.east_vel
     station["model_north_vel"] = estimation.north_vel
