@@ -1224,8 +1224,9 @@ def get_elastic_operators(
     segment: pd.DataFrame,
     station: pd.DataFrame,
     command: Dict,
-) -> None:
-    """Calculate (or load previously calculated) elastic operators from
+):
+    """
+    Calculate (or load previously calculated) elastic operators from
     both fully locked segments and TDE parameterizes surfaces
 
     Args:
