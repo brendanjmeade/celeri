@@ -237,9 +237,9 @@ def plot_input_summary(
     common_plot_elements(segment, lon_range, lat_range)
     for i in range(len(meshes)):
         is_constrained_edge = np.zeros(meshes[i].n_tde)
-        is_constrained_edge[meshes[i].top_elements] = 1
-        is_constrained_edge[meshes[i].bot_elements] = 1
-        is_constrained_edge[meshes[i].side_elements] = 1
+        is_constrained_edge[meshes[i].top_elements] = meshes[i].top_slip_rate_constraint
+        is_constrained_edge[meshes[i].bot_elements] = meshes[i].bot_slip_rate_constraint
+        is_constrained_edge[meshes[i].side_elements] = meshes[i].side_slip_rate_constraint
         x_coords = meshes[i].meshio_object.points[:, 0]
         y_coords = meshes[i].meshio_object.points[:, 1]
         vertex_array = np.asarray(meshes[i].verts)
