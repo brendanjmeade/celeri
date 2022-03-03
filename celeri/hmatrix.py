@@ -355,7 +355,9 @@ class HMatrix:
         for i, (obs_node, src_node) in enumerate(self.approx_pairs):
             y_block = y_tree[obs_node.idx_start : obs_node.idx_end]
             U, V = self.approx_blocks[i]
-            x_tree[src_node.idx_start : src_node.idx_end] += ((y_block.ravel() @ U) @ V).reshape((-1, 2))
+            x_tree[src_node.idx_start : src_node.idx_end] += (
+                (y_block.ravel() @ U) @ V
+            ).reshape((-1, 2))
 
         # Step 4) Transform back to the original output index ordering from the src_tree
         # index ordering.
@@ -461,6 +463,80 @@ def build_hmatrix_from_mesh_tdes(
     """
     # This is the original dense matrix that we're going to approximate
     M = operators_mesh.tde_to_velocities
+    # Delete vertical components.
+    M = np.delete(M, np.arange(2, M.shape[0], 3), axis=0)
+    M = np.delete(M, np.arange(2, M.shape[1], 3), axis=1)
+
+    # Step 1) Identify the centroid of each triangle
+    tri_centers = mesh.centroids.copy()
+    tri_pts = np.transpose(
+        np.array(
+            [
+                [mesh.lon1, mesh.lon2, mesh.lon3],
+                [mesh.lat1, mesh.lat2, mesh.lat3],
+                [mesh.dep1, mesh.dep2, mesh.dep3],
+            ]
+        ),
+        (2, 1, 0),
+    )
+
+    # Step 2) construct an (N, 3) array with observation points (for the z
+    # coordinate, we assume z=0).
+    obs_pts = np.array([station.lon, station.lat, 0 * station.lat]).T.copy()
+
+    # Step 3) Convert all units to kilometers. In order to build the H-matrix
+    # distance tree, we need to have the distance units approximately the same
+    # in each dimension. This is an approximation conversion from lon/lat to km.
+    #
+    # TODO: this conversion should adapt to the location somehow. It is not
+    # important to have an exact distance conversion since these locations are
+    # only used to define the "farfield" and "nearfield" and having some slack
+    # in those definitions is fine. Ideas:
+    # - a single number per mesh. This will be approximately correct
+    # - Just use 3D distances?
+    for arr in [tri_centers, tri_pts, obs_pts]:
+        arr[..., 0] *= 85  # appx at 40 degrees north
+        arr[..., 1] *= 111  # appx at 40 degrees north
+
+    # Step 4) Calculate the radius of the bounding sphere for each triangle.
+    tri_radii = np.min(
+        np.linalg.norm(tri_pts - tri_centers[:, None, :], axis=2), axis=1
+    )
+
+    # Step 5) Construct the H-matrix now that all the locations have been converted!
+    return build_hmatrix(
+        M,
+        obs_pts,
+        tri_centers,
+        tri_radii,
+        tol,
+        min_separation=min_separation,
+        min_pts_per_box=min_pts_per_box,
+    )
+
+
+def build_hmatrix_from_mesh_tdes_new(
+    mesh, station, M, tol, min_separation=1.5, min_pts_per_box=20
+):
+    """
+    This function translates the TDE mesh to station matrix problem into a
+    problem using more typical H-matrix inputs.
+
+    That is, we convert from:
+    - a celeri mesh
+    - a celeri station object
+
+    To:
+    - a list of observation points in numpy array with shape (N, 3)
+    - a list of source centers with shape (M, 3) and source "radii" with shape (M)
+
+    Note: why do the sources have "radii"? The H-matrix algorithms are much
+    simpler when described in terms of spheres rather than triangles. Since all
+    we care about is minimum distances, instead of working with triangles, we
+    can convert to bounding spheres for those triangles.
+    """
+    # This is the original dense matrix that we're going to approximate
+    # M = operators_mesh.tde_to_velocities
     # Delete vertical components.
     M = np.delete(M, np.arange(2, M.shape[0], 3), axis=0)
     M = np.delete(M, np.arange(2, M.shape[1], 3), axis=1)
