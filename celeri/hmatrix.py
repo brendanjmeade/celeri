@@ -269,6 +269,9 @@ class HMatrix:
     # The prespecified tolerance. Note that the tolerance is an absolute tolerance.
     tol: float
 
+    # The estimated frobenius norm of the matrix. This is computed during construction.
+    frob_est: float
+
     # The obs and source sphere trees.
     obs_tree: Tree
     src_tree: Tree
@@ -316,7 +319,7 @@ class HMatrix:
 
         # Step 2) Multiply the direct blocks.
         for i, (obs_node, src_node) in enumerate(self.direct_pairs):
-            x_block = x_tree[src_node.idx_start : src_node.idx_end].ravel()
+            x_block = x_tree[src_node.idx_start : src_node.idx_end]
             y_tree[obs_node.idx_start : obs_node.idx_end] += (
                 self.direct_blocks[i].dot(x_block.ravel()).reshape((-1, 2))
             )
@@ -410,7 +413,15 @@ def build_hmatrix(
         U, S, V = np.linalg.svd(h_block, full_matrices=False)
         block_tol = tol * (h_block.size / reshaped.size) * frob_est
         frob_K = np.sqrt(np.cumsum(S[::-1] ** 2))[::-1]
-        appx_rank = np.argmax(frob_K < block_tol)
+        
+        # np.argmax finds the first entry for which the tolerance is greater
+        # than the remaining frobenius norm sum. but it fails if the correct
+        # matrix rank is full rank. so we first check that condition.
+        if frob_K[-1] > block_tol: 
+            appx_rank = S.shape[0]
+        else:
+            appx_rank = np.argmax(frob_K < block_tol)
+
         approx_blocks.append((U[:, :appx_rank] * S[None, :appx_rank], V[:appx_rank]))
 
     # Step 4) Extract the non-approximated "direct" blocks of the original matrix.
@@ -431,6 +442,7 @@ def build_hmatrix(
     # Step 5) Build the HMatrix data object and return it.
     return HMatrix(
         tol,
+        frob_est,
         obs_tree,
         src_tree,
         direct_pairs,
