@@ -2651,11 +2651,11 @@ def assemble_and_solve_dense(command, assembly, operators, station, block, meshe
         else:
             index.start_tde_col[i] = index.end_tde_col[i - 1]
             index.end_tde_col[i] = index.start_tde_col[i] + 2 * index.n_tde[i]
-            index.start_tde_smoothing_row[i] = index.end_tde_smoothing_row[i - 1]
+            index.start_tde_smoothing_row[i] = index.end_tde_constraint_row[i - 1]
             index.end_tde_smoothing_row[i] = (
                 index.start_tde_smoothing_row[i] + 2 * index.n_tde[i]
             )
-            index.start_tde_constraint_row[i] = index.end_tde_smoothing_row[i - 1]
+            index.start_tde_constraint_row[i] = index.end_tde_smoothing_row[i]
             index.end_tde_constraint_row[i] = (
                 index.start_tde_constraint_row[i] + index.n_tde_constraints[i]
             )
