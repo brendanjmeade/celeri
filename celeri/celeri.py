@@ -72,6 +72,7 @@ def read_data(command_file_name: str):
     command.base_runs_folder = "../runs/"
     command.run_name = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
     command.output_path = os.path.join(command.base_runs_folder, command.run_name)
+    command.operators_folder = "../data/operators/"
 
     # Read segment data
     segment = pd.read_csv(command.segment_file_name)
@@ -1246,7 +1247,11 @@ def get_elastic_operators(
         station (pd.DataFrame): All station data
         command (Dict): All command data
     """
-    if command.reuse_elastic == "yes":
+    if (command.reuse_elastic == "yes") and (
+        os.path.exists(command.reuse_elastic_file)
+    ):
+        # TODO: If it doesn't exist then calculate the partials
+        print("Using precomputed elastic operators")
         hdf5_file = h5py.File(command.reuse_elastic_file, "r")
 
         operators.slip_rate_to_okada_to_velocities = np.array(
@@ -1258,7 +1263,11 @@ def get_elastic_operators(
             )
         hdf5_file.close()
 
-    elif command.reuse_elastic == "no":
+    else:
+        if not os.path.exists(command.reuse_elastic_file):
+            print("Precomputed elastic operator file not found")
+        print("Computing elastic operators")
+
         # Calculate Okada partials for all segments
         operators.slip_rate_to_okada_to_velocities = get_segment_station_operator_okada(
             segment, station, command
@@ -1271,6 +1280,10 @@ def get_elastic_operators(
 
         # Save elastic to velocity matrices
         if command.save_elastic == "yes":
+            # Check to see if "data/operators" folder exists and if not create it
+            if not os.path.exists(command.operators_folder):
+                os.mkdir(command.operators_folder)
+
             print(
                 "Saving elastic to velocity matrices to :" + command.save_elastic_file
             )  # TODO: Move to logging
