@@ -39,6 +39,11 @@ N_MESH_DIM = 3
 
 @pytest.mark.skip(reason="Writing output to disk")
 def create_output_folder(command: Dict):
+    # Check to see if "runs" folder exists and if not create it
+    if not os.path.exists(command.base_runs_folder):
+        os.mkdir(command.base_runs_folder)
+
+    # Make output folder for current run
     os.mkdir(command.output_path)
 
 
@@ -64,8 +69,9 @@ def read_data(command_file_name: str):
     command.file_name = command_file_name
 
     # Add run_name and output_path
+    command.base_runs_folder = "../runs/"
     command.run_name = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-    command.output_path = os.path.join("../runs/", command.run_name)
+    command.output_path = os.path.join(command.base_runs_folder, command.run_name)
 
     # Read segment data
     segment = pd.read_csv(command.segment_file_name)
