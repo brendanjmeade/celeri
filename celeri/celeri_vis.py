@@ -239,7 +239,9 @@ def plot_input_summary(
         is_constrained_edge = np.zeros(meshes[i].n_tde)
         is_constrained_edge[meshes[i].top_elements] = meshes[i].top_slip_rate_constraint
         is_constrained_edge[meshes[i].bot_elements] = meshes[i].bot_slip_rate_constraint
-        is_constrained_edge[meshes[i].side_elements] = meshes[i].side_slip_rate_constraint
+        is_constrained_edge[meshes[i].side_elements] = meshes[
+            i
+        ].side_slip_rate_constraint
         x_coords = meshes[i].meshio_object.points[:, 0]
         y_coords = meshes[i].meshio_object.points[:, 1]
         vertex_array = np.asarray(meshes[i].verts)
@@ -485,6 +487,7 @@ def plot_estimation_summary(
     common_plot_elements(segment, lon_range, lat_range)
     # plot_meshes(meshes, estimation.tde_strike_slip_rates, plt.gca())
     fill_value = estimation.tde_strike_slip_rates
+    fill_value_range = [np.min(fill_value), np.max(fill_value)]
     ax = plt.gca()
     for i in range(len(meshes)):
         x_coords = meshes[i].meshio_object.points[:, 0]
@@ -497,12 +500,13 @@ def plot_estimation_summary(
             verts, edgecolor="none", cmap="rainbow"
         )
         if i == 0:
-           tde_slip_component_start = 0
-           tde_slip_component_end = meshes[i].n_tde
+            tde_slip_component_start = 0
+            tde_slip_component_end = meshes[i].n_tde
         else:
-           tde_slip_component_start = tde_slip_component_end
-           tde_slip_component_end = tde_slip_component_start + meshes[i].n_tde
+            tde_slip_component_start = tde_slip_component_end
+            tde_slip_component_end = tde_slip_component_start + meshes[i].n_tde
         pc.set_array(fill_value[tde_slip_component_start:tde_slip_component_end])
+        pc.set_clim(fill_value_range)
         ax.add_collection(pc)
         # ax.autoscale()
         if i == len(meshes) - 1:
@@ -521,6 +525,7 @@ def plot_estimation_summary(
     common_plot_elements(segment, lon_range, lat_range)
     # plot_meshes(meshes, estimation.tde_dip_slip_rates, plt.gca())
     fill_value = estimation.tde_dip_slip_rates
+    fill_value_range = [np.min(fill_value), np.max(fill_value)]
     ax = plt.gca()
     for i in range(len(meshes)):
         x_coords = meshes[i].meshio_object.points[:, 0]
@@ -533,12 +538,13 @@ def plot_estimation_summary(
             verts, edgecolor="none", cmap="rainbow"
         )
         if i == 0:
-           tde_slip_component_start = 0
-           tde_slip_component_end = meshes[i].n_tde
+            tde_slip_component_start = 0
+            tde_slip_component_end = meshes[i].n_tde
         else:
-           tde_slip_component_start = tde_slip_component_end
-           tde_slip_component_end = tde_slip_component_start + meshes[i].n_tde
+            tde_slip_component_start = tde_slip_component_end
+            tde_slip_component_end = tde_slip_component_start + meshes[i].n_tde
         pc.set_array(fill_value[tde_slip_component_start:tde_slip_component_end])
+        pc.set_clim(fill_value_range)
         ax.add_collection(pc)
         # ax.autoscale()
         if i == len(meshes) - 1:
