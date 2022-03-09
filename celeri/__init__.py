@@ -31,7 +31,6 @@ from .celeri import (
     write_output,
     create_output_folder,
     assemble_and_solve_dense,
-    RUN_NAME,
 )
 
 

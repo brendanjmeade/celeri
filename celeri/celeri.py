@@ -31,16 +31,15 @@ DEG_PER_MYR_TO_RAD_PER_YR = 1 / 1e6  # TODO: What should this conversion be?
 N_MESH_DIM = 3
 
 # Set up logging to file:
-RUN_NAME = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-OUTPUT_PATH = os.path.join("../runs/", RUN_NAME)
-logger.remove()  # Remove any existing loggers includeing default stderr
-logger.add(RUN_NAME + ".log")
-logger.info("RUN_NAME: " + RUN_NAME)
+# TODO: Revisit logging
+# logger.remove()  # Remove any existing loggers includeing default stderr
+# logger.add(RUN_NAME + ".log")
+# logger.info("RUN_NAME: " + RUN_NAME)
 
 
 @pytest.mark.skip(reason="Writing output to disk")
-def create_output_folder():
-    os.mkdir(OUTPUT_PATH)
+def create_output_folder(command: Dict):
+    os.mkdir(command.output_path)
 
 
 def get_mesh_perimeter(meshes):
@@ -57,12 +56,16 @@ def get_mesh_perimeter(meshes):
         )
 
 
-def read_data(command_file_name):
+def read_data(command_file_name: str):
     # Read command data
     with open(command_file_name, "r") as f:
         command = json.load(f)
     command = addict.Dict(command)  # Convert to dot notation dictionary
     command.file_name = command_file_name
+
+    # Add run_name and output_path
+    command.run_name = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+    command.output_path = os.path.join("../runs/", command.run_name)
 
     # Read segment data
     segment = pd.read_csv(command.segment_file_name)
@@ -887,39 +890,40 @@ def get_rotation_to_slip_rate_partials(segment, block):
 
 
 def get_slip_rate_constraints(assembly, segment, block, command):
-    logger.info("Isolating slip rate constraints")
-    for i in range(len(segment.lon1)):
-        if segment.ss_rate_flag[i] == 1:
-            # "{:.2f}".format(segment.ss_rate[i])
-            logger.info(
-                "Strike-slip rate constraint on "
-                + segment.name[i].strip()
-                + ": rate = "
-                + "{:.2f}".format(segment.ss_rate[i])
-                + " (mm/yr), 1-sigma uncertainty = +/-"
-                + "{:.2f}".format(segment.ss_rate_sig[i])
-                + " (mm/yr)"
-            )
-        if segment.ds_rate_flag[i] == 1:
-            logger.info(
-                "Dip-slip rate constraint on "
-                + segment.name[i].strip()
-                + ": rate = "
-                + "{:.2f}".format(segment.ds_rate[i])
-                + " (mm/yr), 1-sigma uncertainty = +/-"
-                + "{:.2f}".format(segment.ds_rate_sig[i])
-                + " (mm/yr)"
-            )
-        if segment.ts_rate_flag[i] == 1:
-            logger.info(
-                "Tensile-slip rate constraint on "
-                + segment.name[i].strip()
-                + ": rate = "
-                + "{:.2f}".format(segment.ts_rate[i])
-                + " (mm/yr), 1-sigma uncertainty = +/-"
-                + "{:.2f}".format(segment.ts_rate_sig[i])
-                + " (mm/yr)"
-            )
+    # TODO: Revisit logging
+    # logger.info("Isolating slip rate constraints")
+    # for i in range(len(segment.lon1)):
+    #     if segment.ss_rate_flag[i] == 1:
+    #         # "{:.2f}".format(segment.ss_rate[i])
+    #         logger.info(
+    #             "Strike-slip rate constraint on "
+    #             + segment.name[i].strip()
+    #             + ": rate = "
+    #             + "{:.2f}".format(segment.ss_rate[i])
+    #             + " (mm/yr), 1-sigma uncertainty = +/-"
+    #             + "{:.2f}".format(segment.ss_rate_sig[i])
+    #             + " (mm/yr)"
+    #         )
+    #     if segment.ds_rate_flag[i] == 1:
+    #         logger.info(
+    #             "Dip-slip rate constraint on "
+    #             + segment.name[i].strip()
+    #             + ": rate = "
+    #             + "{:.2f}".format(segment.ds_rate[i])
+    #             + " (mm/yr), 1-sigma uncertainty = +/-"
+    #             + "{:.2f}".format(segment.ds_rate_sig[i])
+    #             + " (mm/yr)"
+    #         )
+    #     if segment.ts_rate_flag[i] == 1:
+    #         logger.info(
+    #             "Tensile-slip rate constraint on "
+    #             + segment.name[i].strip()
+    #             + ": rate = "
+    #             + "{:.2f}".format(segment.ts_rate[i])
+    #             + " (mm/yr), 1-sigma uncertainty = +/-"
+    #             + "{:.2f}".format(segment.ts_rate_sig[i])
+    #             + " (mm/yr)"
+    #         )
 
     slip_rate_constraint_partials = get_rotation_to_slip_rate_partials(segment, block)
 
@@ -2489,7 +2493,11 @@ def post_process_estimation(
 
 @pytest.mark.skip(reason="Writing output files")
 def write_output(
-    estimation: Dict, station: pd.DataFrame, segment: pd.DataFrame, block: pd.DataFrame
+    command: Dict,
+    estimation: Dict,
+    station: pd.DataFrame,
+    segment: pd.DataFrame,
+    block: pd.DataFrame,
 ):
     # Add model velocities to station dataframe and write .csv
     station["model_east_vel"] = estimation.east_vel
@@ -2506,17 +2514,18 @@ def write_output(
     station[
         "model_north_vel_block_strain_rate"
     ] = estimation.north_vel_block_strain_rate
-    station_output_file_name = OUTPUT_PATH + "/" + "model_station.csv"
+    station_output_file_name = command.output_path + "/" + "model_station.csv"
     station.to_csv(station_output_file_name, index=False)
 
     # TODO: Add estimated slip rates to segment dataframe and write .csv
 
     # TODO: Add rotation rates and block strain rate block dataframe and write .csv
 
+    # TODO: Revisit logging
     # Move .log file to output folder
-    source_file = RUN_NAME + ".log"
-    target_file = OUTPUT_PATH + "/" + RUN_NAME + ".log"
-    os.rename(source_file, target_file)
+    # source_file = command.run_name + ".log"
+    # target_file = command.output_path + "/" + command.run_name + ".log"
+    # os.rename(source_file, target_file)
 
 
 def get_mesh_edge_elements(meshes: List):
@@ -2527,16 +2536,20 @@ def get_mesh_edge_elements(meshes: List):
     for i in range(len(meshes)):
         coords = meshes[i].meshio_object.points
         vertices = meshes[i].verts
+
         # Arrays of all element side node pairs
         side_1 = np.sort(np.vstack((vertices[:, 0], vertices[:, 1])).T, 1)
         side_2 = np.sort(np.vstack((vertices[:, 1], vertices[:, 2])).T, 1)
         side_3 = np.sort(np.vstack((vertices[:, 2], vertices[:, 0])).T, 1)
+
         # Sort edge node array
         sorted_edge_nodes = np.sort(meshes[i].ordered_edge_nodes, 1)
+
         # Indices of element sides that are in edge node array
         side_1_in_edge, side_1_in_edge_idx = ismember(sorted_edge_nodes, side_1, "rows")
         side_2_in_edge, side_2_in_edge_idx = ismember(sorted_edge_nodes, side_2, "rows")
         side_3_in_edge, side_3_in_edge_idx = ismember(sorted_edge_nodes, side_3, "rows")
+
         # Depths of nodes
         side_1_depths = np.abs(
             coords[
