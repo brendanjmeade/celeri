@@ -1,5 +1,7 @@
 {
     "printslipcons": false,
+    "base_runs_folder": "../runs/",
+    "operators_folder": "../data/operators/",
     "reuse_elastic": "yes",
     "reuse_elastic_file": "../data/operators/japan_elastic_operators.hdf5",
     "save_elastic": "yes",

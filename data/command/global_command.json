@@ -1,5 +1,6 @@
 {
-    "file_name": "global_command.json",
+    "base_runs_folder": "../runs/",
+    "operators_folder": "../data/operators/",
     "reuse_elastic": "no",
     "reuse_elastic_file": "",
     "save_kernels": "no",

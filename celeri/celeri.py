@@ -69,10 +69,8 @@ def read_data(command_file_name: str):
     command.file_name = command_file_name
 
     # Add run_name and output_path
-    command.base_runs_folder = "../runs/"
     command.run_name = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
     command.output_path = os.path.join(command.base_runs_folder, command.run_name)
-    command.operators_folder = "../data/operators/"
 
     # Read segment data
     segment = pd.read_csv(command.segment_file_name)
