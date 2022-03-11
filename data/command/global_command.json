@@ -1,6 +1,8 @@
 {
     "base_runs_folder": "../runs/",
     "operators_folder": "../data/operators/",
+    "global_elastic_cutoff_distance": 2000E+3,
+    "global_elastic_cutoff_distance_flag": "yes",
     "reuse_elastic": "no",
     "reuse_elastic_file": "",
     "save_kernels": "no",

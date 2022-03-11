@@ -1,6 +1,8 @@
 {
     "base_runs_folder": "../runs/",
     "operators_folder": "../data/operators/",
+    "global_elastic_cutoff_distance": 2000E+3,
+    "global_elastic_cutoff_distance_flag": "yes",
     "reuse_elastic": "yes",
     "reuse_elastic_file": "../data/operators/western_north_america_elastic_operators.hdf5",
     "save_elastic": "yes",
