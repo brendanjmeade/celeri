@@ -2532,9 +2532,17 @@ def write_output(
         "model_north_vel_block_strain_rate"
     ] = estimation.north_vel_block_strain_rate
     station_output_file_name = command.output_path + "/" + "model_station.csv"
-    station.to_csv(station_output_file_name, index=False)
+    station.to_csv(station_output_file_name, index=False, float_format="%0.4f")
 
-    # TODO: Add estimated slip rates to segment dataframe and write .csv
+    # Add estimated slip rates to segment dataframe and write .csv
+    segment["model_strike_slip_rate"] = estimation.strike_slip_rates
+    segment["model_dip_slip_rate"] = estimation.dip_slip_rates
+    segment["model_tensile_slip_rate"] = estimation.tensile_slip_rates
+    segment["model_strike_slip_rate_uncertainty"] = estimation.strike_slip_rate_sigma
+    segment["model_dip_slip_rate_uncertainty"] = estimation.strike_slip_rate_sigma
+    segment["model_tensile_slip_rate_uncertainty"] = estimation.strike_slip_rate_sigma
+    segment_output_file_name = command.output_path + "/" + "model_segment.csv"
+    segment.to_csv(segment_output_file_name, index=False, float_format="%0.4f")
 
     # TODO: Add rotation rates and block strain rate block dataframe and write .csv
 
