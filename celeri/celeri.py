@@ -610,20 +610,20 @@ def euler_pole_covariance_to_rotation_vector_covariance(
         else:
             # Calculate the partial derivatives
             dlat_dx = (
-                -z / (x ** 2 + y ** 2) ** (3 / 2) / (1 + z ** 2 / (x ** 2 + y ** 2)) * x
+                -z / (x**2 + y**2) ** (3 / 2) / (1 + z**2 / (x**2 + y**2)) * x
             )
             dlat_dy = (
-                -z / (x ** 2 + y ** 2) ** (3 / 2) / (1 + z ** 2 / (x ** 2 + y ** 2)) * y
+                -z / (x**2 + y**2) ** (3 / 2) / (1 + z**2 / (x**2 + y**2)) * y
             )
             dlat_dz = (
-                1 / (x ** 2 + y ** 2) ** (1 / 2) / (1 + z ** 2 / (x ** 2 + y ** 2))
+                1 / (x**2 + y**2) ** (1 / 2) / (1 + z**2 / (x**2 + y**2))
             )
-            dlon_dx = -y / x ** 2 / (1 + (y / x) ** 2)
+            dlon_dx = -y / x**2 / (1 + (y / x) ** 2)
             dlon_dy = 1 / x / (1 + (y / x) ** 2)
             dlon_dz = 0
-            dmag_dx = x / np.sqrt(x ** 2 + y ** 2 + z ** 2)
-            dmag_dy = y / np.sqrt(x ** 2 + y ** 2 + z ** 2)
-            dmag_dz = z / np.sqrt(x ** 2 + y ** 2 + z ** 2)
+            dmag_dx = x / np.sqrt(x**2 + y**2 + z**2)
+            dmag_dy = y / np.sqrt(x**2 + y**2 + z**2)
+            dmag_dz = z / np.sqrt(x**2 + y**2 + z**2)
             euler_to_cartsian_operator = np.array(
                 [
                     [dlat_dx, dlat_dy, dlat_dz],
@@ -1336,13 +1336,13 @@ def mogi_forward(mogi_lon, mogi_lat, mogi_depth, poissons_ratio, obs_lon, obs_la
             (1 - poissons_ratio)
             / np.pi
             * mogi_depth
-            / ((source_to_obs_distance ** 2.0 + mogi_depth ** 2) ** 1.5)
+            / ((source_to_obs_distance**2.0 + mogi_depth**2) ** 1.5)
         )
         u_radial = (
             (1 - poissons_ratio)
             / np.pi
             * source_to_obs_distance
-            / ((source_to_obs_distance ** 2 + mogi_depth ** 2.0) ** 1.5)
+            / ((source_to_obs_distance**2 + mogi_depth**2.0) ** 1.5)
         )
 
         # Convert radial displacement to east and north components
@@ -2515,6 +2515,7 @@ def write_output(
     station: pd.DataFrame,
     segment: pd.DataFrame,
     block: pd.DataFrame,
+    meshes: Dict,
 ):
     # Add model velocities to station dataframe and write .csv
     station["model_east_vel"] = estimation.east_vel
@@ -2545,6 +2546,29 @@ def write_output(
     segment.to_csv(segment_output_file_name, index=False, float_format="%0.4f")
 
     # TODO: Add rotation rates and block strain rate block dataframe and write .csv
+
+    # Construct mesh geometry dataframe
+    mesh_outputs = pd.DataFrame()
+    for i in range(len(meshes)):
+        this_mesh_output = {
+            "lon1": meshes[i].lon1,
+            "lat1": meshes[i].lat1,
+            "dep1": meshes[i].dep1,
+            "lon2": meshes[i].lon2,
+            "lat2": meshes[i].lat2,
+            "dep2": meshes[i].dep2,
+            "lon3": meshes[i].lon3,
+            "lat3": meshes[i].lat3,
+            "dep3": meshes[i].dep3,
+        }
+        this_mesh_output = pd.DataFrame(this_mesh_output)
+        mesh_outputs = mesh_outputs.append(this_mesh_output)
+    # Append slip rates
+    mesh_outputs["strike_slip_rate"] = estimation.tde_strike_slip_rates
+    mesh_outputs["dip_slip_rate"] = estimation.tde_dip_slip_rates
+    # Write to CSV
+    mesh_output_file_name = command.output_path + "/" + "model_meshes.csv"
+    mesh_outputs.to_csv(mesh_output_file_name, index=False)
 
     # TODO: Revisit logging
     # Move .log file to output folder
@@ -2733,7 +2757,7 @@ def assemble_and_solve_dense(command, assembly, operators, station, block, meshe
     )
     estimation.weighting_vector[
         index.start_station_row : index.end_station_row
-    ] = interleave2(1 / (station.east_sig ** 2), 1 / (station.north_sig ** 2))
+    ] = interleave2(1 / (station.east_sig**2), 1 / (station.north_sig**2))
     estimation.weighting_vector[
         index.start_block_constraints_row : index.end_block_constraints_row
     ] = 1.0
