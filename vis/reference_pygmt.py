@@ -16,17 +16,17 @@ command, segment, block, meshes, station, mogi, sar = celeri.read_data(
 # segment = celeri.process_segment(segment, command, meshes)
 station_file_name = "model_station.csv"
 segment_file_name = "model_segment.csv"
-station = pd.read_csv(command.station_file_name)
+station = pd.read_csv(station_file_name)
 station = station.loc[:, ~station.columns.str.match("Unnamed")]
-segment = pd.read_csv(command.segment_file_name)
+segment = pd.read_csv(segment_file_name)
 segment = segment.loc[:, ~segment.columns.str.match("Unnamed")]
 closure, block = celeri.assign_block_labels(segment, station, block, mogi, sar)
 
 # Create a plot with coast, Miller projection (J) over the continental US
-min_lon = -135.0
-max_lon = -110.0
-min_lat = 30.0
-max_lat = 50.0
+min_lon = -170.0
+max_lon = 170.0
+min_lat = 00.0
+max_lat = 80.0
 region = [min_lon, max_lon, min_lat, max_lat]
 topo_data = "@earth_relief_30s"
 projection = "J-65/12c"
@@ -40,16 +40,17 @@ pygmt.config(MAP_TICK_PEN="0.25p")
 pygmt.makecpt(cmap="gray", series="-4000/4000/20", continuous=True)
 fig.basemap(region=region, projection=projection, frame=True)
 
-fig.grdimage(grid=topo_data, region=region, shading=True, projection=projection)
+# fig.grdimage(grid=topo_data, region=region, shading=True, projection=projection)
 
-# Plot block boundaries
-for i in range(closure.n_polygons()):
-    fig.plot(
-        x=closure.polygons[i].vertices[:, 0],
-        y=closure.polygons[i].vertices[:, 1],
-        pen="0.1p,0/0/0",
-    )
-
+# Plot segments
+n_segment = len(segment)
+lon_list = np.nan * np.zeros(3 * n_segment)
+lat_list = np.nan * np.zeros(3 * n_segment)
+lon_list[0::3] = segment.lon1
+lon_list[1::3] = segment.lon2
+lat_list[0::3] = segment.lat1
+lat_list[1::3] = segment.lat2
+fig.plot(x=lon_list, y=lat_list, pen="0.1p,255/0/0")
 
 fig.plot(x=station.lon, y=station.lat, style="c0.05", color="yellow", pen="0.1p,black")
 
