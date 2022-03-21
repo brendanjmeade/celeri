@@ -1,5 +1,7 @@
 {
     "base_runs_folder": "../runs/",
+    "atol": 1E-6,
+    "btol": 1E-6,
     "operators_folder": "../data/operators/",
     "global_elastic_cutoff_distance": 2000E+3,
     "global_elastic_cutoff_distance_flag": "yes",
