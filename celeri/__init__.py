@@ -31,6 +31,9 @@ from .celeri import (
     write_output,
     create_output_folder,
     assemble_and_solve_dense,
+    get_index,
+    get_data_vector,
+    get_weighting_vector,
 )
 
 
