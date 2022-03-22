@@ -89,6 +89,7 @@ def read_data(command_file_name: str):
         for i in range(len(mesh_param)):
             meshes.append(addict.Dict())
             meshes[i].meshio_object = meshio.read(mesh_param[i]["mesh_filename"])
+            meshes[i].name = mesh_param[i]["mesh_filename"]
             meshes[i].verts = meshes[i].meshio_object.get_cells_type("triangle")
 
             # Expand mesh coordinates
@@ -2721,6 +2722,15 @@ def get_index(assembly, station, block, meshes):
             index.end_tde_constraint_row[i] = (
                 index.start_tde_constraint_row[i] + index.n_tde_constraints[i]
             )
+
+    index.n_operator_rows = (
+        2 * index.n_stations
+        + 3 * index.n_block_constraints
+        + index.n_slip_rate_constraints
+        + 2 * index.n_tde_total
+        + index.n_tde_constraints_total
+    )
+    index.n_operator_cols = 3 * index.n_blocks + 2 * index.n_tde_total
     return index
 
 
@@ -2750,7 +2760,7 @@ def get_data_vector(assembly, index):
     return data_vector
 
 
-def get_weighting_vector(command, station, index):
+def get_weighting_vector(command, station, meshes, index):
     # Initialize and build weighting matrix
     weighting_vector = np.ones(
         2 * index.n_stations
@@ -2768,11 +2778,16 @@ def get_weighting_vector(command, station, index):
     weighting_vector[
         index.start_slip_rate_constraints_row : index.end_slip_rate_constraints_row
     ] = command.slip_constraint_weight * np.ones(index.n_slip_rate_constraints)
+
+    for i in range(len(meshes)):
+        # Insert smoothing weight into weighting vector
+        weighting_vector[
+            index.start_tde_smoothing_row[i] : index.end_tde_smoothing_row[i]
+        ] = meshes[i].smoothing_weight * np.ones(2 * index.n_tde[i])
     return weighting_vector
 
 
-def get_full_dense_operator(operators, meshes, weighting_vector, index):
-    # TODO: weighting_vector should not be updated here!!!
+def get_full_dense_operator(operators, meshes, index):
     # Initialize linear operator
     operator = np.zeros(
         (
@@ -2834,99 +2849,20 @@ def get_full_dense_operator(operators, meshes, weighting_vector, index):
             :, smoothing_keep_index
         ]
 
-        # Insert smoothing weight into weighting vector
-        weighting_vector[
-            index.start_tde_smoothing_row[i] : index.end_tde_smoothing_row[i]
-        ] = meshes[i].smoothing_weight * np.ones(2 * index.n_tde[i])
-        # print(estimation.weighting_vector[index.start_tde_smoothing_row[i]])
         # Insert TDE slip rate constraints into estimation operator
         operator[
             index.start_tde_constraint_row[i] : index.end_tde_constraint_row[i],
             index.start_tde_col[i] : index.end_tde_col[i],
         ] = operators.tde_slip_rate_constraints[i]
-    return operator, weighting_vector
+    return operator
 
 
 def assemble_and_solve_dense(command, assembly, operators, station, block, meshes):
     index = get_index(assembly, station, block, meshes)
     estimation = addict.Dict()
     estimation.data_vector = get_data_vector(assembly, index)
-    estimation.weighting_vector = get_weighting_vector(command, station, index)
-    estimation.operator, estimation.weighting_vector = get_full_dense_operator(
-        operators, meshes, estimation.weighting_vector, index
-    )
-
-    # # Initialize linear operator
-    # estimation.operator = np.zeros(
-    #     (
-    #         2 * index.n_stations
-    #         + 3 * index.n_block_constraints
-    #         + index.n_slip_rate_constraints
-    #         + 2 * index.n_tde_total
-    #         + index.n_tde_constraints_total,
-    #         3 * index.n_blocks + 2 * index.n_tde_total,
-    #     )
-    # )
-
-    # # Insert block rotations and elastic velocities from fully locked segments
-    # operators.rotation_to_slip_rate_to_okada_to_velocities = (
-    #     operators.slip_rate_to_okada_to_velocities @ operators.rotation_to_slip_rate
-    # )
-    # estimation.operator[
-    #     index.start_station_row : index.end_station_row,
-    #     index.start_block_col : index.end_block_col,
-    # ] = (
-    #     operators.rotation_to_velocities[index.station_row_keep_index, :]
-    #     - operators.rotation_to_slip_rate_to_okada_to_velocities[
-    #         index.station_row_keep_index, :
-    #     ]
-    # )
-
-    # # Insert block motion constraints
-    # estimation.operator[
-    #     index.start_block_constraints_row : index.end_block_constraints_row,
-    #     index.start_block_col : index.end_block_col,
-    # ] = operators.block_motion_constraints
-
-    # # Insert slip rate constraints
-    # estimation.operator[
-    #     index.start_slip_rate_constraints_row : index.end_slip_rate_constraints_row,
-    #     index.start_block_col : index.end_block_col,
-    # ] = operators.slip_rate_constraints
-
-    # # Insert TDE to velocity matrix
-    # for i in range(len(meshes)):
-    #     # Insert TDE to velocity matrix
-    #     tde_keep_row_index = get_keep_index_12(operators.tde_to_velocities[i].shape[0])
-    #     tde_keep_col_index = get_keep_index_12(operators.tde_to_velocities[i].shape[1])
-    #     estimation.operator[
-    #         index.start_station_row : index.end_station_row,
-    #         index.start_tde_col[i] : index.end_tde_col[i],
-    #     ] = -operators.tde_to_velocities[i][tde_keep_row_index, :][
-    #         :, tde_keep_col_index
-    #     ]
-
-    #     # Insert TDE smoothing matrix
-    #     smoothing_keep_index = get_keep_index_12(
-    #         operators.tde_to_velocities[i].shape[1]
-    #     )
-    #     estimation.operator[
-    #         index.start_tde_smoothing_row[i] : index.end_tde_smoothing_row[i],
-    #         index.start_tde_col[i] : index.end_tde_col[i],
-    #     ] = operators.smoothing_matrix_simple[i].toarray()[smoothing_keep_index, :][
-    #         :, smoothing_keep_index
-    #     ]
-
-    #     # Insert smoothing weight into weighting vector
-    #     estimation.weighting_vector[
-    #         index.start_tde_smoothing_row[i] : index.end_tde_smoothing_row[i]
-    #     ] = meshes[i].smoothing_weight * np.ones(2 * index.n_tde[i])
-    #     # print(estimation.weighting_vector[index.start_tde_smoothing_row[i]])
-    #     # Insert TDE slip rate constraints into estimation operator
-    #     estimation.operator[
-    #         index.start_tde_constraint_row[i] : index.end_tde_constraint_row[i],
-    #         index.start_tde_col[i] : index.end_tde_col[i],
-    #     ] = operators.tde_slip_rate_constraints[i]
+    estimation.weighting_vector = get_weighting_vector(command, station, meshes, index)
+    estimation.operator = get_full_dense_operator(operators, meshes, index)
 
     # Solve the overdetermined linear system using only a weighting vector rather than matrix
     estimation.state_covariance_matrix = np.linalg.inv(
