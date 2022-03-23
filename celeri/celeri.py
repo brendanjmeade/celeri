@@ -1249,7 +1249,6 @@ def get_elastic_operators(
     if (command.reuse_elastic == "yes") and (
         os.path.exists(command.reuse_elastic_file)
     ):
-        # TODO: If it doesn't exist then calculate the partials
         print("Using precomputed elastic operators")
         hdf5_file = h5py.File(command.reuse_elastic_file, "r")
 
