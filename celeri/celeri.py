@@ -2783,6 +2783,9 @@ def get_weighting_vector(command, station, meshes, index):
         weighting_vector[
             index.start_tde_smoothing_row[i] : index.end_tde_smoothing_row[i]
         ] = meshes[i].smoothing_weight * np.ones(2 * index.n_tde[i])
+        weighting_vector[
+            index.start_tde_constraint_row[i] : index.end_tde_constraint_row[i]
+        ] = command.tri_con_weight * np.ones(index.n_tde_constraints[i])
     return weighting_vector
 
 
