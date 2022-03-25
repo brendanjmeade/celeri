@@ -30,7 +30,7 @@
         0
     ],
     "tri_depth_tolerance": 0,
-    "tri_con_weight": 1,
+    "tri_con_weight": 1e6,
     "strain_method": 1,
     "sar_file_name": "",
     "sar_ramp": 0,
