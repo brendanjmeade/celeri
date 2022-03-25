@@ -34,6 +34,7 @@ from .celeri import (
     get_index,
     get_data_vector,
     get_weighting_vector,
+    get_full_dense_operator_block_only,
 )
 
 

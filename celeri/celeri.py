@@ -611,20 +611,20 @@ def euler_pole_covariance_to_rotation_vector_covariance(
         else:
             # Calculate the partial derivatives
             dlat_dx = (
-                -z / (x**2 + y**2) ** (3 / 2) / (1 + z**2 / (x**2 + y**2)) * x
+                -z / (x ** 2 + y ** 2) ** (3 / 2) / (1 + z ** 2 / (x ** 2 + y ** 2)) * x
             )
             dlat_dy = (
-                -z / (x**2 + y**2) ** (3 / 2) / (1 + z**2 / (x**2 + y**2)) * y
+                -z / (x ** 2 + y ** 2) ** (3 / 2) / (1 + z ** 2 / (x ** 2 + y ** 2)) * y
             )
             dlat_dz = (
-                1 / (x**2 + y**2) ** (1 / 2) / (1 + z**2 / (x**2 + y**2))
+                1 / (x ** 2 + y ** 2) ** (1 / 2) / (1 + z ** 2 / (x ** 2 + y ** 2))
             )
-            dlon_dx = -y / x**2 / (1 + (y / x) ** 2)
+            dlon_dx = -y / x ** 2 / (1 + (y / x) ** 2)
             dlon_dy = 1 / x / (1 + (y / x) ** 2)
             dlon_dz = 0
-            dmag_dx = x / np.sqrt(x**2 + y**2 + z**2)
-            dmag_dy = y / np.sqrt(x**2 + y**2 + z**2)
-            dmag_dz = z / np.sqrt(x**2 + y**2 + z**2)
+            dmag_dx = x / np.sqrt(x ** 2 + y ** 2 + z ** 2)
+            dmag_dy = y / np.sqrt(x ** 2 + y ** 2 + z ** 2)
+            dmag_dz = z / np.sqrt(x ** 2 + y ** 2 + z ** 2)
             euler_to_cartsian_operator = np.array(
                 [
                     [dlat_dx, dlat_dy, dlat_dz],
@@ -1336,13 +1336,13 @@ def mogi_forward(mogi_lon, mogi_lat, mogi_depth, poissons_ratio, obs_lon, obs_la
             (1 - poissons_ratio)
             / np.pi
             * mogi_depth
-            / ((source_to_obs_distance**2.0 + mogi_depth**2) ** 1.5)
+            / ((source_to_obs_distance ** 2.0 + mogi_depth ** 2) ** 1.5)
         )
         u_radial = (
             (1 - poissons_ratio)
             / np.pi
             * source_to_obs_distance
-            / ((source_to_obs_distance**2 + mogi_depth**2.0) ** 1.5)
+            / ((source_to_obs_distance ** 2 + mogi_depth ** 2.0) ** 1.5)
         )
 
         # Convert radial displacement to east and north components
@@ -2769,7 +2769,7 @@ def get_weighting_vector(command, station, meshes, index):
         + index.n_tde_constraints_total
     )
     weighting_vector[index.start_station_row : index.end_station_row] = interleave2(
-        1 / (station.east_sig**2), 1 / (station.north_sig**2)
+        1 / (station.east_sig ** 2), 1 / (station.north_sig ** 2)
     )
     weighting_vector[
         index.start_block_constraints_row : index.end_block_constraints_row
@@ -2787,6 +2787,45 @@ def get_weighting_vector(command, station, meshes, index):
             index.start_tde_constraint_row[i] : index.end_tde_constraint_row[i]
         ] = command.tri_con_weight * np.ones(index.n_tde_constraints[i])
     return weighting_vector
+
+
+def get_full_dense_operator_block_only(operators, index):
+    # Initialize linear operator
+    operator = np.zeros(
+        (
+            2 * index.n_stations
+            + 3 * index.n_block_constraints
+            + index.n_slip_rate_constraints,
+            3 * index.n_blocks,
+        )
+    )
+
+    # Insert block rotations and elastic velocities from fully locked segments
+    operators.rotation_to_slip_rate_to_okada_to_velocities = (
+        operators.slip_rate_to_okada_to_velocities @ operators.rotation_to_slip_rate
+    )
+    operator[
+        index.start_station_row : index.end_station_row,
+        index.start_block_col : index.end_block_col,
+    ] = (
+        operators.rotation_to_velocities[index.station_row_keep_index, :]
+        - operators.rotation_to_slip_rate_to_okada_to_velocities[
+            index.station_row_keep_index, :
+        ]
+    )
+
+    # Insert block motion constraints
+    operator[
+        index.start_block_constraints_row : index.end_block_constraints_row,
+        index.start_block_col : index.end_block_col,
+    ] = operators.block_motion_constraints
+
+    # Insert slip rate constraints
+    operator[
+        index.start_slip_rate_constraints_row : index.end_slip_rate_constraints_row,
+        index.start_block_col : index.end_block_col,
+    ] = operators.slip_rate_constraints
+    return operator
 
 
 def get_full_dense_operator(operators, meshes, index):
