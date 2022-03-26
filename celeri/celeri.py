@@ -2789,6 +2789,28 @@ def get_weighting_vector(command, station, meshes, index):
     return weighting_vector
 
 
+def get_weighting_vector_single_mesh_for_col_norms(
+    command, station, meshes, index, mesh_index: np.int_
+):
+    # Initialize and build weighting matrix
+    weighting_vector = np.ones(
+        2 * index.n_stations + 2 * index.n_tde_total + index.n_tde_constraints_total
+    )
+
+    weighting_vector[0 : 2 * index.n_stations] = interleave2(
+        1 / (station.east_sig ** 2), 1 / (station.north_sig ** 2)
+    )
+
+    weighting_vector[
+        2 * index.n_stations : 2 * index.n_stations + 2 * index.n_tde_total
+    ] = meshes[mesh_index].smoothing_weight * np.ones(2 * index.n_tde[mesh_index])
+
+    weighting_vector[
+        2 * index.n_stations + 2 * index.n_tde_total : :
+    ] = command.tri_con_weight * np.ones(index.n_tde_constraints[mesh_index])
+    return weighting_vector
+
+
 def get_full_dense_operator_block_only(operators, index):
     # Initialize linear operator
     operator = np.zeros(
