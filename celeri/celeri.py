@@ -2938,3 +2938,62 @@ def assemble_and_solve_dense(command, assembly, operators, station, block, meshe
         @ estimation.data_vector
     )
     return index, estimation
+
+
+def get_elastic_operator_single_mesh(
+    meshes: List, station: pd.DataFrame, command: Dict, mesh_index: np.int_
+):
+    """
+    Calculate (or load previously calculated) elastic operators from
+    both fully locked segments and TDE parameterizes surfaces
+
+    Args:
+        operators (Dict): Elastic operators will be added to this data structure
+        meshes (List): Geometries of meshes
+        segment (pd.DataFrame): All segment data
+        station (pd.DataFrame): All station data
+        command (Dict): All command data
+    """
+    if (command.reuse_elastic == "yes") and (
+        os.path.exists(command.reuse_elastic_file)
+    ):
+        print("Using precomputed elastic operators")
+        hdf5_file = h5py.File(command.reuse_elastic_file, "r")
+        tde_to_velocities = np.array(
+            hdf5_file.get("tde_to_velocities_" + str(mesh_index))
+        )
+        hdf5_file.close()
+
+    else:
+        if not os.path.exists(command.reuse_elastic_file):
+            print("Precomputed elastic operator file not found")
+        print("Computing elastic operators")
+        tde_to_velocities = celeri.get_tde_to_velocities_single_mesh(
+            meshes, station, command, mesh_idx=mesh_index
+        )
+
+    # Save tde to velocity matrix for current mesh
+    if command.save_elastic == "yes":
+        # Check to see if "data/operators" folder exists and if not create it
+        if not os.path.exists(command.operators_folder):
+            os.mkdir(command.operators_folder)
+
+        print(
+            "Saving elastic to velocity matrices to :" + command.save_elastic_file
+        )  # TODO: Move to logging
+
+        # Check if file exists.  If it does append.
+        if os.path.exists(command.save_elastic_file):
+            hdf5_file = h5py.File(command.save_elastic_file, "a")
+            current_mesh_label = "tde_to_velocities_" + str(mesh_index)
+            if current_mesh_label in hdf5_file:
+                hdf5_file[current_mesh_label][...] = tde_to_velocities
+            else:
+                hdf5_file.create_dataset(current_mesh_label, data=tde_to_velocities)
+        else:
+            hdf5_file = h5py.File(command.save_elastic_file, "w")
+            hdf5_file.create_dataset(
+                "tde_to_velocities_" + str(mesh_index), data=tde_to_velocities
+            )
+        hdf5_file.close()
+    return tde_to_velocities
