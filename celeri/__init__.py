@@ -36,6 +36,7 @@ from .celeri import (
     get_weighting_vector,
     get_full_dense_operator_block_only,
     get_weighting_vector_single_mesh_for_col_norms,
+    get_tde_to_velocities_single_mesh,
 )
 
 
