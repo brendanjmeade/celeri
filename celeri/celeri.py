@@ -2794,7 +2794,9 @@ def get_weighting_vector_single_mesh_for_col_norms(
 ):
     # Initialize and build weighting matrix
     weighting_vector = np.ones(
-        2 * index.n_stations + 2 * index.n_tde_total + index.n_tde_constraints_total
+        2 * index.n_stations
+        + 2 * index.n_tde[mesh_index]
+        + index.n_tde_constraints[mesh_index]
     )
 
     weighting_vector[0 : 2 * index.n_stations] = interleave2(
@@ -2802,12 +2804,13 @@ def get_weighting_vector_single_mesh_for_col_norms(
     )
 
     weighting_vector[
-        2 * index.n_stations : 2 * index.n_stations + 2 * index.n_tde_total
+        2 * index.n_stations : 2 * index.n_stations + 2 * index.n_tde[mesh_index]
     ] = meshes[mesh_index].smoothing_weight * np.ones(2 * index.n_tde[mesh_index])
 
     weighting_vector[
-        2 * index.n_stations + 2 * index.n_tde_total : :
+        2 * index.n_stations + 2 * index.n_tde[mesh_index] : :
     ] = command.tri_con_weight * np.ones(index.n_tde_constraints[mesh_index])
+
     return weighting_vector
 
 
