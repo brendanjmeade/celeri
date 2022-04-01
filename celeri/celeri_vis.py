@@ -9,12 +9,6 @@ import celeri
 EPS = np.finfo(float).eps
 
 
-def test_plot():
-    plt.figure()
-    plt.plot(np.random.rand(3), "-r")
-    plt.show()
-
-
 def plot_matrix_abs_log(matrix):
     plt.figure(figsize=(10, 10))
     plt.imshow(np.log10(np.abs(matrix + EPS)), cmap="plasma_r")
