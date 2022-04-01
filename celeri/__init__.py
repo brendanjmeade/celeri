@@ -42,7 +42,6 @@ from .celeri import (
 
 
 from .celeri_vis import (
-    test_plot,
     plot_matrix_abs_log,
     plot_input_summary,
     plot_estimation_summary,
