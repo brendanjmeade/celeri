@@ -377,19 +377,22 @@ def plot_estimation_summary(
         color="magenta",
     )
 
-    subplot_index += 1
-    plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
-    plt.title("elastic tde velocities")
-    common_plot_elements(segment, lon_range, lat_range)
-    plt.quiver(
-        station.lon,
-        station.lat,
-        estimation.east_vel_tde,
-        estimation.north_vel_tde,
-        scale=quiver_scale,
-        scale_units="inches",
-        color="black",
-    )
+    if len(meshes) > 0:
+        subplot_index += 1
+        plt.subplot(
+            n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1
+        )
+        plt.title("elastic tde velocities")
+        common_plot_elements(segment, lon_range, lat_range)
+        plt.quiver(
+            station.lon,
+            station.lat,
+            estimation.east_vel_tde,
+            estimation.north_vel_tde,
+            scale=quiver_scale,
+            scale_units="inches",
+            color="black",
+        )
 
     subplot_index += 1
     plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
@@ -475,81 +478,86 @@ def plot_estimation_summary(
                 fontsize=7,
             )
 
-    subplot_index += 1
-    plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
-    plt.title("TDE slip (strike-slip)")
-    common_plot_elements(segment, lon_range, lat_range)
-    # plot_meshes(meshes, estimation.tde_strike_slip_rates, plt.gca())
-    fill_value = estimation.tde_strike_slip_rates
-    fill_value_range = [np.min(fill_value), np.max(fill_value)]
-    ax = plt.gca()
-    for i in range(len(meshes)):
-        x_coords = meshes[i].meshio_object.points[:, 0]
-        y_coords = meshes[i].meshio_object.points[:, 1]
-        vertex_array = np.asarray(meshes[i].verts)
-
-        xy = np.c_[x_coords, y_coords]
-        verts = xy[vertex_array]
-        pc = matplotlib.collections.PolyCollection(
-            verts, edgecolor="none", cmap="rainbow"
+    if len(meshes) > 0:
+        subplot_index += 1
+        plt.subplot(
+            n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1
         )
-        if i == 0:
-            tde_slip_component_start = 0
-            tde_slip_component_end = meshes[i].n_tde
-        else:
-            tde_slip_component_start = tde_slip_component_end
-            tde_slip_component_end = tde_slip_component_start + meshes[i].n_tde
-        pc.set_array(fill_value[tde_slip_component_start:tde_slip_component_end])
-        pc.set_clim(fill_value_range)
-        ax.add_collection(pc)
-        # ax.autoscale()
-        if i == len(meshes) - 1:
-            plt.colorbar(pc, label="slip (mm/yr)")
+        plt.title("TDE slip (strike-slip)")
+        common_plot_elements(segment, lon_range, lat_range)
+        # plot_meshes(meshes, estimation.tde_strike_slip_rates, plt.gca())
+        fill_value = estimation.tde_strike_slip_rates
+        fill_value_range = [np.min(fill_value), np.max(fill_value)]
+        ax = plt.gca()
+        for i in range(len(meshes)):
+            x_coords = meshes[i].meshio_object.points[:, 0]
+            y_coords = meshes[i].meshio_object.points[:, 1]
+            vertex_array = np.asarray(meshes[i].verts)
 
-        # Add mesh edge
-        x_edge = x_coords[meshes[i].ordered_edge_nodes[:, 0]]
-        y_edge = y_coords[meshes[i].ordered_edge_nodes[:, 0]]
-        x_edge = np.append(x_edge, x_coords[meshes[0].ordered_edge_nodes[0, 0]])
-        y_edge = np.append(y_edge, y_coords[meshes[0].ordered_edge_nodes[0, 0]])
-        plt.plot(x_edge, y_edge, color="black", linewidth=1)
+            xy = np.c_[x_coords, y_coords]
+            verts = xy[vertex_array]
+            pc = matplotlib.collections.PolyCollection(
+                verts, edgecolor="none", cmap="rainbow"
+            )
+            if i == 0:
+                tde_slip_component_start = 0
+                tde_slip_component_end = meshes[i].n_tde
+            else:
+                tde_slip_component_start = tde_slip_component_end
+                tde_slip_component_end = tde_slip_component_start + meshes[i].n_tde
+            pc.set_array(fill_value[tde_slip_component_start:tde_slip_component_end])
+            pc.set_clim(fill_value_range)
+            ax.add_collection(pc)
+            # ax.autoscale()
+            if i == len(meshes) - 1:
+                plt.colorbar(pc, label="slip (mm/yr)")
 
-    subplot_index += 1
-    plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
-    plt.title("TDE slip (dip-slip)")
-    common_plot_elements(segment, lon_range, lat_range)
-    # plot_meshes(meshes, estimation.tde_dip_slip_rates, plt.gca())
-    fill_value = estimation.tde_dip_slip_rates
-    fill_value_range = [np.min(fill_value), np.max(fill_value)]
-    ax = plt.gca()
-    for i in range(len(meshes)):
-        x_coords = meshes[i].meshio_object.points[:, 0]
-        y_coords = meshes[i].meshio_object.points[:, 1]
-        vertex_array = np.asarray(meshes[i].verts)
+            # Add mesh edge
+            x_edge = x_coords[meshes[i].ordered_edge_nodes[:, 0]]
+            y_edge = y_coords[meshes[i].ordered_edge_nodes[:, 0]]
+            x_edge = np.append(x_edge, x_coords[meshes[0].ordered_edge_nodes[0, 0]])
+            y_edge = np.append(y_edge, y_coords[meshes[0].ordered_edge_nodes[0, 0]])
+            plt.plot(x_edge, y_edge, color="black", linewidth=1)
 
-        xy = np.c_[x_coords, y_coords]
-        verts = xy[vertex_array]
-        pc = matplotlib.collections.PolyCollection(
-            verts, edgecolor="none", cmap="rainbow"
+        subplot_index += 1
+        plt.subplot(
+            n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1
         )
-        if i == 0:
-            tde_slip_component_start = 0
-            tde_slip_component_end = meshes[i].n_tde
-        else:
-            tde_slip_component_start = tde_slip_component_end
-            tde_slip_component_end = tde_slip_component_start + meshes[i].n_tde
-        pc.set_array(fill_value[tde_slip_component_start:tde_slip_component_end])
-        pc.set_clim(fill_value_range)
-        ax.add_collection(pc)
-        # ax.autoscale()
-        if i == len(meshes) - 1:
-            plt.colorbar(pc, label="slip (mm/yr)")
+        plt.title("TDE slip (dip-slip)")
+        common_plot_elements(segment, lon_range, lat_range)
+        # plot_meshes(meshes, estimation.tde_dip_slip_rates, plt.gca())
+        fill_value = estimation.tde_dip_slip_rates
+        fill_value_range = [np.min(fill_value), np.max(fill_value)]
+        ax = plt.gca()
+        for i in range(len(meshes)):
+            x_coords = meshes[i].meshio_object.points[:, 0]
+            y_coords = meshes[i].meshio_object.points[:, 1]
+            vertex_array = np.asarray(meshes[i].verts)
 
-        # Add mesh edge
-        x_edge = x_coords[meshes[i].ordered_edge_nodes[:, 0]]
-        y_edge = y_coords[meshes[i].ordered_edge_nodes[:, 0]]
-        x_edge = np.append(x_edge, x_coords[meshes[0].ordered_edge_nodes[0, 0]])
-        y_edge = np.append(y_edge, y_coords[meshes[0].ordered_edge_nodes[0, 0]])
-        plt.plot(x_edge, y_edge, color="black", linewidth=1)
+            xy = np.c_[x_coords, y_coords]
+            verts = xy[vertex_array]
+            pc = matplotlib.collections.PolyCollection(
+                verts, edgecolor="none", cmap="rainbow"
+            )
+            if i == 0:
+                tde_slip_component_start = 0
+                tde_slip_component_end = meshes[i].n_tde
+            else:
+                tde_slip_component_start = tde_slip_component_end
+                tde_slip_component_end = tde_slip_component_start + meshes[i].n_tde
+            pc.set_array(fill_value[tde_slip_component_start:tde_slip_component_end])
+            pc.set_clim(fill_value_range)
+            ax.add_collection(pc)
+            # ax.autoscale()
+            if i == len(meshes) - 1:
+                plt.colorbar(pc, label="slip (mm/yr)")
+
+            # Add mesh edge
+            x_edge = x_coords[meshes[i].ordered_edge_nodes[:, 0]]
+            y_edge = y_coords[meshes[i].ordered_edge_nodes[:, 0]]
+            x_edge = np.append(x_edge, x_coords[meshes[0].ordered_edge_nodes[0, 0]])
+            y_edge = np.append(y_edge, y_coords[meshes[0].ordered_edge_nodes[0, 0]])
+            plt.plot(x_edge, y_edge, color="black", linewidth=1)
 
     plt.show()
 
