@@ -23,12 +23,6 @@ def create_output_folder(command):
     os.mkdir(command.output_path)
 
 
-def get_run_name():
-    run_name = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-    output_path = os.path.join(command.base_runs_folder, command.run_name)
-    return run_name, output_path
-
-
 def get_logger(command):
     # Create logger
     logger.remove()  # Remove any existing loggers includeing default stderr
@@ -45,12 +39,7 @@ def test_logger():
     logger.info("AAA slip rate constraints")
 
 
-@logger.catch
-def main():
-    # Run with: ipython test_script_stuff.py
-
-    # Read in data
-    command_file_name = "../data/command/japan_command.json"
+def get_command(command_file_name):
 
     with open(command_file_name, "r") as f:
         command = json.load(f)
@@ -60,20 +49,31 @@ def main():
     # Add run_name and output_path
     command.run_name = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
     command.output_path = os.path.join(command.base_runs_folder, command.run_name)
+    return command
+
+
+@logger.catch
+def main():
+    # Run with: ipython test_script_stuff.py
+
+    # Read in data
+    command_file_name = "../data/command/japan_command.json"
+    command = get_command(command_file_name)
+
+    # Start logging
+    get_logger(command)
+    test_logger()
 
     command, segment, block, meshes, station, mogi, sar = celeri.read_data(
         command_file_name
     )
 
-    get_logger(command)
-    test_logger()
-
     logger.debug(segment.keys())
     for i in tqdm(range(len(segment)), colour="yellow"):
-        sleep(0.002)
+        sleep(0.001)
     logger.success("Looped over segments")
 
-    IPython.embed()
+    IPython.embed(banner1="")
 
 
 if __name__ == "__main__":
