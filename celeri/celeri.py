@@ -81,92 +81,117 @@ def read_data(command_file_name: str):
     block = block.loc[:, ~block.columns.str.match("Unnamed")]
 
     # Read mesh data - List of dictionary version
-    with open(command.mesh_parameters_file_name) as f:
-        mesh_param = json.load(f)
-
     meshes = []
-    if len(mesh_param) > 0:
-        for i in range(len(mesh_param)):
-            meshes.append(addict.Dict())
-            meshes[i].meshio_object = meshio.read(mesh_param[i]["mesh_filename"])
-            meshes[i].name = mesh_param[i]["mesh_filename"]
-            meshes[i].verts = meshes[i].meshio_object.get_cells_type("triangle")
+    if command.mesh_parameters_file_name != "":
+        with open(command.mesh_parameters_file_name) as f:
+            mesh_param = json.load(f)
 
-            # Expand mesh coordinates
-            meshes[i].lon1 = meshes[i].meshio_object.points[meshes[i].verts[:, 0], 0]
-            meshes[i].lon2 = meshes[i].meshio_object.points[meshes[i].verts[:, 1], 0]
-            meshes[i].lon3 = meshes[i].meshio_object.points[meshes[i].verts[:, 2], 0]
-            meshes[i].lat1 = meshes[i].meshio_object.points[meshes[i].verts[:, 0], 1]
-            meshes[i].lat2 = meshes[i].meshio_object.points[meshes[i].verts[:, 1], 1]
-            meshes[i].lat3 = meshes[i].meshio_object.points[meshes[i].verts[:, 2], 1]
-            meshes[i].dep1 = meshes[i].meshio_object.points[meshes[i].verts[:, 0], 2]
-            meshes[i].dep2 = meshes[i].meshio_object.points[meshes[i].verts[:, 1], 2]
-            meshes[i].dep3 = meshes[i].meshio_object.points[meshes[i].verts[:, 2], 2]
-            meshes[i].centroids = np.mean(
-                meshes[i].meshio_object.points[meshes[i].verts, :], axis=1
-            )
-            # Cartesian coordinates in meters
-            meshes[i].x1, meshes[i].y1, meshes[i].z1 = sph2cart(
-                meshes[i].lon1,
-                meshes[i].lat1,
-                RADIUS_EARTH + KM2M * meshes[i].dep1,
-            )
-            meshes[i].x2, meshes[i].y2, meshes[i].z2 = sph2cart(
-                meshes[i].lon2,
-                meshes[i].lat2,
-                RADIUS_EARTH + KM2M * meshes[i].dep2,
-            )
-            meshes[i].x3, meshes[i].y3, meshes[i].z3 = sph2cart(
-                meshes[i].lon3,
-                meshes[i].lat3,
-                RADIUS_EARTH + KM2M * meshes[i].dep3,
-            )
+        if len(mesh_param) > 0:
+            for i in range(len(mesh_param)):
+                meshes.append(addict.Dict())
+                meshes[i].meshio_object = meshio.read(mesh_param[i]["mesh_filename"])
+                meshes[i].name = mesh_param[i]["mesh_filename"]
+                meshes[i].verts = meshes[i].meshio_object.get_cells_type("triangle")
 
-            # Cartesian triangle centroids
-            meshes[i].x_centroid = (meshes[i].x1 + meshes[i].x2 + meshes[i].x3) / 3.0
-            meshes[i].y_centroid = (meshes[i].y1 + meshes[i].y2 + meshes[i].y3) / 3.0
-            meshes[i].z_centroid = (meshes[i].z1 + meshes[i].z2 + meshes[i].z3) / 3.0
-
-            # Cross products for orientations
-            tri_leg1 = np.transpose(
-                [
-                    np.deg2rad(meshes[i].lon2 - meshes[i].lon1),
-                    np.deg2rad(meshes[i].lat2 - meshes[i].lat1),
-                    (1 + KM2M * meshes[i].dep2 / RADIUS_EARTH)
-                    - (1 + KM2M * meshes[i].dep1 / RADIUS_EARTH),
+                # Expand mesh coordinates
+                meshes[i].lon1 = meshes[i].meshio_object.points[
+                    meshes[i].verts[:, 0], 0
                 ]
-            )
-            tri_leg2 = np.transpose(
-                [
-                    np.deg2rad(meshes[i].lon3 - meshes[i].lon1),
-                    np.deg2rad(meshes[i].lat3 - meshes[i].lat1),
-                    (1 + KM2M * meshes[i].dep3 / RADIUS_EARTH)
-                    - (1 + KM2M * meshes[i].dep1 / RADIUS_EARTH),
+                meshes[i].lon2 = meshes[i].meshio_object.points[
+                    meshes[i].verts[:, 1], 0
                 ]
-            )
-            meshes[i].nv = np.cross(tri_leg1, tri_leg2)
-            azimuth, elevation, r = cart2sph(
-                meshes[i].nv[:, 0],
-                meshes[i].nv[:, 1],
-                meshes[i].nv[:, 2],
-            )
-            meshes[i].strike = wrap2360(-np.rad2deg(azimuth))
-            meshes[i].dip = 90 - np.rad2deg(elevation)
-            meshes[i].dip_flag = meshes[i].dip != 90
-            meshes[i].smoothing_weight = mesh_param[i]["smoothing_weight"]
-            meshes[i].n_eigenvalues = mesh_param[i]["n_eigenvalues"]
-            meshes[i].top_slip_rate_constraint = mesh_param[i][
-                "top_slip_rate_constraint"
-            ]
-            meshes[i].bot_slip_rate_constraint = mesh_param[i][
-                "bot_slip_rate_constraint"
-            ]
-            meshes[i].side_slip_rate_constraint = mesh_param[i][
-                "side_slip_rate_constraint"
-            ]
-            meshes[i].n_tde = meshes[i].lon1.size
-            get_mesh_edge_elements(meshes)
-        get_mesh_perimeter(meshes)
+                meshes[i].lon3 = meshes[i].meshio_object.points[
+                    meshes[i].verts[:, 2], 0
+                ]
+                meshes[i].lat1 = meshes[i].meshio_object.points[
+                    meshes[i].verts[:, 0], 1
+                ]
+                meshes[i].lat2 = meshes[i].meshio_object.points[
+                    meshes[i].verts[:, 1], 1
+                ]
+                meshes[i].lat3 = meshes[i].meshio_object.points[
+                    meshes[i].verts[:, 2], 1
+                ]
+                meshes[i].dep1 = meshes[i].meshio_object.points[
+                    meshes[i].verts[:, 0], 2
+                ]
+                meshes[i].dep2 = meshes[i].meshio_object.points[
+                    meshes[i].verts[:, 1], 2
+                ]
+                meshes[i].dep3 = meshes[i].meshio_object.points[
+                    meshes[i].verts[:, 2], 2
+                ]
+                meshes[i].centroids = np.mean(
+                    meshes[i].meshio_object.points[meshes[i].verts, :], axis=1
+                )
+                # Cartesian coordinates in meters
+                meshes[i].x1, meshes[i].y1, meshes[i].z1 = sph2cart(
+                    meshes[i].lon1,
+                    meshes[i].lat1,
+                    RADIUS_EARTH + KM2M * meshes[i].dep1,
+                )
+                meshes[i].x2, meshes[i].y2, meshes[i].z2 = sph2cart(
+                    meshes[i].lon2,
+                    meshes[i].lat2,
+                    RADIUS_EARTH + KM2M * meshes[i].dep2,
+                )
+                meshes[i].x3, meshes[i].y3, meshes[i].z3 = sph2cart(
+                    meshes[i].lon3,
+                    meshes[i].lat3,
+                    RADIUS_EARTH + KM2M * meshes[i].dep3,
+                )
+
+                # Cartesian triangle centroids
+                meshes[i].x_centroid = (
+                    meshes[i].x1 + meshes[i].x2 + meshes[i].x3
+                ) / 3.0
+                meshes[i].y_centroid = (
+                    meshes[i].y1 + meshes[i].y2 + meshes[i].y3
+                ) / 3.0
+                meshes[i].z_centroid = (
+                    meshes[i].z1 + meshes[i].z2 + meshes[i].z3
+                ) / 3.0
+
+                # Cross products for orientations
+                tri_leg1 = np.transpose(
+                    [
+                        np.deg2rad(meshes[i].lon2 - meshes[i].lon1),
+                        np.deg2rad(meshes[i].lat2 - meshes[i].lat1),
+                        (1 + KM2M * meshes[i].dep2 / RADIUS_EARTH)
+                        - (1 + KM2M * meshes[i].dep1 / RADIUS_EARTH),
+                    ]
+                )
+                tri_leg2 = np.transpose(
+                    [
+                        np.deg2rad(meshes[i].lon3 - meshes[i].lon1),
+                        np.deg2rad(meshes[i].lat3 - meshes[i].lat1),
+                        (1 + KM2M * meshes[i].dep3 / RADIUS_EARTH)
+                        - (1 + KM2M * meshes[i].dep1 / RADIUS_EARTH),
+                    ]
+                )
+                meshes[i].nv = np.cross(tri_leg1, tri_leg2)
+                azimuth, elevation, r = cart2sph(
+                    meshes[i].nv[:, 0],
+                    meshes[i].nv[:, 1],
+                    meshes[i].nv[:, 2],
+                )
+                meshes[i].strike = wrap2360(-np.rad2deg(azimuth))
+                meshes[i].dip = 90 - np.rad2deg(elevation)
+                meshes[i].dip_flag = meshes[i].dip != 90
+                meshes[i].smoothing_weight = mesh_param[i]["smoothing_weight"]
+                meshes[i].n_eigenvalues = mesh_param[i]["n_eigenvalues"]
+                meshes[i].top_slip_rate_constraint = mesh_param[i][
+                    "top_slip_rate_constraint"
+                ]
+                meshes[i].bot_slip_rate_constraint = mesh_param[i][
+                    "bot_slip_rate_constraint"
+                ]
+                meshes[i].side_slip_rate_constraint = mesh_param[i][
+                    "side_slip_rate_constraint"
+                ]
+                meshes[i].n_tde = meshes[i].lon1.size
+                get_mesh_edge_elements(meshes)
+            get_mesh_perimeter(meshes)
 
     # Read station data
     if (
@@ -982,6 +1007,16 @@ def get_segment_oblique_projection(lon1, lat1, lon2, lat2, skew=True):
         lon1 = lon1 - 360
     if lon2 > 180.0:
         lon2 = lon2 - 360
+
+    # Check if latitudes are too close to identical
+    # If lat1 and lat2 are the same at the 5 decimal place proj with fail
+    # Perturb lat2 slightly to avoid this.
+    if np.isclose(lat1, lat2):
+        latitude_offset = 0.001
+        print(f"Latitudes {lat1} and {lat2} too similar for 'proj'")
+        print(f"Perturbing {lat2} to {lat2 + latitude_offset}")
+        lat2 += latitude_offset
+
     projection_string = (
         "+proj=omerc "
         + "+lon_1="
