@@ -1,7 +1,7 @@
 {
     "printslipcons": false,
-    "atol": 1E-10,
-    "btol": 1E-10,
+    "atol": 1E-8,
+    "btol": 1E-8,
     "base_runs_folder": "../runs/",
     "operators_folder": "../data/operators/",
     "global_elastic_cutoff_distance": 2000E+3,
