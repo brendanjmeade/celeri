@@ -1013,8 +1013,8 @@ def get_segment_oblique_projection(lon1, lat1, lon2, lat2, skew=True):
     # Perturb lat2 slightly to avoid this.
     if np.isclose(lat1, lat2):
         latitude_offset = 0.001
-        print(f"Latitudes {lat1} and {lat2} too similar for 'proj'")
-        print(f"Perturbing {lat2} to {lat2 + latitude_offset}")
+        # print(f"Latitudes {lat1} and {lat2} too similar for 'proj'")
+        # print(f"Perturbing {lat2} to {lat2 + latitude_offset}")
         lat2 += latitude_offset
 
     projection_string = (
