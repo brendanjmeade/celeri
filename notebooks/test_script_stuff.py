@@ -40,7 +40,14 @@ def test_logger():
 
 
 def get_command(command_file_name):
+    """Read command file and create output path
 
+    Args:
+        command_file_name (string): Path to command file
+
+    Returns:
+        command (Dict): Dictionary with content of command file
+    """
     with open(command_file_name, "r") as f:
         command = json.load(f)
     command = addict.Dict(command)  # Convert to dot notation dictionary
