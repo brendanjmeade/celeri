@@ -1334,6 +1334,61 @@ def get_elastic_operators(
             hdf5_file.close()
 
 
+def get_elastic_operators_okada(
+    operators: Dict,
+    segment: pd.DataFrame,
+    station: pd.DataFrame,
+    command: Dict,
+):
+    """
+    Calculate (or load previously calculated) elastic operators from
+    both fully locked segments and TDE parameterizes surfaces
+
+    Args:
+        operators (Dict): Elastic operators will be added to this data structure
+        segment (pd.DataFrame): All segment data
+        station (pd.DataFrame): All station data
+        command (Dict): All command data
+    """
+    if (command.reuse_elastic == "yes") and (
+        os.path.exists(command.reuse_elastic_file)
+    ):
+        print("Using precomputed elastic operators")
+        hdf5_file = h5py.File(command.reuse_elastic_file, "r")
+
+        operators.slip_rate_to_okada_to_velocities = np.array(
+            hdf5_file.get("slip_rate_to_okada_to_velocities")
+        )
+        hdf5_file.close()
+
+    else:
+        if not os.path.exists(command.reuse_elastic_file):
+            print("Precomputed elastic operator file not found")
+        print("Computing elastic operators")
+
+        # Calculate Okada partials for all segments
+        operators.slip_rate_to_okada_to_velocities = get_segment_station_operator_okada(
+            segment, station, command
+        )
+
+        # Save elastic to velocity matrices
+        if command.save_elastic == "yes":
+            # Check to see if "data/operators" folder exists and if not create it
+            if not os.path.exists(command.operators_folder):
+                os.mkdir(command.operators_folder)
+
+            print(
+                "Saving elastic to velocity matrices to :" + command.save_elastic_file
+            )  # TODO: Move to logging
+            hdf5_file = h5py.File(command.save_elastic_file, "w")
+
+            hdf5_file.create_dataset(
+                "slip_rate_to_okada_to_velocities",
+                data=operators.slip_rate_to_okada_to_velocities,
+            )
+            hdf5_file.close()
+
+
 def station_row_keep(assembly):
     """
     Determines which station rows should be retained based on up velocities

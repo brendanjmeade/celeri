@@ -39,6 +39,7 @@ from .celeri import (
     get_tde_to_velocities_single_mesh,
     get_elastic_operator_single_mesh,
     get_segment_station_operator_okada,
+    get_elastic_operators_okada,
 )
 
 
