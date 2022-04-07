@@ -40,6 +40,8 @@ from .celeri import (
     get_elastic_operator_single_mesh,
     get_segment_station_operator_okada,
     get_elastic_operators_okada,
+    get_command,
+    get_logger,
 )
 
 

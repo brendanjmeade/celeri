@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 import okada_wrapper
 import cutde.halfspace as cutde_halfspace
+from sys import stdout
 from ismember import ismember
 from loguru import logger
 from tqdm.notebook import tqdm
@@ -29,12 +30,6 @@ M2MM = 1.0e3
 RADIUS_EARTH = np.float64((GEOID.a + GEOID.b) / 2)
 DEG_PER_MYR_TO_RAD_PER_YR = 1 / 1e6  # TODO: What should this conversion be?
 N_MESH_DIM = 3
-
-# Set up logging to file:
-# TODO: Revisit logging
-# logger.remove()  # Remove any existing loggers includeing default stderr
-# logger.add(RUN_NAME + ".log")
-# logger.info("RUN_NAME: " + RUN_NAME)
 
 
 @pytest.mark.skip(reason="Writing output to disk")
@@ -61,8 +56,43 @@ def get_mesh_perimeter(meshes):
         )
 
 
+def get_command(command_file_name):
+    """Read *command.json file and return contents as a dictionary
+
+    Args:
+        command_file_name (string): Path to command file
+
+    Returns:
+        command (Dict): Dictionary with content of command file
+    """
+    with open(command_file_name, "r") as f:
+        command = json.load(f)
+    command = addict.Dict(command)  # Convert to dot notation dictionary
+    command.file_name = command_file_name
+
+    # Add run_name and output_path
+    command.run_name = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+    command.output_path = os.path.join(command.base_runs_folder, command.run_name)
+    return command
+
+
+def get_logger(command):
+    # Create logger
+    logger.remove()  # Remove any existing loggers includeing default stderr
+    logger.add(
+        stdout,
+        format="<cyan>[{level}]</cyan> <green>{message}</green>",
+        colorize=True,
+    )
+    # logger.add(command.run_name + ".log")
+    logger.add(command.output_path + "/" + command.run_name + ".log")
+    logger.info("RUN_NAME: " + command.run_name)
+    return logger
+
+
 def read_data(command_file_name: str):
     # Read command data
+    logger.info("Reading data files")
     with open(command_file_name, "r") as f:
         command = json.load(f)
     command = addict.Dict(command)  # Convert to dot notation dictionary
