@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 import okada_wrapper
 import cutde.halfspace as cutde_halfspace
+
 # from sys import stdout
 import sys
 from ismember import ismember
@@ -74,6 +75,7 @@ def get_command(command_file_name):
     # Add run_name and output_path
     command.run_name = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
     command.output_path = os.path.join(command.base_runs_folder, command.run_name)
+    command.file_name = command_file_name
     return command
 
 
@@ -87,35 +89,41 @@ def get_logger(command):
     )
     # logger.add(command.run_name + ".log")
     logger.add(command.output_path + "/" + command.run_name + ".log")
+    logger.info(f"Read: {command.file_name}")
     logger.info("RUN_NAME: " + command.run_name)
+    logger.info(f"Write log file: {command.output_path}/{command.run_name}.log")
     return logger
 
 
-def read_data(command_file_name: str):
+# def read_data(command_file_name: str):
+def read_data(command: Dict):
     # Read command data
     logger.info("Reading data files")
-    with open(command_file_name, "r") as f:
-        command = json.load(f)
-    command = addict.Dict(command)  # Convert to dot notation dictionary
-    command.file_name = command_file_name
+    # with open(command_file_name, "r") as f:
+    #     command = json.load(f)
+    # command = addict.Dict(command)  # Convert to dot notation dictionary
+    # command.file_name = command_file_name
 
-    # Add run_name and output_path
-    command.run_name = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-    command.output_path = os.path.join(command.base_runs_folder, command.run_name)
+    # # Add run_name and output_path
+    # command.run_name = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+    # command.output_path = os.path.join(command.base_runs_folder, command.run_name)
 
     # Read segment data
     segment = pd.read_csv(command.segment_file_name)
     segment = segment.loc[:, ~segment.columns.str.match("Unnamed")]
+    logger.success(f"Read: {command.segment_file_name}")
 
     # Read block data
     block = pd.read_csv(command.block_file_name)
     block = block.loc[:, ~block.columns.str.match("Unnamed")]
+    logger.success(f"Read: {command.block_file_name}")
 
     # Read mesh data - List of dictionary version
     meshes = []
     if command.mesh_parameters_file_name != "":
         with open(command.mesh_parameters_file_name) as f:
             mesh_param = json.load(f)
+            logger.success(f"Read: {command.mesh_parameters_file_name}")
 
         if len(mesh_param) > 0:
             for i in range(len(mesh_param)):
@@ -222,6 +230,7 @@ def read_data(command_file_name: str):
                 ]
                 meshes[i].n_tde = meshes[i].lon1.size
                 get_mesh_edge_elements(meshes)
+                logger.success(f"Read: {mesh_param[i]['mesh_filename']}")
             get_mesh_perimeter(meshes)
 
     # Read station data
@@ -253,9 +262,11 @@ def read_data(command_file_name: str):
                 "block_label",
             ]
         )
+        logger.info(f"No station_file_name")
     else:
         station = pd.read_csv(command.station_file_name)
         station = station.loc[:, ~station.columns.str.match("Unnamed")]
+        logger.success(f"Read: {command.station_file_name}")
 
     # Read Mogi source data
     if not command.__contains__("mogi_file_name") or len(command.mogi_file_name) == 0:
@@ -270,9 +281,11 @@ def read_data(command_file_name: str):
                 "volume_change_sig",
             ]
         )
+        logger.info(f"No mogi_file_name")
     else:
         mogi = pd.read_csv(command.mogi_file_name)
         mogi = mogi.loc[:, ~mogi.columns.str.match("Unnamed")]
+        logger.success(f"Read: {command.mogi_file_name}")
 
     # Read SAR data
     if not command.__contains__("sar_file_name") or len(command.sar_file_name) == 0:
@@ -290,11 +303,12 @@ def read_data(command_file_name: str):
                 "reference_point_y",
             ]
         )
-
+        logger.info(f"No sar_file_name")
     else:
         sar = pd.read_csv(command.sar_file_name)
         sar = sar.loc[:, ~sar.columns.str.match("Unnamed")]
-    return command, segment, block, meshes, station, mogi, sar
+        logger.success(f"Read: {command.sar_file_name}")
+    return segment, block, meshes, station, mogi, sar
 
 
 def wrap2360(lon):
@@ -513,7 +527,7 @@ def assign_block_labels(segment, station, block, mogi, sar):
         np.where(segment["west_labels"] < 0),
     )
     if len(unprocessed_indices) > 0:
-        print("Found unproccessed indices")
+        logger.warning("Found unproccessed indices")
 
     # Find relative areas of each block to identify an external block
     block["area_steradians"] = -1 * np.ones(len(block))
@@ -952,40 +966,46 @@ def get_rotation_to_slip_rate_partials(segment, block):
 
 
 def get_slip_rate_constraints(assembly, segment, block, command):
-    # TODO: Revisit logging
-    # logger.info("Isolating slip rate constraints")
-    # for i in range(len(segment.lon1)):
-    #     if segment.ss_rate_flag[i] == 1:
-    #         # "{:.2f}".format(segment.ss_rate[i])
-    #         logger.info(
-    #             "Strike-slip rate constraint on "
-    #             + segment.name[i].strip()
-    #             + ": rate = "
-    #             + "{:.2f}".format(segment.ss_rate[i])
-    #             + " (mm/yr), 1-sigma uncertainty = +/-"
-    #             + "{:.2f}".format(segment.ss_rate_sig[i])
-    #             + " (mm/yr)"
-    #         )
-    #     if segment.ds_rate_flag[i] == 1:
-    #         logger.info(
-    #             "Dip-slip rate constraint on "
-    #             + segment.name[i].strip()
-    #             + ": rate = "
-    #             + "{:.2f}".format(segment.ds_rate[i])
-    #             + " (mm/yr), 1-sigma uncertainty = +/-"
-    #             + "{:.2f}".format(segment.ds_rate_sig[i])
-    #             + " (mm/yr)"
-    #         )
-    #     if segment.ts_rate_flag[i] == 1:
-    #         logger.info(
-    #             "Tensile-slip rate constraint on "
-    #             + segment.name[i].strip()
-    #             + ": rate = "
-    #             + "{:.2f}".format(segment.ts_rate[i])
-    #             + " (mm/yr), 1-sigma uncertainty = +/-"
-    #             + "{:.2f}".format(segment.ts_rate_sig[i])
-    #             + " (mm/yr)"
-    #         )
+    n_total_slip_rate_contraints = (
+        np.sum(segment.ss_rate_flag.values)
+        + np.sum(segment.ds_rate_flag.values)
+        + np.sum(segment.ts_rate_flag.values)
+    )
+    if n_total_slip_rate_contraints > 0:
+        logger.info(f"Found {n_total_slip_rate_contraints} slip rate constraints")
+        for i in range(len(segment.lon1)):
+            if segment.ss_rate_flag[i] == 1:
+                logger.info(
+                    "Strike-slip rate constraint on "
+                    + segment.name[i].strip()
+                    + ": rate = "
+                    + "{:.2f}".format(segment.ss_rate[i])
+                    + " (mm/yr), 1-sigma uncertainty = +/-"
+                    + "{:.2f}".format(segment.ss_rate_sig[i])
+                    + " (mm/yr)"
+                )
+            if segment.ds_rate_flag[i] == 1:
+                logger.info(
+                    "Dip-slip rate constraint on "
+                    + segment.name[i].strip()
+                    + ": rate = "
+                    + "{:.2f}".format(segment.ds_rate[i])
+                    + " (mm/yr), 1-sigma uncertainty = +/-"
+                    + "{:.2f}".format(segment.ds_rate_sig[i])
+                    + " (mm/yr)"
+                )
+            if segment.ts_rate_flag[i] == 1:
+                logger.info(
+                    "Tensile-slip rate constraint on "
+                    + segment.name[i].strip()
+                    + ": rate = "
+                    + "{:.2f}".format(segment.ts_rate[i])
+                    + " (mm/yr), 1-sigma uncertainty = +/-"
+                    + "{:.2f}".format(segment.ts_rate_sig[i])
+                    + " (mm/yr)"
+                )
+    else:
+        logger.info("No slip rate constraints")
 
     slip_rate_constraint_partials = get_rotation_to_slip_rate_partials(segment, block)
 
@@ -1044,8 +1064,6 @@ def get_segment_oblique_projection(lon1, lat1, lon2, lat2, skew=True):
     # Perturb lat2 slightly to avoid this.
     if np.isclose(lat1, lat2):
         latitude_offset = 0.001
-        # print(f"Latitudes {lat1} and {lat2} too similar for 'proj'")
-        # print(f"Perturbing {lat2} to {lat2 + latitude_offset}")
         lat2 += latitude_offset
 
     projection_string = (
@@ -1315,7 +1333,7 @@ def get_elastic_operators(
     if (command.reuse_elastic == "yes") and (
         os.path.exists(command.reuse_elastic_file)
     ):
-        print("Using precomputed elastic operators")
+        logger.info("Using precomputed elastic operators")
         hdf5_file = h5py.File(command.reuse_elastic_file, "r")
 
         operators.slip_rate_to_okada_to_velocities = np.array(
@@ -1329,8 +1347,8 @@ def get_elastic_operators(
 
     else:
         if not os.path.exists(command.reuse_elastic_file):
-            print("Precomputed elastic operator file not found")
-        print("Computing elastic operators")
+            logger.warning("Precomputed elastic operator file not found")
+        logger.info("Computing elastic operators")
 
         # Calculate Okada partials for all segments
         operators.slip_rate_to_okada_to_velocities = get_segment_station_operator_okada(
@@ -1348,9 +1366,9 @@ def get_elastic_operators(
             if not os.path.exists(command.operators_folder):
                 os.mkdir(command.operators_folder)
 
-            print(
+            logger.info(
                 "Saving elastic to velocity matrices to :" + command.save_elastic_file
-            )  # TODO: Move to logging
+            )
             hdf5_file = h5py.File(command.save_elastic_file, "w")
 
             hdf5_file.create_dataset(
@@ -1384,7 +1402,7 @@ def get_elastic_operators_okada(
     if (command.reuse_elastic == "yes") and (
         os.path.exists(command.reuse_elastic_file)
     ):
-        print("Using precomputed elastic operators")
+        logger.info("Using precomputed elastic operators")
         hdf5_file = h5py.File(command.reuse_elastic_file, "r")
 
         operators.slip_rate_to_okada_to_velocities = np.array(
@@ -1394,8 +1412,8 @@ def get_elastic_operators_okada(
 
     else:
         if not os.path.exists(command.reuse_elastic_file):
-            print("Precomputed elastic operator file not found")
-        print("Computing elastic operators")
+            logger.warning("Precomputed elastic operator file not found")
+        logger.info("Computing elastic operators")
 
         # Calculate Okada partials for all segments
         operators.slip_rate_to_okada_to_velocities = get_segment_station_operator_okada(
@@ -1408,9 +1426,9 @@ def get_elastic_operators_okada(
             if not os.path.exists(command.operators_folder):
                 os.mkdir(command.operators_folder)
 
-            print(
+            logger.info(
                 "Saving elastic to velocity matrices to :" + command.save_elastic_file
-            )  # TODO: Move to logging
+            )
             hdf5_file = h5py.File(command.save_elastic_file, "w")
 
             hdf5_file.create_dataset(
@@ -3081,7 +3099,7 @@ def get_elastic_operator_single_mesh(
     if (command.reuse_elastic == "yes") and (
         os.path.exists(command.reuse_elastic_file)
     ):
-        print("Using precomputed elastic operators")
+        logger.info("Using precomputed elastic operators")
         hdf5_file = h5py.File(command.reuse_elastic_file, "r")
         tde_to_velocities = np.array(
             hdf5_file.get("tde_to_velocities_" + str(mesh_index))
@@ -3090,8 +3108,8 @@ def get_elastic_operator_single_mesh(
 
     else:
         if not os.path.exists(command.reuse_elastic_file):
-            print("Precomputed elastic operator file not found")
-        print("Computing elastic operators")
+            logger.warning("Precomputed elastic operator file not found")
+        logger.info("Computing elastic operators")
         tde_to_velocities = celeri.get_tde_to_velocities_single_mesh(
             meshes, station, command, mesh_idx=mesh_index
         )
@@ -3102,9 +3120,9 @@ def get_elastic_operator_single_mesh(
         if not os.path.exists(command.operators_folder):
             os.mkdir(command.operators_folder)
 
-        print(
+        logger.info(
             "Saving elastic to velocity matrices to :" + command.save_elastic_file
-        )  # TODO: Move to logging
+        )
 
         # Check if file exists.  If it does append.
         if os.path.exists(command.save_elastic_file):
