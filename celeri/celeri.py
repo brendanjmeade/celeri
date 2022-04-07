@@ -14,7 +14,8 @@ import numpy as np
 import pandas as pd
 import okada_wrapper
 import cutde.halfspace as cutde_halfspace
-from sys import stdout
+# from sys import stdout
+import sys
 from ismember import ismember
 from loguru import logger
 from tqdm.notebook import tqdm
@@ -80,7 +81,7 @@ def get_logger(command):
     # Create logger
     logger.remove()  # Remove any existing loggers includeing default stderr
     logger.add(
-        stdout,
+        sys.stdout,
         format="<cyan>[{level}]</cyan> <green>{message}</green>",
         colorize=True,
     )
