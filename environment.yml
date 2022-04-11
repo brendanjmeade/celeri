@@ -5,6 +5,7 @@ dependencies:
   - numpy
   - scipy
   - matplotlib
+  - scikit-learn
   - pyproj
   - pandas
   - jupyterlab
@@ -20,8 +21,8 @@ dependencies:
   - ghostscript
   - pip
   - pip:
-    - spherical_geometry
-    - loguru
-    - okada_wrapper
-    - pygmt
-    - ismember
+      - spherical_geometry
+      - loguru
+      - okada_wrapper
+      - pygmt
+      - ismember
