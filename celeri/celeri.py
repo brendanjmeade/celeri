@@ -14,16 +14,16 @@ import numpy as np
 import pandas as pd
 import okada_wrapper
 import cutde.halfspace as cutde_halfspace
-
-# from sys import stdout
 import sys
 from ismember import ismember
 from loguru import logger
 from tqdm.notebook import tqdm
 from typing import List, Dict, Tuple
+from scipy.sparse import csr_matrix
 
 from . import celeri_closure
 from .celeri_util import sph2cart, cart2sph
+from celeri.hmatrix import build_hmatrix_from_mesh_tdes
 
 # Global constants
 GEOID = pyproj.Geod(ellps="WGS84")
@@ -3414,3 +3414,72 @@ def post_process_estimation_hmatrix(
         )
     estimation_hmatrix.east_vel_tde = estimation_hmatrix.vel_tde[0::2]
     estimation_hmatrix.north_vel_tde = estimation_hmatrix.vel_tde[1::2]
+
+
+def get_h_matrices_for_tde_meshes(
+    command, meshes, station, operators, index, col_norms
+):
+    # Create lists for all TDE matrices per mesh
+    H = []
+    for i in range(len(meshes)):
+        # Get full TDE to velocity matrix for current mesh
+        tde_to_velocities = get_elastic_operator_single_mesh(
+            meshes, station, command, i
+        )
+
+        # H-matrix representation
+        H.append(
+            build_hmatrix_from_mesh_tdes(
+                meshes[i],
+                station,
+                -tde_to_velocities,
+                command.h_matrix_tol,
+                command.h_matrix_min_separation,
+                command.h_matrix_min_pts_per_box,
+            )
+        )
+
+        logger.info(
+            f"mesh {i} ({meshes[i].name}) H-matrix compression ratio: {H[i].report_compression_ratio():0.4f}"
+        )
+
+        # Case smoothing matrices and tde slip rate constraints to sparse
+        smoothing_keep_index = get_keep_index_12(operators.smoothing_matrix[i].shape[0])
+        operators.smoothing_matrix[i] = csr_matrix(
+            operators.smoothing_matrix[i][smoothing_keep_index, :][
+                :, smoothing_keep_index
+            ]
+        )
+        operators.tde_slip_rate_constraints[i] = csr_matrix(
+            operators.tde_slip_rate_constraints[i]
+        )
+
+        # Eliminate unused columns and rows of TDE to velocity matrix
+        tde_to_velocities = np.delete(
+            tde_to_velocities, np.arange(2, tde_to_velocities.shape[0], 3), axis=0
+        )
+        tde_to_velocities = np.delete(
+            tde_to_velocities, np.arange(2, tde_to_velocities.shape[1], 3), axis=1
+        )
+
+        # Calculate column normalization vector current TDE mesh
+        weighting_vector_no_zero_rows = get_weighting_vector_single_mesh_for_col_norms(
+            command, station, meshes, index, i
+        )
+        current_tde_mesh_columns_full_no_zero_rows = (
+            np.vstack(
+                (
+                    -tde_to_velocities,
+                    operators.smoothing_matrix[i].toarray(),
+                    operators.tde_slip_rate_constraints[i].toarray(),
+                )
+            )
+            * np.sqrt(weighting_vector_no_zero_rows[:, None])
+        )
+
+        # Concatenate everthing we need for col_norms
+        col_norms_current_tde_mesh = np.linalg.norm(
+            current_tde_mesh_columns_full_no_zero_rows, axis=0
+        )
+        col_norms = np.hstack((col_norms, col_norms_current_tde_mesh))
+    return H, col_norms

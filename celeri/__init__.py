@@ -47,6 +47,7 @@ from .celeri import (
     rmatvec,
     rmatvec_wrapper,
     post_process_estimation_hmatrix,
+    get_h_matrices_for_tde_meshes,
 )
 
 
