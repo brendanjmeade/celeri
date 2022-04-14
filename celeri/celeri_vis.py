@@ -559,6 +559,25 @@ def plot_estimation_summary(
             y_edge = np.append(y_edge, y_coords[meshes[0].ordered_edge_nodes[0, 0]])
             plt.plot(x_edge, y_edge, color="black", linewidth=1)
 
+        subplot_index += 1
+        plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index)
+        plt.title("Residual velocity histogram")
+        residual_velocity_vector = np.concatenate(
+            (estimation.east_vel_residual.values, estimation.north_vel_residual.values)
+        )
+        mean_average_error = np.mean(np.abs(residual_velocity_vector))
+        mean_squared_error = (
+            np.sum(residual_velocity_vector ** 2.0) / residual_velocity_vector.size
+        )
+
+        # Create histogram of residual velocities
+        plt.hist(residual_velocity_vector, 50)
+        plt.xlabel("residual velocity (mm/yr)")
+        plt.ylabel("N")
+        plt.title(
+            f"mae = {mean_average_error:.2f} (mm/yr), mse = {mean_squared_error:.2f} (mm/yr)^2"
+        )
+
     plt.show()
 
 
