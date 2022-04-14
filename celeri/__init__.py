@@ -42,6 +42,11 @@ from .celeri import (
     get_elastic_operators_okada,
     get_command,
     get_logger,
+    matvec,
+    matvec_wrapper,
+    rmatvec,
+    rmatvec_wrapper,
+    post_process_estimation_hmatrix,
 )
 
 

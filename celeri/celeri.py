@@ -3139,3 +3139,278 @@ def get_elastic_operator_single_mesh(
             )
         hdf5_file.close()
     return tde_to_velocities
+
+
+def matvec_wrapper(h_matrix_solve_parameters):
+    def matvec_caller(x):
+        return matvec(x, h_matrix_solve_parameters)
+
+    return matvec_caller
+
+
+def rmatvec_wrapper(h_matrix_solve_parameters):
+    def rmatvec_caller(x):
+        return rmatvec(x, h_matrix_solve_parameters)
+
+    return rmatvec_caller
+
+
+def matvec(v, h_matrix_solve_parameters):
+    """Build matvec (matrix vector product) operator for
+    scipy.sparse.linalg.LinearOperator.  This returns A * u
+
+    Args:
+        u (nd.array): Candidate state vector
+
+    Returns:
+        out (nd.array): Predicted data vector
+    """
+
+    # Unpack parameters
+    (
+        index,
+        meshes,
+        H,
+        operators,
+        weighting_vector,
+        col_norms,
+        sparse_block_motion_okada_faults,
+        sparse_block_motion_constraints,
+        sparse_block_slip_rate_constraints,
+    ) = h_matrix_solve_parameters
+
+    # Column normalize the state vector
+    v_scaled = v / col_norms
+
+    # Make storage for output
+    out = np.zeros(index.n_operator_rows)
+    block_rotations = v_scaled[index.start_block_col : index.end_block_col]
+
+    # Okada
+    out[
+        index.start_station_row : index.end_station_row
+    ] += sparse_block_motion_okada_faults.dot(block_rotations)
+
+    # Block motion constraints
+    out[
+        index.start_block_constraints_row : index.end_block_constraints_row
+    ] += sparse_block_motion_constraints.dot(block_rotations)
+
+    # Slip rate constraints
+    out[
+        index.start_slip_rate_constraints_row : index.end_slip_rate_constraints_row
+    ] += sparse_block_slip_rate_constraints.dot(block_rotations)
+
+    # Loop over TDE meshes
+    # for i in range(len(meshes)):
+    for i in range(len(meshes)):
+        tde_velocities = v_scaled[index.start_tde_col[i] : index.end_tde_col[i]]
+
+        # Insert TDE to velocity matrix
+        out[index.start_station_row : index.end_station_row] += H[i].dot(tde_velocities)
+
+        # TDE smoothing
+        out[
+            index.start_tde_smoothing_row[i] : index.end_tde_smoothing_row[i]
+        ] += operators.smoothing_matrix[i].dot(tde_velocities)
+
+        # TDE slip rate constraints
+        out[
+            index.start_tde_constraint_row[i] : index.end_tde_constraint_row[i]
+        ] += operators.tde_slip_rate_constraints[i].dot(tde_velocities)
+
+    # Weight!
+    return out * np.sqrt(weighting_vector)
+
+
+def rmatvec(u, h_matrix_solve_parameters):
+    """Build rmatvec (matrix vector product) operator for
+    scipy.sparse.linalg.LinearOperator.  This returns:
+    Returns A^H * v, where A^H is the conjugate transpose of A
+    for a candidate state vector, u.  We do this because
+    with the h-matrix approach we no longer have the full matrix
+    so we can't take the transpose all at once.
+
+    Args:
+        u (nd.array): Candidate state vector
+
+    Returns:
+        out (nd.array): Predicted data vector
+    """
+
+    # Unpack parameters
+    (
+        index,
+        meshes,
+        H,
+        operators,
+        weighting_vector,
+        col_norms,
+        sparse_block_motion_okada_faults,
+        sparse_block_motion_constraints,
+        sparse_block_slip_rate_constraints,
+    ) = h_matrix_solve_parameters
+
+    # Weight the data vector
+    u_weighted = u * np.sqrt(weighting_vector)
+
+    # Storage for output
+    # out = np.zeros(X.shape[1])
+    out = np.zeros(index.n_operator_cols)
+
+    # Select subset of weighted data for the observed velocities
+    station_rows = u_weighted[index.start_station_row : index.end_station_row]
+    block_constraints = u_weighted[
+        index.start_block_constraints_row : index.end_block_constraints_row
+    ]
+
+    # Select subset of weighted data for the fault slip rate constraints
+    slip_rate_constraints = u_weighted[
+        index.start_slip_rate_constraints_row : index.end_slip_rate_constraints_row
+    ]
+
+    # Okada and block rotation contribution to data vector
+    out[index.start_block_col : index.end_block_col] += (
+        station_rows @ sparse_block_motion_okada_faults
+    )
+
+    # Block motion constraints contribution to data vector
+    out[index.start_block_col : index.end_block_col] += (
+        block_constraints @ sparse_block_motion_constraints
+    )
+
+    # Fault slip rate constraints contribution to data vector
+    out[index.start_block_col : index.end_block_col] += (
+        slip_rate_constraints @ sparse_block_slip_rate_constraints
+    )
+
+    for i in range(len(meshes)):
+        # Select subset of weighted data for the TDE smoothing
+        tde_smoothing = u_weighted[
+            index.start_tde_smoothing_row[i] : index.end_tde_smoothing_row[i]
+        ]
+
+        # Select subset of weighted data for the TDE slip rate constraints
+        tde_slip_rate = u_weighted[
+            index.start_tde_constraint_row[i] : index.end_tde_constraint_row[i]
+        ]
+
+        # Hmatrix (TDEs to velocities)
+        out[index.start_tde_col[i] : index.end_tde_col[i]] += H[i].transpose_dot(
+            station_rows
+        )
+
+        # TDE smoothing contribution to data vector
+        out[index.start_tde_col[i] : index.end_tde_col[i]] += (
+            tde_smoothing @ operators.smoothing_matrix[i]
+        )
+
+        # TDE slip rate constraint contributions to data vector
+        out[index.start_tde_col[i] : index.end_tde_col[i]] += (
+            tde_slip_rate @ operators.tde_slip_rate_constraints[i]
+        )
+
+    # Weight
+    return out / col_norms
+
+
+def post_process_estimation_hmatrix(
+    estimation_hmatrix: Dict,
+    operators: Dict,
+    meshes: List,
+    H: List,
+    station: pd.DataFrame,
+    index: Dict,
+    col_norms: np.array,
+    h_matrix_solve_parameters: Tuple,
+):
+    """Calculate derived values derived from the block model linear estimate (e.g., velocities, undertainties)
+
+    Args:
+        estimation (Dict): Estimated state vector and model covariance
+        operators (Dict): All linear operators
+        meshes (List): Mesh geometries
+        H (List): Hmatrix decompositions for each TDE mesh
+        station (pd.DataFrame): GPS station data
+        index (Dict): Indices and counts of data and array sizes
+        col_norms (np.array): Column preconditining vector
+        h_matrix_solve_parameters (Tuple): Package of sparse and hmatrix operators
+    """
+
+    estimation_hmatrix.predictions = matvec(
+        estimation_hmatrix.state_vector * col_norms, h_matrix_solve_parameters
+    ) / np.sqrt(estimation_hmatrix.weighting_vector)
+    estimation_hmatrix.vel = estimation_hmatrix.predictions[0 : 2 * index.n_stations]
+    estimation_hmatrix.east_vel = estimation_hmatrix.vel[0::2]
+    estimation_hmatrix.north_vel = estimation_hmatrix.vel[1::2]
+
+    # Calculate mean squared residual velocity
+    estimation_hmatrix.east_vel_residual = (
+        estimation_hmatrix.east_vel - station.east_vel
+    )
+    estimation_hmatrix.north_vel_residual = (
+        estimation_hmatrix.north_vel - station.north_vel
+    )
+
+    # Extract TDE slip rates from state vector
+    estimation_hmatrix.tde_rates = estimation_hmatrix.state_vector[
+        3 * index.n_blocks : 3 * index.n_blocks + 2 * index.n_tde_total
+    ]
+    estimation_hmatrix.tde_strike_slip_rates = estimation_hmatrix.tde_rates[0::2]
+    estimation_hmatrix.tde_dip_slip_rates = estimation_hmatrix.tde_rates[1::2]
+
+    # Extract segment slip rates from state vector
+    estimation_hmatrix.slip_rates = (
+        operators.rotation_to_slip_rate
+        @ estimation_hmatrix.state_vector[0 : 3 * index.n_blocks]
+    )
+    estimation_hmatrix.strike_slip_rates = estimation_hmatrix.slip_rates[0::3]
+    estimation_hmatrix.dip_slip_rates = estimation_hmatrix.slip_rates[1::3]
+    estimation_hmatrix.tensile_slip_rates = estimation_hmatrix.slip_rates[2::3]
+
+    estimation_hmatrix.strike_slip_rate_sigma = np.ones_like(
+        estimation_hmatrix.strike_slip_rates
+    )
+    estimation_hmatrix.dip_slip_rate_sigma = np.ones_like(
+        estimation_hmatrix.dip_slip_rates
+    )
+    estimation_hmatrix.tensile_slip_rate_sigma = np.ones_like(
+        estimation_hmatrix.tensile_slip_rates
+    )
+
+    # Calculate rotation only velocities
+    estimation_hmatrix.vel_rotation = (
+        operators.rotation_to_velocities[index.station_row_keep_index, :]
+        @ estimation_hmatrix.state_vector[0 : 3 * index.n_blocks]
+    )
+    estimation_hmatrix.east_vel_rotation = estimation_hmatrix.vel_rotation[0::2]
+    estimation_hmatrix.north_vel_rotation = estimation_hmatrix.vel_rotation[1::2]
+
+    # Calculate fully locked segment velocities
+    estimation_hmatrix.vel_elastic_segment = (
+        operators.rotation_to_slip_rate_to_okada_to_velocities[
+            index.station_row_keep_index, :
+        ]
+        @ estimation_hmatrix.state_vector[0 : 3 * index.n_blocks]
+    )
+    estimation_hmatrix.east_vel_elastic_segment = (
+        estimation_hmatrix.vel_elastic_segment[0::2]
+    )
+    estimation_hmatrix.north_vel_elastic_segment = (
+        estimation_hmatrix.vel_elastic_segment[1::2]
+    )
+
+    # TODO: Calculate block strain rate velocities
+    estimation_hmatrix.east_vel_block_strain_rate = np.zeros(len(station))
+    estimation_hmatrix.north_vel_block_strain_rate = np.zeros(len(station))
+
+    # Calculate TDE velocities
+    estimation_hmatrix.vel_tde = np.zeros(2 * index.n_stations)
+    for i in range(len(meshes)):
+        estimation_hmatrix.vel_tde += H[i].dot(
+            estimation_hmatrix.state_vector[
+                index.start_tde_col[i] : index.end_tde_col[i]
+            ]
+        )
+    estimation_hmatrix.east_vel_tde = estimation_hmatrix.vel_tde[0::2]
+    estimation_hmatrix.north_vel_tde = estimation_hmatrix.vel_tde[1::2]
