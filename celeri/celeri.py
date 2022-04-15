@@ -20,6 +20,8 @@ from loguru import logger
 from tqdm.notebook import tqdm
 from typing import List, Dict, Tuple
 from scipy.sparse import csr_matrix
+from scipy.spatial.distance import cdist
+
 
 from . import celeri_closure
 from .celeri_util import sph2cart, cart2sph
@@ -3483,3 +3485,61 @@ def get_h_matrices_for_tde_meshes(
         )
         col_norms = np.hstack((col_norms, col_norms_current_tde_mesh))
     return H, col_norms
+
+
+def align_velocities(df_1, df_2):
+
+    # Add block_label to dataframes if it's not there
+    if not "block_label" in df_1.columns:
+        df_1["block_label"] = 0
+
+    if not "block_label" in df_2.columns:
+        df_2["block_label"] = 0
+
+    # Find approximate distances between all station pairs between data sets
+    station_to_station_distances = cdist(
+        np.array([df_1.lon, df_1.lat]).T, np.array([df_2.lon, df_2.lat]).T
+    )
+
+    # For each  velocity find the closest distance and check if it's less than a distance_threshold (approximate) away
+    match_index_1 = []
+    match_index_2 = []
+    distance_threshold = 0.005
+
+    for i in range(len(df_1)):
+        if np.min(station_to_station_distances[i, :]) < distance_threshold:
+            min_index = np.argmin(station_to_station_distances[i, :])
+            match_index_1.append(i)
+            match_index_2.append(min_index)
+
+    # Create smaller data frames for the matching locations
+    df_1_match = df_1.iloc[match_index_1].copy()
+    df_2_match = df_2.iloc[match_index_2].copy()
+
+    # Build the linear operator
+    operator_rotation = get_global_float_block_rotation_partials(df_1_match)
+    keep_idx = get_keep_index_12(operator_rotation.shape[0])
+    operator_rotation = operator_rotation[keep_idx, :]
+    differential_velocties_match = interleave2(
+        df_2_match.east_vel.values - df_1_match.east_vel.values,
+        df_2_match.north_vel.values - df_1_match.north_vel.values,
+    )
+
+    # Solve for rotation vector that best aligns the velocities in the two velocity fields
+    covariance_matrix = np.linalg.inv(operator_rotation.T @ operator_rotation)
+    rotation_vector_align = (
+        covariance_matrix @ operator_rotation.T @ differential_velocties_match
+    )
+
+    # Rotate the stations in the 1 data set that are not collocated with Weiss data into the Weiss reference frame
+    operator_rotation = get_global_float_block_rotation_partials(df_1)
+    keep_idx = get_keep_index_12(operator_rotation.shape[0])
+    operator_rotation = operator_rotation[keep_idx, :]
+
+    # Rotate subset of gbm velocites into weiss reference frame
+    df_1_aligned = copy.deepcopy(df_1)
+    rotated_vels_match = operator_rotation @ rotation_vector_align
+    df_1_aligned["east_vel"] = df_1_aligned["east_vel"] + rotated_vels_match[0::2]
+    df_1_aligned["north_vel"] = df_1_aligned["north_vel"] + rotated_vels_match[1::2]
+
+    return df_1_aligned
