@@ -1,4 +1,5 @@
 from sys import stdout
+import argparse
 import addict
 import datetime
 import json
@@ -14,74 +15,40 @@ import IPython
 import celeri
 
 
-def create_output_folder(command):
-    # Check to see if "runs" folder exists and if not create it
-    if not os.path.exists(command.base_runs_folder):
-        os.mkdir(command.base_runs_folder)
-
-    # Make output folder for current run
-    os.mkdir(command.output_path)
-
-
-def get_logger(command):
-    # Create logger
-    logger.remove()  # Remove any existing loggers includeing default stderr
-    logger.add(
-        stdout,
-        format="<cyan>[{level}]</cyan> <green>{message}</green>",
-        colorize=True,
-    )
-    logger.add(command.run_name + ".log")
-    logger.info("RUN_NAME: " + command.run_name)
-
-
-def test_logger():
-    logger.info("AAA slip rate constraints")
-
-
-def get_command(command_file_name):
-    """Read command file and create output path
-
-    Args:
-        command_file_name (string): Path to command file
-
-    Returns:
-        command (Dict): Dictionary with content of command file
-    """
-    with open(command_file_name, "r") as f:
-        command = json.load(f)
-    command = addict.Dict(command)  # Convert to dot notation dictionary
-    command.file_name = command_file_name
-
-    # Add run_name and output_path
-    command.run_name = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-    command.output_path = os.path.join(command.base_runs_folder, command.run_name)
-    return command
-
-
 @logger.catch
-def main():
-    # Run with: ipython test_script_stuff.py
+def main(args):
+    # Run with: python test_script_stuff.py ../data/command/japan_command.json
 
     # Read in data
-    command_file_name = "../data/command/japan_command.json"
-    command = get_command(command_file_name)
+    command = celeri.get_command(args.command_file_name)
+
+    # Assign other command line arguments to command
+    for arg in vars(args):
+        print(arg, getattr(args, arg))
 
     # Start logging
-    get_logger(command)
-    test_logger()
+    celeri.get_logger(command)
 
-    command, segment, block, meshes, station, mogi, sar = celeri.read_data(
-        command_file_name
-    )
+    # Print command
 
-    logger.debug(segment.keys())
-    for i in tqdm(range(len(segment)), colour="yellow"):
-        sleep(0.001)
-    logger.success("Looped over segments")
+    command = addict.Dict(sorted(command.items()))
+    for key, value in command.items():
+        logger.info(f"command.{key}: {value}")
 
-    IPython.embed(banner1="")
+    # Drop into ipython REPL
+    if command.repl == "yes":
+        IPython.embed(banner1="")
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("command_file_name", type=str, help="name of command file")
+    parser.add_argument("--segment_file_name", type=str, default=None, required=False)
+    parser.add_argument("--station_file_name", type=str, default=None, required=False)
+    parser.add_argument("--block_file_name", type=str, default=None, required=False)
+    parser.add_argument("--mesh_file_name", type=str, default=None, required=False)
+    parser.add_argument("--los_file_name", type=str, default=None, required=False)
+    parser.add_argument("--repl", type=str, default="no", required=False)
+
+    args = parser.parse_args()
+    main(args)
