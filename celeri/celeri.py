@@ -3487,7 +3487,7 @@ def get_h_matrices_for_tde_meshes(
     return H, col_norms
 
 
-def align_velocities(df_1, df_2):
+def align_velocities(df_1, df_2, distance_threshold):
 
     # Add block_label to dataframes if it's not there
     if not "block_label" in df_1.columns:
@@ -3504,7 +3504,6 @@ def align_velocities(df_1, df_2):
     # For each  velocity find the closest distance and check if it's less than a distance_threshold (approximate) away
     match_index_1 = []
     match_index_2 = []
-    distance_threshold = 0.005
 
     for i in range(len(df_1)):
         if np.min(station_to_station_distances[i, :]) < distance_threshold:
