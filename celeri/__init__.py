@@ -50,6 +50,7 @@ from .celeri import (
     get_h_matrices_for_tde_meshes,
     align_velocities,
     process_args,
+    get_processed_data_structures,
 )
 
 

@@ -3548,3 +3548,25 @@ def process_args(command: Dict, args: Dict):
                 logger.warning(f"REPLACED: command.{key}: {command[key]}")
         else:
             logger.info(f"command.{key}: {command[key]}")
+
+
+def get_processed_data_structures(command):
+    data = addict.Dict()
+    assembly = addict.Dict()
+    operators = addict.Dict()
+    (
+        data.segment,
+        data.block,
+        data.meshes,
+        data.station,
+        data.mogi,
+        data.sar,
+    ) = read_data(command)
+    data.station = process_station(data.station, command)
+    data.segment = process_segment(data.segment, command, data.meshes)
+    data.sar = process_sar(data.sar, command)
+    data.closure, data.block = assign_block_labels(
+        data.segment, data.station, data.block, data.mogi, data.sar
+    )
+    operators.meshes = [addict.Dict()] * len(data.meshes)
+    return data, assembly, operators
