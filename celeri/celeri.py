@@ -78,6 +78,10 @@ def get_command(command_file_name):
     command.run_name = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
     command.output_path = os.path.join(command.base_runs_folder, command.run_name)
     command.file_name = command_file_name
+
+    # Sort command keys alphabetically for readability
+    command = addict.Dict(sorted(command.items()))
+
     return command
 
 
@@ -3542,3 +3546,14 @@ def align_velocities(df_1, df_2, distance_threshold):
     df_1_aligned["north_vel"] = df_1_aligned["north_vel"] + rotated_vels_match[1::2]
 
     return df_1_aligned
+
+
+def process_args(command: Dict, args: Dict):
+    for key in command:
+        if key in args:
+            if args[key] is not None:
+                logger.info(f"     ***** ORIGINAL: command.{key}: {command[key]} *****")
+                command[key] = args[key]
+                logger.info(f"     ***** REPLACED: command.{key}: {command[key]} *****")
+        else:
+            logger.info(f"command.{key}: {command[key]}")

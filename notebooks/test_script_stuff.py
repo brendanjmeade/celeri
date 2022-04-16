@@ -1,42 +1,20 @@
-from sys import stdout
 import argparse
 import addict
-import datetime
-import json
-import os
-import numpy as np
-import matplotlib.pyplot as plt
-from importlib import reload
 from loguru import logger
-from tqdm import tqdm
-from time import sleep
+from typing import Dict
 import IPython
-
 import celeri
 
 
 @logger.catch
-def main(args):
-    # Run with: python test_script_stuff.py ../data/command/japan_command.json
-
-    # Read in data
+def main(args: Dict):
+    # Read in command file and start logging
     command = celeri.get_command(args.command_file_name)
-
-    # Assign other command line arguments to command
-    for arg in vars(args):
-        print(arg, getattr(args, arg))
-
-    # Start logging
     celeri.get_logger(command)
-
-    # Print command
-
-    command = addict.Dict(sorted(command.items()))
-    for key, value in command.items():
-        logger.info(f"command.{key}: {value}")
+    celeri.process_args(command, args)
 
     # Drop into ipython REPL
-    if command.repl == "yes":
+    if bool(command.repl):
         IPython.embed(banner1="")
 
 
@@ -48,7 +26,6 @@ if __name__ == "__main__":
     parser.add_argument("--block_file_name", type=str, default=None, required=False)
     parser.add_argument("--mesh_file_name", type=str, default=None, required=False)
     parser.add_argument("--los_file_name", type=str, default=None, required=False)
-    parser.add_argument("--repl", type=str, default="no", required=False)
-
-    args = parser.parse_args()
+    parser.add_argument("--repl", type=int, default="no", required=False)
+    args = addict.Dict(vars(parser.parse_args()))
     main(args)
