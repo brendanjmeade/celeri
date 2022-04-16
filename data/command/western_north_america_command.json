@@ -1,6 +1,8 @@
 {
     "base_runs_folder": "../runs/",
     "solve_type": "dense",
+    "plot_input_summary": 0,
+    "plot_estimation_summary": 1,
     "repl": 1,
     "atol": 1E-4,
     "btol": 1E-4,
