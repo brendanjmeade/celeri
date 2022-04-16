@@ -1,6 +1,6 @@
 {
-    "printslipcons": false,
-    "repl": "yes",
+    "printslipcons": 0,
+    "repl": 1,
     "h_matrix_tol": 1e-6,
     "h_matrix_min_separation": 1.25,
     "h_matrix_min_pts_per_box": 20,

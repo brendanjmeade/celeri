@@ -1,6 +1,6 @@
 {
     "base_runs_folder": "../runs/",
-    "repl": "yes",
+    "repl": 1,
     "atol": 1E-4,
     "btol": 1E-4,
     "h_matrix_tol": 1e-6,
