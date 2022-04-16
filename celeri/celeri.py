@@ -90,7 +90,8 @@ def get_logger(command):
     logger.remove()  # Remove any existing loggers includeing default stderr
     logger.add(
         sys.stdout,
-        format="<cyan>[{level}]</cyan> <green>{message}</green>",
+        # format="[{level}] {message}",
+        # format="<cyan>[{level}]</cyan> <green>{message}</green>",
         colorize=True,
     )
     # logger.add(command.run_name + ".log")
@@ -103,17 +104,7 @@ def get_logger(command):
 
 # def read_data(command_file_name: str):
 def read_data(command: Dict):
-    # Read command data
     logger.info("Reading data files")
-    # with open(command_file_name, "r") as f:
-    #     command = json.load(f)
-    # command = addict.Dict(command)  # Convert to dot notation dictionary
-    # command.file_name = command_file_name
-
-    # # Add run_name and output_path
-    # command.run_name = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-    # command.output_path = os.path.join(command.base_runs_folder, command.run_name)
-
     # Read segment data
     segment = pd.read_csv(command.segment_file_name)
     segment = segment.loc[:, ~segment.columns.str.match("Unnamed")]
@@ -3552,8 +3543,8 @@ def process_args(command: Dict, args: Dict):
     for key in command:
         if key in args:
             if args[key] is not None:
-                logger.info(f"     ***** ORIGINAL: command.{key}: {command[key]} *****")
+                logger.warning(f"ORIGINAL: command.{key}: {command[key]}")
                 command[key] = args[key]
-                logger.info(f"     ***** REPLACED: command.{key}: {command[key]} *****")
+                logger.warning(f"REPLACED: command.{key}: {command[key]}")
         else:
             logger.info(f"command.{key}: {command[key]}")
