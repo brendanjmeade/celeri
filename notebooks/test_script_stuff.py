@@ -58,8 +58,7 @@ def main(args: Dict):
     operators = addict.Dict()
     operators.meshes = [addict.Dict()] * len(meshes)
 
-    # Calculate Okada partials for all segments
-    celeri.get_elastic_operators_okada(operators, segment, station, command)
+    # Quick input plot
 
     # Get operators common to both dense and H-matrix
     get_common_operators(
@@ -68,42 +67,25 @@ def main(args: Dict):
 
     index = celeri.get_index(assembly, station, block, meshes)
 
-    command.solve_type = "hmatrix"
     if command.solve_type == "hmatrix":
-        # Data and data weighting vector
-        weighting_vector = celeri.get_weighting_vector(command, station, meshes, index)
-        data_vector = celeri.get_data_vector(assembly, index)
-
-        # Apply data weighting
-        data_vector = data_vector * np.sqrt(weighting_vector)
-
-        # Cast all block submatrices to sparse
-        sparse_block_motion_okada_faults = csr_matrix(
-            operators.rotation_to_velocities[index.station_row_keep_index, :]
-            - operators.rotation_to_slip_rate_to_okada_to_velocities[
-                index.station_row_keep_index, :
-            ]
-        )
-        sparse_block_motion_constraints = csr_matrix(operators.block_motion_constraints)
-        sparse_block_slip_rate_constraints = csr_matrix(operators.slip_rate_constraints)
-
-        # Calculate column normalization vector for blocks
-        operator_block_only = celeri.get_full_dense_operator_block_only(
-            operators, index
-        )
-        weighting_vector_block_only = weighting_vector[
-            0 : operator_block_only.shape[0]
-        ][:, None]
-        col_norms = np.linalg.norm(
-            operator_block_only * np.sqrt(weighting_vector_block_only), axis=0
-        )
-
-        # Hmatrix decompositon for each TDE mesh
-        H, col_norms = celeri.get_h_matrices_for_tde_meshes(
-            command, meshes, station, operators, index, col_norms
-        )
+        estimation = celeri.build_and_solve_hmatrix()
     elif command.solve_type == "dense":
-        pass
+        estimation = celeri.build_and_solve_dense()
+
+    # Save run to disk
+    celeri.write_output(command, estimation, station, segment, block, meshes)
+
+    # Quick output plot
+    if bool(command.plot_estimation_summary):
+        celeri.plot_estimation_summary(
+            segment,
+            station,
+            meshes,
+            estimation,
+            lon_range=command.lon_range,
+            lat_range=command.lat_range,
+            quiver_scale=command.quiver_scale,
+        )
 
     # Drop into ipython REPL
     if bool(command.repl):
