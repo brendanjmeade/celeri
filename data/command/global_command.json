@@ -1,5 +1,6 @@
 {
     "base_runs_folder": "../runs/",
+    "solve_type": "hmatrix",
     "atol": 1E-6,
     "btol": 1E-6,
     "repl": 1,

@@ -67,10 +67,12 @@ def main(args: Dict):
 
     # index = celeri.get_index(assembly, station, block, meshes)
 
-    # if command.solve_type == "hmatrix":
-    #     estimation, operators, index = build_and_solve_hmatrix()
-    # elif command.solve_type == "dense":
-    #     estimation, operators, index = build_and_solve_dense()
+    if command.solve_type == "hmatrix":
+        logger.info("H-matrix build and solve")
+        # estimation, operators, index = build_and_solve_hmatrix()
+    elif command.solve_type == "dense":
+        logger.info("Dense build and solve")
+        # estimation, operators, index = build_and_solve_dense()
 
     # Save run to disk
     # celeri.write_output(command, estimation, station, segment, block, meshes)
@@ -100,6 +102,7 @@ if __name__ == "__main__":
     parser.add_argument("--block_file_name", type=str, default=None, required=False)
     parser.add_argument("--mesh_file_name", type=str, default=None, required=False)
     parser.add_argument("--los_file_name", type=str, default=None, required=False)
+    parser.add_argument("--solve_type", type=str, default=None, required=False)
     parser.add_argument("--repl", type=int, default="no", required=False)
     args = addict.Dict(vars(parser.parse_args()))
     main(args)

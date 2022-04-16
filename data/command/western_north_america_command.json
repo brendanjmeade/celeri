@@ -1,5 +1,6 @@
 {
     "base_runs_folder": "../runs/",
+    "solve_type": "dense",
     "repl": 1,
     "atol": 1E-4,
     "btol": 1E-4,

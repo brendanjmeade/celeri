@@ -1,6 +1,7 @@
 {
     "printslipcons": 0,
     "repl": 1,
+    "solve_type": "hmatrix",
     "h_matrix_tol": 1e-6,
     "h_matrix_min_separation": 1.25,
     "h_matrix_min_pts_per_box": 20,
