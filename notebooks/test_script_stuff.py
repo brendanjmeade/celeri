@@ -65,12 +65,12 @@ def main(args: Dict):
         command, segment, station, block, meshes, mogi, operators, assembly
     )
 
-    index = celeri.get_index(assembly, station, block, meshes)
+    # index = celeri.get_index(assembly, station, block, meshes)
 
     if command.solve_type == "hmatrix":
-        estimation = celeri.build_and_solve_hmatrix()
+        estimation, operators, index = build_and_solve_hmatrix()
     elif command.solve_type == "dense":
-        estimation = celeri.build_and_solve_dense()
+        estimation, operators, index = build_and_solve_dense()
 
     # Save run to disk
     celeri.write_output(command, estimation, station, segment, block, meshes)
