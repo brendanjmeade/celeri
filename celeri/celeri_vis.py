@@ -250,7 +250,9 @@ def plot_input_summary(
         # ax.autoscale()
 
     plt.suptitle("inputs")
-    plt.show()
+    plt.show(block=False)
+    plt.savefig("plot_input_summary.png", dpi=300)
+    plt.savefig("plot_input_summary.pdf")
 
 
 def plot_estimation_summary(

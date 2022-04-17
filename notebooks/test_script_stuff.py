@@ -20,7 +20,9 @@ def main(args: Dict):
     # index = celeri.get_index(assembly, data.station, data.block, data.meshes)
 
     # Quick input plot
+    print("**********************", bool(command.plot_input_summary))
     if bool(command.plot_input_summary):
+        print("hi")
         celeri.plot_input_summary(
             data.segment,
             data.station,
@@ -41,7 +43,7 @@ def main(args: Dict):
         # estimation, operators, index = build_and_solve_dense()
 
     # Save run to disk
-    # celeri.write_output(command, estimation, station, segment, block, meshes)
+    # celeri.write_output(command, estimation, data.station, data.segment, data.block, data.meshes)
 
     # # Quick output plot
     # if bool(command.plot_estimation_summary):
