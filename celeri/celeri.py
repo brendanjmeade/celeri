@@ -3480,6 +3480,9 @@ def get_h_matrices_for_tde_meshes(
             current_tde_mesh_columns_full_no_zero_rows, axis=0
         )
         col_norms = np.hstack((col_norms, col_norms_current_tde_mesh))
+
+        # Free memory.  We have the Hmatrix version of this.
+        del tde_to_velocities
     return H, col_norms
 
 
