@@ -33,7 +33,7 @@ def main(args: Dict):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("command_file_name", type=str, help="name of command file")
+    parser.add_argument("command_file_name", type=str, help="Name of command file")
     parser.add_argument("--segment_file_name", type=str, default=None, required=False)
     parser.add_argument("--station_file_name", type=str, default=None, required=False)
     parser.add_argument("--block_file_name", type=str, default=None, required=False)

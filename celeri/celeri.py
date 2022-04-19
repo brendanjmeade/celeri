@@ -2701,19 +2701,16 @@ def write_output(
             "dep3": meshes[i].dep3,
         }
         this_mesh_output = pd.DataFrame(this_mesh_output)
-        mesh_outputs = mesh_outputs.append(this_mesh_output)
+        # mesh_outputs = mesh_outputs.append(this_mesh_output)
+        mesh_outputs = pd.concat([mesh_outputs, this_mesh_output])
+
     # Append slip rates
     mesh_outputs["strike_slip_rate"] = estimation.tde_strike_slip_rates
     mesh_outputs["dip_slip_rate"] = estimation.tde_dip_slip_rates
+
     # Write to CSV
     mesh_output_file_name = command.output_path + "/" + "model_meshes.csv"
     mesh_outputs.to_csv(mesh_output_file_name, index=False)
-
-    # TODO: Revisit logging
-    # Move .log file to output folder
-    # source_file = command.run_name + ".log"
-    # target_file = command.output_path + "/" + command.run_name + ".log"
-    # os.rename(source_file, target_file)
 
 
 def get_mesh_edge_elements(meshes: List):
@@ -3927,10 +3924,9 @@ def build_and_solve_hmatrix(command, assembly, operators, data):
         command, estimation, data.station, data.segment, data.block, data.meshes
     )
 
-    logger.debug(command.plot_estimation_summary)
     if bool(command.plot_estimation_summary):
-        logger.debug("Inside if statement")
         plot_estimation_summary(
+            command,
             data.segment,
             data.station,
             data.meshes,
@@ -3944,6 +3940,7 @@ def build_and_solve_hmatrix(command, assembly, operators, data):
 
 
 def plot_estimation_summary(
+    command: Dict,
     segment: pd.DataFrame,
     station: pd.DataFrame,
     meshes: List,
@@ -3964,7 +3961,6 @@ def plot_estimation_summary(
         lat_range (Tuple): Latitude range (min, max)
         quiver_scale (float): Scaling for velocity arrows
     """
-    logger.debug("Inside plot_estimation_summary")
 
     def common_plot_elements(segment: pd.DataFrame, lon_range: Tuple, lat_range: Tuple):
         """Elements common to all subplots
@@ -4269,6 +4265,6 @@ def plot_estimation_summary(
             f"mae = {mean_average_error:.2f} (mm/yr), mse = {mean_squared_error:.2f} (mm/yr)^2"
         )
 
-    plt.show()
-    plt.savefig("plot_estimation_summary.png", dpi=300)
-    plt.savefig("plot_estimation_summary.pdf")
+    plt.show(block=False)
+    plt.savefig(command.output_path + "/" + "plot_estimation_summary.png", dpi=300)
+    plt.savefig(command.output_path + "/" + "plot_estimation_summary.pdf")
