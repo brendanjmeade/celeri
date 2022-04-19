@@ -51,12 +51,13 @@ from .celeri import (
     align_velocities,
     process_args,
     get_processed_data_structures,
+    plot_input_summary,
 )
 
 
 from .celeri_vis import (
     plot_matrix_abs_log,
-    plot_input_summary,
+    # plot_input_summary,
     plot_estimation_summary,
     plot_meshes,
     plot_rotation_components,

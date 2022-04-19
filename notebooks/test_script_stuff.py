@@ -6,6 +6,20 @@ import IPython
 import celeri
 
 
+def build_and_solve_hmatrix(command, assembly, operators, data):
+    logger.info("build_and_solve_hmatrix")
+
+    # Calculate Okada partials for all segments
+    celeri.get_elastic_operators_okada(operators, data.segment, data.station, command)
+
+    # Get TDE smoothing operators
+    celeri.get_all_mesh_smoothing_matrices(data.meshes, operators)
+    index = 1
+    # index = celeri.get_index(assembly, data.station, data.block, data.meshes)
+    estimation = addict.Dict()
+    return estimation, operators, index
+
+
 @logger.catch
 def main(args: Dict):
     # Read in command file and start logging
@@ -17,45 +31,14 @@ def main(args: Dict):
     # Read in and process data files
     data, assembly, operators = celeri.get_processed_data_structures(command)
 
-    # index = celeri.get_index(assembly, data.station, data.block, data.meshes)
-
-    # Quick input plot
-    print("**********************", bool(command.plot_input_summary))
-    if bool(command.plot_input_summary):
-        print("hi")
-        celeri.plot_input_summary(
-            data.segment,
-            data.station,
-            data.block,
-            data.meshes,
-            data.mogi,
-            data.sar,
-            lon_range=command.lon_range,
-            lat_range=command.lat_range,
-            quiver_scale=command.quiver_scale,
-        )
-
     if command.solve_type == "hmatrix":
         logger.info("H-matrix build and solve")
-        # estimation, operators, index = build_and_solve_hmatrix()
+        estimation, operators, index = build_and_solve_hmatrix(
+            command, assembly, operators, data
+        )
     elif command.solve_type == "dense":
         logger.info("Dense build and solve")
         # estimation, operators, index = build_and_solve_dense()
-
-    # Save run to disk
-    # celeri.write_output(command, estimation, data.station, data.segment, data.block, data.meshes)
-
-    # # Quick output plot
-    # if bool(command.plot_estimation_summary):
-    #     celeri.plot_estimation_summary(
-    #         segment,
-    #         station,
-    #         meshes,
-    #         estimation,
-    #         lon_range=command.lon_range,
-    #         lat_range=command.lat_range,
-    #         quiver_scale=command.quiver_scale,
-    #     )
 
     # Drop into ipython REPL
     if bool(command.repl):
