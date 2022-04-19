@@ -1,7 +1,7 @@
 {
     "printslipcons": 0,
     "repl": 1,
-    "plot_input_summary": 0,
+    "plot_input_summary": 1,
     "plot_estimation_summary": 1,
     "solve_type": "hmatrix",
     "h_matrix_tol": 1e-6,

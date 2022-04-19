@@ -22,6 +22,8 @@ from tqdm.notebook import tqdm
 from typing import List, Dict, Tuple
 from scipy.sparse import csr_matrix
 from scipy.spatial.distance import cdist
+import scipy.sparse
+import scipy.sparse.linalg
 
 
 from . import celeri_closure
@@ -3802,3 +3804,471 @@ def plot_input_summary(
     plt.show(block=False)
     plt.savefig("plot_input_summary.png", dpi=300)
     plt.savefig("plot_input_summary.pdf")
+
+
+def build_and_solve_hmatrix(command, assembly, operators, data):
+    logger.info("build_and_solve_hmatrix")
+
+    # Calculate Okada partials for all segments
+    get_elastic_operators_okada(operators, data.segment, data.station, command)
+
+    # Get TDE smoothing operators
+    get_all_mesh_smoothing_matrices(data.meshes, operators)
+
+    # Get non elastic operators
+    operators.rotation_to_velocities = get_rotation_to_velocities_partials(data.station)
+    operators.global_float_block_rotation = get_global_float_block_rotation_partials(
+        data.station
+    )
+    assembly, operators.block_motion_constraints = get_block_motion_constraints(
+        assembly, data.block, command
+    )
+    assembly, operators.slip_rate_constraints = get_slip_rate_constraints(
+        assembly, data.segment, data.block, command
+    )
+    operators.rotation_to_slip_rate = get_rotation_to_slip_rate_partials(
+        data.segment, data.block
+    )
+    (
+        operators.block_strain_rate_to_velocities,
+        strain_rate_block_index,
+    ) = get_block_strain_rate_to_velocities_partials(
+        data.block, data.station, data.segment
+    )
+    operators.mogi_to_velocities = get_mogi_to_velocities_partials(
+        data.mogi, data.station, command
+    )
+    operators.rotation_to_slip_rate_to_okada_to_velocities = (
+        operators.slip_rate_to_okada_to_velocities @ operators.rotation_to_slip_rate
+    )
+    get_tde_slip_rate_constraints(data.meshes, operators)
+
+    index = get_index(assembly, data.station, data.block, data.meshes)
+
+    # Data and data weighting vector
+    weighting_vector = get_weighting_vector(command, data.station, data.meshes, index)
+    data_vector = get_data_vector(assembly, index)
+
+    # Apply data weighting
+    data_vector = data_vector * np.sqrt(weighting_vector)
+
+    # Cast all block submatrices to sparse
+    sparse_block_motion_okada_faults = csr_matrix(
+        operators.rotation_to_velocities[index.station_row_keep_index, :]
+        - operators.rotation_to_slip_rate_to_okada_to_velocities[
+            index.station_row_keep_index, :
+        ]
+    )
+    sparse_block_motion_constraints = csr_matrix(operators.block_motion_constraints)
+    sparse_block_slip_rate_constraints = csr_matrix(operators.slip_rate_constraints)
+
+    # Calculate column normalization vector for blocks
+    operator_block_only = get_full_dense_operator_block_only(operators, index)
+    weighting_vector_block_only = weighting_vector[0 : operator_block_only.shape[0]][
+        :, None
+    ]
+    col_norms = np.linalg.norm(
+        operator_block_only * np.sqrt(weighting_vector_block_only), axis=0
+    )
+
+    # Hmatrix decompositon for each TDE mesh
+    logger.info("Starting H-matrix build")
+    H, col_norms = get_h_matrices_for_tde_meshes(
+        command, data.meshes, data.station, operators, index, col_norms
+    )
+    logger.success("Finished H-matrix build")
+
+    # Package parameters that matvec and rmatvec need for the iterative solve
+    h_matrix_solve_parameters = (
+        index,
+        data.meshes,
+        H,
+        operators,
+        weighting_vector,
+        col_norms,
+        sparse_block_motion_okada_faults,
+        sparse_block_motion_constraints,
+        sparse_block_slip_rate_constraints,
+    )
+
+    # Instantiate the scipy the linear operator for the iterative solver to use
+    operator_hmatrix = scipy.sparse.linalg.LinearOperator(
+        (index.n_operator_rows, index.n_operator_cols),
+        matvec=matvec_wrapper(h_matrix_solve_parameters),
+        rmatvec=rmatvec_wrapper(h_matrix_solve_parameters),
+    )
+
+    # Solve the linear system
+    logger.info("Starting interative solve of sparse system")
+    sparse_hmatrix_solution = scipy.sparse.linalg.lsmr(
+        operator_hmatrix, data_vector, atol=command.atol, btol=command.btol
+    )
+    logger.success("Finished interative solve of sparse system")
+
+    # Correct the solution for the col_norms preconditioning.
+    sparse_hmatrix_state_vector = sparse_hmatrix_solution[0] / col_norms
+
+    estimation = addict.Dict()
+    estimation.data_vector = data_vector
+    estimation.weighting_vector = weighting_vector
+    estimation.operator = operator_hmatrix
+    estimation.state_vector = sparse_hmatrix_state_vector
+    post_process_estimation_hmatrix(
+        estimation,
+        operators,
+        data.meshes,
+        H,
+        data.station,
+        index,
+        col_norms,
+        h_matrix_solve_parameters,
+    )
+    write_output(
+        command, estimation, data.station, data.segment, data.block, data.meshes
+    )
+
+    logger.debug(command.plot_estimation_summary)
+    if bool(command.plot_estimation_summary):
+        logger.debug("Inside if statement")
+        plot_estimation_summary(
+            data.segment,
+            data.station,
+            data.meshes,
+            estimation,
+            lon_range=command.lon_range,
+            lat_range=command.lat_range,
+            quiver_scale=command.quiver_scale,
+        )
+
+    return estimation, operators, index
+
+
+def plot_estimation_summary(
+    segment: pd.DataFrame,
+    station: pd.DataFrame,
+    meshes: List,
+    estimation: Dict,
+    lon_range: Tuple,
+    lat_range: Tuple,
+    quiver_scale: float,
+):
+    """Plot overview figures showing observed and modeled velocities as well
+    as velocity decomposition and estimates slip rates.
+
+    Args:
+        segment (pd.DataFrame): Fault segments
+        station (pd.DataFrame): GPS observations
+        meshes (List): List of mesh dictionaries
+        estimation (Dict): All estimated values
+        lon_range (Tuple): Latitude range (min, max)
+        lat_range (Tuple): Latitude range (min, max)
+        quiver_scale (float): Scaling for velocity arrows
+    """
+    logger.debug("Inside plot_estimation_summary")
+
+    def common_plot_elements(segment: pd.DataFrame, lon_range: Tuple, lat_range: Tuple):
+        """Elements common to all subplots
+        Args:
+            segment (pd.DataFrame): Fault segments
+            lon_range (Tuple): Longitude range (min, max)
+            lat_range (Tuple): Latitude range (min, max)
+        """
+        for i in range(len(segment)):
+            if segment.dip[i] == 90.0:
+                plt.plot(
+                    [segment.lon1[i], segment.lon2[i]],
+                    [segment.lat1[i], segment.lat2[i]],
+                    "-k",
+                    linewidth=0.5,
+                )
+            else:
+                plt.plot(
+                    [segment.lon1[i], segment.lon2[i]],
+                    [segment.lat1[i], segment.lat2[i]],
+                    "-r",
+                    linewidth=0.5,
+                )
+        plt.xlim([lon_range[0], lon_range[1]])
+        plt.ylim([lat_range[0], lat_range[1]])
+        plt.gca().set_aspect("equal", adjustable="box")
+
+    max_sigma_cutoff = 99.0
+    n_subplot_rows = 4
+    n_subplot_cols = 3
+    subplot_index = 0
+
+    plt.figure(figsize=(12, 16))
+    subplot_index += 1
+    ax1 = plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index)
+    plt.title("observed velocities")
+    common_plot_elements(segment, lon_range, lat_range)
+    plt.quiver(
+        station.lon,
+        station.lat,
+        station.east_vel,
+        station.north_vel,
+        scale=quiver_scale,
+        scale_units="inches",
+        color="red",
+    )
+
+    subplot_index += 1
+    plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
+    plt.title("model velocities")
+    common_plot_elements(segment, lon_range, lat_range)
+    plt.quiver(
+        station.lon,
+        station.lat,
+        estimation.east_vel,
+        estimation.north_vel,
+        scale=quiver_scale,
+        scale_units="inches",
+        color="blue",
+    )
+
+    subplot_index += 1
+    plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
+    plt.title("residual velocities")
+    common_plot_elements(segment, lon_range, lat_range)
+    plt.quiver(
+        station.lon,
+        station.lat,
+        estimation.east_vel_residual,
+        estimation.north_vel_residual,
+        scale=quiver_scale,
+        scale_units="inches",
+        color="green",
+    )
+
+    subplot_index += 1
+    plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
+    plt.title("rotation velocities")
+    common_plot_elements(segment, lon_range, lat_range)
+    plt.quiver(
+        station.lon,
+        station.lat,
+        estimation.east_vel_rotation,
+        estimation.north_vel_rotation,
+        scale=quiver_scale,
+        scale_units="inches",
+        color="orange",
+    )
+
+    subplot_index += 1
+    plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
+    plt.title("elastic segment velocities")
+    common_plot_elements(segment, lon_range, lat_range)
+    plt.quiver(
+        station.lon,
+        station.lat,
+        estimation.east_vel_elastic_segment,
+        estimation.north_vel_elastic_segment,
+        scale=quiver_scale,
+        scale_units="inches",
+        color="magenta",
+    )
+
+    if len(meshes) > 0:
+        subplot_index += 1
+        plt.subplot(
+            n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1
+        )
+        plt.title("elastic tde velocities")
+        common_plot_elements(segment, lon_range, lat_range)
+        plt.quiver(
+            station.lon,
+            station.lat,
+            estimation.east_vel_tde,
+            estimation.north_vel_tde,
+            scale=quiver_scale,
+            scale_units="inches",
+            color="black",
+        )
+
+    subplot_index += 1
+    plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
+    plt.title("segment strike-slip \n (negative right-lateral)")
+    common_plot_elements(segment, lon_range, lat_range)
+    for i in range(len(segment)):
+        if estimation.strike_slip_rate_sigma[i] < max_sigma_cutoff:
+            plt.text(
+                segment.mid_lon_plate_carree[i],
+                segment.mid_lat_plate_carree[i],
+                f"{estimation.strike_slip_rates[i]:.1f}({estimation.strike_slip_rate_sigma[i]:.1f})",
+                color="red",
+                clip_on=True,
+                horizontalalignment="center",
+                verticalalignment="center",
+                fontsize=7,
+            )
+        else:
+            plt.text(
+                segment.mid_lon_plate_carree[i],
+                segment.mid_lat_plate_carree[i],
+                f"{estimation.strike_slip_rates[i]:.1f}(*)",
+                color="red",
+                clip_on=True,
+                horizontalalignment="center",
+                verticalalignment="center",
+                fontsize=7,
+            )
+
+    subplot_index += 1
+    plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
+    plt.title("segment dip-slip \n (positive convergences)")
+    common_plot_elements(segment, lon_range, lat_range)
+    for i in range(len(segment)):
+        if estimation.dip_slip_rate_sigma[i] < max_sigma_cutoff:
+            plt.text(
+                segment.mid_lon_plate_carree[i],
+                segment.mid_lat_plate_carree[i],
+                f"{estimation.dip_slip_rates[i]:.1f}({estimation.dip_slip_rate_sigma[i]:.1f})",
+                color="blue",
+                clip_on=True,
+                horizontalalignment="center",
+                verticalalignment="center",
+                fontsize=7,
+            )
+        else:
+            plt.text(
+                segment.mid_lon_plate_carree[i],
+                segment.mid_lat_plate_carree[i],
+                f"{estimation.dip_slip_rates[i]:.1f}(*)",
+                color="blue",
+                clip_on=True,
+                horizontalalignment="center",
+                verticalalignment="center",
+                fontsize=7,
+            )
+
+    subplot_index += 1
+    plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
+    plt.title("segment tensile-slip \n (negative convergences)")
+    common_plot_elements(segment, lon_range, lat_range)
+    for i in range(len(segment)):
+        if estimation.tensile_slip_rate_sigma[i] < max_sigma_cutoff:
+            plt.text(
+                segment.mid_lon_plate_carree[i],
+                segment.mid_lat_plate_carree[i],
+                f"{estimation.tensile_slip_rates[i]:.1f}({estimation.tensile_slip_rate_sigma[i]:.1f})",
+                color="green",
+                clip_on=True,
+                horizontalalignment="center",
+                verticalalignment="center",
+                fontsize=7,
+            )
+        else:
+            plt.text(
+                segment.mid_lon_plate_carree[i],
+                segment.mid_lat_plate_carree[i],
+                f"{estimation.tensile_slip_rates[i]:.1f}(*)",
+                color="green",
+                clip_on=True,
+                horizontalalignment="center",
+                verticalalignment="center",
+                fontsize=7,
+            )
+
+    if len(meshes) > 0:
+        subplot_index += 1
+        plt.subplot(
+            n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1
+        )
+        plt.title("TDE slip (strike-slip)")
+        common_plot_elements(segment, lon_range, lat_range)
+        # plot_meshes(meshes, estimation.tde_strike_slip_rates, plt.gca())
+        fill_value = estimation.tde_strike_slip_rates
+        fill_value_range = [np.min(fill_value), np.max(fill_value)]
+        ax = plt.gca()
+        for i in range(len(meshes)):
+            x_coords = meshes[i].meshio_object.points[:, 0]
+            y_coords = meshes[i].meshio_object.points[:, 1]
+            vertex_array = np.asarray(meshes[i].verts)
+
+            xy = np.c_[x_coords, y_coords]
+            verts = xy[vertex_array]
+            pc = matplotlib.collections.PolyCollection(
+                verts, edgecolor="none", cmap="rainbow"
+            )
+            if i == 0:
+                tde_slip_component_start = 0
+                tde_slip_component_end = meshes[i].n_tde
+            else:
+                tde_slip_component_start = tde_slip_component_end
+                tde_slip_component_end = tde_slip_component_start + meshes[i].n_tde
+            pc.set_array(fill_value[tde_slip_component_start:tde_slip_component_end])
+            pc.set_clim(fill_value_range)
+            ax.add_collection(pc)
+            # ax.autoscale()
+            if i == len(meshes) - 1:
+                plt.colorbar(pc, label="slip (mm/yr)")
+
+            # Add mesh edge
+            x_edge = x_coords[meshes[i].ordered_edge_nodes[:, 0]]
+            y_edge = y_coords[meshes[i].ordered_edge_nodes[:, 0]]
+            x_edge = np.append(x_edge, x_coords[meshes[0].ordered_edge_nodes[0, 0]])
+            y_edge = np.append(y_edge, y_coords[meshes[0].ordered_edge_nodes[0, 0]])
+            plt.plot(x_edge, y_edge, color="black", linewidth=1)
+
+        subplot_index += 1
+        plt.subplot(
+            n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1
+        )
+        plt.title("TDE slip (dip-slip)")
+        common_plot_elements(segment, lon_range, lat_range)
+        # plot_meshes(meshes, estimation.tde_dip_slip_rates, plt.gca())
+        fill_value = estimation.tde_dip_slip_rates
+        fill_value_range = [np.min(fill_value), np.max(fill_value)]
+        ax = plt.gca()
+        for i in range(len(meshes)):
+            x_coords = meshes[i].meshio_object.points[:, 0]
+            y_coords = meshes[i].meshio_object.points[:, 1]
+            vertex_array = np.asarray(meshes[i].verts)
+
+            xy = np.c_[x_coords, y_coords]
+            verts = xy[vertex_array]
+            pc = matplotlib.collections.PolyCollection(
+                verts, edgecolor="none", cmap="rainbow"
+            )
+            if i == 0:
+                tde_slip_component_start = 0
+                tde_slip_component_end = meshes[i].n_tde
+            else:
+                tde_slip_component_start = tde_slip_component_end
+                tde_slip_component_end = tde_slip_component_start + meshes[i].n_tde
+            pc.set_array(fill_value[tde_slip_component_start:tde_slip_component_end])
+            pc.set_clim(fill_value_range)
+            ax.add_collection(pc)
+            # ax.autoscale()
+            if i == len(meshes) - 1:
+                plt.colorbar(pc, label="slip (mm/yr)")
+
+            # Add mesh edge
+            x_edge = x_coords[meshes[i].ordered_edge_nodes[:, 0]]
+            y_edge = y_coords[meshes[i].ordered_edge_nodes[:, 0]]
+            x_edge = np.append(x_edge, x_coords[meshes[0].ordered_edge_nodes[0, 0]])
+            y_edge = np.append(y_edge, y_coords[meshes[0].ordered_edge_nodes[0, 0]])
+            plt.plot(x_edge, y_edge, color="black", linewidth=1)
+
+        subplot_index += 1
+        plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index)
+        plt.title("Residual velocity histogram")
+        residual_velocity_vector = np.concatenate(
+            (estimation.east_vel_residual.values, estimation.north_vel_residual.values)
+        )
+        mean_average_error = np.mean(np.abs(residual_velocity_vector))
+        mean_squared_error = (
+            np.sum(residual_velocity_vector ** 2.0) / residual_velocity_vector.size
+        )
+
+        # Create histogram of residual velocities
+        plt.hist(residual_velocity_vector, 50)
+        plt.xlabel("residual velocity (mm/yr)")
+        plt.ylabel("N")
+        plt.title(
+            f"mae = {mean_average_error:.2f} (mm/yr), mse = {mean_squared_error:.2f} (mm/yr)^2"
+        )
+
+    plt.show()
+    plt.savefig("plot_estimation_summary.png", dpi=300)
+    plt.savefig("plot_estimation_summary.pdf")

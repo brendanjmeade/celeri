@@ -6,20 +6,6 @@ import IPython
 import celeri
 
 
-def build_and_solve_hmatrix(command, assembly, operators, data):
-    logger.info("build_and_solve_hmatrix")
-
-    # Calculate Okada partials for all segments
-    celeri.get_elastic_operators_okada(operators, data.segment, data.station, command)
-
-    # Get TDE smoothing operators
-    celeri.get_all_mesh_smoothing_matrices(data.meshes, operators)
-    index = 1
-    # index = celeri.get_index(assembly, data.station, data.block, data.meshes)
-    estimation = addict.Dict()
-    return estimation, operators, index
-
-
 @logger.catch
 def main(args: Dict):
     # Read in command file and start logging
@@ -33,7 +19,7 @@ def main(args: Dict):
 
     if command.solve_type == "hmatrix":
         logger.info("H-matrix build and solve")
-        estimation, operators, index = build_and_solve_hmatrix(
+        estimation, operators, index = celeri.build_and_solve_hmatrix(
             command, assembly, operators, data
         )
     elif command.solve_type == "dense":
