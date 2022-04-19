@@ -3577,6 +3577,7 @@ def get_processed_data_structures(command):
     # Quick input plot
     if bool(command.plot_input_summary):
         plot_input_summary(
+            command,
             data.segment,
             data.station,
             data.block,
@@ -3591,6 +3592,7 @@ def get_processed_data_structures(command):
 
 
 def plot_input_summary(
+    command: Dict,
     segment: pd.DataFrame,
     station: pd.DataFrame,
     block: pd.DataFrame,
@@ -3799,8 +3801,11 @@ def plot_input_summary(
 
     plt.suptitle("inputs")
     plt.show(block=False)
-    plt.savefig("plot_input_summary.png", dpi=300)
-    plt.savefig("plot_input_summary.pdf")
+    plt.savefig(command.output_path + "/" + "plot_input_summary.png", dpi=300)
+    plt.savefig(command.output_path + "/" + "plot_input_summary.pdf")
+    logger.success(
+        "Wrote figures" + command.output_path + "/" + "plot_input_summary.(pdf, png)"
+    )
 
 
 def build_and_solve_hmatrix(command, assembly, operators, data):
@@ -4268,3 +4273,9 @@ def plot_estimation_summary(
     plt.show(block=False)
     plt.savefig(command.output_path + "/" + "plot_estimation_summary.png", dpi=300)
     plt.savefig(command.output_path + "/" + "plot_estimation_summary.pdf")
+    logger.success(
+        "Wrote figures"
+        + command.output_path
+        + "/"
+        + "plot_estimation_summary.(pdf, png)"
+    )
