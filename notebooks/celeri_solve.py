@@ -24,7 +24,14 @@ def main(args: Dict):
         )
     elif command.solve_type == "dense":
         logger.info("Dense build and solve")
-        # estimation, operators, index = build_and_solve_dense()
+        # estimation, operators, index = celeri.build_and_solve_dense(
+        #     command, assembly, operators, data
+        # )
+
+    # Write output files
+    # Copy all input files to outpu folder
+    # Write command line arguments to output folder
+    # Write all major variables to .pkl file in output folder
 
     # Drop into ipython REPL
     if bool(command.repl):
