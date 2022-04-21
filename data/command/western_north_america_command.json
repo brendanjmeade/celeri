@@ -1,6 +1,7 @@
 {
     "base_runs_folder": "../runs/",
     "solve_type": "dense",
+    "pickle_save": 0,
     "plot_input_summary": 1,
     "plot_estimation_summary": 1,
     "repl": 1,

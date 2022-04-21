@@ -1,6 +1,7 @@
 {
     "printslipcons": 0,
     "repl": 1,
+    "pickle_save": 0,
     "plot_input_summary": 1,
     "plot_estimation_summary": 1,
     "solve_type": "hmatrix",

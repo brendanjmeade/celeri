@@ -11,6 +11,8 @@ import os
 import matplotlib.pyplot as plt
 import matplotlib.collections
 import warnings
+import shutil
+import pickle
 import numpy as np
 import pandas as pd
 import okada_wrapper
@@ -105,7 +107,6 @@ def get_logger(command):
     return logger
 
 
-# def read_data(command_file_name: str):
 def read_data(command: Dict):
     logger.info("Reading data files")
     # Read segment data
@@ -129,7 +130,7 @@ def read_data(command: Dict):
             for i in range(len(mesh_param)):
                 meshes.append(addict.Dict())
                 meshes[i].meshio_object = meshio.read(mesh_param[i]["mesh_filename"])
-                meshes[i].name = mesh_param[i]["mesh_filename"]
+                meshes[i].file_name = mesh_param[i]["mesh_filename"]
                 meshes[i].verts = meshes[i].meshio_object.get_cells_type("triangle")
 
                 # Expand mesh coordinates
@@ -3438,7 +3439,7 @@ def get_h_matrices_for_tde_meshes(
         )
 
         logger.info(
-            f"mesh {i} ({meshes[i].name}) H-matrix compression ratio: {H[i].report_compression_ratio():0.4f}"
+            f"mesh {i} ({meshes[i].file_name}) H-matrix compression ratio: {H[i].report_compression_ratio():0.4f}"
         )
 
         # Case smoothing matrices and tde slip rate constraints to sparse
@@ -4328,9 +4329,6 @@ def build_and_solve_dense(command, assembly, operators, data):
         command, estimation, data.station, data.segment, data.block, data.meshes
     )
 
-    logger.warning("Dense: before figure save command")
-    logger.warning(f"{command.plot_estimation_summary=}")
-
     if bool(command.plot_estimation_summary):
         plot_estimation_summary(
             command,
@@ -4344,3 +4342,53 @@ def build_and_solve_dense(command, assembly, operators, data):
         )
 
     return estimation, operators, index
+
+
+def write_output_supplemental(args, command, data, operators, estimation, assembly):
+    # Copy all input files to output folder
+    file_names = [
+        "segment_file_name",
+        "station_file_name",
+        "block_file_name",
+        "mesh_parameters_file_name",
+        "los_file_name",
+    ]
+    for file_name in file_names:
+        try:
+            shutil.copyfile(
+                command[file_name],
+                os.path.join(
+                    command.output_path,
+                    os.path.basename(os.path.normpath(command[file_name])),
+                ),
+            )
+        except:
+            logger.warning(f"No {file_name} to copy to output folder")
+
+    # Copy .msh files to output foler
+    if len(data.meshes) > 0:
+        for i in range(len(data.meshes)):
+            msh_file_name = data.meshes[i].file_name
+            try:
+                shutil.copyfile(
+                    msh_file_name,
+                    os.path.join(
+                        command.output_path,
+                        os.path.basename(os.path.normpath(msh_file_name)),
+                    ),
+                )
+            except:
+                logger.warning(f"No {msh_file_name} to copy to output folder")
+
+    # Write command line arguments to output folder
+    with open(
+        os.path.join(command.output_path, command.run_name + "_args.json"), "w"
+    ) as f:
+        json.dump(args, f, indent=2)
+
+    # Write all major variables to .pkl file in output folder
+    if bool(command.pickle_save):
+        with open(
+            os.path.join(command.output_path, command.run_name + ".pkl"), "wb"
+        ) as f:
+            pickle.dump([command, data, operators, estimation, assembly], f)

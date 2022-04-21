@@ -17,6 +17,7 @@ def main(args: Dict):
     # Read in and process data files
     data, assembly, operators = celeri.get_processed_data_structures(command)
 
+    # Select either H-matrix sparse interative or full dense solve
     if command.solve_type == "hmatrix":
         logger.info("H-matrix build and solve")
         estimation, operators, index = celeri.build_and_solve_hmatrix(
@@ -28,10 +29,10 @@ def main(args: Dict):
             command, assembly, operators, data
         )
 
-    # Write output files
-    # Copy all input files to outpu folder
-    # Write command line arguments to output folder
-    # Write all major variables to .pkl file in output folder
+    # Copy input files and adata structures to output folder
+    celeri.write_output_supplemental(
+        args, command, data, operators, estimation, assembly
+    )
 
     # Drop into ipython REPL
     if bool(command.repl):
@@ -44,10 +45,13 @@ if __name__ == "__main__":
     parser.add_argument("--segment_file_name", type=str, default=None, required=False)
     parser.add_argument("--station_file_name", type=str, default=None, required=False)
     parser.add_argument("--block_file_name", type=str, default=None, required=False)
-    parser.add_argument("--mesh_file_name", type=str, default=None, required=False)
+    parser.add_argument(
+        "--mesh_parameters_file_name", type=str, default=None, required=False
+    )
     parser.add_argument("--los_file_name", type=str, default=None, required=False)
     parser.add_argument("--solve_type", type=str, default=None, required=False)
     parser.add_argument("--repl", type=int, default=0, required=False)
+    parser.add_argument("--pickle_save", type=int, default=0, required=False)
     parser.add_argument("--plot_input_summary", type=int, default=0, required=False)
     parser.add_argument(
         "--plot_estimation_summary", type=int, default=0, required=False

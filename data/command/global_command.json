@@ -2,6 +2,7 @@
     "base_runs_folder": "../runs/",
     "solve_type": "hmatrix",
     "plot_input_summary": 1,
+    "pickle_save": 0,
     "plot_estimation_summary": 1,
     "atol": 1E-6,
     "btol": 1E-6,
