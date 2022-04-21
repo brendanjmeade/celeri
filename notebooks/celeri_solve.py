@@ -31,7 +31,7 @@ def main(args: Dict):
 
     # Copy input files and adata structures to output folder
     celeri.write_output_supplemental(
-        args, command, data, operators, estimation, assembly
+        args, command, index, data, operators, estimation, assembly
     )
 
     # Drop into ipython REPL

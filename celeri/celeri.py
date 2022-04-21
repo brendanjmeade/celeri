@@ -4344,7 +4344,9 @@ def build_and_solve_dense(command, assembly, operators, data):
     return estimation, operators, index
 
 
-def write_output_supplemental(args, command, data, operators, estimation, assembly):
+def write_output_supplemental(
+    args, command, index, data, operators, estimation, assembly
+):
     # Copy all input files to output folder
     file_names = [
         "segment_file_name",
@@ -4391,4 +4393,4 @@ def write_output_supplemental(args, command, data, operators, estimation, assemb
         with open(
             os.path.join(command.output_path, command.run_name + ".pkl"), "wb"
         ) as f:
-            pickle.dump([command, data, operators, estimation, assembly], f)
+            pickle.dump([command, index, data, operators, estimation, assembly], f)
