@@ -24,9 +24,9 @@ def main(args: Dict):
         )
     elif command.solve_type == "dense":
         logger.info("Dense build and solve")
-        # estimation, operators, index = celeri.build_and_solve_dense(
-        #     command, assembly, operators, data
-        # )
+        estimation, operators, index = celeri.build_and_solve_dense(
+            command, assembly, operators, data
+        )
 
     # Write output files
     # Copy all input files to outpu folder

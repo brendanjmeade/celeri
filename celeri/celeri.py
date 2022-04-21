@@ -4285,7 +4285,7 @@ def plot_estimation_summary(
 
 
 def build_and_solve_dense(command, assembly, operators, data):
-    logger.info("build_and_solve_hmatrix")
+    logger.info("build_and_solve_dense")
 
     # Get all elastic operators for segments and TDEs
     get_elastic_operators(operators, data.meshes, data.segment, data.station, command)
@@ -4327,6 +4327,9 @@ def build_and_solve_dense(command, assembly, operators, data):
     write_output(
         command, estimation, data.station, data.segment, data.block, data.meshes
     )
+
+    logger.warning("Dense: before figure save command")
+    logger.warning(f"{command.plot_estimation_summary=}")
 
     if bool(command.plot_estimation_summary):
         plot_estimation_summary(

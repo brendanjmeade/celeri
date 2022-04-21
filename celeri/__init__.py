@@ -54,6 +54,7 @@ from .celeri import (
     plot_input_summary,
     plot_estimation_summary,
     build_and_solve_hmatrix,
+    build_and_solve_dense,
 )
 
 
