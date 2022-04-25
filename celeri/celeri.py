@@ -13,6 +13,7 @@ import matplotlib.collections
 import warnings
 import shutil
 import pickle
+import timeit
 import numpy as np
 import pandas as pd
 import okada_wrapper
@@ -1357,8 +1358,14 @@ def get_elastic_operators(
         )
 
         for i in range(len(meshes)):
+            logger.info(
+                f"Start: TDE slip to velocity calculation for mesh: {meshes[i].file_name}"
+            )
             operators.tde_to_velocities[i] = get_tde_to_velocities_single_mesh(
                 meshes, station, command, mesh_idx=i
+            )
+            logger.success(
+                f"Finish: TDE slip to velocity calculation for mesh: {meshes[i].file_name}"
             )
 
         # Save elastic to velocity matrices
@@ -3107,8 +3114,14 @@ def get_elastic_operator_single_mesh(
         if not os.path.exists(command.reuse_elastic_file):
             logger.warning("Precomputed elastic operator file not found")
         logger.info("Computing elastic operators")
-        tde_to_velocities = celeri.get_tde_to_velocities_single_mesh(
+        logger.info(
+            f"Start: TDE slip to velocity calculation for mesh: {meshes[mesh_index].file_name}"
+        )
+        tde_to_velocities = get_tde_to_velocities_single_mesh(
             meshes, station, command, mesh_idx=mesh_index
+        )
+        logger.success(
+            f"Finish: TDE slip to velocity calculation for mesh: {meshes[mesh_index].file_name}"
         )
 
     # Save tde to velocity matrix for current mesh
@@ -3876,11 +3889,11 @@ def build_and_solve_hmatrix(command, assembly, operators, data):
     )
 
     # Hmatrix decompositon for each TDE mesh
-    logger.info("Starting H-matrix build")
+    logger.info("Start: H-matrix build")
     H, col_norms = get_h_matrices_for_tde_meshes(
         command, data.meshes, data.station, operators, index, col_norms
     )
-    logger.success("Finished H-matrix build")
+    logger.success("Finish: H-matrix build")
 
     # Package parameters that matvec and rmatvec need for the iterative solve
     h_matrix_solve_parameters = (
@@ -3903,11 +3916,20 @@ def build_and_solve_hmatrix(command, assembly, operators, data):
     )
 
     # Solve the linear system
-    logger.info("Starting interative solve of sparse system")
+    # logger.info("Starting interative solve of sparse system")
+    # sparse_hmatrix_solution = scipy.sparse.linalg.lsmr(
+    #     operator_hmatrix, data_vector, atol=command.atol, btol=command.btol
+    # )
+    # logger.success("Finished interative solve of sparse system")
+    logger.info("Start: H-matrix solve")
+    start_solve_time = timeit.default_timer()
     sparse_hmatrix_solution = scipy.sparse.linalg.lsmr(
         operator_hmatrix, data_vector, atol=command.atol, btol=command.btol
     )
-    logger.success("Finished interative solve of sparse system")
+    end_solve_time = timeit.default_timer()
+    logger.success(
+        f"Finish: H-matrix solve: {end_solve_time - start_solve_time:0.2f} seconds for solve"
+    )
 
     # Correct the solution for the col_norms preconditioning.
     sparse_hmatrix_state_vector = sparse_hmatrix_solution[0] / col_norms
@@ -4318,9 +4340,16 @@ def build_and_solve_dense(command, assembly, operators, data):
     get_tde_slip_rate_constraints(data.meshes, operators)
 
     # Direct solve dense linear system
+    logger.info("Start: Dense assemble and solve")
+    start_solve_time = timeit.default_timer()
     index, estimation = assemble_and_solve_dense(
         command, assembly, operators, data.station, data.block, data.meshes
     )
+    end_solve_time = timeit.default_timer()
+    logger.success(
+        f"Finish: Dense assemble and solve: {end_solve_time - start_solve_time:0.2f} seconds for solve"
+    )
+
     post_process_estimation(estimation, operators, data.station, index)
 
     write_output(
