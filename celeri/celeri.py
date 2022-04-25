@@ -1363,7 +1363,7 @@ def get_elastic_operators(
             )
 
         # Save elastic to velocity matrices
-        if command.save_elastic == "yes":
+        if bool(command.save_elastic):
             # Check to see if "data/operators" folder exists and if not create it
             if not os.path.exists(command.operators_folder):
                 os.mkdir(command.operators_folder)
@@ -1421,7 +1421,7 @@ def get_elastic_operators_okada(
         )
 
         # Save elastic to velocity matrices
-        if command.save_elastic == "yes":
+        if bool(command.save_elastic):
             # Check to see if "data/operators" folder exists and if not create it
             if not os.path.exists(command.operators_folder):
                 os.mkdir(command.operators_folder)
@@ -3113,7 +3113,7 @@ def get_elastic_operator_single_mesh(
         )
 
     # Save tde to velocity matrix for current mesh
-    if command.save_elastic == "yes":
+    if bool(command.save_elastic):
         # Check to see if "data/operators" folder exists and if not create it
         if not os.path.exists(command.operators_folder):
             os.mkdir(command.operators_folder)
