@@ -54,7 +54,6 @@
         0,
         0
     ],
-    "n_eigs": 50,
     "segment_file_name": "./data/segment/global_segment.csv",
     "station_file_name": "./data/station/global_station.csv",
     "block_file_name": "./data/block/global_block.csv",

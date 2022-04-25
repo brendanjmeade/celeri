@@ -59,7 +59,6 @@
         0,
         0
     ],
-    "n_eigs": 50,
     "segment_file_name": "../data/segment/japan_segment.csv",
     "station_file_name": "../data/station/japan_station.csv",
     "block_file_name": "../data/block/japan_block.csv",

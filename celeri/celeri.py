@@ -220,7 +220,6 @@ def read_data(command: Dict):
                 meshes[i].dip = 90 - np.rad2deg(elevation)
                 meshes[i].dip_flag = meshes[i].dip != 90
                 meshes[i].smoothing_weight = mesh_param[i]["smoothing_weight"]
-                meshes[i].n_eigenvalues = mesh_param[i]["n_eigenvalues"]
                 meshes[i].top_slip_rate_constraint = mesh_param[i][
                     "top_slip_rate_constraint"
                 ]

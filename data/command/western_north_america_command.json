@@ -58,7 +58,6 @@
         0,
         0
     ],
-    "n_eigs": 50,
     "segment_file_name": "../data/segment/western_north_america_segment.csv",
     "station_file_name": "../data/station/western_north_america_station.csv",
     "block_file_name": "../data/block/western_north_america_block.csv",
