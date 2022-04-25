@@ -45,7 +45,6 @@
     "inversion_param03": 0,
     "inversion_param04": 0,
     "inversion_param05": 0,
-    "dump_all": "no",
     "mogi_file_name": "",
     "solution_method": "backslash",
     "ridge_param": 0,
