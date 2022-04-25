@@ -1334,9 +1334,7 @@ def get_elastic_operators(
         station (pd.DataFrame): All station data
         command (Dict): All command data
     """
-    if (command.reuse_elastic == "yes") and (
-        os.path.exists(command.reuse_elastic_file)
-    ):
+    if bool(command.reuse_elastic) and os.path.exists(command.reuse_elastic_file):
         logger.info("Using precomputed elastic operators")
         hdf5_file = h5py.File(command.reuse_elastic_file, "r")
 
@@ -1403,9 +1401,7 @@ def get_elastic_operators_okada(
         station (pd.DataFrame): All station data
         command (Dict): All command data
     """
-    if (command.reuse_elastic == "yes") and (
-        os.path.exists(command.reuse_elastic_file)
-    ):
+    if bool(command.reuse_elastic) and os.path.exists(command.reuse_elastic_file):
         logger.info("Using precomputed elastic operators")
         hdf5_file = h5py.File(command.reuse_elastic_file, "r")
 
@@ -3100,9 +3096,7 @@ def get_elastic_operator_single_mesh(
         station (pd.DataFrame): All station data
         command (Dict): All command data
     """
-    if (command.reuse_elastic == "yes") and (
-        os.path.exists(command.reuse_elastic_file)
-    ):
+    if bool(command.reuse_elastic) and os.path.exists(command.reuse_elastic_file):
         logger.info("Using precomputed elastic operators")
         hdf5_file = h5py.File(command.reuse_elastic_file, "r")
         tde_to_velocities = np.array(
