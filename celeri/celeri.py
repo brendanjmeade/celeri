@@ -318,7 +318,7 @@ def wrap2360(lon):
 
 
 def process_station(station, command):
-    if command.unit_sigmas == "yes":  # Assign unit uncertainties, if requested
+    if bool(command.unit_sigmas):  # Assign unit uncertainties, if requested
         station.east_sig = np.ones_like(station.east_sig)
         station.north_sig = np.ones_like(station.north_sig)
         station.up_sig = np.ones_like(station.up_sig)

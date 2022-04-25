@@ -76,7 +76,7 @@
         0,
         0
     ],
-    "tri_full_coupling": "no",
+    "tri_full_coupling": 0,
     "tri_slip_constraint_type": 0,
     "tri_slip_sign": [
         0,
@@ -84,5 +84,5 @@
     ],
     "tri_smooth": 10000,
     "tvr_lambda": 1,
-    "unit_sigmas": "no"
+    "unit_sigmas": 0
 }
