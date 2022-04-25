@@ -56,6 +56,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--plot_estimation_summary", type=int, default=0, required=False
     )
-
+    parser.add_argument("--reuse_elastic", type=str, default=None, required=False)
     args = addict.Dict(vars(parser.parse_args()))
     main(args)

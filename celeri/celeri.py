@@ -20,7 +20,8 @@ import cutde.halfspace as cutde_halfspace
 import sys
 from ismember import ismember
 from loguru import logger
-from tqdm.notebook import tqdm
+from tqdm import tqdm
+
 from typing import List, Dict, Tuple
 from scipy.sparse import csr_matrix
 from scipy.spatial.distance import cdist
@@ -1218,7 +1219,9 @@ def get_segment_station_operator_okada(segment, station, command):
         okada_segment_operator = np.ones((3 * len(station), 3 * len(segment)))
         # Loop through each segment and calculate displacements for each slip component
         for i in tqdm(
-            range(len(segment)), desc="Calculating Okada partials for segments"
+            range(len(segment)),
+            desc="Calculating Okada partials for segments",
+            colour="cyan",
         ):
             (
                 u_east_strike_slip,
@@ -2014,9 +2017,10 @@ def get_tde_to_velocities(meshes, station, command):
 
             # Loop through each segment and calculate displacements for each slip component
             for i in tqdm(
-                range(n_tris), desc="Calculating cutde partials for triangles"
+                range(n_tris),
+                desc="Calculating cutde partials for triangles",
+                colour="green",
             ):
-                # for i in tqdm(range(100), desc="Calculating cutde partials for triangles"):
                 (
                     vel_east_strike_slip,
                     vel_north_strike_slip,
@@ -2106,9 +2110,10 @@ def get_tde_to_velocities_single_mesh(meshes, station, command, mesh_idx):
 
             # Loop through each segment and calculate displacements for each slip component
             for i in tqdm(
-                range(n_tris), desc="Calculating cutde partials for triangles"
+                range(n_tris),
+                desc=f"Calculating cutde partials for triangles",
+                colour="green",
             ):
-                # for i in tqdm(range(100), desc="Calculating cutde partials for triangles"):
                 (
                     vel_east_strike_slip,
                     vel_north_strike_slip,
