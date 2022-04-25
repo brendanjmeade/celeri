@@ -352,7 +352,7 @@ def locking_depth_manager(segment, command):
         segment.locking_depth_flag == 5
     ] = command.locking_depth_flag5
 
-    if command.locking_depth_override_flag == "yes":
+    if bool(command.locking_depth_override_flag):
         segment.locking_depth.values = command.locking_depth_override_value
     return segment
 

@@ -10,7 +10,7 @@
   "btol": 0.0001,
   "fault_resolution": 500,
   "global_elastic_cutoff_distance": 2000000,
-  "global_elastic_cutoff_distance_flag": "yes",
+  "global_elastic_cutoff_distance_flag": 0,
   "h_matrix_min_pts_per_box": 20,
   "h_matrix_min_separation": 1.25,
   "h_matrix_tol": 1e-06,
@@ -29,7 +29,7 @@
   "locking_depth_flag4": 10,
   "locking_depth_flag5": 5,
   "locking_depth_overide_value": 15,
-  "locking_depth_override_flag": "no",
+  "locking_depth_override_flag": 0,
   "lon_range": [
     130,
     150
