@@ -3382,6 +3382,9 @@ def post_process_estimation_hmatrix(
 
     if command.iterative_solver == "lsmr":
         # All uncertainties set to 1 because lsmr doesn't calculate variance
+        logger.warning(
+            "Slip rate uncertainty estimates set to 1 because LSMR doesn't provide variance estimates"
+        )
         estimation_hmatrix.strike_slip_rate_sigma = np.ones_like(
             estimation_hmatrix.strike_slip_rates
         )
@@ -3392,17 +3395,23 @@ def post_process_estimation_hmatrix(
             estimation_hmatrix.tensile_slip_rates
         )
     elif command.iterative_solver == "lsqr":
-        # Block motion uncertainties
-
-        estimation_hmatrix.strike_slip_rate_sigma = np.ones_like(
-            estimation_hmatrix.strike_slip_rates
+        # TODO: Block motion uncertainties
+        estimation_hmatrix.slip_rate_sigma = np.sqrt(
+            np.diag(
+                operators.rotation_to_slip_rate
+                @ np.diag(estimation_hmatrix.state_vector_sigma[0 : 3 * index.n_blocks])
+                @ operators.rotation_to_slip_rate.T
+            )
         )
-        estimation_hmatrix.dip_slip_rate_sigma = np.ones_like(
-            estimation_hmatrix.dip_slip_rates
-        )
-        estimation_hmatrix.tensile_slip_rate_sigma = np.ones_like(
-            estimation_hmatrix.tensile_slip_rates
-        )
+        estimation_hmatrix.strike_slip_rate_sigma = estimation_hmatrix.slip_rate_sigma[
+            0::3
+        ]
+        estimation_hmatrix.dip_slip_rate_sigma = estimation_hmatrix.slip_rate_sigma[
+            1::3
+        ]
+        estimation_hmatrix.tensile_slip_rate_sigma = estimation_hmatrix.slip_rate_sigma[
+            2::3
+        ]
 
     # Calculate rotation only velocities
     estimation_hmatrix.vel_rotation = (
@@ -3952,13 +3961,20 @@ def build_and_solve_hmatrix(command, assembly, operators, data):
     )
 
     # Correct the solution for the col_norms preconditioning.
-    sparse_hmatrix_state_vector = sparse_hmatrix_solution[0] / col_norms
-
     estimation = addict.Dict()
+
+    sparse_hmatrix_state_vector = sparse_hmatrix_solution[0] / col_norms
+    if command.iterative_solver == "lsqr":
+        sparse_hmatrix_state_vector_sigma = (
+            np.sqrt(sparse_hmatrix_solution[9]) / col_norms
+        )
+        estimation.state_vector_sigma = sparse_hmatrix_state_vector_sigma
+
     estimation.data_vector = data_vector
     estimation.weighting_vector = weighting_vector
     estimation.operator = operator_hmatrix
     estimation.state_vector = sparse_hmatrix_state_vector
+
     post_process_estimation_hmatrix(
         command,
         data.block,
