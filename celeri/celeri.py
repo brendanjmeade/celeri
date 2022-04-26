@@ -3325,6 +3325,8 @@ def rmatvec(u, h_matrix_solve_parameters):
 
 
 def post_process_estimation_hmatrix(
+    command: Dict,
+    block: pd.DataFrame,
     estimation_hmatrix: Dict,
     operators: Dict,
     meshes: List,
@@ -3378,15 +3380,29 @@ def post_process_estimation_hmatrix(
     estimation_hmatrix.dip_slip_rates = estimation_hmatrix.slip_rates[1::3]
     estimation_hmatrix.tensile_slip_rates = estimation_hmatrix.slip_rates[2::3]
 
-    estimation_hmatrix.strike_slip_rate_sigma = np.ones_like(
-        estimation_hmatrix.strike_slip_rates
-    )
-    estimation_hmatrix.dip_slip_rate_sigma = np.ones_like(
-        estimation_hmatrix.dip_slip_rates
-    )
-    estimation_hmatrix.tensile_slip_rate_sigma = np.ones_like(
-        estimation_hmatrix.tensile_slip_rates
-    )
+    if command.iterative_solver == "lsmr":
+        # All uncertainties set to 1 because lsmr doesn't calculate variance
+        estimation_hmatrix.strike_slip_rate_sigma = np.ones_like(
+            estimation_hmatrix.strike_slip_rates
+        )
+        estimation_hmatrix.dip_slip_rate_sigma = np.ones_like(
+            estimation_hmatrix.dip_slip_rates
+        )
+        estimation_hmatrix.tensile_slip_rate_sigma = np.ones_like(
+            estimation_hmatrix.tensile_slip_rates
+        )
+    elif command.iterative_solver == "lsqr":
+        # Block motion uncertainties
+
+        estimation_hmatrix.strike_slip_rate_sigma = np.ones_like(
+            estimation_hmatrix.strike_slip_rates
+        )
+        estimation_hmatrix.dip_slip_rate_sigma = np.ones_like(
+            estimation_hmatrix.dip_slip_rates
+        )
+        estimation_hmatrix.tensile_slip_rate_sigma = np.ones_like(
+            estimation_hmatrix.tensile_slip_rates
+        )
 
     # Calculate rotation only velocities
     estimation_hmatrix.vel_rotation = (
@@ -3916,16 +3932,20 @@ def build_and_solve_hmatrix(command, assembly, operators, data):
     )
 
     # Solve the linear system
-    # logger.info("Starting interative solve of sparse system")
-    # sparse_hmatrix_solution = scipy.sparse.linalg.lsmr(
-    #     operator_hmatrix, data_vector, atol=command.atol, btol=command.btol
-    # )
-    # logger.success("Finished interative solve of sparse system")
     logger.info("Start: H-matrix solve")
     start_solve_time = timeit.default_timer()
-    sparse_hmatrix_solution = scipy.sparse.linalg.lsmr(
-        operator_hmatrix, data_vector, atol=command.atol, btol=command.btol
-    )
+
+    if command.iterative_solver == "lsmr":
+        logger.info("Using LSMR solver")
+        sparse_hmatrix_solution = scipy.sparse.linalg.lsmr(
+            operator_hmatrix, data_vector, atol=command.atol, btol=command.btol
+        )
+    elif command.iterative_solver == "lsqr":
+        logger.info("Using LSQR solver")
+        sparse_hmatrix_solution = scipy.sparse.linalg.lsqr(
+            operator_hmatrix, data_vector, atol=command.atol, btol=command.btol
+        )
+
     end_solve_time = timeit.default_timer()
     logger.success(
         f"Finish: H-matrix solve: {end_solve_time - start_solve_time:0.2f} seconds for solve"
@@ -3940,6 +3960,8 @@ def build_and_solve_hmatrix(command, assembly, operators, data):
     estimation.operator = operator_hmatrix
     estimation.state_vector = sparse_hmatrix_state_vector
     post_process_estimation_hmatrix(
+        command,
+        data.block,
         estimation,
         operators,
         data.meshes,

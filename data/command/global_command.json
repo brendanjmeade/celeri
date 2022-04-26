@@ -17,6 +17,7 @@
     "inversion_param04": 0,
     "inversion_param05": 0,
     "inversion_type": "standard",
+    "iterative_solver": "lsmr",
     "locking_depth_flag2": 25,
     "locking_depth_flag3": 15,
     "locking_depth_flag4": 10,

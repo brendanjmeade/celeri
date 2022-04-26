@@ -135,6 +135,13 @@ if __name__ == "__main__":
         required=False,
         help="Secondary tolerance for H-matrix solve",
     )
+    parser.add_argument(
+        "--iterative_solver",
+        type=str,
+        default=None,
+        required=False,
+        help="Interative solver type (lsqr | lsmr)",
+    )
 
     args = addict.Dict(vars(parser.parse_args()))
     main(args)

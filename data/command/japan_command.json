@@ -20,6 +20,7 @@
   "inversion_param04": 0,
   "inversion_param05": 0,
   "inversion_type": "standard",
+  "iterative_solver": "lsmr",
   "lat_range": [
     30,
     45
