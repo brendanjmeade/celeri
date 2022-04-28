@@ -57,6 +57,7 @@ from .celeri import (
     build_and_solve_dense,
     write_output_supplemental,
     parse_args,
+    get_okada_displacements,
 )
 
 
