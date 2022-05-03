@@ -63,7 +63,7 @@
     "slip_file_names": "",
     "smooth_type": 1,
     "solution_method": "backslash",
-    "solve_type": "dense",
+    "solve_type": "dense_no_meshes",
     "station_data_weight": 1,
     "station_data_weight_max": 1,
     "station_data_weight_min": 1,
