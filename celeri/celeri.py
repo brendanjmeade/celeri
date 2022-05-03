@@ -2674,8 +2674,9 @@ def write_output(
     station["model_north_vel_rotation"] = estimation.north_vel_rotation
     station["model_east_elastic_segment"] = estimation.east_vel_elastic_segment
     station["model_north_elastic_segment"] = estimation.north_vel_elastic_segment
-    station["model_east_vel_tde"] = estimation.east_vel_tde
-    station["model_north_vel_tde"] = estimation.north_vel_tde
+    if command.solve_type != "dense_no_meshes":
+        station["model_east_vel_tde"] = estimation.east_vel_tde
+        station["model_north_vel_tde"] = estimation.north_vel_tde
     station["model_east_vel_block_strain_rate"] = estimation.east_vel_block_strain_rate
     station[
         "model_north_vel_block_strain_rate"
@@ -2696,30 +2697,31 @@ def write_output(
     # TODO: Add rotation rates and block strain rate block dataframe and write .csv
 
     # Construct mesh geometry dataframe
-    mesh_outputs = pd.DataFrame()
-    for i in range(len(meshes)):
-        this_mesh_output = {
-            "lon1": meshes[i].lon1,
-            "lat1": meshes[i].lat1,
-            "dep1": meshes[i].dep1,
-            "lon2": meshes[i].lon2,
-            "lat2": meshes[i].lat2,
-            "dep2": meshes[i].dep2,
-            "lon3": meshes[i].lon3,
-            "lat3": meshes[i].lat3,
-            "dep3": meshes[i].dep3,
-        }
-        this_mesh_output = pd.DataFrame(this_mesh_output)
-        # mesh_outputs = mesh_outputs.append(this_mesh_output)
-        mesh_outputs = pd.concat([mesh_outputs, this_mesh_output])
+    if command.solve_type != "dense_no_meshes":
+        mesh_outputs = pd.DataFrame()
+        for i in range(len(meshes)):
+            this_mesh_output = {
+                "lon1": meshes[i].lon1,
+                "lat1": meshes[i].lat1,
+                "dep1": meshes[i].dep1,
+                "lon2": meshes[i].lon2,
+                "lat2": meshes[i].lat2,
+                "dep2": meshes[i].dep2,
+                "lon3": meshes[i].lon3,
+                "lat3": meshes[i].lat3,
+                "dep3": meshes[i].dep3,
+            }
+            this_mesh_output = pd.DataFrame(this_mesh_output)
+            # mesh_outputs = mesh_outputs.append(this_mesh_output)
+            mesh_outputs = pd.concat([mesh_outputs, this_mesh_output])
 
-    # Append slip rates
-    mesh_outputs["strike_slip_rate"] = estimation.tde_strike_slip_rates
-    mesh_outputs["dip_slip_rate"] = estimation.tde_dip_slip_rates
+        # Append slip rates
+        mesh_outputs["strike_slip_rate"] = estimation.tde_strike_slip_rates
+        mesh_outputs["dip_slip_rate"] = estimation.tde_dip_slip_rates
 
-    # Write to CSV
-    mesh_output_file_name = command.output_path + "/" + "model_meshes.csv"
-    mesh_outputs.to_csv(mesh_output_file_name, index=False)
+        # Write to CSV
+        mesh_output_file_name = command.output_path + "/" + "model_meshes.csv"
+        mesh_outputs.to_csv(mesh_output_file_name, index=False)
 
 
 def get_mesh_edge_elements(meshes: List):
@@ -2822,6 +2824,10 @@ def get_index(assembly, station, block, meshes):
     # index.n_stations = len(station)
     index.vertical_velocities = np.arange(2, 3 * index.n_stations, 3)
     index.n_blocks = len(block)
+
+    logger.warning(assembly.data.keys())
+    logger.warning(assembly.data.n_block_constraints)
+
     index.n_block_constraints = assembly.data.n_block_constraints
     index.station_row_keep_index = get_keep_index_12(3 * len(station))
     index.start_station_row = 0
@@ -2829,6 +2835,11 @@ def get_index(assembly, station, block, meshes):
     index.start_block_col = 0
     index.end_block_col = 3 * len(block)
     index.start_block_constraints_row = index.end_station_row
+
+    logger.warning(index.keys())
+    logger.warning(type(index.start_block_constraints_row))
+    logger.warning(type(index.n_block_constraints))
+
     index.end_block_constraints_row = (
         index.start_block_constraints_row + 3 * index.n_block_constraints
     )
@@ -4132,22 +4143,23 @@ def plot_estimation_summary(
         color="magenta",
     )
 
-    if len(meshes) > 0:
-        subplot_index += 1
-        plt.subplot(
-            n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1
-        )
-        plt.title("elastic tde velocities")
-        common_plot_elements(segment, lon_range, lat_range)
-        plt.quiver(
-            station.lon,
-            station.lat,
-            estimation.east_vel_tde,
-            estimation.north_vel_tde,
-            scale=quiver_scale,
-            scale_units="inches",
-            color="black",
-        )
+    if command.solve_type != "dense_no_meshes":
+        if len(meshes) > 0:
+            subplot_index += 1
+            plt.subplot(
+                n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1
+            )
+            plt.title("elastic tde velocities")
+            common_plot_elements(segment, lon_range, lat_range)
+            plt.quiver(
+                station.lon,
+                station.lat,
+                estimation.east_vel_tde,
+                estimation.north_vel_tde,
+                scale=quiver_scale,
+                scale_units="inches",
+                color="black",
+            )
 
     subplot_index += 1
     plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
@@ -4233,105 +4245,110 @@ def plot_estimation_summary(
                 fontsize=7,
             )
 
-    if len(meshes) > 0:
-        subplot_index += 1
-        plt.subplot(
-            n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1
-        )
-        plt.title("TDE slip (strike-slip)")
-        common_plot_elements(segment, lon_range, lat_range)
-        # plot_meshes(meshes, estimation.tde_strike_slip_rates, plt.gca())
-        fill_value = estimation.tde_strike_slip_rates
-        fill_value_range = [np.min(fill_value), np.max(fill_value)]
-        ax = plt.gca()
-        for i in range(len(meshes)):
-            x_coords = meshes[i].meshio_object.points[:, 0]
-            y_coords = meshes[i].meshio_object.points[:, 1]
-            vertex_array = np.asarray(meshes[i].verts)
-
-            xy = np.c_[x_coords, y_coords]
-            verts = xy[vertex_array]
-            pc = matplotlib.collections.PolyCollection(
-                verts, edgecolor="none", cmap="rainbow"
+    if command.solve_type != "dense_no_meshes":
+        if len(meshes) > 0:
+            subplot_index += 1
+            plt.subplot(
+                n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1
             )
-            if i == 0:
-                tde_slip_component_start = 0
-                tde_slip_component_end = meshes[i].n_tde
-            else:
-                tde_slip_component_start = tde_slip_component_end
-                tde_slip_component_end = tde_slip_component_start + meshes[i].n_tde
-            pc.set_array(fill_value[tde_slip_component_start:tde_slip_component_end])
-            pc.set_clim(fill_value_range)
-            ax.add_collection(pc)
-            # ax.autoscale()
-            if i == len(meshes) - 1:
-                plt.colorbar(pc, label="slip (mm/yr)")
+            plt.title("TDE slip (strike-slip)")
+            common_plot_elements(segment, lon_range, lat_range)
+            # plot_meshes(meshes, estimation.tde_strike_slip_rates, plt.gca())
+            fill_value = estimation.tde_strike_slip_rates
+            fill_value_range = [np.min(fill_value), np.max(fill_value)]
+            ax = plt.gca()
+            for i in range(len(meshes)):
+                x_coords = meshes[i].meshio_object.points[:, 0]
+                y_coords = meshes[i].meshio_object.points[:, 1]
+                vertex_array = np.asarray(meshes[i].verts)
 
-            # Add mesh edge
-            x_edge = x_coords[meshes[i].ordered_edge_nodes[:, 0]]
-            y_edge = y_coords[meshes[i].ordered_edge_nodes[:, 0]]
-            x_edge = np.append(x_edge, x_coords[meshes[0].ordered_edge_nodes[0, 0]])
-            y_edge = np.append(y_edge, y_coords[meshes[0].ordered_edge_nodes[0, 0]])
-            plt.plot(x_edge, y_edge, color="black", linewidth=1)
+                xy = np.c_[x_coords, y_coords]
+                verts = xy[vertex_array]
+                pc = matplotlib.collections.PolyCollection(
+                    verts, edgecolor="none", cmap="rainbow"
+                )
+                if i == 0:
+                    tde_slip_component_start = 0
+                    tde_slip_component_end = meshes[i].n_tde
+                else:
+                    tde_slip_component_start = tde_slip_component_end
+                    tde_slip_component_end = tde_slip_component_start + meshes[i].n_tde
+                pc.set_array(
+                    fill_value[tde_slip_component_start:tde_slip_component_end]
+                )
+                pc.set_clim(fill_value_range)
+                ax.add_collection(pc)
+                # ax.autoscale()
+                if i == len(meshes) - 1:
+                    plt.colorbar(pc, label="slip (mm/yr)")
 
-        subplot_index += 1
-        plt.subplot(
-            n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1
-        )
-        plt.title("TDE slip (dip-slip)")
-        common_plot_elements(segment, lon_range, lat_range)
-        # plot_meshes(meshes, estimation.tde_dip_slip_rates, plt.gca())
-        fill_value = estimation.tde_dip_slip_rates
-        fill_value_range = [np.min(fill_value), np.max(fill_value)]
-        ax = plt.gca()
-        for i in range(len(meshes)):
-            x_coords = meshes[i].meshio_object.points[:, 0]
-            y_coords = meshes[i].meshio_object.points[:, 1]
-            vertex_array = np.asarray(meshes[i].verts)
+                # Add mesh edge
+                x_edge = x_coords[meshes[i].ordered_edge_nodes[:, 0]]
+                y_edge = y_coords[meshes[i].ordered_edge_nodes[:, 0]]
+                x_edge = np.append(x_edge, x_coords[meshes[0].ordered_edge_nodes[0, 0]])
+                y_edge = np.append(y_edge, y_coords[meshes[0].ordered_edge_nodes[0, 0]])
+                plt.plot(x_edge, y_edge, color="black", linewidth=1)
 
-            xy = np.c_[x_coords, y_coords]
-            verts = xy[vertex_array]
-            pc = matplotlib.collections.PolyCollection(
-                verts, edgecolor="none", cmap="rainbow"
+            subplot_index += 1
+            plt.subplot(
+                n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1
             )
-            if i == 0:
-                tde_slip_component_start = 0
-                tde_slip_component_end = meshes[i].n_tde
-            else:
-                tde_slip_component_start = tde_slip_component_end
-                tde_slip_component_end = tde_slip_component_start + meshes[i].n_tde
-            pc.set_array(fill_value[tde_slip_component_start:tde_slip_component_end])
-            pc.set_clim(fill_value_range)
-            ax.add_collection(pc)
-            # ax.autoscale()
-            if i == len(meshes) - 1:
-                plt.colorbar(pc, label="slip (mm/yr)")
+            plt.title("TDE slip (dip-slip)")
+            common_plot_elements(segment, lon_range, lat_range)
+            # plot_meshes(meshes, estimation.tde_dip_slip_rates, plt.gca())
+            fill_value = estimation.tde_dip_slip_rates
+            fill_value_range = [np.min(fill_value), np.max(fill_value)]
+            ax = plt.gca()
+            for i in range(len(meshes)):
+                x_coords = meshes[i].meshio_object.points[:, 0]
+                y_coords = meshes[i].meshio_object.points[:, 1]
+                vertex_array = np.asarray(meshes[i].verts)
 
-            # Add mesh edge
-            x_edge = x_coords[meshes[i].ordered_edge_nodes[:, 0]]
-            y_edge = y_coords[meshes[i].ordered_edge_nodes[:, 0]]
-            x_edge = np.append(x_edge, x_coords[meshes[0].ordered_edge_nodes[0, 0]])
-            y_edge = np.append(y_edge, y_coords[meshes[0].ordered_edge_nodes[0, 0]])
-            plt.plot(x_edge, y_edge, color="black", linewidth=1)
+                xy = np.c_[x_coords, y_coords]
+                verts = xy[vertex_array]
+                pc = matplotlib.collections.PolyCollection(
+                    verts, edgecolor="none", cmap="rainbow"
+                )
+                if i == 0:
+                    tde_slip_component_start = 0
+                    tde_slip_component_end = meshes[i].n_tde
+                else:
+                    tde_slip_component_start = tde_slip_component_end
+                    tde_slip_component_end = tde_slip_component_start + meshes[i].n_tde
+                pc.set_array(
+                    fill_value[tde_slip_component_start:tde_slip_component_end]
+                )
+                pc.set_clim(fill_value_range)
+                ax.add_collection(pc)
+                # ax.autoscale()
+                if i == len(meshes) - 1:
+                    plt.colorbar(pc, label="slip (mm/yr)")
 
-        subplot_index += 1
-        plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index)
-        plt.title("Residual velocity histogram")
-        residual_velocity_vector = np.concatenate(
-            (estimation.east_vel_residual.values, estimation.north_vel_residual.values)
-        )
-        mean_average_error = np.mean(np.abs(residual_velocity_vector))
-        mean_squared_error = (
-            np.sum(residual_velocity_vector ** 2.0) / residual_velocity_vector.size
-        )
+                # Add mesh edge
+                x_edge = x_coords[meshes[i].ordered_edge_nodes[:, 0]]
+                y_edge = y_coords[meshes[i].ordered_edge_nodes[:, 0]]
+                x_edge = np.append(x_edge, x_coords[meshes[0].ordered_edge_nodes[0, 0]])
+                y_edge = np.append(y_edge, y_coords[meshes[0].ordered_edge_nodes[0, 0]])
+                plt.plot(x_edge, y_edge, color="black", linewidth=1)
 
-        # Create histogram of residual velocities
-        plt.hist(residual_velocity_vector, 50)
-        plt.xlabel("residual velocity (mm/yr)")
-        plt.ylabel("N")
-        plt.title(
-            f"mae = {mean_average_error:.2f} (mm/yr), mse = {mean_squared_error:.2f} (mm/yr)^2"
-        )
+    subplot_index += 1
+    plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index)
+    plt.title("Residual velocity histogram")
+    residual_velocity_vector = np.concatenate(
+        (estimation.east_vel_residual.values, estimation.north_vel_residual.values)
+    )
+    mean_average_error = np.mean(np.abs(residual_velocity_vector))
+    mean_squared_error = (
+        np.sum(residual_velocity_vector ** 2.0) / residual_velocity_vector.size
+    )
+
+    # Create histogram of residual velocities
+    plt.hist(residual_velocity_vector, 50)
+    plt.xlabel("residual velocity (mm/yr)")
+    plt.ylabel("N")
+    plt.title(
+        f"mae = {mean_average_error:.2f} (mm/yr), mse = {mean_squared_error:.2f} (mm/yr)^2"
+    )
 
     plt.show(block=False)
     plt.savefig(command.output_path + "/" + "plot_estimation_summary.png", dpi=300)
@@ -4568,3 +4585,244 @@ def parse_args():
 
     args = addict.Dict(vars(parser.parse_args()))
     return args
+
+
+def build_and_solve_dense_no_meshes(command, assembly, operators, data):
+    logger.info("build_and_solve_dense_no_meshes")
+
+    # Get all elastic operators for segments and TDEs
+    get_elastic_operators(operators, data.meshes, data.segment, data.station, command)
+
+    operators.rotation_to_velocities = get_rotation_to_velocities_partials(data.station)
+    operators.global_float_block_rotation = get_global_float_block_rotation_partials(
+        data.station
+    )
+    assembly, operators.block_motion_constraints = get_block_motion_constraints(
+        assembly, data.block, command
+    )
+    assembly, operators.slip_rate_constraints = get_slip_rate_constraints(
+        assembly, data.segment, data.block, command
+    )
+    operators.rotation_to_slip_rate = get_rotation_to_slip_rate_partials(
+        data.segment, data.block
+    )
+    (
+        operators.block_strain_rate_to_velocities,
+        strain_rate_block_index,
+    ) = get_block_strain_rate_to_velocities_partials(
+        data.block, data.station, data.segment
+    )
+    operators.mogi_to_velocities = get_mogi_to_velocities_partials(
+        data.mogi, data.station, command
+    )
+
+    # Blocks only operator
+    index = get_index_no_meshes(assembly, data.station, data.block)
+
+    # TODO: Clean up!
+    logger.error(operators.keys())
+    # import IPython
+
+    # IPython.embed(banner1="")
+
+    operator_block_only = get_full_dense_operator_block_only(operators, index)
+    # weighting_vector = get_weighting_vector(command, data.station, data.meshes, index)
+    weighting_vector = get_weighting_vector_no_meshes(command, data.station, index)
+    data_vector = get_data_vector(assembly, index)
+    weighting_vector_block_only = weighting_vector[0 : operator_block_only.shape[0]]
+
+    # Solve the overdetermined linear system using only a weighting vector rather than matrix
+    estimation = addict.Dict()
+    estimation.operator = operator_block_only
+    estimation.weighting_vector = weighting_vector_block_only
+
+    estimation.state_covariance_matrix = np.linalg.inv(
+        operator_block_only.T * weighting_vector_block_only @ operator_block_only
+    )
+    estimation.state_vector = (
+        estimation.state_covariance_matrix
+        @ operator_block_only.T
+        * weighting_vector_block_only
+        @ data_vector[0 : weighting_vector_block_only.size]
+    )
+
+    # Post-processing
+
+    estimation.predictions = estimation.operator @ estimation.state_vector
+    estimation.vel = estimation.predictions[0 : 2 * index.n_stations]
+    estimation.east_vel = estimation.vel[0::2]
+    estimation.north_vel = estimation.vel[1::2]
+
+    # Estimate slip rate uncertainties
+    estimation.slip_rate_sigma = np.sqrt(
+        np.diag(
+            operators.rotation_to_slip_rate
+            @ estimation.state_covariance_matrix[
+                0 : 3 * index.n_blocks, 0 : 3 * index.n_blocks
+            ]
+            @ operators.rotation_to_slip_rate.T
+        )
+    )  # I don't think this is correct because for the case when there is a rotation vector a priori
+    estimation.strike_slip_rate_sigma = estimation.slip_rate_sigma[0::3]
+    estimation.dip_slip_rate_sigma = estimation.slip_rate_sigma[1::3]
+    estimation.tensile_slip_rate_sigma = estimation.slip_rate_sigma[2::3]
+
+    # Calculate mean squared residual velocity
+    estimation.east_vel_residual = estimation.east_vel - data.station.east_vel
+    estimation.north_vel_residual = estimation.north_vel - data.station.north_vel
+
+    # Extract segment slip rates from state vector
+    estimation.slip_rates = (
+        operators.rotation_to_slip_rate
+        @ estimation.state_vector[0 : 3 * index.n_blocks]
+    )
+    estimation.strike_slip_rates = estimation.slip_rates[0::3]
+    estimation.dip_slip_rates = estimation.slip_rates[1::3]
+    estimation.tensile_slip_rates = estimation.slip_rates[2::3]
+
+    # Calculate rotation only velocities
+    estimation.vel_rotation = (
+        operators.rotation_to_velocities[index.station_row_keep_index, :]
+        @ estimation.state_vector[0 : 3 * index.n_blocks]
+    )
+    estimation.east_vel_rotation = estimation.vel_rotation[0::2]
+    estimation.north_vel_rotation = estimation.vel_rotation[1::2]
+
+    # Calculate fully locked segment velocities
+    estimation.vel_elastic_segment = (
+        operators.rotation_to_slip_rate_to_okada_to_velocities[
+            index.station_row_keep_index, :
+        ]
+        @ estimation.state_vector[0 : 3 * index.n_blocks]
+    )
+    estimation.east_vel_elastic_segment = estimation.vel_elastic_segment[0::2]
+    estimation.north_vel_elastic_segment = estimation.vel_elastic_segment[1::2]
+
+    # TODO: Calculate block strain rate velocities
+    estimation.east_vel_block_strain_rate = np.zeros(len(data.station))
+    estimation.north_vel_block_strain_rate = np.zeros(len(data.station))
+
+    # # Get all elastic operators for segments and TDEs
+    # get_elastic_operators(operators, data.meshes, data.segment, data.station, command)
+
+    # # Get TDE smoothing operators
+    # get_all_mesh_smoothing_matrices(data.meshes, operators)
+
+    # # Get non-elastic operators
+    # operators.rotation_to_velocities = get_rotation_to_velocities_partials(data.station)
+    # operators.global_float_block_rotation = get_global_float_block_rotation_partials(
+    #     data.station
+    # )
+    # assembly, operators.block_motion_constraints = get_block_motion_constraints(
+    #     assembly, data.block, command
+    # )
+    # assembly, operators.slip_rate_constraints = get_slip_rate_constraints(
+    #     assembly, data.segment, data.block, command
+    # )
+    # operators.rotation_to_slip_rate = get_rotation_to_slip_rate_partials(
+    #     data.segment, data.block
+    # )
+    # (
+    #     operators.block_strain_rate_to_velocities,
+    #     strain_rate_block_index,
+    # ) = get_block_strain_rate_to_velocities_partials(
+    #     data.block, data.station, data.segment
+    # )
+    # operators.mogi_to_velocities = get_mogi_to_velocities_partials(
+    #     data.mogi, data.station, command
+    # )
+    # get_tde_slip_rate_constraints(data.meshes, operators)
+
+    # # Direct solve dense linear system
+    # logger.info("Start: Dense assemble and solve")
+    # start_solve_time = timeit.default_timer()
+    # index, estimation = assemble_and_solve_dense(
+    #     command, assembly, operators, data.station, data.block, data.meshes
+    # )
+    # end_solve_time = timeit.default_timer()
+    # logger.success(
+    #     f"Finish: Dense assemble and solve: {end_solve_time - start_solve_time:0.2f} seconds for solve"
+    # )
+
+    # post_process_estimation(estimation, operators, data.station, index)
+
+    write_output(
+        command, estimation, data.station, data.segment, data.block, data.meshes
+    )
+
+    if bool(command.plot_estimation_summary):
+        plot_estimation_summary(
+            command,
+            data.segment,
+            data.station,
+            data.meshes,
+            estimation,
+            lon_range=command.lon_range,
+            lat_range=command.lat_range,
+            quiver_scale=command.quiver_scale,
+        )
+
+    return estimation, operators, index
+
+
+def get_index_no_meshes(assembly, station, block):
+    # Create dictionary to store indices and sizes for operator building
+    index = addict.Dict()
+    index.n_stations = assembly.data.n_stations
+    # index.n_stations = len(station)
+    index.vertical_velocities = np.arange(2, 3 * index.n_stations, 3)
+    index.n_blocks = len(block)
+
+    logger.warning(assembly.data.keys())
+    logger.warning(assembly.data.n_block_constraints)
+
+    index.n_block_constraints = assembly.data.n_block_constraints
+    index.station_row_keep_index = get_keep_index_12(3 * len(station))
+    index.start_station_row = 0
+    index.end_station_row = 2 * len(station)
+    index.start_block_col = 0
+    index.end_block_col = 3 * len(block)
+    index.start_block_constraints_row = index.end_station_row
+
+    logger.warning(index.keys())
+    logger.warning(type(index.start_block_constraints_row))
+    logger.warning(type(index.n_block_constraints))
+
+    index.end_block_constraints_row = (
+        index.start_block_constraints_row + 3 * index.n_block_constraints
+    )
+    index.n_slip_rate_constraints = assembly.data.slip_rate_constraints.size
+    index.start_slip_rate_constraints_row = index.end_block_constraints_row
+    index.end_slip_rate_constraints_row = (
+        index.start_slip_rate_constraints_row + index.n_slip_rate_constraints
+    )
+
+    index.n_tde_total = 0
+    index.n_tde_constraints_total = 0
+    index.n_operator_rows = (
+        2 * index.n_stations
+        + 3 * index.n_block_constraints
+        + index.n_slip_rate_constraints
+    )
+    index.n_operator_cols = 3 * index.n_blocks
+    return index
+
+
+def get_weighting_vector_no_meshes(command, station, index):
+    # Initialize and build weighting matrix
+    weighting_vector = np.ones(
+        2 * index.n_stations
+        + 3 * index.n_block_constraints
+        + index.n_slip_rate_constraints
+    )
+    weighting_vector[index.start_station_row : index.end_station_row] = interleave2(
+        1 / (station.east_sig ** 2), 1 / (station.north_sig ** 2)
+    )
+    weighting_vector[
+        index.start_block_constraints_row : index.end_block_constraints_row
+    ] = 1.0
+    weighting_vector[
+        index.start_slip_rate_constraints_row : index.end_slip_rate_constraints_row
+    ] = command.slip_constraint_weight * np.ones(index.n_slip_rate_constraints)
+
+    return weighting_vector

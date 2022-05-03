@@ -26,6 +26,11 @@ def main(args: Dict):
         estimation, operators, index = celeri.build_and_solve_dense(
             command, assembly, operators, data
         )
+    elif command.solve_type == "dense_no_meshes":
+        logger.info("Dense build and solve (no meshes)")
+        estimation, operators, index = celeri.build_and_solve_dense_no_meshes(
+            command, assembly, operators, data
+        )
 
     # Copy input files and adata structures to output folder
     celeri.write_output_supplemental(
