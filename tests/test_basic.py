@@ -56,7 +56,7 @@ def test_global_closure():
     """
     import os
 
-    command_file_name = "./data/command/global_command.json"
+    command_file_name = "./data/command/global_command_for_pytest.json"
     command = celeri.get_command(command_file_name)
     logger = celeri.get_logger(command)
     segment, block, meshes, station, mogi, sar = celeri.read_data(command)
