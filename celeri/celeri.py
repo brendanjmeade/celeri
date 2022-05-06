@@ -2824,10 +2824,6 @@ def get_index(assembly, station, block, meshes):
     # index.n_stations = len(station)
     index.vertical_velocities = np.arange(2, 3 * index.n_stations, 3)
     index.n_blocks = len(block)
-
-    logger.warning(assembly.data.keys())
-    logger.warning(assembly.data.n_block_constraints)
-
     index.n_block_constraints = assembly.data.n_block_constraints
     index.station_row_keep_index = get_keep_index_12(3 * len(station))
     index.start_station_row = 0
@@ -2835,11 +2831,6 @@ def get_index(assembly, station, block, meshes):
     index.start_block_col = 0
     index.end_block_col = 3 * len(block)
     index.start_block_constraints_row = index.end_station_row
-
-    logger.warning(index.keys())
-    logger.warning(type(index.start_block_constraints_row))
-    logger.warning(type(index.n_block_constraints))
-
     index.end_block_constraints_row = (
         index.start_block_constraints_row + 3 * index.n_block_constraints
     )
@@ -4772,10 +4763,6 @@ def get_index_no_meshes(assembly, station, block):
     # index.n_stations = len(station)
     index.vertical_velocities = np.arange(2, 3 * index.n_stations, 3)
     index.n_blocks = len(block)
-
-    logger.warning(assembly.data.keys())
-    logger.warning(assembly.data.n_block_constraints)
-
     index.n_block_constraints = assembly.data.n_block_constraints
     index.station_row_keep_index = get_keep_index_12(3 * len(station))
     index.start_station_row = 0
@@ -4783,11 +4770,6 @@ def get_index_no_meshes(assembly, station, block):
     index.start_block_col = 0
     index.end_block_col = 3 * len(block)
     index.start_block_constraints_row = index.end_station_row
-
-    logger.warning(index.keys())
-    logger.warning(type(index.start_block_constraints_row))
-    logger.warning(type(index.n_block_constraints))
-
     index.end_block_constraints_row = (
         index.start_block_constraints_row + 3 * index.n_block_constraints
     )
