@@ -2669,7 +2669,7 @@ def write_output(
     station["model_east_vel"] = estimation.east_vel
     station["model_north_vel"] = estimation.north_vel
     station["model_east_vel_residual"] = estimation.east_vel_residual
-    station["model_east_vel_residual"] = estimation.north_vel_residual
+    station["model_north_vel_residual"] = estimation.north_vel_residual
     station["model_east_vel_rotation"] = estimation.east_vel_rotation
     station["model_north_vel_rotation"] = estimation.north_vel_rotation
     station["model_east_elastic_segment"] = estimation.east_vel_elastic_segment
