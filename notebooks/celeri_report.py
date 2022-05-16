@@ -76,15 +76,19 @@ def main(args: Dict):
     )
     n_block_constraints_1 = np.count_nonzero(data_1.block.apriori_flag, axis=0)
 
-    # Calculation basic velocity statistics
+    # Velocity statistics
     station_1 = pd.read_csv(station_file_name_1)
-    station_1_vels = np.array([station_1.north_vel, station_1.east_vel]).flatten()
-    station_1_model_vels = np.array(
-        [station_1.model_north_vel, station_1.model_east_vel]
+    station_vel_1 = np.array([station_1.east_vel, station_1.north_vel]).flatten()
+    station_sig_1 = np.array([station_1.east_sig, station_1.north_sig]).flatten()
+    station_model_vel_1 = np.array(
+        [station_1.model_east_vel, station_1.model_north_vel]
     ).flatten()
-    station_1_residuals = station_1_vels - station_1_model_vels
-    mae_1 = np.mean(np.abs(station_1_residuals))
-    mse_1 = np.mean(station_1_residuals ** 2.0)
+    station_residual_1 = station_vel_1 - station_model_vel_1
+    mae_1 = np.mean(np.abs(station_residual_1))
+    mse_1 = np.mean(station_residual_1 ** 2.0)
+
+    # Weighted sum of square residuals.  This is what is really minimized.
+    wssr_1 = np.sum((station_residual_1 / (station_sig_1 ** 2.0)) ** 2.0)
 
     # Reference colors
     color_1 = "cyan"
@@ -156,11 +160,15 @@ def main(args: Dict):
     # TODO: Weighted residual velocity (this is actually minimized)
     table.add_row(
         "[white]MAE",
-        f"[cyan]{mae_1:0.2f} (mm/yr) -- unweighted",
+        f"[{color_1}]{mae_1:0.2f} (mm/yr) -- unweighted",
     )
     table.add_row(
         "[white]MSE",
-        f"[cyan]{mse_1:0.2f} (mm/yr)^2 -- unweighted",
+        f"[{color_1}]{mse_1:0.2f} (mm/yr)^2 -- unweighted",
+    )
+    table.add_row(
+        "[white]WSSR",
+        f"[{color_1}]{wssr_1:0.2f}",
     )
 
     console.print(table)
