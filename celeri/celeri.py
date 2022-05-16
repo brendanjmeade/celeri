@@ -4428,6 +4428,7 @@ def write_output_supplemental(
         "block_file_name",
         "mesh_parameters_file_name",
         "los_file_name",
+        "file_name",
     ]
     for file_name in file_names:
         try:
