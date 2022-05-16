@@ -15,7 +15,7 @@ dependencies:
   - addict
   - tqdm
   - h5py
-  - prettytable
+  - rich
   - compilers
   - fortran-compiler
   - cutde
