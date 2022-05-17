@@ -88,7 +88,18 @@ def main(args: Dict):
     mse_1 = np.mean(station_residual_1 ** 2.0)
 
     # Weighted sum of square residuals.  This is what is really minimized.
-    wssr_1 = np.sum((station_residual_1 / (station_sig_1 ** 2.0)) ** 2.0)
+    wssr_1 = np.sum((station_residual_1 ** 2.0 / (station_sig_1 ** 2.0)))
+
+    # TODO: Find the names of the 5 stations with largest WSSR
+    station_wssr_1 = ((station_1.east_vel - station_1.model_east_vel) ** 2.0) / (
+        station_1.east_sig ** 2.0
+    ) + ((station_1.north_vel - station_1.model_north_vel) ** 2.0) / (
+        station_1.north_sig ** 2.0
+    )
+    n_largest_contribution_station = 5
+    largest_contribution_station_index = (-station_wssr_1).argsort()[
+        :n_largest_contribution_station
+    ]
 
     # Reference colors
     color_1 = "cyan"
@@ -170,6 +181,12 @@ def main(args: Dict):
         "[white]WSSR",
         f"[{color_1}]{wssr_1:0.2f}",
     )
+
+    for i in range(0, n_largest_contribution_station):
+        table.add_row(
+            f"[white]#{i + 1} WSSR contributor",
+            f"[{color_1}]{station_1.name[largest_contribution_station_index[i]]}",
+        )
 
     console.print(table)
 
