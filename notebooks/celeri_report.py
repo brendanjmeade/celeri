@@ -10,15 +10,106 @@ import glob
 import pandas as pd
 import celeri
 
+# Reference colors
+COLOR_1 = "cyan"
+COLOR_2 = "yellow"
+COLOR_SAME = "green"
+COLOR_DIFF = "red"
+
+
+def print_table_single(run_1: Dict):
+    # Build table for reporting on a single model run
+    console = Console()
+    table = Table(show_header=True, header_style="bold #ffffff")
+    table.add_column("property", justify="left")
+    table.add_column("value", justify="left")
+    table.add_row(
+        "[white]run folder",
+        f"[{COLOR_1}]{os.path.basename(run_1.folder_name)}",
+    )
+    table.add_row(
+        "[white]command file",
+        f"[{COLOR_1}]{os.path.basename(run_1.command_file_name)}",
+    )
+    table.add_row(
+        "[white]velocity file",
+        f"[{COLOR_1}]{os.path.basename(run_1.command.station_file_name)}",
+    )
+    table.add_row(
+        "[white]segment file",
+        f"[{COLOR_1}]{os.path.basename(run_1.command.segment_file_name)}",
+    )
+    table.add_row(
+        "[white]block file",
+        f"[{COLOR_1}]{os.path.basename(run_1.command.block_file_name)}",
+    )
+    table.add_row(
+        "[white]los file",
+        f"[{COLOR_1}]{os.path.basename(run_1.command.los_file_name)}",
+    )
+
+    # Velocity information
+    table.add_row(
+        "[white]# stations",
+        f"[{COLOR_1}]{len(run_1.station)}",
+    )
+    table.add_row(
+        "[white]# velocities",
+        f"[{COLOR_1}]{2 * len(run_1.station)}",
+    )
+
+    # Block information
+    table.add_row(
+        "[white]# blocks",
+        f"[{COLOR_1}]{len(run_1.block)}",
+    )
+    table.add_row(
+        "[white]# block constraints",
+        f"[{COLOR_1}]{run_1.n_block_constraints_1}",
+    )
+
+    # Segment information
+    table.add_row(
+        "[white]# segments",
+        f"[{COLOR_1}]{len(run_1.segment)}",
+    )
+    table.add_row(
+        "[white]# slip rate constraints",
+        f"[{COLOR_1}]{run_1.n_slip_rate_constraints_1}",
+    )
+
+    # Goodness of fit metrics
+    table.add_row(
+        "[white]MAE",
+        f"[{COLOR_1}]{run_1.mae:0.2f} (mm/yr) -- unweighted",
+    )
+    table.add_row(
+        "[white]MSE",
+        f"[{COLOR_1}]{run_1.mse:0.2f} (mm/yr)^2 -- unweighted",
+    )
+    table.add_row(
+        "[white]WSSR",
+        f"[{COLOR_1}]{run_1.wssr:0.2f}",
+    )
+    for i in range(0, run_1.n_largest_contribution_station):
+        table.add_row(
+            f"[white]#{i + 1} WSSR contributor",
+            f"[{COLOR_1}]{run_1.station.name[run_1.largest_contribution_station_index[i]]}",
+        )
+
+    console.print(table)
+
 
 def main(args: Dict):
+
+    run_1 = addict.Dict()
     # Case 1: No arguments passed.  Assume most recent run folder and report on it.
     if args.folder_name_1 == None:
         print("No folder specified.  Selecting most recent run folder.")
         list_of_folders = filter(os.path.isdir, glob.glob("./../runs/*"))
         list_of_folders = sorted(list_of_folders, key=os.path.getmtime)
-        folder_name_1 = list_of_folders[-1]
-        print(f"Most recent run folder is: {folder_name_1}.")
+        run_1.folder_name = list_of_folders[-1]
+        print(f"Most recent run folder is: {run_1.folder_name}")
     # TODO: If condition when folder_name_1 is specified
 
     # Case 2: One argument passed.  Report on this folder.
@@ -36,157 +127,160 @@ def main(args: Dict):
     # Conditions for a diff report of two runs
 
     # Find and read the data in folder_1
-    command_file_name_1 = glob.glob(os.path.join(folder_name_1, "*_command.json"))[0]
-    station_file_name_1 = glob.glob(os.path.join(folder_name_1, "model_station.csv"))[0]
-    command_1 = celeri.get_command(command_file_name_1)
+    run_1.command_file_name = glob.glob(
+        os.path.join(run_1.folder_name, "*_command.json")
+    )[0]
+    run_1.station_file_name = glob.glob(
+        os.path.join(run_1.folder_name, "model_station.csv")
+    )[0]
+    run_1.command = celeri.get_command(run_1.command_file_name)
 
     # Check for empty los file.  This is common.
-    if command_1.los_file_name == {}:
-        command_1.los_file_name = "none"
+    if run_1.command.los_file_name == {}:
+        run_1.command.los_file_name = "none"
 
     # Modify file names to read from `run` rather than `data` folder
     # because they could have changed in `data` folder
-    command_1.station_file_name = os.path.join(
-        folder_name_1, os.path.basename(command_1.station_file_name)
+    run_1.command.station_file_name = os.path.join(
+        run_1.folder_name, os.path.basename(run_1.command.station_file_name)
     )
-    command_1.segment_file_name = os.path.join(
-        folder_name_1, os.path.basename(command_1.segment_file_name)
+    run_1.command.segment_file_name = os.path.join(
+        run_1.folder_name, os.path.basename(run_1.command.segment_file_name)
     )
-    command_1.block_file_name = os.path.join(
-        folder_name_1, os.path.basename(command_1.block_file_name)
+    run_1.command.block_file_name = os.path.join(
+        run_1.folder_name, os.path.basename(run_1.command.block_file_name)
     )
-    command_1.los_file_name = os.path.join(
-        folder_name_1, os.path.basename(command_1.los_file_name)
+    run_1.command.los_file_name = os.path.join(
+        run_1.folder_name, os.path.basename(run_1.command.los_file_name)
     )
-
-    data_1 = addict.Dict()
     (
-        data_1.segment,
-        data_1.block,
-        data_1.meshes,
-        data_1.station,
-        data_1.mogi,
-        data_1.sar,
-    ) = celeri.read_data(command_1)
+        run_1.segment,
+        run_1.block,
+        run_1.meshes,
+        run_1.station,
+        run_1.mogi,
+        run_1.sar,
+    ) = celeri.read_data(run_1.command)
 
-    n_slip_rate_constraints_1 = (
-        np.count_nonzero(data_1.segment.ss_rate_flag)
-        + np.count_nonzero(data_1.segment.ds_rate_flag)
-        + np.count_nonzero(data_1.segment.ts_rate_flag)
+    run_1.n_slip_rate_constraints_1 = (
+        np.count_nonzero(run_1.segment.ss_rate_flag)
+        + np.count_nonzero(run_1.segment.ds_rate_flag)
+        + np.count_nonzero(run_1.segment.ts_rate_flag)
     )
-    n_block_constraints_1 = np.count_nonzero(data_1.block.apriori_flag, axis=0)
+    run_1.n_block_constraints_1 = np.count_nonzero(run_1.block.apriori_flag, axis=0)
 
     # Velocity statistics
-    station_1 = pd.read_csv(station_file_name_1)
-    station_vel_1 = np.array([station_1.east_vel, station_1.north_vel]).flatten()
-    station_sig_1 = np.array([station_1.east_sig, station_1.north_sig]).flatten()
-    station_model_vel_1 = np.array(
-        [station_1.model_east_vel, station_1.model_north_vel]
+    run_1.station = pd.read_csv(run_1.station_file_name)
+    run_1.station_vel = np.array(
+        [run_1.station.east_vel, run_1.station.north_vel]
     ).flatten()
-    station_residual_1 = station_vel_1 - station_model_vel_1
-    mae_1 = np.mean(np.abs(station_residual_1))
-    mse_1 = np.mean(station_residual_1 ** 2.0)
+    run_1.station_sig = np.array(
+        [run_1.station.east_sig, run_1.station.north_sig]
+    ).flatten()
+    run_1.station_model_vel = np.array(
+        [run_1.station.model_east_vel, run_1.station.model_north_vel]
+    ).flatten()
+    run_1.station_residual = run_1.station_vel - run_1.station_model_vel
+    run_1.mae = np.mean(np.abs(run_1.station_residual))
+    run_1.mse = np.mean(run_1.station_residual ** 2.0)
 
     # Weighted sum of square residuals.  This is what is really minimized.
-    wssr_1 = np.sum((station_residual_1 ** 2.0 / (station_sig_1 ** 2.0)))
+    run_1.wssr = np.sum((run_1.station_residual ** 2.0 / (run_1.station_sig ** 2.0)))
 
     # Find the names of the 5 stations with largest WSSR
-    station_wssr_1 = ((station_1.east_vel - station_1.model_east_vel) ** 2.0) / (
-        station_1.east_sig ** 2.0
-    ) + ((station_1.north_vel - station_1.model_north_vel) ** 2.0) / (
-        station_1.north_sig ** 2.0
+    run_1.station_wssr = (
+        (run_1.station.east_vel - run_1.station.model_east_vel) ** 2.0
+    ) / (run_1.station.east_sig ** 2.0) + (
+        (run_1.station.north_vel - run_1.station.model_north_vel) ** 2.0
+    ) / (
+        run_1.station.north_sig ** 2.0
     )
-    n_largest_contribution_station = 5
-    largest_contribution_station_index = (-station_wssr_1).argsort()[
-        :n_largest_contribution_station
+    run_1.n_largest_contribution_station = 5
+    run_1.largest_contribution_station_index = (-run_1.station_wssr).argsort()[
+        : run_1.n_largest_contribution_station
     ]
 
-    # Reference colors
-    color_1 = "cyan"
-    color_2 = "yellow"
-    color_same = "green"
-    color_diff = "red"
+    # # Build table for reporting on a single model run
+    # console = Console()
+    # table = Table(show_header=True, header_style="bold #ffffff")
+    # table.add_column("property", justify="left")
+    # table.add_column("value", justify="left")
+    # table.add_row(
+    #     "[white]run folder",
+    #     f"[{color_1}]{os.path.basename(run_1.folder_name)}",
+    # )
+    # table.add_row(
+    #     "[white]command file",
+    #     f"[{color_1}]{os.path.basename(run_1.command_file_name)}",
+    # )
+    # table.add_row(
+    #     "[white]velocity file",
+    #     f"[{color_1}]{os.path.basename(run_1.command.station_file_name)}",
+    # )
+    # table.add_row(
+    #     "[white]segment file",
+    #     f"[{color_1}]{os.path.basename(run_1.command.segment_file_name)}",
+    # )
+    # table.add_row(
+    #     "[white]block file",
+    #     f"[{color_1}]{os.path.basename(run_1.command.block_file_name)}",
+    # )
+    # table.add_row(
+    #     "[white]los file",
+    #     f"[{color_1}]{os.path.basename(run_1.command.los_file_name)}",
+    # )
 
-    # Build table for reporting on a single model run
-    console = Console()
-    table = Table(show_header=True, header_style="bold #ffffff")
-    table.add_column("property", justify="left")
-    table.add_column("value", justify="left")
-    table.add_row(
-        "[white]run folder",
-        f"[{color_1}]{os.path.basename(folder_name_1)}",
-    )
-    table.add_row(
-        "[white]command file",
-        f"[{color_1}]{os.path.basename(command_file_name_1)}",
-    )
-    table.add_row(
-        "[white]velocity file",
-        f"[{color_1}]{os.path.basename(command_1.station_file_name)}",
-    )
-    table.add_row(
-        "[white]segment file",
-        f"[{color_1}]{os.path.basename(command_1.segment_file_name)}",
-    )
-    table.add_row(
-        "[white]block file",
-        f"[{color_1}]{os.path.basename(command_1.block_file_name)}",
-    )
-    table.add_row(
-        "[white]los file",
-        f"[{color_1}]{os.path.basename(command_1.los_file_name)}",
-    )
+    # # Velocity information
+    # table.add_row(
+    #     "[white]# stations",
+    #     f"[{color_1}]{len(run_1.station)}",
+    # )
+    # table.add_row(
+    #     "[white]# velocities",
+    #     f"[{color_1}]{2 * len(run_1.station)}",
+    # )
 
-    # Velocity information
-    table.add_row(
-        "[white]# stations",
-        f"[{color_1}]{len(station_1)}",
-    )
-    table.add_row(
-        "[white]# velocities",
-        f"[{color_1}]{2 * len(station_1)}",
-    )
+    # # Block information
+    # table.add_row(
+    #     "[white]# blocks",
+    #     f"[{color_1}]{len(run_1.block)}",
+    # )
+    # table.add_row(
+    #     "[white]# block constraints",
+    #     f"[{color_1}]{run_1.n_block_constraints_1}",
+    # )
 
-    # Block information
-    table.add_row(
-        "[white]# blocks",
-        f"[{color_1}]{len(data_1.block)}",
-    )
-    table.add_row(
-        "[white]# block constraints",
-        f"[{color_1}]{n_block_constraints_1}",
-    )
+    # # Segment information
+    # table.add_row(
+    #     "[white]# segments",
+    #     f"[{color_1}]{len(run_1.segment)}",
+    # )
+    # table.add_row(
+    #     "[white]# slip rate constraints",
+    #     f"[{color_1}]{run_1.n_slip_rate_constraints_1}",
+    # )
 
-    # Segment information
-    table.add_row(
-        "[white]# segments",
-        f"[{color_1}]{len(data_1.segment)}",
-    )
-    table.add_row(
-        "[white]# slip rate constraints",
-        f"[{color_1}]{n_slip_rate_constraints_1}",
-    )
+    # # Goodness of fit metrics
+    # table.add_row(
+    #     "[white]MAE",
+    #     f"[{color_1}]{run_1.mae:0.2f} (mm/yr) -- unweighted",
+    # )
+    # table.add_row(
+    #     "[white]MSE",
+    #     f"[{color_1}]{run_1.mse:0.2f} (mm/yr)^2 -- unweighted",
+    # )
+    # table.add_row(
+    #     "[white]WSSR",
+    #     f"[{color_1}]{run_1.wssr:0.2f}",
+    # )
+    # for i in range(0, run_1.n_largest_contribution_station):
+    #     table.add_row(
+    #         f"[white]#{i + 1} WSSR contributor",
+    #         f"[{color_1}]{run_1.station.name[run_1.largest_contribution_station_index[i]]}",
+    #     )
 
-    # Goodness of fit metrics
-    table.add_row(
-        "[white]MAE",
-        f"[{color_1}]{mae_1:0.2f} (mm/yr) -- unweighted",
-    )
-    table.add_row(
-        "[white]MSE",
-        f"[{color_1}]{mse_1:0.2f} (mm/yr)^2 -- unweighted",
-    )
-    table.add_row(
-        "[white]WSSR",
-        f"[{color_1}]{wssr_1:0.2f}",
-    )
-    for i in range(0, n_largest_contribution_station):
-        table.add_row(
-            f"[white]#{i + 1} WSSR contributor",
-            f"[{color_1}]{station_1.name[largest_contribution_station_index[i]]}",
-        )
-
-    console.print(table)
+    # console.print(table)
+    print_table_single(run_1)
 
     # Drop into ipython REPL
     IPython.embed(banner1="")
