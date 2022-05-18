@@ -6,10 +6,11 @@
 `celeri` is a python based library designed to image earthquake cycle and plate tectonic activity including the spatial and time varying fault coupling across geometrically complex fault systems at large scales. 
 
 This is a python reimagining, and extension, of the Matlab-based [blocks](https://github.com/jploveless/Blocks) featuring:
-- Smaller memory footprint (via H-matrix compression)
-- Faster elastic calculations (via [Ben Thompson's](https://github.com/tbenthompson) [C-based triangular dislocation calculations](https://github.com/tbenthompson/cutde))
-- Faster block closure
-- Easier IO with standard file types (.csv, .json, .hdf5)
+- Friendly web-based model building with [`celeri_ui`](https://brendanjmeade.github.io/celeri_ui/)
+- Small memory footprint (via H-matrix compression)
+- Blazingly fast elastic calculations (via [Ben Thompson's](https://github.com/tbenthompson) [C-based triangular dislocation calculations](https://github.com/tbenthompson/cutde))
+- Fast and automated block closure
+- Easy IO with standard file types (.csv, .json, .hdf5)
 - Rapid model diffs with `celeri_report.py`
 
 
