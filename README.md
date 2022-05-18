@@ -101,3 +101,9 @@ flowchart TD
   input_files --> celeri
   celeri --> output_files
 ```
+
+### Other earthquake cycle kinematics software
+We think celeri is pretty great but there are other options too:
+- Jack Loveless' and Brendan Meade's Matlab-based [Blocks](https://github.com/jploveless/Blocks) 
+- Rob McCaffrey's Fortran-based [TDEFNODE](https://robmccaffrey.github.io/TDEFNODE/TDEFNODE.html)
+- Richard Styron's Julia-based (and clevery named!) [Oiler](https://github.com/cossatot/Oiler)
