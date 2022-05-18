@@ -10,6 +10,7 @@ This is a python reimagining, and extension, of the Matlab-based [blocks](https:
 - Faster elastic calculations (via [Ben Thompson's](https://github.com/tbenthompson) [C-based triangular dislocation calculations](https://github.com/tbenthompson/cutde))
 - Faster block closure
 - Easier IO with standard file types (.csv, .json, .hdf5)
+- Rapid model diffs with `celeri_report.py`
 
 
 # Getting started
@@ -102,8 +103,8 @@ flowchart TD
   celeri --> output_files
 ```
 
-### Other earthquake cycle kinematics software
-We think celeri is pretty great but there are other options too:
+# Other earthquake cycle kinematics software
+We think celeri is pretty great but there are other alternatives worth considering:
 - Jack Loveless' and Brendan Meade's Matlab-based [Blocks](https://github.com/jploveless/Blocks) 
 - Rob McCaffrey's Fortran-based [TDEFNODE](https://robmccaffrey.github.io/TDEFNODE/TDEFNODE.html)
 - Richard Styron's Julia-based (and clevery named!) [Oiler](https://github.com/cossatot/Oiler)
