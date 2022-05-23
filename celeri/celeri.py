@@ -2877,6 +2877,13 @@ def write_output(
         mesh_output_file_name = command.output_path + "/" + "model_meshes.csv"
         mesh_outputs.to_csv(mesh_output_file_name, index=False)
 
+    # Write the command dict to an a json file
+    args_command_output_file_name = (
+        command.output_path + "/args_" + os.path.basename(command.file_name)
+    )
+    with open(args_command_output_file_name, "w") as f:
+        json.dump(command, f, indent=4)
+
 
 def get_mesh_edge_elements(meshes: List):
     # Find indices of elements lining top, bottom, and sides of each mesh

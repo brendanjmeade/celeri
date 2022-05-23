@@ -298,9 +298,9 @@ def read_process_run_folder(folder_name: str):
     # Find and read the data in folder_name
     run = addict.Dict()
     run.folder_name = folder_name
-    run.command_file_name = glob.glob(os.path.join(run.folder_name, "*_command.json"))[
-        0
-    ]
+    run.command_file_name = glob.glob(
+        os.path.join(run.folder_name, "args_*_command.json")
+    )[0]
     run.station_file_name = glob.glob(
         os.path.join(run.folder_name, "model_station.csv")
     )[0]
