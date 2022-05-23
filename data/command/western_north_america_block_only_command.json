@@ -62,6 +62,7 @@
     "slip_constraint_weight_steps": 1,
     "slip_file_names": "",
     "smooth_type": 1,
+    "snap_segments": 0,
     "solution_method": "backslash",
     "solve_type": "dense_no_meshes",
     "station_data_weight": 1,

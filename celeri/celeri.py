@@ -4719,6 +4719,13 @@ def parse_args():
         help="Flag for reusing elastic calculations (0 | 1)",
     )
     parser.add_argument(
+        "--snap_segments",
+        type=int,
+        default=0,
+        required=False,
+        help="Flag for snapping segments (0 | 1)",
+    )
+    parser.add_argument(
         "--atol",
         type=int,
         default=None,
