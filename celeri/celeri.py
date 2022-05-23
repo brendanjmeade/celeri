@@ -452,7 +452,7 @@ def process_segment(segment, command, meshes):
     Add derived fields to segment dataframe
     """
 
-    segment = snap_segments(segment, meshes)
+    # segment = snap_segments(segment, meshes)
 
     segment["length"] = np.zeros(len(segment))
     for i in range(len(segment)):
@@ -1894,14 +1894,14 @@ def get_rotation_displacements(lon_obs, lat_obs, omega_x, omega_y, omega_z):
     return vel_east, vel_north, vel_up
 
 
-def get_rotation_to_velocities_partials(station):
+def get_rotation_to_velocities_partials(station, n_blocks):
     """
     Calculate block rotation partials operator for stations in dataframe
     station.
     """
-    n_blocks = (
-        np.max(station.block_label.values) + 1
-    )  # +1 required so that a single block with index zero still propagates
+    # n_blocks = (
+    #     np.max(station.block_label.values) + 1
+    # )  # +1 required so that a single block with index zero still propagates
     block_rotation_operator = np.zeros((3 * len(station), 3 * n_blocks))
     for i in range(n_blocks):
         station_idx = np.where(station.block_label == i)[0]
@@ -1965,7 +1965,7 @@ def get_global_float_block_rotation_partials(station):
         :
     ] = 0  # Force all stations to be on one block
     global_float_block_rotation_operator = get_rotation_to_velocities_partials(
-        station_all_on_one_block
+        station_all_on_one_block, 1
     )
     return global_float_block_rotation_operator
 
@@ -4011,7 +4011,9 @@ def build_and_solve_hmatrix(command, assembly, operators, data):
     get_all_mesh_smoothing_matrices(data.meshes, operators)
 
     # Get non elastic operators
-    operators.rotation_to_velocities = get_rotation_to_velocities_partials(data.station)
+    operators.rotation_to_velocities = get_rotation_to_velocities_partials(
+        data.station, data.block.shape[0]
+    )
     operators.global_float_block_rotation = get_global_float_block_rotation_partials(
         data.station
     )
@@ -4512,7 +4514,9 @@ def build_and_solve_dense(command, assembly, operators, data):
     get_all_mesh_smoothing_matrices(data.meshes, operators)
 
     # Get non-elastic operators
-    operators.rotation_to_velocities = get_rotation_to_velocities_partials(data.station)
+    operators.rotation_to_velocities = get_rotation_to_velocities_partials(
+        data.station, data.block.shape[0]
+    )
     operators.global_float_block_rotation = get_global_float_block_rotation_partials(
         data.station
     )
@@ -4735,7 +4739,9 @@ def build_and_solve_dense_no_meshes(command, assembly, operators, data):
     # Get all elastic operators for segments and TDEs
     get_elastic_operators(operators, data.meshes, data.segment, data.station, command)
 
-    operators.rotation_to_velocities = get_rotation_to_velocities_partials(data.station)
+    operators.rotation_to_velocities = get_rotation_to_velocities_partials(
+        data.station, data.block.shape[0]
+    )
     operators.global_float_block_rotation = get_global_float_block_rotation_partials(
         data.station
     )
@@ -4851,7 +4857,7 @@ def build_and_solve_dense_no_meshes(command, assembly, operators, data):
     # get_all_mesh_smoothing_matrices(data.meshes, operators)
 
     # # Get non-elastic operators
-    # operators.rotation_to_velocities = get_rotation_to_velocities_partials(data.station)
+    # operators.rotation_to_velocities = get_rotation_to_velocities_partials(data.station, data.block.shape[0])
     # operators.global_float_block_rotation = get_global_float_block_rotation_partials(
     #     data.station
     # )
