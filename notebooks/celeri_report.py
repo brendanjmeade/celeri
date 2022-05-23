@@ -381,7 +381,7 @@ def read_process_run_folder(folder_name: str):
     )
     run.station_wssr_percentage = 100 * run.station_wssr / (np.sum(run.station_wssr))
 
-    run.n_largest_contribution_station = 5
+    run.n_largest_contribution_station = 10
     run.largest_contribution_station_index = (-run.station_wssr).argsort()[
         : run.n_largest_contribution_station
     ]
