@@ -95,7 +95,7 @@ def print_table_one_run(run: Dict):
     for i in range(0, run.n_largest_contribution_station):
         table.add_row(
             f"[white]#{i + 1} WSSR contributor",
-            f"[{COLOR_1}]{run.station.name[run.largest_contribution_station_index[i]]}",
+            f"[{COLOR_1}]{run.station.name[run.largest_contribution_station_index[i]]} {run.station_wssr_percentage[run.largest_contribution_station_index[i]]:0.3f}%",
         )
 
     console.print(table)
@@ -204,8 +204,8 @@ def print_table_two_run(run_1: Dict, run_2: Dict):
     # )
 
     # number of horizontal velocities
-    value_1 = len(run_1.n_station_flag_on)
-    value_2 = len(run_2.n_station_flag_on)
+    value_1 = run_1.n_station_flag_on
+    value_2 = run_2.n_station_flag_on
     eval_text, eval_color = get_val_text_and_color(value_1 == value_2)
     table.add_row(
         "[white]# of on stations",
@@ -293,8 +293,14 @@ def print_table_two_run(run_1: Dict, run_2: Dict):
 
     # stations that contribute the most to the residual
     for i in range(0, run_1.n_largest_contribution_station):
-        value_1 = run_1.station.name[run_1.largest_contribution_station_index[i]]
-        value_2 = run_2.station.name[run_2.largest_contribution_station_index[i]]
+        # value_1 = run_1.station.name[run_1.largest_contribution_station_index[i]]
+        # value_2 = run_2.station.name[run_2.largest_contribution_station_index[i]]
+        value_1 = (
+            f"{run_1.station.name[run_1.largest_contribution_station_index[i]]} {run_1.station_wssr_percentage[run_1.largest_contribution_station_index[i]]:0.3f}%",
+        )[0]
+        value_2 = (
+            f"{run_2.station.name[run_2.largest_contribution_station_index[i]]} {run_2.station_wssr_percentage[run_2.largest_contribution_station_index[i]]:0.3f}%",
+        )[0]
         eval_text, eval_color = get_val_text_and_color(value_1 == value_2)
         table.add_row(
             f"[white]#{i + 1} WSSR contributor",
@@ -373,6 +379,8 @@ def read_process_run_folder(folder_name: str):
     ) + ((run.station.north_vel - run.station.model_north_vel) ** 2.0) / (
         run.station.north_sig ** 2.0
     )
+    run.station_wssr_percentage = 100 * run.station_wssr / (np.sum(run.station_wssr))
+
     run.n_largest_contribution_station = 5
     run.largest_contribution_station_index = (-run.station_wssr).argsort()[
         : run.n_largest_contribution_station
