@@ -452,7 +452,7 @@ def process_segment(segment, command, meshes):
     Add derived fields to segment dataframe
     """
 
-    # segment = snap_segments(segment, meshes)
+    segment = snap_segments(segment, meshes)
 
     segment["length"] = np.zeros(len(segment))
     for i in range(len(segment)):
