@@ -452,7 +452,8 @@ def process_segment(segment, command, meshes):
     Add derived fields to segment dataframe
     """
 
-    segment = snap_segments(segment, meshes)
+    if bool(command.snap_segments):
+        segment = snap_segments(segment, meshes)
 
     segment["length"] = np.zeros(len(segment))
     for i in range(len(segment)):
@@ -4727,6 +4728,13 @@ def parse_args():
         default=None,
         required=False,
         help="Interative solver type (lsqr | lsmr)",
+    )
+    parser.add_argument(
+        "--snap_segments",
+        type=int,
+        default=0,
+        required=False,
+        help="Snap segments to mesh edges (0 | 1)",
     )
 
     args = addict.Dict(vars(parser.parse_args()))
