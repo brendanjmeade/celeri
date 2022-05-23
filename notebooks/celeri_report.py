@@ -53,9 +53,10 @@ def print_table_one_run(run: Dict):
         "[white]# stations",
         f"[{COLOR_1}]{len(run.station)}",
     )
+
     table.add_row(
-        "[white]# velocities",
-        f"[{COLOR_1}]{2 * len(run.station)}",
+        "[white]# on stations",
+        f"[{COLOR_1}]{run.n_station_flag_on}",
     )
 
     # Block information
@@ -202,6 +203,17 @@ def print_table_two_run(run_1: Dict, run_2: Dict):
     #     f"[{COLOR_1}]{2 * len(run.station)}",
     # )
 
+    # number of horizontal velocities
+    value_1 = len(run_1.n_station_flag_on)
+    value_2 = len(run_2.n_station_flag_on)
+    eval_text, eval_color = get_val_text_and_color(value_1 == value_2)
+    table.add_row(
+        "[white]# of on stations",
+        f"[{eval_color}]{eval_text}",
+        f"[{COLOR_1}]{value_1}",
+        f"[{COLOR_2}]{value_2}",
+    )
+
     # number of blocks
     value_1 = len(run_1.block)
     value_2 = len(run_2.block)
@@ -342,6 +354,7 @@ def read_process_run_folder(folder_name: str):
 
     # Velocity statistics
     run.station = pd.read_csv(run.station_file_name)
+    run.n_station_flag_on = np.count_nonzero(run.station.flag)
     run.station_vel = np.array([run.station.east_vel, run.station.north_vel]).flatten()
     run.station_sig = np.array([run.station.east_sig, run.station.north_sig]).flatten()
     run.station_model_vel = np.array(
