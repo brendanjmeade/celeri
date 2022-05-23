@@ -4746,13 +4746,6 @@ def parse_args():
         required=False,
         help="Interative solver type (lsqr | lsmr)",
     )
-    parser.add_argument(
-        "--snap_segments",
-        type=int,
-        default=0,
-        required=False,
-        help="Snap segments to mesh edges (0 | 1)",
-    )
 
     args = addict.Dict(vars(parser.parse_args()))
     return args
