@@ -47,6 +47,10 @@ def print_table_one_run(run: Dict):
         "[white]los file",
         f"[{COLOR_1}]{os.path.basename(run.command.los_file_name)}",
     )
+    table.add_row(
+        "[white]solve type",
+        f"[{COLOR_1}]{run.command.solve_type}",
+    )
 
     # Velocity information
     table.add_row(
@@ -186,6 +190,22 @@ def print_table_two_run(run_1: Dict, run_2: Dict):
         f"[{COLOR_2}]{value_2}",
     )
 
+    # table.add_row(
+    #     "[white]solve type",
+    #     f"[{COLOR_1}]{run.command.solve_type}",
+    # )
+
+    # Type of solution
+    value_1 = run_1.command.solve_type
+    value_2 = run_2.command.solve_type
+    eval_text, eval_color = get_val_text_and_color(value_1 == value_2)
+    table.add_row(
+        "[white]solve type",
+        f"[{eval_color}]{eval_text}",
+        f"[{COLOR_1}]{value_1}",
+        f"[{COLOR_2}]{value_2}",
+    )
+
     # number of stations
     value_1 = len(run_1.station)
     value_2 = len(run_2.station)
@@ -196,12 +216,6 @@ def print_table_two_run(run_1: Dict, run_2: Dict):
         f"[{COLOR_1}]{value_1}",
         f"[{COLOR_2}]{value_2}",
     )
-
-    # number of horizontal velocities
-    # table.add_row(
-    #     "[white]# of velocities",
-    #     f"[{COLOR_1}]{2 * len(run.station)}",
-    # )
 
     # number of horizontal velocities
     value_1 = run_1.n_station_flag_on
