@@ -4,8 +4,6 @@ from .celeri import (
     read_data,
     process_station,
     process_segment,
-    make_default_segment,
-    snap_segments,
     process_sar,
     assign_block_labels,
     merge_geodetic_data,
@@ -61,6 +59,8 @@ from .celeri import (
     parse_args,
     get_okada_displacements,
     build_and_solve_dense_no_meshes,
+    wrap2360,
+    get_mesh_perimeter,
 )
 
 
