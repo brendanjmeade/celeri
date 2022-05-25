@@ -190,11 +190,6 @@ def print_table_two_run(run_1: Dict, run_2: Dict):
         f"[{COLOR_2}]{value_2}",
     )
 
-    # table.add_row(
-    #     "[white]solve type",
-    #     f"[{COLOR_1}]{run.command.solve_type}",
-    # )
-
     # Type of solution
     value_1 = run_1.command.solve_type
     value_2 = run_2.command.solve_type
@@ -226,6 +221,23 @@ def print_table_two_run(run_1: Dict, run_2: Dict):
         f"[{eval_color}]{eval_text}",
         f"[{COLOR_1}]{value_1}",
         f"[{COLOR_2}]{value_2}",
+    )
+
+    # Do stations have the same coordinates?
+    run_1.station_location_array = np.sort(
+        np.array([run_1.station.lon.values, run_1.station.lat.values]).T
+    )
+    run_2.station_location_array = np.sort(
+        np.array([run_2.station.lon.values, run_2.station.lat.values]).T
+    )
+    eval_text, eval_color = get_val_text_and_color(
+        np.allclose(run_1.station_location_array, run_2.station_location_array)
+    )
+    table.add_row(
+        "[white]station locations",
+        f"[{eval_color}]{eval_text}",
+        f"[{COLOR_1}]---",
+        f"[{COLOR_2}]---",
     )
 
     # number of blocks
