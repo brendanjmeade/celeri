@@ -82,3 +82,28 @@ fid.close()
 
 # Run gmsh
 os.system(f"gmsh -2 {geo_file_name} -o {Path(geo_file_name).stem}.msh -v 0 > /dev/null")
+
+
+# Read and plot mesh
+# triangle_indices = mesh.cells_dict['triangle']
+# line_indices = mesh.cells_dict["line"]
+
+# plt.figure(figsize=(20,10))
+# ax = plt.axes(projection ="3d")
+
+# # Plot each mesh element
+# for i in range(triangle_indices.shape[0]):
+#   ax.plot3D([mesh.points[triangle_indices[i, 0], 0], mesh.points[triangle_indices[i, 1], 0], mesh.points[triangle_indices[i, 2], 0]],
+#             [mesh.points[triangle_indices[i, 0], 1], mesh.points[triangle_indices[i, 1], 1], mesh.points[triangle_indices[i, 2], 1]],
+#             [mesh.points[triangle_indices[i, 0], 2], mesh.points[triangle_indices[i, 1], 2], mesh.points[triangle_indices[i, 2], 2]],
+#             "-k", linewidth=0.5)
+
+# # Plot mesh perimeter
+# for i in range(line_indices.shape[0]):
+#   ax.plot3D([mesh.points[line_indices[i, 0], 0], mesh.points[line_indices[i, 1], 0]],
+#             [mesh.points[line_indices[i, 0], 1], mesh.points[line_indices[i, 1], 1]],
+#             [mesh.points[line_indices[i, 0], 2], mesh.points[line_indices[i, 1], 2]],
+#             "-r", linewidth=2.0)
+
+# plt.title(f"meshed {triangle_indices.shape[0]} triangles")
+# plt.show()
