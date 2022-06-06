@@ -1,14 +1,14 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import os
-
-# import pandas as pd
-
+import meshio
+import IPython
 from pathlib import Path
 
 geo_file_name = "mesh_test.geo"
-smooth_trace = False
-reference_mesh_size = 0.05
+gmsh_excutable_location = "/opt/homebrew/bin/gmsh"
+smooth_trace = True
+reference_mesh_size = 0.5
 
 top_coordinates = np.array(
     [
@@ -55,7 +55,7 @@ for i in range(n_bottom_coordinates):
         f"{bottom_coordinates[i, 0]:0.4f}, "
         f"{bottom_coordinates[i, 1]:0.4f}, "
         f"{bottom_coordinates[i, 2]:0.4f}, "
-        f"charl}};\n"
+        f"2.0}};\n"
     )
 
 if smooth_trace:
@@ -76,34 +76,85 @@ else:
     fid.write(f"Line(4) = {{{n_top_coordinates + n_bottom_coordinates},1}};\n")
     fid.write("Line Loop(1) = {1, 3, 2, 4};\n")
     fid.write("Ruled Surface(1) = {1};\n")
-
-
 fid.close()
 
 # Run gmsh
-os.system(f"gmsh -2 {geo_file_name} -o {Path(geo_file_name).stem}.msh -v 0 > /dev/null")
+msh_file_name = f"{Path(geo_file_name).stem}.msh"
+os.system(
+    f"{gmsh_excutable_location} -2 {geo_file_name} -o {msh_file_name} -v 0 > /dev/null"
+)
 
+
+meshio_object = meshio.read(msh_file_name)
+print(meshio_object)
+
+# IPython.embed(banner1="")
 
 # Read and plot mesh
-# triangle_indices = mesh.cells_dict['triangle']
-# line_indices = mesh.cells_dict["line"]
+triangle_indices = meshio_object.cells_dict["triangle"]
+line_indices = meshio_object.cells_dict["line"]
 
-# plt.figure(figsize=(20,10))
-# ax = plt.axes(projection ="3d")
+plt.figure(figsize=(20, 10))
+ax = plt.axes(projection="3d")
 
-# # Plot each mesh element
-# for i in range(triangle_indices.shape[0]):
-#   ax.plot3D([mesh.points[triangle_indices[i, 0], 0], mesh.points[triangle_indices[i, 1], 0], mesh.points[triangle_indices[i, 2], 0]],
-#             [mesh.points[triangle_indices[i, 0], 1], mesh.points[triangle_indices[i, 1], 1], mesh.points[triangle_indices[i, 2], 1]],
-#             [mesh.points[triangle_indices[i, 0], 2], mesh.points[triangle_indices[i, 1], 2], mesh.points[triangle_indices[i, 2], 2]],
-#             "-k", linewidth=0.5)
+# Plot each mesh element
+for i in range(triangle_indices.shape[0]):
+    ax.plot3D(
+        [
+            meshio_object.points[triangle_indices[i, 0], 0],
+            meshio_object.points[triangle_indices[i, 1], 0],
+            meshio_object.points[triangle_indices[i, 2], 0],
+            meshio_object.points[triangle_indices[i, 0], 0],
+        ],
+        [
+            meshio_object.points[triangle_indices[i, 0], 1],
+            meshio_object.points[triangle_indices[i, 1], 1],
+            meshio_object.points[triangle_indices[i, 2], 1],
+            meshio_object.points[triangle_indices[i, 0], 1],
+        ],
+        [
+            meshio_object.points[triangle_indices[i, 0], 2],
+            meshio_object.points[triangle_indices[i, 1], 2],
+            meshio_object.points[triangle_indices[i, 2], 2],
+            meshio_object.points[triangle_indices[i, 0], 2],
+        ],
+        "-k",
+        linewidth=0.5,
+    )
 
-# # Plot mesh perimeter
-# for i in range(line_indices.shape[0]):
-#   ax.plot3D([mesh.points[line_indices[i, 0], 0], mesh.points[line_indices[i, 1], 0]],
-#             [mesh.points[line_indices[i, 0], 1], mesh.points[line_indices[i, 1], 1]],
-#             [mesh.points[line_indices[i, 0], 2], mesh.points[line_indices[i, 1], 2]],
-#             "-r", linewidth=2.0)
+# Plot mesh perimeter
+for i in range(line_indices.shape[0]):
+    ax.plot3D(
+        [
+            meshio_object.points[line_indices[i, 0], 0],
+            meshio_object.points[line_indices[i, 1], 0],
+        ],
+        [
+            meshio_object.points[line_indices[i, 0], 1],
+            meshio_object.points[line_indices[i, 1], 1],
+        ],
+        [
+            meshio_object.points[line_indices[i, 0], 2],
+            meshio_object.points[line_indices[i, 1], 2],
+        ],
+        "-r",
+        linewidth=2.0,
+    )
 
-# plt.title(f"meshed {triangle_indices.shape[0]} triangles")
-# plt.show()
+# Plot the initial coordinates
+for i in range(top_coordinates.shape[0]):
+    ax.plot3D(top_coordinates[i, 0], top_coordinates[i, 1], top_coordinates[i, 2], ".b")
+
+for i in range(bottom_coordinates.shape[0]):
+    ax.plot3D(
+        bottom_coordinates[i, 0],
+        bottom_coordinates[i, 1],
+        bottom_coordinates[i, 2],
+        ".g",
+    )
+
+
+plt.title(f"meshed {triangle_indices.shape[0]} triangles")
+plt.show()
+
+# IPython.embed(banner1="")
