@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 import meshio
+import pandas as pd
 import IPython
 from pathlib import Path
 
@@ -68,6 +69,7 @@ def plot_mesh(meshio_object, top_coordinates, bottom_coordinates):
 
     plt.figure(figsize=(20, 10))
     ax = plt.axes(projection="3d")
+    ax.set_aspect("auto")
 
     # Plot each mesh element
     for i in range(triangle_indices.shape[0]):
@@ -166,12 +168,23 @@ def get_top_and_bottom_ribbon_coordinates():
 def main():
     geo_file_name = "mesh_test.geo"
     gmsh_excutable_location = "/opt/homebrew/bin/gmsh"
-    smooth_trace = True
-    top_mesh_reference_size = 0.2
-    bottom_mesh_reference_size = 2.0
+    smooth_trace = False
+    top_mesh_reference_size = 0.5
+    bottom_mesh_reference_size = 5.0
 
-    # Red top and bottom coordinates
+    # Read top and bottom coordinates
     top_coordinates, bottom_coordinates = get_top_and_bottom_ribbon_coordinates()
+
+    # TEMP: Read .csv dataframe from Emily
+    df = pd.read_csv("naf_sorted_top_coordinates.csv")
+    top_coordinates = np.zeros((len(df), 3))
+    bottom_coordinates = np.zeros((len(df), 3))
+    top_coordinates[:, 0] = df.lons.values
+    top_coordinates[:, 1] = df.lats.values
+    bottom_coordinates[:, 0] = df.lons.values
+    bottom_coordinates[:, 1] = df.lats.values
+    bottom_coordinates[:, 2] = -df.locking_depth.values
+    bottom_coordinates = np.flipud(bottom_coordinates)
 
     # Write a .geo file gmsh to run
     write_geo_file(
