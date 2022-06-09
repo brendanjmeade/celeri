@@ -62,47 +62,12 @@ def write_geo_file(
     fid.close()
 
 
-def get_top_and_bottom_ribbon_coordinates():
-    """
-    This is just a placeholder for some operation that we'll do on a segment
-    file based on flags in the segment file.
-    """
-
-    top_coordinates = np.array(
-        [
-            [1.2538000e00, -2.5934000e00, 0.0000000e00],
-            [2.4805000e00, -2.1099000e00, 0.0000000e00],
-            [3.1064000e00, -5.0550000e-01, 0.0000000e00],
-            [4.0358000e00, 1.8681000e00, 0.0000000e00],
-            [4.5867000e00, 3.3626000e00, 0.0000000e00],
-            [4.9646000e00, 4.1758000e00, 0.0000000e00],
-        ]
-    )
-
-    bottom_coordinates = np.array(
-        [
-            [1.2538000e00, -2.5934000e00, -5.0000000e00],
-            [2.4805000e00, -2.1099000e00, -5.0000000e00],
-            [3.1064000e00, -5.0550000e-01, -5.0000000e00],
-            [4.0358000e00, 1.8681000e00, -5.0000000e00],
-            [4.5867000e00, 3.3626000e00, -5.0000000e00],
-            [4.9646000e00, 4.1758000e00, -5.0000000e00],
-        ]
-    )
-    bottom_coordinates = np.flipud(bottom_coordinates)
-
-    return top_coordinates, bottom_coordinates
-
-
 def main():
     geo_file_name = "mesh_test.geo"
     gmsh_excutable_location = "/opt/homebrew/bin/gmsh"
     smooth_trace = False
-    top_mesh_reference_size = 0.5
-    bottom_mesh_reference_size = 5.0
-
-    # Read top and bottom coordinates
-    top_coordinates, bottom_coordinates = get_top_and_bottom_ribbon_coordinates()
+    top_mesh_reference_size = 0.1
+    bottom_mesh_reference_size = 2.0
 
     # TEMP: Read .csv dataframe from Emily
     df = pd.read_csv("naf_sorted_top_coordinates.csv")
@@ -110,6 +75,55 @@ def main():
     bottom_coordinates = np.zeros((len(df), 3))
     top_coordinates[:, 0] = df.lons.values
     top_coordinates[:, 1] = df.lats.values
+
+    # Find shortest segment length
+    longitude_diff = np.diff(top_coordinates[:, 0])
+    latitude_diff = np.diff(top_coordinates[:, 1])
+    approximate_segment_lengths = np.sqrt(longitude_diff ** 2.0 + latitude_diff ** 2.0)
+
+    reference_length = 0.01
+    resampled_lons = []
+    resampled_lats = []
+    resampled_locking_depths = []
+    resampled_dips = []
+
+    for i in range(len(df) - 1):
+        if approximate_segment_lengths[i] > reference_length:
+            n_segments = np.ceil(
+                approximate_segment_lengths[i] / reference_length
+            ).astype(int)
+            print(f"need to divide {i} and {i + 1} in {n_segments}")
+            new_longitudes = np.linspace(df.lons[i], df.lons[i + 1], n_segments + 1)
+            new_latitudes = np.linspace(df.lats[i], df.lats[i + 1], n_segments + 1)
+            for j in range(n_segments):
+                resampled_lons.append(new_longitudes[j])
+                resampled_lats.append(new_latitudes[j])
+                resampled_locking_depths.append(df.locking_depth[i])
+                resampled_dips.append(df.dip[i])
+
+            print(df.lons[i], df.lons[i + 1])
+            print(new_longitudes)
+        else:
+            resampled_lons.append(df.lons[i])
+            resampled_lats.append(df.lats[i])
+            resampled_locking_depths.append(df.locking_depth[i])
+            resampled_dips.append(df.dip[i])
+
+    # top_coordinates = np.zeros((len(resampled_lons), 3))
+    # bottom_coordinates = np.zeros((len(resampled_lons), 3))
+    # top_coordinates[:, 0] = np.array(resampled_lons)
+    # top_coordinates[:, 1] = np.array(resampled_lats)
+    # bottom_coordinates[:, 0] = np.array(resampled_lons)
+    # bottom_coordinates[:, 1] = np.array(resampled_lats)
+    # bottom_coordinates[:, 2] = -np.array(resampled_locking_depths)
+
+    plt.figure()
+    plt.plot(resampled_lons, resampled_lats, "ro")
+    plt.plot(df.lons, df.lats, "b.")
+    plt.show()
+
+    IPython.embed(banner1="")
+
     bottom_coordinates[:, 0] = df.lons.values
     bottom_coordinates[:, 1] = df.lats.values
     bottom_coordinates[:, 2] = -df.locking_depth.values
