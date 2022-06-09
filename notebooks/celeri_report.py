@@ -415,14 +415,18 @@ def read_process_run_folder(folder_name: str):
 
 
 def main(args: Dict):
-    # Case 1: No arguments passed.  Assume most recent run folder and report on it.
+    # Case 1: No arguments passed.  Report on diff between two most recent folders
     if args.folder_name_1 == None:
         list_of_folders = filter(os.path.isdir, glob.glob("./../runs/*"))
         list_of_folders = sorted(list_of_folders, key=os.path.getmtime)
-        folder_name = list_of_folders[-1]
-        print(f"No folder specified.  Selecting most recent run folder: {folder_name}")
-        run = read_process_run_folder(folder_name)
-        print_table_one_run(run)
+        folder_name_1 = list_of_folders[-1]
+        folder_name_2 = list_of_folders[-2]
+        print(
+            f"Diffing two most recent most recent run folders: {folder_name_1} and {folder_name_2}"
+        )
+        run_1 = read_process_run_folder(folder_name_1)
+        run_2 = read_process_run_folder(folder_name_2)
+        print_table_two_run(run_1, run_2)
 
     # Case 2: One argument passed.  Report on this folder.
     elif (args.folder_name_1 != None) and (args.folder_name_2 == None):
@@ -439,11 +443,20 @@ def main(args: Dict):
         run_1 = read_process_run_folder(folder_name_1)
         run_2 = read_process_run_folder(folder_name_2)
         print_table_two_run(run_1, run_2)
-        # print_table_one_run(run_1)
-        # print_table_one_run(run_2)
+
+    # Case 4: Report on diff between two most recent folders
+    elif (args.diff_back != None) and (args.folder_name_1 == None):
+        list_of_folders = filter(os.path.isdir, glob.glob("./../runs/*"))
+        list_of_folders = sorted(list_of_folders, key=os.path.getmtime)
+        folder_name_1 = list_of_folders[-1]
+        folder_name_2 = list_of_folders[-(args.diff_back + 1)]
+        print(f"Diffing most recent run folder ({folder_name_1}) with {folder_name_2}")
+        run_1 = read_process_run_folder(folder_name_1)
+        run_2 = read_process_run_folder(folder_name_2)
+        print_table_two_run(run_1, run_2)
 
     else:
-        print("Invalid comingation of arguments.  See celeri_report --help.")
+        print("Invalid combination of arguments.  See celeri_report --help.")
 
     # Drop into ipython REPL
     if bool(args.repl):
@@ -462,6 +475,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--folder_name_2",
         type=str,
+        default=None,
+        required=False,
+        help="Name of of folder 2.",
+    )
+    parser.add_argument(
+        "--diff_back",
+        type=int,
         default=None,
         required=False,
         help="Name of of folder 2.",
