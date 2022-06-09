@@ -62,77 +62,6 @@ def write_geo_file(
     fid.close()
 
 
-def plot_mesh(meshio_object, top_coordinates, bottom_coordinates):
-    # Plot mesh
-    triangle_indices = meshio_object.cells_dict["triangle"]
-    line_indices = meshio_object.cells_dict["line"]
-
-    plt.figure(figsize=(20, 10))
-    ax = plt.axes(projection="3d")
-    ax.set_aspect("auto")
-
-    # Plot each mesh element
-    for i in range(triangle_indices.shape[0]):
-        ax.plot3D(
-            [
-                meshio_object.points[triangle_indices[i, 0], 0],
-                meshio_object.points[triangle_indices[i, 1], 0],
-                meshio_object.points[triangle_indices[i, 2], 0],
-                meshio_object.points[triangle_indices[i, 0], 0],
-            ],
-            [
-                meshio_object.points[triangle_indices[i, 0], 1],
-                meshio_object.points[triangle_indices[i, 1], 1],
-                meshio_object.points[triangle_indices[i, 2], 1],
-                meshio_object.points[triangle_indices[i, 0], 1],
-            ],
-            [
-                meshio_object.points[triangle_indices[i, 0], 2],
-                meshio_object.points[triangle_indices[i, 1], 2],
-                meshio_object.points[triangle_indices[i, 2], 2],
-                meshio_object.points[triangle_indices[i, 0], 2],
-            ],
-            "-k",
-            linewidth=0.5,
-        )
-
-    # Plot mesh perimeter
-    for i in range(line_indices.shape[0]):
-        ax.plot3D(
-            [
-                meshio_object.points[line_indices[i, 0], 0],
-                meshio_object.points[line_indices[i, 1], 0],
-            ],
-            [
-                meshio_object.points[line_indices[i, 0], 1],
-                meshio_object.points[line_indices[i, 1], 1],
-            ],
-            [
-                meshio_object.points[line_indices[i, 0], 2],
-                meshio_object.points[line_indices[i, 1], 2],
-            ],
-            "-r",
-            linewidth=2.0,
-        )
-
-    # Plot the initial coordinates
-    for i in range(top_coordinates.shape[0]):
-        ax.plot3D(
-            top_coordinates[i, 0], top_coordinates[i, 1], top_coordinates[i, 2], ".b"
-        )
-
-    for i in range(bottom_coordinates.shape[0]):
-        ax.plot3D(
-            bottom_coordinates[i, 0],
-            bottom_coordinates[i, 1],
-            bottom_coordinates[i, 2],
-            ".g",
-        )
-
-    plt.title(f"meshed {triangle_indices.shape[0]} triangles")
-    plt.show()
-
-
 def get_top_and_bottom_ribbon_coordinates():
     """
     This is just a placeholder for some operation that we'll do on a segment
@@ -206,7 +135,7 @@ def main():
     meshio_object = meshio.read(msh_file_name)
 
     # Plot the gmsh generated mesh
-    plot_mesh(meshio_object, top_coordinates, bottom_coordinates)
+    os.system(f"{gmsh_excutable_location} {msh_file_name} &")
 
     # IPython.embed(banner1="")
 
