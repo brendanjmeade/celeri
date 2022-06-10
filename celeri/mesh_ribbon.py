@@ -70,6 +70,7 @@ def main():
     bottom_mesh_reference_size = 0.2
     locking_depth_override_flag = True
     locking_depth_override_value = 40.0
+    depth_scaling = 100.0
     resample_flag = True
     resample_length = 0.01
 
@@ -79,7 +80,6 @@ def main():
     # Deeper locking depth setting
     if bool(locking_depth_override_flag):
         df.locking_depth = locking_depth_override_value
-        df.locking_depth = df.locking_depth / 100.0
 
     # Find shortest segment length
     if resample_flag:
@@ -121,6 +121,7 @@ def main():
         bottom_coordinates[:, 0] = np.array(resampled_lons)
         bottom_coordinates[:, 1] = np.array(resampled_lats)
         bottom_coordinates[:, 2] = -np.array(resampled_locking_depths)
+        bottom_coordinates[:, 2] = bottom_coordinates[:, 2] / depth_scaling
 
     else:  # No resampling case
         top_coordinates = np.zeros((len(df), 3))
@@ -129,7 +130,7 @@ def main():
         top_coordinates[:, 1] = df.lats.values
         bottom_coordinates[:, 0] = df.lons.values
         bottom_coordinates[:, 1] = df.lats.values
-        bottom_coordinates[:, 2] = -df.locking_depth.values / 100
+        bottom_coordinates[:, 2] = -df.locking_depth.values / depth_scaling
 
     # Reorder bottom coordinates so that all coordinates "circulate"
     bottom_coordinates = np.flipud(bottom_coordinates)
