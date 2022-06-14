@@ -62,6 +62,37 @@ def write_geo_file(
     fid.close()
 
 
+def resample_trace(df, resample_length):
+    longitude_diff = np.diff(df.lons)
+    latitude_diff = np.diff(df.lats)
+    approximate_segment_lengths = np.sqrt(longitude_diff ** 2.0 + latitude_diff ** 2.0)
+
+    resampled_lons = []
+    resampled_lats = []
+    resampled_locking_depths = []
+    resampled_dips = []
+    for i in range(len(df) - 1):
+        if approximate_segment_lengths[i] > resample_length:
+            n_segments = np.ceil(
+                approximate_segment_lengths[i] / resample_length
+            ).astype(int)
+            print(f"Divide the segment from {i} and {i + 1} into {n_segments} segments")
+            new_lons = np.linspace(df.lons[i], df.lons[i + 1], n_segments + 1)
+            new_lats = np.linspace(df.lats[i], df.lats[i + 1], n_segments + 1)
+            for j in range(n_segments):
+                resampled_lons.append(new_lons[j])
+                resampled_lats.append(new_lats[j])
+                resampled_locking_depths.append(df.locking_depth[i])
+                resampled_dips.append(df.dip[i])
+        else:
+            resampled_lons.append(df.lons[i])
+            resampled_lats.append(df.lats[i])
+            resampled_locking_depths.append(df.locking_depth[i])
+            resampled_dips.append(df.dip[i])
+
+    return resampled_lons, resampled_lats, resampled_locking_depths, resampled_dips
+
+
 def main():
     geo_file_name = "mesh_test.geo"
     gmsh_excutable_location = "/opt/homebrew/bin/gmsh"
@@ -77,7 +108,6 @@ def main():
     # TEMP: Read .csv dataframe from Emily
     df = pd.read_csv("naf_sorted_top_coordinates.csv")
     df_segment = pd.read_csv("emed0026_segment.csv")
-    # IPython.embed(banner1="")
 
     # Deeper locking depth setting
     if bool(locking_depth_override_flag):
@@ -85,36 +115,12 @@ def main():
 
     # Find shortest segment length
     if resample_flag:
-        longitude_diff = np.diff(df.lons)
-        latitude_diff = np.diff(df.lats)
-        approximate_segment_lengths = np.sqrt(
-            longitude_diff ** 2.0 + latitude_diff ** 2.0
-        )
-
-        resampled_lons = []
-        resampled_lats = []
-        resampled_locking_depths = []
-        resampled_dips = []
-        for i in range(len(df) - 1):
-            if approximate_segment_lengths[i] > resample_length:
-                n_segments = np.ceil(
-                    approximate_segment_lengths[i] / resample_length
-                ).astype(int)
-                print(
-                    f"Divide the segment from {i} and {i + 1} into {n_segments} segments"
-                )
-                new_lons = np.linspace(df.lons[i], df.lons[i + 1], n_segments + 1)
-                new_lats = np.linspace(df.lats[i], df.lats[i + 1], n_segments + 1)
-                for j in range(n_segments):
-                    resampled_lons.append(new_lons[j])
-                    resampled_lats.append(new_lats[j])
-                    resampled_locking_depths.append(df.locking_depth[i])
-                    resampled_dips.append(df.dip[i])
-            else:
-                resampled_lons.append(df.lons[i])
-                resampled_lats.append(df.lats[i])
-                resampled_locking_depths.append(df.locking_depth[i])
-                resampled_dips.append(df.dip[i])
+        (
+            resampled_lons,
+            resampled_lats,
+            resampled_locking_depths,
+            resampled_dips,
+        ) = resample_trace(df, resample_length)
 
         top_coordinates = np.zeros((len(resampled_lons), 3))
         bottom_coordinates = np.zeros((len(resampled_lons), 3))
