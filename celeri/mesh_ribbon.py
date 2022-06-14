@@ -76,6 +76,8 @@ def main():
 
     # TEMP: Read .csv dataframe from Emily
     df = pd.read_csv("naf_sorted_top_coordinates.csv")
+    df_segment = pd.read_csv("emed0026_segment.csv")
+    # IPython.embed(banner1="")
 
     # Deeper locking depth setting
     if bool(locking_depth_override_flag):
@@ -146,17 +148,25 @@ def main():
     )
 
     # Run gmsh
+    # -2 means two dimensional mesh
+    # -v 0 means verbosity level 0
     msh_file_name = f"{Path(geo_file_name).stem}.msh"
     os.system(
         f"{gmsh_excutable_location} -2 {geo_file_name} -o {msh_file_name} -v 0 > /dev/null"
     )
+    # Plot gmsh generated mesh with ad hoc scaling
+    os.system(f"{gmsh_excutable_location} {msh_file_name} &")
 
     # Read the mesh file that gmsh created
     meshio_object = meshio.read(msh_file_name)
     n_triangles = meshio_object.cells_dict["triangle"].shape[0]
     print(f"Created mesh with {n_triangles} triangles")
 
-    # Plot the gmsh generated mesh
+    # Reset the depths to eliminate ad-hoc scaling
+    meshio_object.points[:, 2] = depth_scaling * meshio_object.points[:, 2]
+    meshio_object.write(msh_file_name, file_format="gmsh22")
+
+    # Plot the gmsh generated mesh with out ad hoc scaling
     os.system(f"{gmsh_excutable_location} {msh_file_name} &")
 
     # Drop into repl
