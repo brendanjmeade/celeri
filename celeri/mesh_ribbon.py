@@ -5,6 +5,7 @@ import meshio
 import pandas as pd
 import IPython
 from pathlib import Path
+from scipy.spatial.distance import cdist
 
 
 def write_geo_file(
@@ -93,6 +94,39 @@ def resample_trace(df, resample_length):
     return resampled_lons, resampled_lats, resampled_locking_depths, resampled_dips
 
 
+def get_hanging_segment_index(df):
+    # Find hanging endpoints; these mark terminations of mesh-replaced segments
+    all_lons = np.hstack((df.lon1, df.lon2))
+    all_lats = np.hstack((df.lat1, df.lat2))
+    all_lons_lats = np.array([all_lons, all_lats])
+    unique_coords, indices, counts = np.unique(
+        all_lons_lats, axis=1, return_index=True, return_counts=True
+    )
+    hanging_index = indices[np.where(counts == 1)]
+
+    # Find indices of hanging segments
+    point_1_match_index = np.argmin(
+        cdist(
+            all_lons_lats[:, hanging_index].T,
+            np.array([df["lon1"].values, df["lat1"].values]).T,
+        ),
+        axis=1,
+    )
+
+    point_2_match_index = np.argmin(
+        cdist(
+            all_lons_lats[:, hanging_index].T,
+            np.array([df["lon2"].values, df["lat2"].values]).T,
+        ),
+        axis=1,
+    )
+
+    hanging_segment_index = np.unique(
+        np.concatenate((point_1_match_index, point_2_match_index)).flatten()
+    )
+    return hanging_segment_index
+
+
 def main():
     geo_file_name = "mesh_test.geo"
     gmsh_excutable_location = "/opt/homebrew/bin/gmsh"
@@ -109,12 +143,53 @@ def main():
     df = pd.read_csv("naf_sorted_top_coordinates.csv")
     df_segment = pd.read_csv("emed0026_segment.csv")
 
+    # Convert tips to radians
+    df_segment.dip = np.deg2rad(df_segment.dip)
+
+    # Whish segments should be ribbon meshed
+    keep_segment_idx = np.where(df_segment["create_ribbon_mesh"].values == 1)[0]
+    df_segment_keep = df_segment.loc[keep_segment_idx]
+    new_index = range(len(keep_segment_idx))
+    df_segment_keep.index = new_index
+
+    # Find hanging segments
+    hanging_segment_index = get_hanging_segment_index(df_segment_keep)
+    print(hanging_segment_index)
+
+    plt.figure()
+    for i in range(len(df_segment_keep)):
+        plt.plot(
+            [df_segment_keep["lon1"][i], df_segment_keep["lon2"][i]],
+            [df_segment_keep["lat1"][i], df_segment_keep["lat2"][i]],
+            "-g",
+        )
+        lon_mid = 0.5 * (df_segment_keep["lon1"][i] + df_segment_keep["lon2"][i])
+        lat_mid = 0.5 * (df_segment_keep["lat1"][i] + df_segment_keep["lat2"][i])
+        plt.text(lon_mid, lat_mid, str(i))
+
+    for i in range(hanging_segment_index.size):
+        plt.plot(
+            [
+                df_segment_keep["lon1"][hanging_segment_index[i]],
+                df_segment_keep["lon2"][hanging_segment_index[i]],
+            ],
+            [
+                df_segment_keep["lat1"][hanging_segment_index[i]],
+                df_segment_keep["lat2"][hanging_segment_index[i]],
+            ],
+            "-r",
+        )
+
+    plt.show(block=True)
+
+    IPython.embed(banner1="")
+    return
+
     # Deeper locking depth setting
     if bool(locking_depth_override_flag):
         df.locking_depth = locking_depth_override_value
 
-    # Find shortest segment length
-    if resample_flag:
+    if resample_flag:  # No resampling case
         (
             resampled_lons,
             resampled_lats,
@@ -139,6 +214,9 @@ def main():
         bottom_coordinates[:, 0] = df.lons.values
         bottom_coordinates[:, 1] = df.lats.values
         bottom_coordinates[:, 2] = -df.locking_depth.values / depth_scaling
+
+    # Try adding dip effects
+    # May have to resample the bottom trace this time.
 
     # Reorder bottom coordinates so that all coordinates "circulate"
     bottom_coordinates = np.flipud(bottom_coordinates)
@@ -176,7 +254,7 @@ def main():
     os.system(f"{gmsh_excutable_location} {msh_file_name} &")
 
     # Drop into repl
-    IPython.embed(banner1="")
+    # IPython.embed(banner1="")
 
 
 if __name__ == "__main__":
