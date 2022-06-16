@@ -127,6 +127,44 @@ def get_hanging_segment_index(df):
     return hanging_segment_index
 
 
+def plot_hanging_segments(df, hanging_segment_index):
+    plt.figure()
+
+    # Plot all segments for current ribbon
+    for i in range(len(df)):
+        plt.plot(
+            [df["lon1"][i], df["lon2"][i]],
+            [df["lat1"][i], df["lat2"][i]],
+            "-g",
+        )
+
+    # Plot hanging segments for current ribbon
+    for i in range(hanging_segment_index.size):
+        plt.plot(
+            [
+                df["lon1"][hanging_segment_index[i]],
+                df["lon2"][hanging_segment_index[i]],
+            ],
+            [
+                df["lat1"][hanging_segment_index[i]],
+                df["lat2"][hanging_segment_index[i]],
+            ],
+            "-r",
+        )
+        plt.plot(
+            df["lon1"][hanging_segment_index[i]],
+            df["lat1"][hanging_segment_index[i]],
+            "r+",
+        )
+        plt.plot(
+            df["lon2"][hanging_segment_index[i]],
+            df["lat2"][hanging_segment_index[i]],
+            "r+",
+        )
+    plt.gca().set_aspect("equal")
+    plt.show(block=True)
+
+
 def main():
     geo_file_name = "mesh_test.geo"
     gmsh_excutable_location = "/opt/homebrew/bin/gmsh"
@@ -146,7 +184,7 @@ def main():
     # Convert tips to radians
     df_segment.dip = np.deg2rad(df_segment.dip)
 
-    # Whish segments should be ribbon meshed
+    # Which segments should be ribbon meshed
     keep_segment_idx = np.where(df_segment["create_ribbon_mesh"].values == 1)[0]
     df_segment_keep = df_segment.loc[keep_segment_idx]
     new_index = range(len(keep_segment_idx))
@@ -154,33 +192,7 @@ def main():
 
     # Find hanging segments
     hanging_segment_index = get_hanging_segment_index(df_segment_keep)
-    print(hanging_segment_index)
-
-    plt.figure()
-    for i in range(len(df_segment_keep)):
-        plt.plot(
-            [df_segment_keep["lon1"][i], df_segment_keep["lon2"][i]],
-            [df_segment_keep["lat1"][i], df_segment_keep["lat2"][i]],
-            "-g",
-        )
-        lon_mid = 0.5 * (df_segment_keep["lon1"][i] + df_segment_keep["lon2"][i])
-        lat_mid = 0.5 * (df_segment_keep["lat1"][i] + df_segment_keep["lat2"][i])
-        plt.text(lon_mid, lat_mid, str(i))
-
-    for i in range(hanging_segment_index.size):
-        plt.plot(
-            [
-                df_segment_keep["lon1"][hanging_segment_index[i]],
-                df_segment_keep["lon2"][hanging_segment_index[i]],
-            ],
-            [
-                df_segment_keep["lat1"][hanging_segment_index[i]],
-                df_segment_keep["lat2"][hanging_segment_index[i]],
-            ],
-            "-r",
-        )
-
-    plt.show(block=True)
+    plot_hanging_segments(df_segment_keep, hanging_segment_index)
 
     IPython.embed(banner1="")
     return
