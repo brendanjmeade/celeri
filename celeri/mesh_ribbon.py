@@ -228,32 +228,46 @@ def main():
     new_index = range(len(keep_segment_idx))
     df_segment_keep.index = new_index
 
+    plt.figure()
+    for i in range(len(df_segment_keep)):
+        plt.plot(
+            [df_segment_keep.lon1[i], df_segment_keep.lon2[i]],
+            [df_segment_keep.lat1[i], df_segment_keep.lat2[i]],
+            "-g",
+        )
+        if i == 166:
+            plt.plot(
+                [df_segment_keep.lon1[i], df_segment_keep.lon2[i]],
+                [df_segment_keep.lat1[i], df_segment_keep.lat2[i]],
+                "-r",
+            )
+        lon_mid = 0.5 * (df_segment_keep.lon1[i] + df_segment_keep.lon2[i])
+        lat_mid = 0.5 * (df_segment_keep.lat1[i] + df_segment_keep.lat2[i])
+        plt.text(lon_mid, lat_mid, str(i), rotation=90, fontsize=6)
+    plt.show()
+    return
+
+    # Should be   : 163, 164, 162, 167, 166, 142
+    # Acutually is: 163, 164, 162, 166, 76,
+    # Why is 166 being selected instead of 167?
+
     # Find hanging segments
     hanging_segment = get_hanging_segments(df_segment_keep)
-    print(f"{hanging_segment['hanging_point']=}")
-    print(f"{hanging_segment['not_hanging_point']=}")
 
     # Loop to build ordered segments in order
-    # segment_ordered_lon = np.zeros(len(df_segment_keep) + 1)
-    # segment_ordered_lat = np.zeros(len(df_segment_keep) + 1)
-    point_1s = np.array(
-        [df_segment_keep["lon1"].values, df_segment_keep["lat1"].values]
-    ).T
-    point_2s = np.array(
-        [df_segment_keep["lon2"].values, df_segment_keep["lat2"].values]
-    ).T
+    segment_ordered_lon = np.zeros(len(df_segment_keep) + 1)
+    segment_ordered_lat = np.zeros(len(df_segment_keep) + 1)
+    point_1s = np.array([df_segment_keep["lon1"], df_segment_keep["lat1"]]).T
+    point_2s = np.array([df_segment_keep["lon2"], df_segment_keep["lat2"]]).T
 
-    segment_ordered_lon = np.zeros(5)
-    segment_ordered_lat = np.zeros(5)
     segment_ordered_lon[0] = hanging_segment["hanging_point"][0, 0]
     segment_ordered_lat[0] = hanging_segment["hanging_point"][0, 1]
     segment_ordered_lon[1] = hanging_segment["not_hanging_point"][0, 0]
     segment_ordered_lat[1] = hanging_segment["not_hanging_point"][0, 1]
-    segment_order_index = np.zeros(5)
+    segment_order_index = np.zeros(len(df_segment_keep))
     segment_order_index[0] = hanging_segment["index"][0]
     print(f"{segment_order_index=}")
-    # for i in range(len(df_segment_keep) - 1):
-    for i in range(2, 5):
+    for i in range(2, len(df_segment_keep)):
         print(i)
         current_point = np.array(
             [segment_ordered_lon[i - 1], segment_ordered_lat[i - 1]]
@@ -273,16 +287,37 @@ def main():
             np.where(match_segment_index != segment_order_index[i - 2])[0]
         ]
         print(match_segment_index)
+        segment_order_index[i - 1] = match_segment_index
 
-        # # Select (lon1, lat1) or (lon2, lat2) as the next current point
-        # if np.allclose(point_1, current_hanging_point):
-        #     hanging_segment_point[i, :] = point_1
-        #     hanging_segment_not_point[i, :] = point_2
-        #     hanging_segment_lon1_lon2.append("lon1")
-        # elif np.allclose(point_2, current_hanging_point):
-        #     hanging_segment_point[i, :] = point_2
-        #     hanging_segment_not_point[i, :] = point_1
-        #     hanging_segment_lon1_lon2.append("lon2")
+        # End points from selected segment
+        point_1 = np.array(
+            [
+                df_segment_keep["lon1"][match_segment_index],
+                df_segment_keep["lat1"][match_segment_index],
+            ]
+        )
+        point_2 = np.array(
+            [
+                df_segment_keep["lon2"][match_segment_index],
+                df_segment_keep["lat2"][match_segment_index],
+            ]
+        )
+
+        # Select (lon1, lat1) or (lon2, lat2) as the next current point
+        if np.allclose(point_1.flatten(), current_point.flatten()):
+            print("(lon1, lat1)")
+            segment_ordered_lon[i] = df_segment_keep["lon2"][match_segment_index]
+            segment_ordered_lat[i] = df_segment_keep["lat2"][match_segment_index]
+        elif np.allclose(point_2.flatten(), current_point.flatten()):
+            print("(lon2, lat2)")
+            segment_ordered_lon[i] = df_segment_keep["lon1"][match_segment_index]
+            segment_ordered_lat[i] = df_segment_keep["lat1"][match_segment_index]
+
+    plt.figure()
+    for i in range(segment_ordered_lon.size):
+        plt.plot(segment_ordered_lon[i], segment_ordered_lat[i], ".r")
+        plt.text(segment_ordered_lon[i], segment_ordered_lat[i], str(i))
+    plt.show()
 
     IPython.embed(banner1="")
     return
