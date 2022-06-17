@@ -103,15 +103,15 @@ def get_hanging_segments(df):
         all_lons_lats, axis=1, return_index=True, return_counts=True
     )
     hanging_index = indices[np.where(counts == 1)]
-    hanging_vertex = all_lons_lats[:, hanging_index]
-    hanging_vertex = np.transpose(hanging_vertex)
-    print(hanging_vertex.shape)
+    hanging_point = all_lons_lats[:, hanging_index]
+    hanging_point = np.transpose(hanging_point)
+    print(hanging_point.shape)
 
     # Find indices of hanging segments
     point_1_match_index = np.argmin(
         cdist(
             np.array([df["lon1"].values, df["lat1"].values]).T,
-            hanging_vertex,
+            hanging_point,
         ),
         axis=0,
     )
@@ -119,7 +119,7 @@ def get_hanging_segments(df):
     point_2_match_index = np.argmin(
         cdist(
             np.array([df["lon2"].values, df["lat2"].values]).T,
-            hanging_vertex,
+            hanging_point,
         ),
         axis=0,
     )
@@ -129,11 +129,11 @@ def get_hanging_segments(df):
     )
 
     # Identify the endpoint that has the hanging coordinates
-    hanging_segment_vertex = np.zeros((hanging_segment_index.size, 2))
-    hanging_segment_not_vertex = np.zeros((hanging_segment_index.size, 2))
+    hanging_segment_point = np.zeros((hanging_segment_index.size, 2))
+    hanging_segment_not_point = np.zeros((hanging_segment_index.size, 2))
     hanging_segment_lon1_lon2 = []
     for i in range(hanging_segment_index.size):
-        current_hanging_vertex = hanging_vertex[i, :]
+        current_hanging_point = hanging_point[i, :]
         point_1 = np.array(
             [
                 df["lon1"][hanging_segment_index[i]],
@@ -147,18 +147,18 @@ def get_hanging_segments(df):
             ]
         )
 
-        if np.allclose(point_1, current_hanging_vertex):
-            hanging_segment_vertex[i, :] = point_1
-            hanging_segment_not_vertex[i, :] = point_2
+        if np.allclose(point_1, current_hanging_point):
+            hanging_segment_point[i, :] = point_1
+            hanging_segment_not_point[i, :] = point_2
             hanging_segment_lon1_lon2.append("lon1")
-        elif np.allclose(point_2, current_hanging_vertex):
-            hanging_segment_vertex[i, :] = point_2
-            hanging_segment_not_vertex[i, :] = point_1
+        elif np.allclose(point_2, current_hanging_point):
+            hanging_segment_point[i, :] = point_2
+            hanging_segment_not_point[i, :] = point_1
             hanging_segment_lon1_lon2.append("lon2")
 
     hanging_segment = {}
-    hanging_segment["hanging_vertex"] = hanging_segment_vertex
-    hanging_segment["not_hanging_vertex"] = hanging_segment_not_vertex
+    hanging_segment["hanging_point"] = hanging_segment_point
+    hanging_segment["not_hanging_point"] = hanging_segment_not_point
     hanging_segment["lon1_lon2"] = hanging_segment_lon1_lon2
     hanging_segment["index"] = hanging_segment_index
 
@@ -230,8 +230,8 @@ def main():
 
     # Find hanging segments
     hanging_segment = get_hanging_segments(df_segment_keep)
-    print(f"{hanging_segment['hanging_vertex']=}")
-    print(f"{hanging_segment['not_hanging_vertex']=}")
+    print(f"{hanging_segment['hanging_point']=}")
+    print(f"{hanging_segment['not_hanging_point']=}")
 
     # Loop to build ordered segments in order
     # segment_ordered_lon = np.zeros(len(df_segment_keep) + 1)
@@ -245,14 +245,14 @@ def main():
 
     segment_ordered_lon = np.zeros(5)
     segment_ordered_lat = np.zeros(5)
-    segment_ordered_lon[0] = hanging_segment["hanging_vertex"][0, 0]
-    segment_ordered_lat[0] = hanging_segment["hanging_vertex"][0, 1]
-    segment_ordered_lon[1] = hanging_segment["not_hanging_vertex"][0, 0]
-    segment_ordered_lat[1] = hanging_segment["not_hanging_vertex"][0, 1]
-
+    segment_ordered_lon[0] = hanging_segment["hanging_point"][0, 0]
+    segment_ordered_lat[0] = hanging_segment["hanging_point"][0, 1]
+    segment_ordered_lon[1] = hanging_segment["not_hanging_point"][0, 0]
+    segment_ordered_lat[1] = hanging_segment["not_hanging_point"][0, 1]
     segment_order_index = np.zeros(5)
     segment_order_index[0] = hanging_segment["index"][0]
-    # # for i in range(len(df_segment_keep) - 1):
+    print(f"{segment_order_index=}")
+    # for i in range(len(df_segment_keep) - 1):
     for i in range(2, 5):
         print(i)
         current_point = np.array(
@@ -262,32 +262,27 @@ def main():
 
         # Find segment connected to current segment
         point_1_match_index = np.argmin(cdist(current_point, point_1s), axis=1)
-
-        # Find segment connected to current segment
         point_2_match_index = np.argmin(cdist(current_point, point_2s), axis=1)
         match_segment_index = np.unique(
             np.concatenate((point_1_match_index, point_2_match_index)).flatten()
         )
-
         print(match_segment_index)
 
-    # point_2_match_index = np.argmin(
-    #     cdist(
-    #         all_lons_lats[:, hanging_index].T,
-    #         np.array([df["lon2"].values, df["lat2"].values]).T,
-    #     ),
-    #     axis=1,
-    # )
+        # Select the segment that is not the current segment
+        match_segment_index = match_segment_index[
+            np.where(match_segment_index != segment_order_index[i - 2])[0]
+        ]
+        print(match_segment_index)
 
-    # connected_segment_index = np.unique(
-    #     np.concatenate((point_1_match_index, point_2_match_index)).flatten()
-    # )
-
-    # Check to make sure it's not itself or a prior connected segment
-
-    # Add index to list
-    # new_index = 0
-    # segment_order_index.append(new_index)
+        # # Select (lon1, lat1) or (lon2, lat2) as the next current point
+        # if np.allclose(point_1, current_hanging_point):
+        #     hanging_segment_point[i, :] = point_1
+        #     hanging_segment_not_point[i, :] = point_2
+        #     hanging_segment_lon1_lon2.append("lon1")
+        # elif np.allclose(point_2, current_hanging_point):
+        #     hanging_segment_point[i, :] = point_2
+        #     hanging_segment_not_point[i, :] = point_1
+        #     hanging_segment_lon1_lon2.append("lon2")
 
     IPython.embed(banner1="")
     return
