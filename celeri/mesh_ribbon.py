@@ -273,7 +273,7 @@ def main():
         print(f"{point_1.T=}")
         print(f"{point_2.T=}")
 
-        # TODO: There is something wrong with the logic of the next ~10 lines
+        # TODO: #105 There is something wrong with the logic of the next ~10 lines
         if point_1_distances.min() == 0.0:
             match_segment_index = point_1_min_idx
         else:
