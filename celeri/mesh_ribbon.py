@@ -64,7 +64,8 @@ def write_geo_file(
     fid.close()
 
 
-def resample_trace(lons, lats, locking_depth, dip, resample_length):
+# JPL removed dips, since dip is really a property of the segment, not the coordinates
+def resample_trace(lons, lats, locking_depth, resample_length):
     longitude_diff = np.diff(lons)
     latitude_diff = np.diff(lats)
     approximate_segment_lengths = np.sqrt(longitude_diff**2.0 + latitude_diff**2.0)
@@ -72,7 +73,7 @@ def resample_trace(lons, lats, locking_depth, dip, resample_length):
     resampled_lons = []
     resampled_lats = []
     resampled_locking_depths = []
-    resampled_dips = []
+
     for i in range(len(lons) - 1):
         if approximate_segment_lengths[i] > resample_length:
             n_segments = np.ceil(
@@ -85,14 +86,12 @@ def resample_trace(lons, lats, locking_depth, dip, resample_length):
                 resampled_lons.append(new_lons[j])
                 resampled_lats.append(new_lats[j])
                 resampled_locking_depths.append(locking_depth[i])
-                resampled_dips.append(dip[i])
         else:
             resampled_lons.append(lons[i])
             resampled_lats.append(lats[i])
             resampled_locking_depths.append(locking_depth[i])
-            resampled_dips.append(dip[i])
 
-    return resampled_lons, resampled_lats, resampled_locking_depths, resampled_dips
+    return resampled_lons, resampled_lats, resampled_locking_depths
 
 
 def get_hanging_segments(df):
@@ -169,14 +168,8 @@ def get_hanging_segments(df):
 def order_endpoints(segment):
     """
     Endpoint ordering function, placing west point first.
-    This converts the endpoint coordinates from spherical to Cartesian,
-    then takes the cross product to test for ordering (i.e., a positive z
-    component of cross(point1, point2) means that point1 is the western
-    point). This method works for both (-180, 180) and (0, 360) longitude
-    conventions.
-    BJM: Not sure why cross product approach was definitely not working in
-    python so I revereted to relative longitude check which sould be fine because
-    we're always in 0-360 space.
+
+    Could go back to cross product-based ordering if we call process_segment
     """
     segment_copy = copy.deepcopy(segment)
     swap_endpoint_idx = np.where(segment_copy.lon1 > segment_copy.lon2)
@@ -240,6 +233,7 @@ def main():
     # TEMP: Read .csv dataframe from Emily
     df = pd.read_csv("emed0026_segment.csv")
 
+    # Order endpoints of segments, just placing the western point first
     df = order_endpoints(df)
 
     # Convert tips to radians
@@ -255,14 +249,17 @@ def main():
     hanging_segment = get_hanging_segments(df_keep)
 
     # Loop to build ordered segments in order
-    segment_ordered_lon = np.zeros(len(df_keep) + 1)
-    segment_ordered_lat = np.zeros(len(df_keep) + 1)
+    segment_ordered_lon = np.zeros(len(df_keep))
+    segment_ordered_lat = np.zeros(len(df_keep))
+    segment_ordered_dep = np.zeros(len(df_keep))
     point_1s = np.array([df_keep["lon1"], df_keep["lat1"]]).T
     point_2s = np.array([df_keep["lon2"], df_keep["lat2"]]).T
     segment_ordered_lon[0] = hanging_segment["hanging_point"][0, 0]
     segment_ordered_lat[0] = hanging_segment["hanging_point"][0, 1]
+    segment_ordered_dep[0] = df_keep["locking_depth"][hanging_segment["index"][0]]
     segment_ordered_lon[1] = hanging_segment["not_hanging_point"][0, 0]
     segment_ordered_lat[1] = hanging_segment["not_hanging_point"][0, 1]
+    segment_ordered_dep[1] = df_keep["locking_depth"][hanging_segment["index"][0]]
     segment_order_index = np.zeros(len(df_keep))
     segment_order_index[0] = hanging_segment["index"][0]
     print(f"{segment_order_index=}")
@@ -341,6 +338,10 @@ def main():
             print("(lon2, lat2)")
             segment_ordered_lon[i] = df_keep["lon1"][match_segment_index]
             segment_ordered_lat[i] = df_keep["lat1"][match_segment_index]
+        # Set coordinate depth to average of locking depths of segments it's a part of
+        segment_ordered_dep[i] = np.mean(
+            [segment_ordered_dep[i - 1], df_keep["locking_depth"][match_segment_index]]
+        )
 
     # plt.figure()
     # for i in range(segment_ordered_lon.size):
@@ -355,21 +356,11 @@ def main():
     if bool(locking_depth_override_flag):
         df.locking_depth = locking_depth_override_value
 
-    locking_depth = np.zeros_like(segment_ordered_lat) + 10
-    dip = np.zeros_like(segment_ordered_lat) + 90
-    print(segment_ordered_lon[0])
-    print(segment_ordered_lon[len(segment_ordered_lon) - 1])
     if resample_flag:  # Resampling case
-        (
-            resampled_lons,
-            resampled_lats,
-            resampled_locking_depths,
-            resampled_dips,
-        ) = resample_trace(
-            segment_ordered_lon[:-1],
-            segment_ordered_lat[:-1],
-            locking_depth[:-1],
-            dip[:-1],
+        (resampled_lons, resampled_lats, resampled_locking_depths) = resample_trace(
+            segment_ordered_lon,
+            segment_ordered_lat,
+            segment_ordered_dep,
             resample_length,
         )
 
@@ -383,13 +374,13 @@ def main():
         # bottom_coordinates[:, 2] = bottom_coordinates[:, 2] / depth_scaling
 
     else:  # No resampling case
-        top_coordinates = np.zeros((len(df_keep) + 1, 3))
-        bottom_coordinates = np.zeros((len(df_keep) + 1, 3)) - 10 / depth_scaling
+        top_coordinates = np.zeros((len(df_keep), 3))
+        bottom_coordinates = np.zeros((len(df_keep), 3))
         top_coordinates[:, 0] = np.array(segment_ordered_lon)
         top_coordinates[:, 1] = np.array(segment_ordered_lat)
         bottom_coordinates[:, 0] = np.array(segment_ordered_lon)
         bottom_coordinates[:, 1] = np.array(segment_ordered_lat)
-        # bottom_coordinates[:, 2] = -df_keep.locking_depth.values / depth_scaling
+        bottom_coordinates[:, 2] = -np.array(segment_ordered_dep) / depth_scaling
 
     # Try adding dip effects
     # May have to resample the bottom trace this time.
