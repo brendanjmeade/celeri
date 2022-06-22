@@ -4,6 +4,7 @@ import os
 import meshio
 import pandas as pd
 import IPython
+import copy
 from pathlib import Path
 from scipy.spatial.distance import cdist
 
@@ -63,35 +64,34 @@ def write_geo_file(
     fid.close()
 
 
-def resample_trace(df, resample_length):
-    longitude_diff = np.diff(df.lons)
-    latitude_diff = np.diff(df.lats)
-    approximate_segment_lengths = np.sqrt(longitude_diff ** 2.0 + latitude_diff ** 2.0)
+# JPL removed dips, since dip is really a property of the segment, not the coordinates
+def resample_trace(lons, lats, locking_depth, resample_length):
+    longitude_diff = np.diff(lons)
+    latitude_diff = np.diff(lats)
+    approximate_segment_lengths = np.sqrt(longitude_diff**2.0 + latitude_diff**2.0)
 
     resampled_lons = []
     resampled_lats = []
     resampled_locking_depths = []
-    resampled_dips = []
-    for i in range(len(df) - 1):
+
+    for i in range(len(lons) - 1):
         if approximate_segment_lengths[i] > resample_length:
             n_segments = np.ceil(
                 approximate_segment_lengths[i] / resample_length
             ).astype(int)
             print(f"Divide the segment from {i} and {i + 1} into {n_segments} segments")
-            new_lons = np.linspace(df.lons[i], df.lons[i + 1], n_segments + 1)
-            new_lats = np.linspace(df.lats[i], df.lats[i + 1], n_segments + 1)
+            new_lons = np.linspace(lons[i], lons[i + 1], n_segments + 1)
+            new_lats = np.linspace(lats[i], lats[i + 1], n_segments + 1)
             for j in range(n_segments):
                 resampled_lons.append(new_lons[j])
                 resampled_lats.append(new_lats[j])
-                resampled_locking_depths.append(df.locking_depth[i])
-                resampled_dips.append(df.dip[i])
+                resampled_locking_depths.append(locking_depth[i])
         else:
-            resampled_lons.append(df.lons[i])
-            resampled_lats.append(df.lats[i])
-            resampled_locking_depths.append(df.locking_depth[i])
-            resampled_dips.append(df.dip[i])
+            resampled_lons.append(lons[i])
+            resampled_lats.append(lats[i])
+            resampled_locking_depths.append(locking_depth[i])
 
-    return resampled_lons, resampled_lats, resampled_locking_depths, resampled_dips
+    return resampled_lons, resampled_lats, resampled_locking_depths
 
 
 def get_hanging_segments(df):
@@ -165,6 +165,21 @@ def get_hanging_segments(df):
     return hanging_segment
 
 
+def order_endpoints(segment):
+    """
+    Endpoint ordering function, placing west point first.
+
+    Could go back to cross product-based ordering if we call process_segment
+    """
+    segment_copy = copy.deepcopy(segment)
+    swap_endpoint_idx = np.where(segment_copy.lon1 > segment_copy.lon2)
+    segment_copy.lon1.values[swap_endpoint_idx] = segment.lon2.values[swap_endpoint_idx]
+    segment_copy.lat1.values[swap_endpoint_idx] = segment.lat2.values[swap_endpoint_idx]
+    segment_copy.lon2.values[swap_endpoint_idx] = segment.lon1.values[swap_endpoint_idx]
+    segment_copy.lat2.values[swap_endpoint_idx] = segment.lat1.values[swap_endpoint_idx]
+    return segment_copy
+
+
 def plot_hanging_segments(df, hanging_segment_index):
     plt.figure()
 
@@ -218,6 +233,9 @@ def main():
     # TEMP: Read .csv dataframe from Emily
     df = pd.read_csv("emed0026_segment.csv")
 
+    # Order endpoints of segments, just placing the western point first
+    df = order_endpoints(df)
+
     # Convert tips to radians
     df.dip = np.deg2rad(df.dip)
 
@@ -231,14 +249,17 @@ def main():
     hanging_segment = get_hanging_segments(df_keep)
 
     # Loop to build ordered segments in order
-    segment_ordered_lon = np.zeros(len(df_keep) + 1)
-    segment_ordered_lat = np.zeros(len(df_keep) + 1)
+    segment_ordered_lon = np.zeros(len(df_keep))
+    segment_ordered_lat = np.zeros(len(df_keep))
+    segment_ordered_dep = np.zeros(len(df_keep))
     point_1s = np.array([df_keep["lon1"], df_keep["lat1"]]).T
     point_2s = np.array([df_keep["lon2"], df_keep["lat2"]]).T
     segment_ordered_lon[0] = hanging_segment["hanging_point"][0, 0]
     segment_ordered_lat[0] = hanging_segment["hanging_point"][0, 1]
+    segment_ordered_dep[0] = df_keep["locking_depth"][hanging_segment["index"][0]]
     segment_ordered_lon[1] = hanging_segment["not_hanging_point"][0, 0]
     segment_ordered_lat[1] = hanging_segment["not_hanging_point"][0, 1]
+    segment_ordered_dep[1] = df_keep["locking_depth"][hanging_segment["index"][0]]
     segment_order_index = np.zeros(len(df_keep))
     segment_order_index[0] = hanging_segment["index"][0]
     print(f"{segment_order_index=}")
@@ -317,27 +338,31 @@ def main():
             print("(lon2, lat2)")
             segment_ordered_lon[i] = df_keep["lon1"][match_segment_index]
             segment_ordered_lat[i] = df_keep["lat1"][match_segment_index]
+        # Set coordinate depth to average of locking depths of segments it's a part of
+        segment_ordered_dep[i] = np.mean(
+            [segment_ordered_dep[i - 1], df_keep["locking_depth"][match_segment_index]]
+        )
 
-    plt.figure()
-    for i in range(segment_ordered_lon.size):
-        plt.plot(segment_ordered_lon[i], segment_ordered_lat[i], ".r")
-        plt.text(segment_ordered_lon[i], segment_ordered_lat[i], str(i))
-    plt.show()
+    # plt.figure()
+    # for i in range(segment_ordered_lon.size):
+    #     plt.plot(segment_ordered_lon[i], segment_ordered_lat[i], ".r")
+    #     plt.text(segment_ordered_lon[i], segment_ordered_lat[i], str(i))
+    # plt.show()
 
-    IPython.embed(banner1="")
-    return
+    # IPython.embed(banner1="")
+    # return
 
     # Deeper locking depth setting
     if bool(locking_depth_override_flag):
         df.locking_depth = locking_depth_override_value
 
-    if resample_flag:  # No resampling case
-        (
-            resampled_lons,
-            resampled_lats,
-            resampled_locking_depths,
-            resampled_dips,
-        ) = resample_trace(df, resample_length)
+    if resample_flag:  # Resampling case
+        (resampled_lons, resampled_lats, resampled_locking_depths) = resample_trace(
+            segment_ordered_lon,
+            segment_ordered_lat,
+            segment_ordered_dep,
+            resample_length,
+        )
 
         top_coordinates = np.zeros((len(resampled_lons), 3))
         bottom_coordinates = np.zeros((len(resampled_lons), 3))
@@ -346,16 +371,16 @@ def main():
         bottom_coordinates[:, 0] = np.array(resampled_lons)
         bottom_coordinates[:, 1] = np.array(resampled_lats)
         bottom_coordinates[:, 2] = -np.array(resampled_locking_depths)
-        bottom_coordinates[:, 2] = bottom_coordinates[:, 2] / depth_scaling
+        # bottom_coordinates[:, 2] = bottom_coordinates[:, 2] / depth_scaling
 
     else:  # No resampling case
-        top_coordinates = np.zeros((len(df), 3))
-        bottom_coordinates = np.zeros((len(df), 3))
-        top_coordinates[:, 0] = df.lons.values
-        top_coordinates[:, 1] = df.lats.values
-        bottom_coordinates[:, 0] = df.lons.values
-        bottom_coordinates[:, 1] = df.lats.values
-        bottom_coordinates[:, 2] = -df.locking_depth.values / depth_scaling
+        top_coordinates = np.zeros((len(df_keep), 3))
+        bottom_coordinates = np.zeros((len(df_keep), 3))
+        top_coordinates[:, 0] = np.array(segment_ordered_lon)
+        top_coordinates[:, 1] = np.array(segment_ordered_lat)
+        bottom_coordinates[:, 0] = np.array(segment_ordered_lon)
+        bottom_coordinates[:, 1] = np.array(segment_ordered_lat)
+        bottom_coordinates[:, 2] = -np.array(segment_ordered_dep) / depth_scaling
 
     # Try adding dip effects
     # May have to resample the bottom trace this time.
