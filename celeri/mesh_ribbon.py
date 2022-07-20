@@ -68,7 +68,7 @@ def write_geo_file(
 def resample_trace(lons, lats, locking_depth, resample_length):
     longitude_diff = np.diff(lons)
     latitude_diff = np.diff(lats)
-    approximate_segment_lengths = np.sqrt(longitude_diff**2.0 + latitude_diff**2.0)
+    approximate_segment_lengths = np.sqrt(longitude_diff ** 2.0 + latitude_diff ** 2.0)
 
     resampled_lons = []
     resampled_lats = []
@@ -222,8 +222,8 @@ def main():
     geo_file_name = "mesh_test.geo"
     gmsh_excutable_location = "/opt/homebrew/bin/gmsh"
     smooth_trace = False
-    top_mesh_reference_size = 0.01
-    bottom_mesh_reference_size = 0.2
+    top_mesh_reference_size = 1.0
+    bottom_mesh_reference_size = 1.0
     locking_depth_override_flag = True
     locking_depth_override_value = 40.0
     depth_scaling = 100.0

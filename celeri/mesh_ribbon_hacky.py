@@ -100,17 +100,17 @@ def main():
     smooth_trace = False
 
     # NAF parameters
-    top_mesh_reference_size = 0.01
-    bottom_mesh_reference_size = 0.1
+    top_mesh_reference_size = 0.05
+    bottom_mesh_reference_size = 0.05
     depth_scaling = 100.0
 
     # EAF parameters
-    top_mesh_reference_size = 0.01
-    bottom_mesh_reference_size = 0.1
-    depth_scaling = 100.0
+    # top_mesh_reference_size = 0.01
+    # bottom_mesh_reference_size = 0.1
+    # depth_scaling = 100.0
 
     locking_depth_override_flag = True
-    locking_depth_override_value = 40.0
+    locking_depth_override_value = 20.0
     resample_flag = True
     resample_length = 0.01
 
@@ -128,7 +128,7 @@ def main():
         df_segment.locking_depth = locking_depth_override_value
 
     # Which segments should be ribbon meshed
-    keep_segment_idx = np.where(df_segment["create_ribbon_mesh"].values == 2)[0]
+    keep_segment_idx = np.where(df_segment["create_ribbon_mesh"].values == 1)[0]
     df_segment_keep = df_segment.loc[keep_segment_idx]
     new_index = range(len(keep_segment_idx))
     df_segment_keep.index = new_index

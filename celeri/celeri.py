@@ -15,6 +15,7 @@ import warnings
 import shutil
 import pickle
 import timeit
+import IPython
 import numpy as np
 import pandas as pd
 import okada_wrapper
@@ -3175,6 +3176,9 @@ def get_full_dense_operator(operators, meshes, index):
         )
     )
 
+    # DEBUG:
+    # IPython.embed(banner1="")
+
     # Insert block rotations and elastic velocities from fully locked segments
     operators.rotation_to_slip_rate_to_okada_to_velocities = (
         operators.slip_rate_to_okada_to_velocities @ operators.rotation_to_slip_rate
@@ -3238,6 +3242,9 @@ def assemble_and_solve_dense(command, assembly, operators, station, block, meshe
     estimation.data_vector = get_data_vector(assembly, index)
     estimation.weighting_vector = get_weighting_vector(command, station, meshes, index)
     estimation.operator = get_full_dense_operator(operators, meshes, index)
+
+    # DEBUG HERE:
+    # IPython.embed(banner1="")
 
     # Solve the overdetermined linear system using only a weighting vector rather than matrix
     estimation.state_covariance_matrix = np.linalg.inv(
@@ -4794,9 +4801,6 @@ def build_and_solve_dense_no_meshes(command, assembly, operators, data):
 
     # TODO: Clean up!
     logger.error(operators.keys())
-    # import IPython
-
-    # IPython.embed(banner1="")
 
     operator_block_only = get_full_dense_operator_block_only(operators, index)
     # weighting_vector = get_weighting_vector(command, data.station, data.meshes, index)
