@@ -13,7 +13,7 @@
     "global_elastic_cutoff_distance_flag": 0,
     "h_matrix_min_pts_per_box": 20,
     "h_matrix_min_separation": 1.25,
-    "h_matrix_tol": 0.000001,
+    "h_matrix_tol": 0.1,
     "inversion_param01": 0,
     "inversion_param02": 0,
     "inversion_param03": 0,
