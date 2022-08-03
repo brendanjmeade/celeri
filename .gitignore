@@ -18,3 +18,5 @@ runs/
 *.hdf5
 *.npy
 *.npz
+*.geo
+mesh_test*
