@@ -110,7 +110,7 @@ def main():
     # depth_scaling = 100.0
 
     locking_depth_override_flag = True
-    locking_depth_override_value = 20.0
+    locking_depth_override_value = 40.0
     resample_flag = True
     resample_length = 0.01
 
