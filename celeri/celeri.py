@@ -370,12 +370,14 @@ def zero_mesh_segment_locking_depth(segment, meshes):
     and patch_file_name fields must not be equal to zero but also
     less than the number of available mesh files.
     """
+    segment = segment.copy(deep=True)
     toggle_off = np.where(
         (segment.patch_flag != 0)
-        & (segment.patch_file_name != 0)
+        & (segment.patch_file_name != -1)
         & (segment.patch_file_name <= len(meshes))
     )[0]
     segment.locking_depth.values[toggle_off] = 0
+    segment.burial_depth.values[toggle_off] = 0
     return segment
 
 
@@ -511,7 +513,7 @@ def snap_segments(segment, meshes):
     all_edge_segment = make_default_segment(0)
     for i in range(len(meshes)):
         these_segments = np.where(
-            (segment.patch_flag != 0) & (segment.patch_file_name == i + 1)
+            (segment.patch_flag != 0) & (segment.patch_file_name == i)
         )[0]
         cut_segment_idx = np.append(cut_segment_idx, these_segments)
         # Get top coordinates of the mesh
@@ -839,20 +841,20 @@ def euler_pole_covariance_to_rotation_vector_covariance(
         else:
             # Calculate the partial derivatives
             dlat_dx = (
-                -z / (x ** 2 + y ** 2) ** (3 / 2) / (1 + z ** 2 / (x ** 2 + y ** 2)) * x
+                -z / (x**2 + y**2) ** (3 / 2) / (1 + z**2 / (x**2 + y**2)) * x
             )
             dlat_dy = (
-                -z / (x ** 2 + y ** 2) ** (3 / 2) / (1 + z ** 2 / (x ** 2 + y ** 2)) * y
+                -z / (x**2 + y**2) ** (3 / 2) / (1 + z**2 / (x**2 + y**2)) * y
             )
             dlat_dz = (
-                1 / (x ** 2 + y ** 2) ** (1 / 2) / (1 + z ** 2 / (x ** 2 + y ** 2))
+                1 / (x**2 + y**2) ** (1 / 2) / (1 + z**2 / (x**2 + y**2))
             )
-            dlon_dx = -y / x ** 2 / (1 + (y / x) ** 2)
+            dlon_dx = -y / x**2 / (1 + (y / x) ** 2)
             dlon_dy = 1 / x / (1 + (y / x) ** 2)
             dlon_dz = 0
-            dmag_dx = x / np.sqrt(x ** 2 + y ** 2 + z ** 2)
-            dmag_dy = y / np.sqrt(x ** 2 + y ** 2 + z ** 2)
-            dmag_dz = z / np.sqrt(x ** 2 + y ** 2 + z ** 2)
+            dmag_dx = x / np.sqrt(x**2 + y**2 + z**2)
+            dmag_dy = y / np.sqrt(x**2 + y**2 + z**2)
+            dmag_dz = z / np.sqrt(x**2 + y**2 + z**2)
             euler_to_cartsian_operator = np.array(
                 [
                     [dlat_dx, dlat_dy, dlat_dz],
@@ -1637,13 +1639,13 @@ def mogi_forward(mogi_lon, mogi_lat, mogi_depth, poissons_ratio, obs_lon, obs_la
             (1 - poissons_ratio)
             / np.pi
             * mogi_depth
-            / ((source_to_obs_distance ** 2.0 + mogi_depth ** 2) ** 1.5)
+            / ((source_to_obs_distance**2.0 + mogi_depth**2) ** 1.5)
         )
         u_radial = (
             (1 - poissons_ratio)
             / np.pi
             * source_to_obs_distance
-            / ((source_to_obs_distance ** 2 + mogi_depth ** 2.0) ** 1.5)
+            / ((source_to_obs_distance**2 + mogi_depth**2.0) ** 1.5)
         )
 
         # Convert radial displacement to east and north components
@@ -3079,7 +3081,7 @@ def get_weighting_vector(command, station, meshes, index):
         + index.n_tde_constraints_total
     )
     weighting_vector[index.start_station_row : index.end_station_row] = interleave2(
-        1 / (station.east_sig ** 2), 1 / (station.north_sig ** 2)
+        1 / (station.east_sig**2), 1 / (station.north_sig**2)
     )
     weighting_vector[
         index.start_block_constraints_row : index.end_block_constraints_row
@@ -3110,7 +3112,7 @@ def get_weighting_vector_single_mesh_for_col_norms(
     )
 
     weighting_vector[0 : 2 * index.n_stations] = interleave2(
-        1 / (station.east_sig ** 2), 1 / (station.north_sig ** 2)
+        1 / (station.east_sig**2), 1 / (station.north_sig**2)
     )
 
     weighting_vector[
@@ -3672,16 +3674,13 @@ def get_h_matrices_for_tde_meshes(
         weighting_vector_no_zero_rows = get_weighting_vector_single_mesh_for_col_norms(
             command, station, meshes, index, i
         )
-        current_tde_mesh_columns_full_no_zero_rows = (
-            np.vstack(
-                (
-                    -tde_to_velocities,
-                    operators.smoothing_matrix[i].toarray(),
-                    operators.tde_slip_rate_constraints[i].toarray(),
-                )
+        current_tde_mesh_columns_full_no_zero_rows = np.vstack(
+            (
+                -tde_to_velocities,
+                operators.smoothing_matrix[i].toarray(),
+                operators.tde_slip_rate_constraints[i].toarray(),
             )
-            * np.sqrt(weighting_vector_no_zero_rows[:, None])
-        )
+        ) * np.sqrt(weighting_vector_no_zero_rows[:, None])
 
         # Concatenate everthing we need for col_norms
         col_norms_current_tde_mesh = np.linalg.norm(
@@ -4500,7 +4499,7 @@ def plot_estimation_summary(
     )
     mean_average_error = np.mean(np.abs(residual_velocity_vector))
     mean_squared_error = (
-        np.sum(residual_velocity_vector ** 2.0) / residual_velocity_vector.size
+        np.sum(residual_velocity_vector**2.0) / residual_velocity_vector.size
     )
 
     # Create histogram of residual velocities
@@ -4984,7 +4983,7 @@ def get_weighting_vector_no_meshes(command, station, index):
         + index.n_slip_rate_constraints
     )
     weighting_vector[index.start_station_row : index.end_station_row] = interleave2(
-        1 / (station.east_sig ** 2), 1 / (station.north_sig ** 2)
+        1 / (station.east_sig**2), 1 / (station.north_sig**2)
     )
     weighting_vector[
         index.start_block_constraints_row : index.end_block_constraints_row
