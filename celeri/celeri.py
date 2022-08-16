@@ -373,7 +373,7 @@ def zero_mesh_segment_locking_depth(segment, meshes):
     segment = segment.copy(deep=True)
     toggle_off = np.where(
         (segment.patch_flag != 0)
-        & (segment.patch_file_name != -1)
+        & (segment.patch_file_name >= 0)
         & (segment.patch_file_name <= len(meshes))
     )[0]
     segment.locking_depth.values[toggle_off] = 0
