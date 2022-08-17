@@ -100,8 +100,8 @@ def main():
     smooth_trace = False
 
     # NAF parameters
-    top_mesh_reference_size = 0.05
-    bottom_mesh_reference_size = 0.05
+    top_mesh_reference_size = 0.03
+    bottom_mesh_reference_size = 0.1
     depth_scaling = 100.0
 
     # EAF parameters
@@ -110,7 +110,7 @@ def main():
     # depth_scaling = 100.0
 
     locking_depth_override_flag = True
-    locking_depth_override_value = 40.0
+    locking_depth_override_value = 30.0
     resample_flag = True
     resample_length = 0.01
 
