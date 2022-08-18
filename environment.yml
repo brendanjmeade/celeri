@@ -15,6 +15,7 @@ dependencies:
   - addict
   - tqdm
   - h5py
+  - colorcet
   - rich
   - compilers
   - fortran-compiler
