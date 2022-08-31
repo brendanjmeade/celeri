@@ -199,19 +199,6 @@ def read_data(command: Dict):
                     RADIUS_EARTH + KM2M * meshes[i].dep3,
                 )
 
-                # Calcuate areas of each triangle in mesh
-                triangle_vertex_array = np.zeros((meshes[i].n_tde, 3, 3))
-                triangle_vertex_array[:, 0, 0] = meshes[i].x1
-                triangle_vertex_array[:, 1, 0] = meshes[i].x2
-                triangle_vertex_array[:, 2, 0] = meshes[i].x3
-                triangle_vertex_array[:, 0, 1] = meshes[i].y1
-                triangle_vertex_array[:, 1, 1] = meshes[i].y2
-                triangle_vertex_array[:, 2, 1] = meshes[i].y3
-                triangle_vertex_array[:, 0, 2] = meshes[i].z1
-                triangle_vertex_array[:, 1, 2] = meshes[i].z2
-                triangle_vertex_array[:, 2, 2] = meshes[i].z3
-                meshes[i].areas = triangle_area(triangle_vertex_array)
-
                 # Cartesian triangle centroids
                 meshes[i].x_centroid = (
                     meshes[i].x1 + meshes[i].x2 + meshes[i].x3
@@ -260,6 +247,20 @@ def read_data(command: Dict):
                     "side_slip_rate_constraint"
                 ]
                 meshes[i].n_tde = meshes[i].lon1.size
+
+                # Calcuate areas of each triangle in mesh
+                triangle_vertex_array = np.zeros((meshes[i].n_tde, 3, 3))
+                triangle_vertex_array[:, 0, 0] = meshes[i].x1
+                triangle_vertex_array[:, 1, 0] = meshes[i].x2
+                triangle_vertex_array[:, 2, 0] = meshes[i].x3
+                triangle_vertex_array[:, 0, 1] = meshes[i].y1
+                triangle_vertex_array[:, 1, 1] = meshes[i].y2
+                triangle_vertex_array[:, 2, 1] = meshes[i].y3
+                triangle_vertex_array[:, 0, 2] = meshes[i].z1
+                triangle_vertex_array[:, 1, 2] = meshes[i].z2
+                triangle_vertex_array[:, 2, 2] = meshes[i].z3
+                meshes[i].areas = triangle_area(triangle_vertex_array)
+
                 get_mesh_edge_elements(meshes)
                 logger.success(f"Read: {mesh_param[i]['mesh_filename']}")
             get_mesh_perimeter(meshes)
