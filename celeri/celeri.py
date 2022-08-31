@@ -69,6 +69,20 @@ def get_mesh_perimeter(meshes):
         )
 
 
+def triangle_normal(triangles):
+    # The cross product of two sides is a normal vector
+    # https://stackoverflow.com/questions/71346322/numpy-area-of-triangle-and-equation-of-a-plane-on-which-triangle-lies-on
+    return np.cross(
+        triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0], axis=1
+    )
+
+
+def triangle_area(triangles):
+    # The norm of the cross product of two sides is twice the area
+    # https://stackoverflow.com/questions/71346322/numpy-area-of-triangle-and-equation-of-a-plane-on-which-triangle-lies-on
+    return np.linalg.norm(triangle_normal(triangles), axis=1) / 2.0
+
+
 def get_command(command_file_name):
     """Read *command.json file and return contents as a dictionary
 
