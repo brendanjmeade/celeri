@@ -1,0 +1,13 @@
+[
+    {
+        "mesh_filename": "../data/mesh/cascadia.msh",
+        "smoothing_weight": 1e14,
+        "top_slip_rate_constraint": 1,
+        "bot_slip_rate_constraint": 1,
+        "side_slip_rate_constraint": 1,
+        "top_slip_rate_weight": 1,
+        "bot_slip_rate_weight": 1,
+        "side_slip_rate_weight": 1,
+        "a_priori_slip_filename": ""
+    }
+]
