@@ -1,0 +1,138 @@
+[
+        {
+                "mesh_filename": "./data/mesh/nankai.msh",
+                "smoothing_weight": 400.0,
+                "top_slip_rate_constraint": 0,
+                "bot_slip_rate_constraint": 1,
+                "side_slip_rate_constraint": 0,
+                "a_priori_slip_filename": ""
+        },
+        {
+                "mesh_filename": "./data/mesh/japan.msh",
+                "smoothing_weight": 1000.0,
+                "top_slip_rate_constraint": 0,
+                "bot_slip_rate_constraint": 1,
+                "side_slip_rate_constraint": 0,
+                "a_priori_slip_filename": ""
+        },
+        {
+                "mesh_filename": "./data/mesh/sagami.msh",
+                "smoothing_weight": 1000.0,
+                "top_slip_rate_constraint": 1,
+                "bot_slip_rate_constraint": 1,
+                "side_slip_rate_constraint": 1,
+                "a_priori_slip_filename": ""
+        },
+        {
+                "mesh_filename": "./data/mesh/cascadia.msh",
+                "smoothing_weight": 8000,
+                "top_slip_rate_constraint": 0,
+                "bot_slip_rate_constraint": 1,
+                "side_slip_rate_constraint": 1,
+                "a_priori_slip_filename": ""
+        },
+        {
+                "mesh_filename": "./data/mesh/parkfieldNewDeep_LL.msh",
+                "smoothing_weight": 100,
+                "top_slip_rate_constraint": 0,
+                "bot_slip_rate_constraint": 1,
+                "side_slip_rate_constraint": 0,
+                "a_priori_slip_filename": ""
+        },
+        {
+                "mesh_filename": "./data/mesh/central_america_50km_ext.msh",
+                "smoothing_weight": 7000.0,
+                "top_slip_rate_constraint": 0,
+                "bot_slip_rate_constraint": 1,
+                "side_slip_rate_constraint": 1,
+                "a_priori_slip_filename": ""
+        },
+        {
+                "mesh_filename": "./data/mesh/alaska_50km_crop.msh",
+                "smoothing_weight": 100000.0,
+                "top_slip_rate_constraint": 0,
+                "bot_slip_rate_constraint": 1,
+                "side_slip_rate_constraint": 0,
+                "a_priori_slip_filename": ""
+        },
+        {
+                "mesh_filename": "./data/mesh/kamchatka_50km_crop.msh",
+                "smoothing_weight": 5000.0,
+                "top_slip_rate_constraint": 0,
+                "bot_slip_rate_constraint": 1,
+                "side_slip_rate_constraint": 1,
+                "a_priori_slip_filename": ""
+        },
+        {
+                "mesh_filename": "./data/mesh/nz_wallace_30km.msh",
+                "smoothing_weight": 10000,
+                "top_slip_rate_constraint": 0,
+                "bot_slip_rate_constraint": 1,
+                "side_slip_rate_constraint": 1,
+                "a_priori_slip_filename": ""
+        },
+        {
+                "mesh_filename": "./data/mesh/ryukyu_75km_ext_crop.msh",
+                "smoothing_weight": 90000.0,
+                "top_slip_rate_constraint": 0,
+                "bot_slip_rate_constraint": 1,
+                "side_slip_rate_constraint": 0,
+                "a_priori_slip_filename": ""
+        },
+        {
+                "mesh_filename": "./data/mesh/south_america_50km_mod_ext.msh",
+                "smoothing_weight": 5000,
+                "top_slip_rate_constraint": 0,
+                "bot_slip_rate_constraint": 1,
+                "side_slip_rate_constraint": 0,
+                "a_priori_slip_filename": ""
+        },
+        {
+                "mesh_filename": "./data/mesh/sumatra_50km_ext.msh",
+                "smoothing_weight": 20000.0,
+                "top_slip_rate_constraint": 0,
+                "bot_slip_rate_constraint": 1,
+                "side_slip_rate_constraint": 1,
+                "a_priori_slip_filename": ""
+        },
+        {
+                "mesh_filename": "./data/mesh/caribbean_40km_symithe.msh",
+                "smoothing_weight": 10000.0,
+                "top_slip_rate_constraint": 0,
+                "bot_slip_rate_constraint": 1,
+                "side_slip_rate_constraint": 1,
+                "a_priori_slip_filename": ""
+        },
+        {
+                "mesh_filename": "./data/mesh/aegean_50km.msh",
+                "smoothing_weight": 10000,
+                "top_slip_rate_constraint": 0,
+                "bot_slip_rate_constraint": 1,
+                "side_slip_rate_constraint": 1,
+                "a_priori_slip_filename": ""
+        },
+        {
+                "mesh_filename": "./data/mesh/santa_cruz_200km_crop.msh",
+                "smoothing_weight": 40000,
+                "top_slip_rate_constraint": 0,
+                "bot_slip_rate_constraint": 1,
+                "side_slip_rate_constraint": 0,
+                "a_priori_slip_filename": ""
+        },
+        {
+                "mesh_filename": "./data/mesh/Hubbard_plus_20km_chop.msh",
+                "smoothing_weight": 5000,
+                "top_slip_rate_constraint": 0,
+                "bot_slip_rate_constraint": 1,
+                "side_slip_rate_constraint": 1,
+                "a_priori_slip_filename": ""
+        },
+        {
+                "mesh_filename": "./data/mesh/aleutians_200km.msh",
+                "smoothing_weight": 30000,
+                "top_slip_rate_constraint": 0,
+                "bot_slip_rate_constraint": 1,
+                "side_slip_rate_constraint": 0,
+                "a_priori_slip_filename": ""
+        }
+]
