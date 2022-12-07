@@ -100,7 +100,7 @@ def get_command(command_file_name):
     # Add run_name and output_path
     command.run_name = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
     command.output_path = os.path.join(command.base_runs_folder, command.run_name)
-    command.file_name = command_file_name
+    # command.file_name = command_file_name
 
     # Sort command keys alphabetically for readability
     command = addict.Dict(sorted(command.items()))
