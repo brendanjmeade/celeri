@@ -3785,8 +3785,8 @@ def process_args(command: Dict, args: Dict):
                 logger.warning(f"ORIGINAL: command.{key}: {command[key]}")
                 command[key] = args[key]
                 logger.warning(f"REPLACED: command.{key}: {command[key]}")
-        else:
-            logger.info(f"command.{key}: {command[key]}")
+            else:
+                logger.info(f"command.{key}: {command[key]}")
 
 
 def get_processed_data_structures(command):
