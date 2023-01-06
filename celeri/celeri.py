@@ -941,7 +941,7 @@ def get_block_motion_constraints(assembly: Dict, block: pd.DataFrame, command: D
         ) = sph2cart(
             block.euler_lon[assembly.index.block_constraints_idx],
             block.euler_lat[assembly.index.block_constraints_idx],
-            block.rotation_rate[assembly.index.block_constraints_idx],
+            np.deg2rad(block.rotation_rate[assembly.index.block_constraints_idx]),
         )
         euler_pole_covariance_all = np.diag(
             np.concatenate(
@@ -3113,7 +3113,7 @@ def get_weighting_vector(command, station, meshes, index):
     )
     weighting_vector[
         index.start_block_constraints_row : index.end_block_constraints_row
-    ] = 1.0
+    ] = command.block_constraint_weight
     weighting_vector[
         index.start_slip_rate_constraints_row : index.end_slip_rate_constraints_row
     ] = command.slip_constraint_weight * np.ones(index.n_slip_rate_constraints)
