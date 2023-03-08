@@ -2,6 +2,7 @@
     {
         "mesh_filename": "./data/mesh/slab_contours_GCS_WGS84-trench_LL.msh",
         "smoothing_weight": 1e7,
+        "n_eigen": 20,
         "top_slip_rate_constraint": 1,
         "bot_slip_rate_constraint": 1,
         "side_slip_rate_constraint": 1,

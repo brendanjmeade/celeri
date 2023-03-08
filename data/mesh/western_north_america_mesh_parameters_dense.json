@@ -2,6 +2,7 @@
   {
     "mesh_filename": "../data/mesh/cascadia_dense.msh",
     "smoothing_weight": 1e14,
+    "n_eigen": 20,
     "top_slip_rate_constraint": 1,
     "bot_slip_rate_constraint": 1,
     "side_slip_rate_constraint": 1,
