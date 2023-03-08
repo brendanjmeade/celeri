@@ -20,3 +20,4 @@ runs/
 *.npz
 *.geo
 mesh_test*
+.jupyter/desktop-settings.json
