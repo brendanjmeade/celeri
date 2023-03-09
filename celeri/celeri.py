@@ -3063,6 +3063,53 @@ def get_index(assembly, station, block, meshes):
                 index.start_tde_constraint_row[i] + index.n_tde_constraints[i]
             )
 
+            # Add eigen specific entries to index
+            index.start_tde_col_eigen = np.zeros(len(meshes), dtype=int)
+            index.end_tde_col_eigen = np.zeros(len(meshes), dtype=int)
+            index.start_tde_constraint_row_eigen = np.zeros(len(meshes), dtype=int)
+            index.end_tde_constraint_row_eigen = np.zeros(len(meshes), dtype=int)
+
+            if len(meshes) > 0:
+                for i in range(len(meshes)):
+                    print(i)
+                    if i == 0:
+                        index.start_tde_col_eigen[i] = 3 * len(block)
+                        index.end_tde_col_eigen[i] = (
+                            index.start_tde_col_eigen[i] + 2 * meshes[i].n_eigen
+                        )
+                        if meshes[i].n_tde_constraints > 0:
+                            index.start_tde_constraint_row_eigen[
+                                i
+                            ] = index.end_slip_rate_constraints_row
+                            index.end_tde_constraint_row_eigen[i] = (
+                                index.start_tde_constraint_row_eigen[i]
+                                + meshes[i].n_tde_constraints
+                            )
+                        else:
+                            index.start_tde_constraint_row_eigen[i] = 0
+                            index.end_tde_constraint_row_eigen[i] = 0
+                    else:
+                        index.start_tde_col_eigen[i] = index.end_tde_col_eigen[i - 1]
+                        index.end_tde_col_eigen[i] = (
+                            index.start_tde_col_eigen[i] + 2 * meshes[i].n_eigen
+                        )
+                        if meshes[i].n_tde_constraints > 0:
+                            index.start_tde_constraint_row_eigen[
+                                i
+                            ] = index.end_tde_constraint_row_eigen[i - 1]
+                            index.end_tde_constraint_row_eigen[i] = (
+                                index.start_tde_constraint_row_eigen[i]
+                                + meshes[i].n_tde_constraints
+                            )
+                        else:
+                            index.start_tde_constraint_row_eigen[
+                                i
+                            ] = index.end_tde_constraint_row_eigen[i - 1]
+                            index.end_tde_constraint_row_eigen[
+                                i
+                            ] = index.end_tde_constraint_row_eigen[i - 1]
+
+
     index.n_operator_rows = (
         2 * index.n_stations
         + 3 * index.n_block_constraints
