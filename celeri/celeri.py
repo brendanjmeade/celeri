@@ -2531,12 +2531,6 @@ def get_all_mesh_smoothing_matrices_simple(meshes: List, operators: Dict):
     for i in range(len(meshes)):
         # Get smoothing operator for a single mesh.
         meshes[i].share = get_shared_sides(meshes[i].verts)
-        meshes[i].tri_shared_sides_distances = get_tri_shared_sides_distances(
-            meshes[i].share,
-            meshes[i].x_centroid,
-            meshes[i].y_centroid,
-            meshes[i].z_centroid,
-        )
         operators.smoothing_matrix[i] = get_tri_smoothing_matrix_simple(
             meshes[i].share, N_MESH_DIM
         )
@@ -3108,7 +3102,6 @@ def get_index(assembly, station, block, meshes):
                             index.end_tde_constraint_row_eigen[
                                 i
                             ] = index.end_tde_constraint_row_eigen[i - 1]
-
 
     index.n_operator_rows = (
         2 * index.n_stations
