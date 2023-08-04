@@ -1,0 +1,11 @@
+[
+    {
+        "mesh_filename": "../data/mesh/north_anatolian_fault_4328.msh",
+        "smoothing_weight": 1e14,
+        "top_slip_rate_constraint": 0,
+        "bot_slip_rate_constraint": 1,
+        "side_slip_rate_constraint": 1,
+        "n_eigen": 20,
+        "a_priori_slip_filename": ""
+    }
+]
