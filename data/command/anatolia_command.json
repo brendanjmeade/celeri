@@ -45,7 +45,7 @@
     "pickle_save": 1,
     "pmag_tri_smooth": 0,
     "quiver_scale": 100,
-    "reuse_elastic": 0,
+    "reuse_elastic": 1,
     "reuse_elastic_file": "../data/operators/anatolia_elastic_operators.hdf5",
     "ridge_param": 0,
     "sar_file_name": "",
