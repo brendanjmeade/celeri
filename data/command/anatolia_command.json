@@ -41,6 +41,7 @@
     "mogi_file_name": "",
     "n_eigs": 50,
     "n_iterations": 1,
+    "operators_folder": "../data/operators/",
     "pickle_save": 1,
     "pmag_tri_smooth": 0,
     "quiver_scale": 100,
