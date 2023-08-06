@@ -51,7 +51,7 @@
     "sar_file_name": "",
     "sar_ramp": 0,
     "sar_weight": 0,
-    "save_elastic": 1,
+    "save_elastic": 0,
     "save_elastic_file": "../data/operators/anatolia_elastic_operators.hdf5",
     "segment_file_name": "../data/segment/anatolia_segment_0035.csv",
     "slip_constraint_weight": 27.2,
