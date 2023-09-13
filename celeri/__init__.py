@@ -62,6 +62,7 @@ from .celeri import (
     build_and_solve_dense_no_meshes,
     wrap2360,
     get_mesh_perimeter,
+    get_transverse_projection,
 )
 
 
