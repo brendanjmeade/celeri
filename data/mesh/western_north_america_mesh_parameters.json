@@ -9,6 +9,24 @@
     "top_slip_rate_weight": 1,
     "bot_slip_rate_weight": 1,
     "side_slip_rate_weight": 1,
-    "a_priori_slip_filename": ""
+    "a_priori_slip_filename": "",
+    "ss_slip_constraint_idx": [2, 43],
+    "ss_slip_constraint_rate": [0, 0],
+    "ss_slip_constraint_sig": [1, 1],
+    "ss_slip_constraint_weight": [1e3, 1e4],
+    "ds_slip_constraint_idx": [2, 43],
+    "ds_slip_constraint_rate": [5, 5],
+    "ds_slip_constraint_sig": [1, 1],
+    "ds_slip_constraint_weight": [1e2, 1e2],
+    "mesh_tde_bound": [1],
+    "mesh_tde_slip_rate_bound_lower_ss": ["-inf"],
+    "mesh_tde_slip_rate_bound_upper_ss": ["inf"],
+    "mesh_tde_slip_rate_bound_lower_ds": [0],
+    "mesh_tde_slip_rate_bound_upper_ds": [30],
+    "mesh_tde_coupling_bound": [0],
+    "mesh_tde_coupling_bound_lower_ss": ["-inf"],
+    "mesh_tde_coupling_upper_ss": ["inf"],
+    "mesh_tde_coupling_lower_ds": [0],
+    "mesh_tde_coupling_upper_ds": [1]
   }
 ]
