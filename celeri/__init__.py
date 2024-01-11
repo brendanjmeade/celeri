@@ -38,6 +38,8 @@ from .celeri import (
     get_full_dense_operator,
     get_weighting_vector_single_mesh_for_col_norms,
     get_tde_to_velocities_single_mesh,
+    get_tde_coupling_constraints,
+    get_rotation_to_tri_slip_rate_partials,
     get_elastic_operator_single_mesh,
     get_segment_station_operator_okada,
     get_elastic_operators_okada,
