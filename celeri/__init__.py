@@ -65,6 +65,7 @@ from .celeri import (
     wrap2360,
     get_mesh_perimeter,
     get_transverse_projection,
+    get_segment_oblique_projection,
 )
 
 
