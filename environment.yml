@@ -19,6 +19,7 @@ dependencies:
   - lxml
   - rich
   - dill
+  - cvxpy
   - compilers
   - fortran-compiler
   - cutde
