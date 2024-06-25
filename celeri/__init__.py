@@ -66,6 +66,7 @@ from .celeri import (
     get_mesh_perimeter,
     get_transverse_projection,
     get_segment_oblique_projection,
+    lsqlin_qp,
 )
 
 
