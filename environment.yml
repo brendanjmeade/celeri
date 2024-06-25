@@ -20,6 +20,7 @@ dependencies:
   - rich
   - dill
   - cvxpy
+  - cvxopt
   - compilers
   - fortran-compiler
   - cutde
