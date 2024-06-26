@@ -253,6 +253,32 @@ def read_data(command: Dict):
                 # Assign all mesh parameters to this mesh
                 for key, value in mesh_param[i].items():
                     meshes[i][key] = value
+                # Assign empty arrays for any unspecified parameters
+                mesh_default = {
+                    "smoothing_weight": 1e0,
+                    "n_eigen": 10,
+                    "top_slip_rate_constraint": 0,
+                    "bot_slip_rate_constraint": 0,
+                    "side_slip_rate_constraint": 0,
+                    "top_slip_rate_weight": 1,
+                    "bot_slip_rate_weight": 1,
+                    "side_slip_rate_weight": 1,
+                    "coupling_constraint_idx": [],
+                    
+                    "ss_slip_constraint_idx": [],
+                    "ss_slip_constraint_rate": [],
+                    "ss_slip_constraint_sig": [],
+                    "ss_slip_constraint_weight": [],
+                    "ds_slip_constraint_idx": [],
+                    "ds_slip_constraint_rate": [],
+                    "ds_slip_constraint_sig": [],
+                    "ds_slip_constraint_weight": [],
+                }
+
+                for key, value in mesh_default.items():
+                    if key not in meshes[i]:
+                        meshes[i][key] = value
+
                 meshes[i].n_tde = meshes[i].lon1.size
 
                 # Calcuate areas of each triangle in mesh
@@ -377,18 +403,18 @@ def locking_depth_manager(segment, command):
     0, 1 are untouched.
     """
     segment = segment.copy(deep=True)
-    segment.locking_depth.values[
-        segment.locking_depth_flag == 2
-    ] = command.locking_depth_flag2
-    segment.locking_depth.values[
-        segment.locking_depth_flag == 3
-    ] = command.locking_depth_flag3
-    segment.locking_depth.values[
-        segment.locking_depth_flag == 4
-    ] = command.locking_depth_flag4
-    segment.locking_depth.values[
-        segment.locking_depth_flag == 5
-    ] = command.locking_depth_flag5
+    segment.locking_depth.values[segment.locking_depth_flag == 2] = (
+        command.locking_depth_flag2
+    )
+    segment.locking_depth.values[segment.locking_depth_flag == 3] = (
+        command.locking_depth_flag3
+    )
+    segment.locking_depth.values[segment.locking_depth_flag == 4] = (
+        command.locking_depth_flag4
+    )
+    segment.locking_depth.values[segment.locking_depth_flag == 5] = (
+        command.locking_depth_flag5
+    )
 
     if bool(command.locking_depth_override_flag):
         segment.locking_depth.values = command.locking_depth_override_value
@@ -876,15 +902,9 @@ def euler_pole_covariance_to_rotation_vector_covariance(
             )  # Set a default small value for rotation vector uncertainty
         else:
             # Calculate the partial derivatives
-            dlat_dx = (
-                -z / (x**2 + y**2) ** (3 / 2) / (1 + z**2 / (x**2 + y**2)) * x
-            )
-            dlat_dy = (
-                -z / (x**2 + y**2) ** (3 / 2) / (1 + z**2 / (x**2 + y**2)) * y
-            )
-            dlat_dz = (
-                1 / (x**2 + y**2) ** (1 / 2) / (1 + z**2 / (x**2 + y**2))
-            )
+            dlat_dx = -z / (x**2 + y**2) ** (3 / 2) / (1 + z**2 / (x**2 + y**2)) * x
+            dlat_dy = -z / (x**2 + y**2) ** (3 / 2) / (1 + z**2 / (x**2 + y**2)) * y
+            dlat_dz = 1 / (x**2 + y**2) ** (1 / 2) / (1 + z**2 / (x**2 + y**2))
             dlon_dx = -y / x**2 / (1 + (y / x) ** 2)
             dlon_dy = 1 / x / (1 + (y / x) ** 2)
             dlon_dz = 0
@@ -1230,6 +1250,63 @@ def get_slip_rate_constraints(assembly, segment, block, command):
     ]
     assembly.sigma.slip_rate_constraint_weight = command.slip_constraint_weight
     return assembly, slip_rate_constraint_partials
+
+
+def get_slip_rake_constraints(assembly, segment, block, command):
+    n_total_slip_rake_contraints = np.sum(segment.rake_flag.values)
+    if n_total_slip_rake_contraints > 0:
+        logger.info(f"Found {n_total_slip_rake_contraints} slip rake constraints")
+        for i in range(len(segment.lon1)):
+            if segment.rake_flag[i] == 1:
+                logger.info(
+                    "Rake constraint on "
+                    + segment.name[i].strip()
+                    + ": rake = "
+                    + "{:.2f}".format(segment.rake[i])
+                    + ", constraint strike = "
+                    + "{:.2f}".format(segment.rake_strike[i])
+                    + ", 1-sigma uncertainty = +/-"
+                    + "{:.2f}".format(segment.rake_sig[i])
+                )
+    else:
+        logger.info("No slip rake constraints")
+    # To keep this a standalone function, let's calculate the full set of slip rate partials
+    # TODO: Check how get_slip_rate_constraints is called to see if we need to recalculate the full set of partials, or if we can reuse a previous calculation
+    slip_rate_constraint_partials = get_rotation_to_slip_rate_partials(segment, block)
+    # Figure out effective rake. This is a simple correction of the rake data by the calculated strike of the segment
+    # The idea is that the source of the rake constraint will include its own strike (and dip), which may differ from the model segment geometry
+    # TODO: Full three-dimensional rotation of rake vector, based on strike and dip of constraint source?
+    effective_rakes = segment.rake[segment.rake_flag] + (
+        segment.strike[segment.rake_flag] - segment.rake_strike[segment.rake_flag]
+    )
+
+    # Find indices of constrained segments
+    assembly.index.slip_rake_constraints = np.where(segment.rake_flag == 1)[0]
+    assembly.data.n_slip_rake_constraints = len(assembly.index.slip_rake_constraints)
+
+    # Get component indices of slip rate partials
+    rake_constraint_component_indices = get_2component_index(
+        assembly.index.slip_rake_constraints
+    )
+    # Rotate slip partials about effective rake. We just want to use the second row (second basis vector) of a full rotation matrix, because we want to set slip in that direction to zero as a constraint
+    slip_rake_constraint_partials = (
+        np.cos(np.radians(effective_rakes))
+        * slip_rate_constraint_partials[rake_constraint_component_indices[0::2]]
+        + np.sin(np.radians(effective_rakes))
+        * slip_rate_constraint_partials[rake_constraint_component_indices[1::2]]
+    )
+
+    # Constraint data is all zeros, because we're setting slip perpendicular to the rake direction equal to zero
+    assembly.data.slip_rake_constraints = np.zeros(
+        assembly.data.n_total_slip_rake_contraints
+    )
+
+    # Insert sigmas into assembly dict
+    assembly.sigma.slip_rake_constraints = segment.rake_sig
+
+    # Using the same weighting here as for slip rate constraints.
+    assembly.sigma.slip_rake_constraint_weight = command.slip_constraint_weight
+    return assembly, slip_rake_constraint_partials
 
 
 def get_segment_oblique_projection(lon1, lat1, lon2, lat2, skew=True):
@@ -1861,12 +1938,12 @@ def get_block_strain_rate_to_velocities_partials(block, station, segment):
             block_strain_rate_operator[3 * station_idx, 3 * i + 1] = vel_east_lat_lat
             block_strain_rate_operator[3 * station_idx, 3 * i + 2] = vel_east_lon_lat
             block_strain_rate_operator[3 * station_idx + 1, 3 * i] = vel_north_lon_lon
-            block_strain_rate_operator[
-                3 * station_idx + 1, 3 * i + 1
-            ] = vel_north_lat_lat
-            block_strain_rate_operator[
-                3 * station_idx + 1, 3 * i + 2
-            ] = vel_north_lon_lat
+            block_strain_rate_operator[3 * station_idx + 1, 3 * i + 1] = (
+                vel_north_lat_lat
+            )
+            block_strain_rate_operator[3 * station_idx + 1, 3 * i + 2] = (
+                vel_north_lon_lat
+            )
             block_strain_rate_operator[3 * station_idx + 2, 3 * i] = vel_up_lon_lon
             block_strain_rate_operator[3 * station_idx + 2, 3 * i + 1] = vel_up_lat_lat
             block_strain_rate_operator[3 * station_idx + 2, 3 * i + 2] = vel_up_lon_lat
@@ -1999,9 +2076,9 @@ def get_global_float_block_rotation_partials(station):
     function. The matrix returned here only has 3 columns
     """
     station_all_on_one_block = station.copy()
-    station_all_on_one_block.block_label.values[
-        :
-    ] = 0  # Force all stations to be on one block
+    station_all_on_one_block.block_label.values[:] = (
+        0  # Force all stations to be on one block
+    )
     global_float_block_rotation_operator = get_rotation_to_velocities_partials(
         station_all_on_one_block, 1
     )
@@ -2377,18 +2454,18 @@ def get_tde_coupling_constraints(meshes, segment, block, operators):
     Get partials relating block motion to TDE slip rates for coupling constraints
     """
     for mesh_idx in range(len(meshes)):
-        operators.rotation_to_tri_slip_rate[
-            mesh_idx
-        ] = get_rotation_to_tri_slip_rate_partials(
-            meshes[mesh_idx], mesh_idx, segment, block
+        operators.rotation_to_tri_slip_rate[mesh_idx] = (
+            get_rotation_to_tri_slip_rate_partials(
+                meshes[mesh_idx], mesh_idx, segment, block
+            )
         )
         # Trim tensile rows
         tri_keep_rows = get_keep_index_12(
             np.shape(operators.rotation_to_tri_slip_rate[mesh_idx])[0]
         )
-        operators.rotation_to_tri_slip_rate[
-            mesh_idx
-        ] = operators.rotation_to_tri_slip_rate[mesh_idx][tri_keep_rows, :]
+        operators.rotation_to_tri_slip_rate[mesh_idx] = (
+            operators.rotation_to_tri_slip_rate[mesh_idx][tri_keep_rows, :]
+        )
 
 
 def get_rotation_to_tri_slip_rate_partials(meshes, mesh_idx, segment, block):
@@ -2790,32 +2867,32 @@ def get_tde_slip_rate_constraints(meshes: List, operators: Dict):
             top_indices = np.asarray(np.where(meshes[i].top_elements))
             # Indices of top elements' 2 slip components
             meshes[i].top_slip_idx = get_2component_index(top_indices)
-            end_row += len(meshes[i].top_slip_idx)
-            tde_slip_rate_constraints[
-                start_row:end_row, meshes[i].top_slip_idx
-            ] = np.eye(len(meshes[i].top_slip_idx))
+            end_row = len(meshes[i].top_slip_idx)
+            tde_slip_rate_constraints[start_row:end_row, meshes[i].top_slip_idx] = (
+                np.eye(len(meshes[i].top_slip_idx))
+            )
         # Bottom constraints
         if meshes[i].bot_slip_rate_constraint > 0:
             # Indices of bottom elements
             bot_indices = np.asarray(np.where(meshes[i].bot_elements))
             # Indices of bottom elements' 2 slip components
             meshes[i].bot_slip_idx = get_2component_index(bot_indices)
-            start_row += end_row
-            end_row += len(meshes[i].bot_slip_idx)
-            tde_slip_rate_constraints[
-                start_row:end_row, meshes[i].bot_slip_idx
-            ] = np.eye(len(meshes[i].bot_slip_idx))
+            start_row = end_row
+            end_row = start_row + len(meshes[i].bot_slip_idx)
+            tde_slip_rate_constraints[start_row:end_row, meshes[i].bot_slip_idx] = (
+                np.eye(len(meshes[i].bot_slip_idx))
+            )
         # Side constraints
         if meshes[i].side_slip_rate_constraint > 0:
             # Indices of side elements
             side_indices = np.asarray(np.where(meshes[i].side_elements))
             # Indices of side elements' 2 slip components
             meshes[i].side_slip_idx = get_2component_index(side_indices)
-            start_row += end_row
-            end_row += len(meshes[i].side_slip_idx)
-            tde_slip_rate_constraints[
-                start_row:end_row, meshes[i].side_slip_idx
-            ] = np.eye(len(meshes[i].side_slip_idx))
+            start_row = end_row
+            end_row = start_row + len(meshes[i].side_slip_idx)
+            tde_slip_rate_constraints[start_row:end_row, meshes[i].side_slip_idx] = (
+                np.eye(len(meshes[i].side_slip_idx))
+            )
         # Other element indices
         if len(meshes[i].coupling_constraint_idx) > 0:
             meshes[i].coup_idx = get_2component_index(
@@ -2832,17 +2909,17 @@ def get_tde_slip_rate_constraints(meshes: List, operators: Dict):
             start_row += end_row
             end_row += len(meshes[i].ss_slip_idx)
             # Component slip needs identities placed every other row, column
-            tde_slip_rate_constraints[
-                start_row:end_row, meshes[i].ss_slip_idx
-            ] = np.eye(len(meshes[i].ss_slip_idx))
+            tde_slip_rate_constraints[start_row:end_row, meshes[i].ss_slip_idx] = (
+                np.eye(len(meshes[i].ss_slip_idx))
+            )
         if len(meshes[i].ds_slip_constraint_idx) > 0:
             ds_idx = get_2component_index(np.asarray(meshes[i].ds_slip_constraint_idx))
             meshes[i].ds_slip_idx = ds_idx[1::2]
             start_row += end_row
             end_row += len(meshes[i].ds_slip_idx)
-            tde_slip_rate_constraints[
-                start_row:end_row, meshes[i].ds_slip_idx
-            ] = np.eye(len(meshes[i].ds_slip_idx))
+            tde_slip_rate_constraints[start_row:end_row, meshes[i].ds_slip_idx] = (
+                np.eye(len(meshes[i].ds_slip_idx))
+            )
         # Eliminate blank rows
         sum_constraint_columns = np.sum(tde_slip_rate_constraints, 1)
         tde_slip_rate_constraints = tde_slip_rate_constraints[
@@ -3067,9 +3144,9 @@ def write_output(
         station["model_east_vel_tde"] = estimation.east_vel_tde
         station["model_north_vel_tde"] = estimation.north_vel_tde
     station["model_east_vel_block_strain_rate"] = estimation.east_vel_block_strain_rate
-    station[
-        "model_north_vel_block_strain_rate"
-    ] = estimation.north_vel_block_strain_rate
+    station["model_north_vel_block_strain_rate"] = (
+        estimation.north_vel_block_strain_rate
+    )
     station_output_file_name = command.output_path + "/" + "model_station.csv"
     station.to_csv(station_output_file_name, index=False, float_format="%0.4f")
 
@@ -3272,24 +3349,28 @@ def get_index(assembly, station, block, meshes):
             index.end_tde_coup_constraint_row[i] = index.start_tde_coup_constraint_row[
                 i
             ] + len(meshes[i].coup_idx)
-            index.start_tde_ss_slip_constraint_row[
-                i
-            ] = index.end_tde_coup_constraint_row[i]
-            index.end_tde_ss_slip_constraint_row[
-                i
-            ] = index.start_tde_ss_slip_constraint_row[i] + len(meshes[i].ss_slip_idx)
-            index.start_tde_ds_slip_constraint_row[
-                i
-            ] = index.end_tde_ss_slip_constraint_row[i]
-            index.end_tde_ds_slip_constraint_row[
-                i
-            ] = index.start_tde_ds_slip_constraint_row[i] + len(meshes[i].ds_slip_idx)
+            index.start_tde_ss_slip_constraint_row[i] = (
+                index.end_tde_coup_constraint_row[i]
+            )
+            index.end_tde_ss_slip_constraint_row[i] = (
+                index.start_tde_ss_slip_constraint_row[i] + len(meshes[i].ss_slip_idx)
+            )
+            index.start_tde_ds_slip_constraint_row[i] = (
+                index.end_tde_ss_slip_constraint_row[i]
+            )
+            index.end_tde_ds_slip_constraint_row[i] = (
+                index.start_tde_ds_slip_constraint_row[i] + len(meshes[i].ds_slip_idx)
+            )
         else:
             index.start_tde_col[i] = index.end_tde_col[i - 1]
             index.end_tde_col[i] = index.start_tde_col[i] + 2 * index.n_tde[i]
             index.start_tde_smoothing_row[i] = index.end_tde_constraint_row[i - 1]
             index.end_tde_smoothing_row[i] = (
                 index.start_tde_smoothing_row[i] + 2 * index.n_tde[i]
+            )
+            index.start_tde_constraint_row[i] = index.end_tde_smoothing_row[i]
+            index.end_tde_constraint_row[i] = (
+                index.start_tde_constraint_row[i] + index.n_tde_constraints[i]
             )
             index.start_tde_top_constraint_row[i] = index.end_tde_smoothing_row[i]
             index.end_tde_top_constraint_row[i] = index.start_tde_top_constraint_row[
@@ -3309,18 +3390,18 @@ def get_index(assembly, station, block, meshes):
             index.end_tde_coup_constraint_row[i] = index.start_tde_coup_constraint_row[
                 i
             ] + len(meshes[i].coup_idx)
-            index.start_tde_ss_slip_constraint_row[
-                i
-            ] = index.end_tde_coup_constraint_row[i]
-            index.end_tde_ss_slip_constraint_row[
-                i
-            ] = index.start_tde_ss_slip_constraint_row[i] + len(meshes[i].ss_slip_idx)
-            index.start_tde_ds_slip_constraint_row[
-                i
-            ] = index.end_tde_ss_slip_constraint_row[i]
-            index.end_tde_ds_slip_constraint_row[
-                i
-            ] = index.start_tde_ds_slip_constraint_row[i] + len(meshes[i].ds_slip_idx)
+            index.start_tde_ss_slip_constraint_row[i] = (
+                index.end_tde_coup_constraint_row[i]
+            )
+            index.end_tde_ss_slip_constraint_row[i] = (
+                index.start_tde_ss_slip_constraint_row[i] + len(meshes[i].ss_slip_idx)
+            )
+            index.start_tde_ds_slip_constraint_row[i] = (
+                index.end_tde_ss_slip_constraint_row[i]
+            )
+            index.end_tde_ds_slip_constraint_row[i] = (
+                index.start_tde_ds_slip_constraint_row[i] + len(meshes[i].ds_slip_idx)
+            )
 
             # Add eigen specific entries to index
             index.start_tde_col_eigen = np.zeros(len(meshes), dtype=int)
@@ -3335,16 +3416,15 @@ def get_index(assembly, station, block, meshes):
             # coupling constraints, one each for slip component constraints)
             if len(meshes) > 0:
                 for i in range(len(meshes)):
-                    print(i)
                     if i == 0:
                         index.start_tde_col_eigen[i] = 3 * len(block)
                         index.end_tde_col_eigen[i] = (
                             index.start_tde_col_eigen[i] + 2 * meshes[i].n_eigen
                         )
                         if meshes[i].n_tde_constraints > 0:
-                            index.start_tde_constraint_row_eigen[
-                                i
-                            ] = index.end_slip_rate_constraints_row
+                            index.start_tde_constraint_row_eigen[i] = (
+                                index.end_slip_rate_constraints_row
+                            )
                             index.end_tde_constraint_row_eigen[i] = (
                                 index.start_tde_constraint_row_eigen[i]
                                 + meshes[i].n_tde_constraints
@@ -3358,20 +3438,20 @@ def get_index(assembly, station, block, meshes):
                             index.start_tde_col_eigen[i] + 2 * meshes[i].n_eigen
                         )
                         if meshes[i].n_tde_constraints > 0:
-                            index.start_tde_constraint_row_eigen[
-                                i
-                            ] = index.end_tde_constraint_row_eigen[i - 1]
+                            index.start_tde_constraint_row_eigen[i] = (
+                                index.end_tde_constraint_row_eigen[i - 1]
+                            )
                             index.end_tde_constraint_row_eigen[i] = (
                                 index.start_tde_constraint_row_eigen[i]
                                 + meshes[i].n_tde_constraints
                             )
                         else:
-                            index.start_tde_constraint_row_eigen[
-                                i
-                            ] = index.end_tde_constraint_row_eigen[i - 1]
-                            index.end_tde_constraint_row_eigen[
-                                i
-                            ] = index.end_tde_constraint_row_eigen[i - 1]
+                            index.start_tde_constraint_row_eigen[i] = (
+                                index.end_tde_constraint_row_eigen[i - 1]
+                            )
+                            index.end_tde_constraint_row_eigen[i] = (
+                                index.end_tde_constraint_row_eigen[i - 1]
+                            )
 
     index.n_operator_rows = (
         2 * index.n_stations
@@ -3473,9 +3553,9 @@ def get_weighting_vector_single_mesh_for_col_norms(
         2 * index.n_stations : 2 * index.n_stations + 2 * index.n_tde[mesh_index]
     ] = meshes[mesh_index].smoothing_weight * np.ones(2 * index.n_tde[mesh_index])
 
-    weighting_vector[
-        2 * index.n_stations + 2 * index.n_tde[mesh_index] : :
-    ] = command.tri_con_weight * np.ones(index.n_tde_constraints[mesh_index])
+    weighting_vector[2 * index.n_stations + 2 * index.n_tde[mesh_index] : :] = (
+        command.tri_con_weight * np.ones(index.n_tde_constraints[mesh_index])
+    )
 
     return weighting_vector
 
