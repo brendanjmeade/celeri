@@ -2,7 +2,7 @@
   {
     "mesh_filename": "../data/mesh/cascadia.msh",
     "smoothing_weight": 1e18,
-    "n_eigen": 20,
+    "n_modes": 20,
     "top_slip_rate_constraint": 0,
     "bot_slip_rate_constraint": 1,
     "side_slip_rate_constraint": 0,
