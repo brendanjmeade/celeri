@@ -67,142 +67,8 @@ N_MESH_DIM = 3
 #                                                             #
 #                                                             #
 ###############################################################
-
-
-####################################################################################################
-#                                                                                                  #
-#                                                                                                  #           
-#  88888888ba   88888888ba     ,ad8888ba,      ,ad8888ba,   88888888888  ad88888ba    ad88888ba    #
-#  88      "8b  88      "8b   d8"'    `"8b    d8"'    `"8b  88          d8"     "8b  d8"     "8b   #
-#  88      ,8P  88      ,8P  d8'        `8b  d8'            88          Y8,          Y8,           #
-#  88aaaaaa8P'  88aaaaaa8P'  88          88  88             88aaaaa     `Y8aaaaa,    `Y8aaaaa,     #
-#  88""""""'    88""""88'    88          88  88             88"""""       `"""""8b,    `"""""8b,   #
-#  88           88    `8b    Y8,        ,8P  Y8,            88                  `8b          `8b   #
-#  88           88     `8b    Y8a.    .a8P    Y8a.    .a8P  88          Y8a     a8P  Y8a     a8P   #
-#  88           88      `8b    `"Y8888Y"'      `"Y8888Y"'   88888888888  "Y88888P"    "Y88888P"    #
-#                                                                                                  #                               
-#                                                                                                  #
-####################################################################################################
-
-
-##############################################################################################################################
-#                                                                                                                            #
-#                                                                                                                            #
-#    ,ad8888ba,    88888888ba   88888888888  88888888ba          db    888888888888  ,ad8888ba,    88888888ba    ad88888ba   #
-#   d8"'    `"8b   88      "8b  88           88      "8b        d88b        88      d8"'    `"8b   88      "8b  d8"     "8b  #
-#  d8'        `8b  88      ,8P  88           88      ,8P       d8'`8b       88     d8'        `8b  88      ,8P  Y8,          #
-#  88          88  88aaaaaa8P'  88aaaaa      88aaaaaa8P'      d8'  `8b      88     88          88  88aaaaaa8P'  `Y8aaaaa,    #
-#  88          88  88""""""'    88"""""      88""""88'       d8YaaaaY8b     88     88          88  88""""88'      `"""""8b,  #
-#  Y8,        ,8P  88           88           88    `8b      d8""""""""8b    88     Y8,        ,8P  88    `8b            `8b  #
-#   Y8a.    .a8P   88           88           88     `8b    d8'        `8b   88      Y8a.    .a8P   88     `8b   Y8a     a8P  #
-#    `"Y8888Y"'    88           88888888888  88      `8b  d8'          `8b  88       `"Y8888Y"'    88      `8b   "Y88888P"   #
-#                                                                                                                            #
-#                                                                                                                            #
-##############################################################################################################################
-   
-
-######################################################################
-#                                                                    #
-#                                                                    #
-#   ad88888ba     ,ad8888ba,    88     8b           d8  88888888888  #
-#  d8"     "8b   d8"'    `"8b   88     `8b         d8'  88           #
-#  Y8,          d8'        `8b  88      `8b       d8'   88           #
-#  `Y8aaaaa,    88          88  88       `8b     d8'    88aaaaa      #
-#    `"""""8b,  88          88  88        `8b   d8'     88"""""      #
-#          `8b  Y8,        ,8P  88         `8b d8'      88           #
-#  Y8a     a8P   Y8a.    .a8P   88          `888'       88           #
-#   "Y88888P"     `"Y8888Y"'    88888888888  `8'        88888888888  #
-#                                                                    #                                                                  
-#                                                                    #
-######################################################################
-
-#########################################################################################
-#                                                                                       #
-#                                                                                       #
-#    ,ad8888ba,    88        88  888888888888  88888888ba   88        88  888888888888  #
-#   d8"'    `"8b   88        88       88       88      "8b  88        88       88       #
-#  d8'        `8b  88        88       88       88      ,8P  88        88       88       #
-#  88          88  88        88       88       88aaaaaa8P'  88        88       88       #
-#  88          88  88        88       88       88""""""'    88        88       88       #
-#  Y8,        ,8P  88        88       88       88           88        88       88       #
-#   Y8a.    .a8P   Y8a.    .a8P       88       88           Y8a.    .a8P       88       #
-#    `"Y8888Y"'     `"Y8888Y"'        88       88            `"Y8888Y"'        88       #
-#                                                                                       #
-#                                                                                       #
-#########################################################################################
-  
-
-########################################################
-#                                                      #
-#                                                      #
-#  88888888ba   88           ,ad8888ba,  888888888888  #
-#  88      "8b  88          d8"'    `"8b      88       #
-#  88      ,8P  88         d8'        `8b     88       #
-#  88aaaaaa8P'  88         88          88     88       #
-#  88""""""'    88         88          88     88       #
-#  88           88         Y8,        ,8P     88       #
-#  88           88          Y8a.    .a8P      88       #
-#  88           88888888888  `"Y8888Y"'       88       #
-#                                                      #
-#                                                      #
-########################################################
-
-
-################################################################################################
-#                                                                                              #
-#                                                                                              #
-#  88        88  888888888888  88  88           88  888888888888  88  88888888888  ad88888ba   #
-#  88        88       88       88  88           88       88       88  88          d8"     "8b  #
-#  88        88       88       88  88           88       88       88  88          Y8,          #
-#  88        88       88       88  88           88       88       88  88aaaaa     `Y8aaaaa,    #
-#  88        88       88       88  88           88       88       88  88"""""       `"""""8b,  #
-#  88        88       88       88  88           88       88       88  88                  `8b  #
-#  Y8a.    .a8P       88       88  88           88       88       88  88          Y8a     a8P  #
-#   `"Y8888Y"'        88       88  88888888888  88       88       88  88888888888  "Y88888P"   #
-#                                                                                              #
-#                                                                                              #
-################################################################################################
-
-
-@pytest.mark.skip(reason="Writing output to disk")
-def create_output_folder(command: Dict):
-    # Check to see if "runs" folder exists and if not create it
-    if not os.path.exists(command.base_runs_folder):
-        os.mkdir(command.base_runs_folder)
-
-    # Make output folder for current run
-    os.mkdir(command.output_path)
-
-
-def get_mesh_perimeter(meshes):
-    for i in range(len(meshes)):
-        x_coords = meshes[i].meshio_object.points[:, 0]
-        y_coords = meshes[i].meshio_object.points[:, 1]
-        meshes[i].x_perimeter = x_coords[meshes[i].ordered_edge_nodes[:, 0]]
-        meshes[i].y_perimeter = y_coords[meshes[i].ordered_edge_nodes[:, 0]]
-        meshes[i].x_perimeter = np.append(
-            meshes[i].x_perimeter, x_coords[meshes[i].ordered_edge_nodes[0, 0]]
-        )
-        meshes[i].y_perimeter = np.append(
-            meshes[i].y_perimeter, y_coords[meshes[i].ordered_edge_nodes[0, 0]]
-        )
-
-
-def triangle_normal(triangles):
-    # The cross product of two sides is a normal vector
-    # https://stackoverflow.com/questions/71346322/numpy-area-of-triangle-and-equation-of-a-plane-on-which-triangle-lies-on
-    return np.cross(
-        triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0], axis=1
-    )
-
-
-def triangle_area(triangles):
-    # The norm of the cross product of two sides is twice the area
-    # https://stackoverflow.com/questions/71346322/numpy-area-of-triangle-and-equation-of-a-plane-on-which-triangle-lies-on
-    return np.linalg.norm(triangle_normal(triangles), axis=1) / 2.0
-
-
 def get_command(command_file_name):
+    # NOTE: Rename to `read_command`?
     """Read *command.json file and return contents as a dictionary
 
     Args:
@@ -225,24 +91,6 @@ def get_command(command_file_name):
     command = addict.Dict(sorted(command.items()))
 
     return command
-
-
-def get_logger(command):
-    # Create logger
-    logger.remove()  # Remove any existing loggers includeing default stderr
-    logger.add(
-        sys.stdout,
-        # format="[{level}] {message}",
-        # format="<cyan>[{level}]</cyan> <green>{message}</green>",
-        colorize=True,
-    )
-    # logger.add(command.run_name + ".log")
-    logger.add(command.output_path + "/" + command.run_name + ".log")
-    logger.info(f"Read: {command.file_name}")
-    logger.info("RUN_NAME: " + command.run_name)
-    logger.info(f"Write log file: {command.output_path}/{command.run_name}.log")
-    return logger
-
 
 def read_data(command: Dict):
     logger.info("Reading data files")
@@ -488,9 +336,48 @@ def read_data(command: Dict):
     return segment, block, meshes, station, mogi, sar
 
 
-def wrap2360(lon):
-    lon[np.where(lon < 0.0)] += 360.0
-    return lon
+
+####################################################################################################
+#                                                                                                  #
+#                                                                                                  #           
+#  88888888ba   88888888ba     ,ad8888ba,      ,ad8888ba,   88888888888  ad88888ba    ad88888ba    #
+#  88      "8b  88      "8b   d8"'    `"8b    d8"'    `"8b  88          d8"     "8b  d8"     "8b   #
+#  88      ,8P  88      ,8P  d8'        `8b  d8'            88          Y8,          Y8,           #
+#  88aaaaaa8P'  88aaaaaa8P'  88          88  88             88aaaaa     `Y8aaaaa,    `Y8aaaaa,     #
+#  88""""""'    88""""88'    88          88  88             88"""""       `"""""8b,    `"""""8b,   #
+#  88           88    `8b    Y8,        ,8P  Y8,            88                  `8b          `8b   #
+#  88           88     `8b    Y8a.    .a8P    Y8a.    .a8P  88          Y8a     a8P  Y8a     a8P   #
+#  88           88      `8b    `"Y8888Y"'      `"Y8888Y"'   88888888888  "Y88888P"    "Y88888P"    #
+#                                                                                                  #                               
+#                                                                                                  #
+####################################################################################################
+def triangle_area(triangles):
+    # The norm of the cross product of two sides is twice the area
+    # https://stackoverflow.com/questions/71346322/numpy-area-of-triangle-and-equation-of-a-plane-on-which-triangle-lies-on
+    return np.linalg.norm(triangle_normal(triangles), axis=1) / 2.0
+
+
+def get_mesh_perimeter(meshes):
+    for i in range(len(meshes)):
+        x_coords = meshes[i].meshio_object.points[:, 0]
+        y_coords = meshes[i].meshio_object.points[:, 1]
+        meshes[i].x_perimeter = x_coords[meshes[i].ordered_edge_nodes[:, 0]]
+        meshes[i].y_perimeter = y_coords[meshes[i].ordered_edge_nodes[:, 0]]
+        meshes[i].x_perimeter = np.append(
+            meshes[i].x_perimeter, x_coords[meshes[i].ordered_edge_nodes[0, 0]]
+        )
+        meshes[i].y_perimeter = np.append(
+            meshes[i].y_perimeter, y_coords[meshes[i].ordered_edge_nodes[0, 0]]
+        )
+
+
+def triangle_normal(triangles):
+    # NOTE: Candidate for deprecated
+    # The cross product of two sides is a normal vector
+    # https://stackoverflow.com/questions/71346322/numpy-area-of-triangle-and-equation-of-a-plane-on-which-triangle-lies-on
+    return np.cross(
+        triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0], axis=1
+    )
 
 
 def process_station(station, command):
@@ -506,121 +393,6 @@ def process_station(station, command):
     station = station.drop(np.where(station.flag == 0)[0])
     station = station.reset_index(drop=True)
     return station
-
-
-def locking_depth_manager(segment, command):
-    """
-    This function assigns the locking depths given in the command file to any
-    segment that has the same locking depth flag.  Segments with flag =
-    0, 1 are untouched.
-    """
-    segment = segment.copy(deep=True)
-    segment.locking_depth.values[segment.locking_depth_flag == 2] = (
-        command.locking_depth_flag2
-    )
-    segment.locking_depth.values[segment.locking_depth_flag == 3] = (
-        command.locking_depth_flag3
-    )
-    segment.locking_depth.values[segment.locking_depth_flag == 4] = (
-        command.locking_depth_flag4
-    )
-    segment.locking_depth.values[segment.locking_depth_flag == 5] = (
-        command.locking_depth_flag5
-    )
-
-    if bool(command.locking_depth_override_flag):
-        segment.locking_depth.values = command.locking_depth_override_value
-    return segment
-
-
-def zero_mesh_segment_locking_depth(segment, meshes):
-    """
-    This function sets the locking depths of any segments that trace
-    a mesh to zero, so that they have no rectangular elastic strain
-    contribution, as the elastic strain is accounted for by the mesh.
-
-    To have its locking depth set to zero, the segment's patch_flag
-    and patch_file_name fields must not be equal to zero but also
-    less than the number of available mesh files.
-    """
-    segment = segment.copy(deep=True)
-    toggle_off = np.where(
-        (segment.patch_flag != 0)
-        & (segment.patch_file_name >= 0)
-        & (segment.patch_file_name <= len(meshes))
-    )[0]
-    segment.locking_depth.values[toggle_off] = 0
-    segment.burial_depth.values[toggle_off] = 0
-    return segment
-
-
-def order_endpoints_sphere(segment):
-    """
-    Endpoint ordering function, placing west point first.
-    This converts the endpoint coordinates from spherical to Cartesian,
-    then takes the cross product to test for ordering (i.e., a positive z
-    component of cross(point1, point2) means that point1 is the western
-    point). This method works for both (-180, 180) and (0, 360) longitude
-    conventions.
-    BJM: Not sure why cross product approach was definitely not working in
-    python so I revereted to relative longitude check which sould be fine because
-    we're always in 0-360 space.
-    """
-    segment_copy = copy.deepcopy(segment)
-    endpoints1 = np.transpose(np.array([segment.x1, segment.y1, segment.z1]))
-    endpoints2 = np.transpose(np.array([segment.x2, segment.y2, segment.z2]))
-    cross_product = np.cross(endpoints1, endpoints2)
-    swap_endpoint_idx = np.where(cross_product[:, 2] < 0)
-    segment_copy.lon1.values[swap_endpoint_idx] = segment.lon2.values[swap_endpoint_idx]
-    segment_copy.lat1.values[swap_endpoint_idx] = segment.lat2.values[swap_endpoint_idx]
-    segment_copy.lon2.values[swap_endpoint_idx] = segment.lon1.values[swap_endpoint_idx]
-    segment_copy.lat2.values[swap_endpoint_idx] = segment.lat1.values[swap_endpoint_idx]
-    return segment_copy
-
-
-def segment_centroids(segment):
-    """Calculate segment centroids."""
-    segment["centroid_x"] = np.zeros_like(segment.lon1)
-    segment["centroid_y"] = np.zeros_like(segment.lon1)
-    segment["centroid_z"] = np.zeros_like(segment.lon1)
-    segment["centroid_lon"] = np.zeros_like(segment.lon1)
-    segment["centroid_lat"] = np.zeros_like(segment.lon1)
-
-    for i in range(len(segment)):
-        segment_forward_azimuth, _, _ = GEOID.inv(
-            segment.lon1[i], segment.lat1[i], segment.lon2[i], segment.lat2[i]
-        )
-        segment_down_dip_azimuth = segment_forward_azimuth + 90.0 * np.sign(
-            np.cos(np.deg2rad(segment.dip[i]))
-        )
-        azimuth_xy_cartesian = (segment.y2[i] - segment.y1[i]) / (
-            segment.x2[i] - segment.x1[i]
-        )
-        azimuth_xy_cartesian = np.arctan(-1.0 / azimuth_xy_cartesian)
-        segment.centroid_z.values[i] = (
-            segment.locking_depth[i] - segment.burial_depth[i]
-        ) / 2.0
-        segment_down_dip_distance = segment.centroid_z[i] / np.abs(
-            np.tan(np.deg2rad(segment.dip[i]))
-        )
-        (
-            segment.centroid_lon.values[i],
-            segment.centroid_lat.values[i],
-            _,
-        ) = GEOID.fwd(
-            segment.mid_lon[i],
-            segment.mid_lat[i],
-            segment_down_dip_azimuth,
-            segment_down_dip_distance,
-        )
-        segment.centroid_x.values[i] = segment.mid_x[i] + np.sign(
-            np.cos(np.deg2rad(segment.dip[i]))
-        ) * segment_down_dip_distance * np.cos(azimuth_xy_cartesian)
-        segment.centroid_y.values[i] = segment.mid_y[i] + np.sign(
-            np.cos(np.deg2rad(segment.dip[i]))
-        ) * segment_down_dip_distance * np.sin(azimuth_xy_cartesian)
-    segment.centroid_lon.values[segment.centroid_lon < 0.0] += 360.0
-    return segment
 
 
 def process_segment(segment, command, meshes):
@@ -675,6 +447,121 @@ def process_segment(segment, command, meshes):
     segment = locking_depth_manager(segment, command)
     segment = zero_mesh_segment_locking_depth(segment, meshes)
     segment = segment_centroids(segment)
+    return segment
+
+
+def order_endpoints_sphere(segment):
+    """
+    Endpoint ordering function, placing west point first.
+    This converts the endpoint coordinates from spherical to Cartesian,
+    then takes the cross product to test for ordering (i.e., a positive z
+    component of cross(point1, point2) means that point1 is the western
+    point). This method works for both (-180, 180) and (0, 360) longitude
+    conventions.
+    BJM: Not sure why cross product approach was definitely not working in
+    python so I revereted to relative longitude check which sould be fine because
+    we're always in 0-360 space.
+    """
+    segment_copy = copy.deepcopy(segment)
+    endpoints1 = np.transpose(np.array([segment.x1, segment.y1, segment.z1]))
+    endpoints2 = np.transpose(np.array([segment.x2, segment.y2, segment.z2]))
+    cross_product = np.cross(endpoints1, endpoints2)
+    swap_endpoint_idx = np.where(cross_product[:, 2] < 0)
+    segment_copy.lon1.values[swap_endpoint_idx] = segment.lon2.values[swap_endpoint_idx]
+    segment_copy.lat1.values[swap_endpoint_idx] = segment.lat2.values[swap_endpoint_idx]
+    segment_copy.lon2.values[swap_endpoint_idx] = segment.lon1.values[swap_endpoint_idx]
+    segment_copy.lat2.values[swap_endpoint_idx] = segment.lat1.values[swap_endpoint_idx]
+    return segment_copy
+
+
+def locking_depth_manager(segment, command):
+    """
+    This function assigns the locking depths given in the command file to any
+    segment that has the same locking depth flag.  Segments with flag =
+    0, 1 are untouched.
+    """
+    segment = segment.copy(deep=True)
+    segment.locking_depth.values[segment.locking_depth_flag == 2] = (
+        command.locking_depth_flag2
+    )
+    segment.locking_depth.values[segment.locking_depth_flag == 3] = (
+        command.locking_depth_flag3
+    )
+    segment.locking_depth.values[segment.locking_depth_flag == 4] = (
+        command.locking_depth_flag4
+    )
+    segment.locking_depth.values[segment.locking_depth_flag == 5] = (
+        command.locking_depth_flag5
+    )
+
+    if bool(command.locking_depth_override_flag):
+        segment.locking_depth.values = command.locking_depth_override_value
+    return segment
+
+
+def zero_mesh_segment_locking_depth(segment, meshes):
+    """
+    This function sets the locking depths of any segments that trace
+    a mesh to zero, so that they have no rectangular elastic strain
+    contribution, as the elastic strain is accounted for by the mesh.
+
+    To have its locking depth set to zero, the segment's patch_flag
+    and patch_file_name fields must not be equal to zero but also
+    less than the number of available mesh files.
+    """
+    segment = segment.copy(deep=True)
+    toggle_off = np.where(
+        (segment.patch_flag != 0)
+        & (segment.patch_file_name >= 0)
+        & (segment.patch_file_name <= len(meshes))
+    )[0]
+    segment.locking_depth.values[toggle_off] = 0
+    segment.burial_depth.values[toggle_off] = 0
+    return segment
+
+
+def segment_centroids(segment):
+    """Calculate segment centroids."""
+    segment["centroid_x"] = np.zeros_like(segment.lon1)
+    segment["centroid_y"] = np.zeros_like(segment.lon1)
+    segment["centroid_z"] = np.zeros_like(segment.lon1)
+    segment["centroid_lon"] = np.zeros_like(segment.lon1)
+    segment["centroid_lat"] = np.zeros_like(segment.lon1)
+
+    for i in range(len(segment)):
+        segment_forward_azimuth, _, _ = GEOID.inv(
+            segment.lon1[i], segment.lat1[i], segment.lon2[i], segment.lat2[i]
+        )
+        segment_down_dip_azimuth = segment_forward_azimuth + 90.0 * np.sign(
+            np.cos(np.deg2rad(segment.dip[i]))
+        )
+        azimuth_xy_cartesian = (segment.y2[i] - segment.y1[i]) / (
+            segment.x2[i] - segment.x1[i]
+        )
+        azimuth_xy_cartesian = np.arctan(-1.0 / azimuth_xy_cartesian)
+        segment.centroid_z.values[i] = (
+            segment.locking_depth[i] - segment.burial_depth[i]
+        ) / 2.0
+        segment_down_dip_distance = segment.centroid_z[i] / np.abs(
+            np.tan(np.deg2rad(segment.dip[i]))
+        )
+        (
+            segment.centroid_lon.values[i],
+            segment.centroid_lat.values[i],
+            _,
+        ) = GEOID.fwd(
+            segment.mid_lon[i],
+            segment.mid_lat[i],
+            segment_down_dip_azimuth,
+            segment_down_dip_distance,
+        )
+        segment.centroid_x.values[i] = segment.mid_x[i] + np.sign(
+            np.cos(np.deg2rad(segment.dip[i]))
+        ) * segment_down_dip_distance * np.cos(azimuth_xy_cartesian)
+        segment.centroid_y.values[i] = segment.mid_y[i] + np.sign(
+            np.cos(np.deg2rad(segment.dip[i]))
+        ) * segment_down_dip_distance * np.sin(azimuth_xy_cartesian)
+    segment.centroid_lon.values[segment.centroid_lon < 0.0] += 360.0
     return segment
 
 
@@ -769,6 +656,722 @@ def snap_segments(segment, meshes):
     new_index = range(len(new_segment))
     new_segment.index = new_index
     return new_segment
+
+
+##############################################################################################################################
+#                                                                                                                            #
+#                                                                                                                            #
+#    ,ad8888ba,    88888888ba   88888888888  88888888ba          db    888888888888  ,ad8888ba,    88888888ba    ad88888ba   #
+#   d8"'    `"8b   88      "8b  88           88      "8b        d88b        88      d8"'    `"8b   88      "8b  d8"     "8b  #
+#  d8'        `8b  88      ,8P  88           88      ,8P       d8'`8b       88     d8'        `8b  88      ,8P  Y8,          #
+#  88          88  88aaaaaa8P'  88aaaaa      88aaaaaa8P'      d8'  `8b      88     88          88  88aaaaaa8P'  `Y8aaaaa,    #
+#  88          88  88""""""'    88"""""      88""""88'       d8YaaaaY8b     88     88          88  88""""88'      `"""""8b,  #
+#  Y8,        ,8P  88           88           88    `8b      d8""""""""8b    88     Y8,        ,8P  88    `8b            `8b  #
+#   Y8a.    .a8P   88           88           88     `8b    d8'        `8b   88      Y8a.    .a8P   88     `8b   Y8a     a8P  #
+#    `"Y8888Y"'    88           88888888888  88      `8b  d8'          `8b  88       `"Y8888Y"'    88      `8b   "Y88888P"   #
+#                                                                                                                            #
+#                                                                                                                            #
+##############################################################################################################################
+   
+
+######################################################################
+#                                                                    #
+#                                                                    #
+#   ad88888ba     ,ad8888ba,    88     8b           d8  88888888888  #
+#  d8"     "8b   d8"'    `"8b   88     `8b         d8'  88           #
+#  Y8,          d8'        `8b  88      `8b       d8'   88           #
+#  `Y8aaaaa,    88          88  88       `8b     d8'    88aaaaa      #
+#    `"""""8b,  88          88  88        `8b   d8'     88"""""      #
+#          `8b  Y8,        ,8P  88         `8b d8'      88           #
+#  Y8a     a8P   Y8a.    .a8P   88          `888'       88           #
+#   "Y88888P"     `"Y8888Y"'    88888888888  `8'        88888888888  #
+#                                                                    #                                                                  
+#                                                                    #
+######################################################################
+
+#########################################################################################
+#                                                                                       #
+#                                                                                       #
+#    ,ad8888ba,    88        88  888888888888  88888888ba   88        88  888888888888  #
+#   d8"'    `"8b   88        88       88       88      "8b  88        88       88       #
+#  d8'        `8b  88        88       88       88      ,8P  88        88       88       #
+#  88          88  88        88       88       88aaaaaa8P'  88        88       88       #
+#  88          88  88        88       88       88""""""'    88        88       88       #
+#  Y8,        ,8P  88        88       88       88           88        88       88       #
+#   Y8a.    .a8P   Y8a.    .a8P       88       88           Y8a.    .a8P       88       #
+#    `"Y8888Y"'     `"Y8888Y"'        88       88            `"Y8888Y"'        88       #
+#                                                                                       #
+#                                                                                       #
+#########################################################################################
+@pytest.mark.skip(reason="Writing output to disk")
+def create_output_folder(command: Dict):
+    # Check to see if "runs" folder exists and if not create it
+    if not os.path.exists(command.base_runs_folder):
+        os.mkdir(command.base_runs_folder)
+
+    # Make output folder for current run
+    os.mkdir(command.output_path)
+
+
+########################################################
+#                                                      #
+#                                                      #
+#  88888888ba   88           ,ad8888ba,  888888888888  #
+#  88      "8b  88          d8"'    `"8b      88       #
+#  88      ,8P  88         d8'        `8b     88       #
+#  88aaaaaa8P'  88         88          88     88       #
+#  88""""""'    88         88          88     88       #
+#  88           88         Y8,        ,8P     88       #
+#  88           88          Y8a.    .a8P      88       #
+#  88           88888888888  `"Y8888Y"'       88       #
+#                                                      #
+#                                                      #
+########################################################
+
+
+################################################################################################
+#                                                                                              #
+#                                                                                              #
+#  88        88  888888888888  88  88           88  888888888888  88  88888888888  ad88888ba   #
+#  88        88       88       88  88           88       88       88  88          d8"     "8b  #
+#  88        88       88       88  88           88       88       88  88          Y8,          #
+#  88        88       88       88  88           88       88       88  88aaaaa     `Y8aaaaa,    #
+#  88        88       88       88  88           88       88       88  88"""""       `"""""8b,  #
+#  88        88       88       88  88           88       88       88  88                  `8b  #
+#  Y8a.    .a8P       88       88  88           88       88       88  88          Y8a     a8P  #
+#   `"Y8888Y"'        88       88  88888888888  88       88       88  88888888888  "Y88888P"   #
+#                                                                                              #
+#                                                                                              #
+################################################################################################
+def get_logger(command):
+    # Create logger
+    logger.remove()  # Remove any existing loggers includeing default stderr
+    logger.add(
+        sys.stdout,
+        # format="[{level}] {message}",
+        # format="<cyan>[{level}]</cyan> <green>{message}</green>",
+        colorize=True,
+    )
+    # logger.add(command.run_name + ".log")
+    logger.add(command.output_path + "/" + command.run_name + ".log")
+    logger.info(f"Read: {command.file_name}")
+    logger.info("RUN_NAME: " + command.run_name)
+    logger.info(f"Write log file: {command.output_path}/{command.run_name}.log")
+    return logger
+
+def wrap2360(lon):
+    lon[np.where(lon < 0.0)] += 360.0
+    return lon
+
+
+
+################################################################################################
+
+# @pytest.mark.skip(reason="Writing output to disk")
+# def create_output_folder(command: Dict):
+#     # Check to see if "runs" folder exists and if not create it
+#     if not os.path.exists(command.base_runs_folder):
+#         os.mkdir(command.base_runs_folder)
+
+#     # Make output folder for current run
+#     os.mkdir(command.output_path)
+
+
+# def get_mesh_perimeter(meshes):
+#     for i in range(len(meshes)):
+#         x_coords = meshes[i].meshio_object.points[:, 0]
+#         y_coords = meshes[i].meshio_object.points[:, 1]
+#         meshes[i].x_perimeter = x_coords[meshes[i].ordered_edge_nodes[:, 0]]
+#         meshes[i].y_perimeter = y_coords[meshes[i].ordered_edge_nodes[:, 0]]
+#         meshes[i].x_perimeter = np.append(
+#             meshes[i].x_perimeter, x_coords[meshes[i].ordered_edge_nodes[0, 0]]
+#         )
+#         meshes[i].y_perimeter = np.append(
+#             meshes[i].y_perimeter, y_coords[meshes[i].ordered_edge_nodes[0, 0]]
+#         )
+
+
+# def triangle_normal(triangles):
+#     # The cross product of two sides is a normal vector
+#     # https://stackoverflow.com/questions/71346322/numpy-area-of-triangle-and-equation-of-a-plane-on-which-triangle-lies-on
+#     return np.cross(
+#         triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0], axis=1
+#     )
+
+
+# def triangle_area(triangles):
+#     # The norm of the cross product of two sides is twice the area
+#     # https://stackoverflow.com/questions/71346322/numpy-area-of-triangle-and-equation-of-a-plane-on-which-triangle-lies-on
+#     return np.linalg.norm(triangle_normal(triangles), axis=1) / 2.0
+
+
+# def get_command(command_file_name):
+#     """Read *command.json file and return contents as a dictionary
+
+#     Args:
+#         command_file_name (string): Path to command file
+
+#     Returns:
+#         command (Dict): Dictionary with content of command file
+#     """
+#     with open(command_file_name, "r") as f:
+#         command = json.load(f)
+#     command = addict.Dict(command)  # Convert to dot notation dictionary
+#     command.file_name = command_file_name
+
+#     # Add run_name and output_path
+#     command.run_name = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+#     command.output_path = os.path.join(command.base_runs_folder, command.run_name)
+#     # command.file_name = command_file_name
+
+#     # Sort command keys alphabetically for readability
+#     command = addict.Dict(sorted(command.items()))
+
+#     return command
+
+
+# def get_logger(command):
+#     # Create logger
+#     logger.remove()  # Remove any existing loggers includeing default stderr
+#     logger.add(
+#         sys.stdout,
+#         # format="[{level}] {message}",
+#         # format="<cyan>[{level}]</cyan> <green>{message}</green>",
+#         colorize=True,
+#     )
+#     # logger.add(command.run_name + ".log")
+#     logger.add(command.output_path + "/" + command.run_name + ".log")
+#     logger.info(f"Read: {command.file_name}")
+#     logger.info("RUN_NAME: " + command.run_name)
+#     logger.info(f"Write log file: {command.output_path}/{command.run_name}.log")
+#     return logger
+
+
+# def read_data(command: Dict):
+#     logger.info("Reading data files")
+#     # Read segment data
+#     segment = pd.read_csv(command.segment_file_name)
+#     segment = segment.loc[:, ~segment.columns.str.match("Unnamed")]
+#     logger.success(f"Read: {command.segment_file_name}")
+
+#     # Read block data
+#     block = pd.read_csv(command.block_file_name)
+#     block = block.loc[:, ~block.columns.str.match("Unnamed")]
+#     logger.success(f"Read: {command.block_file_name}")
+
+#     # Read mesh data - List of dictionary version
+#     meshes = []
+#     if command.mesh_parameters_file_name != "":
+#         with open(command.mesh_parameters_file_name) as f:
+#             mesh_param = json.load(f)
+#             logger.success(f"Read: {command.mesh_parameters_file_name}")
+
+#         if len(mesh_param) > 0:
+#             for i in range(len(mesh_param)):
+#                 meshes.append(addict.Dict())
+#                 meshes[i].meshio_object = meshio.read(mesh_param[i]["mesh_filename"])
+#                 meshes[i].file_name = mesh_param[i]["mesh_filename"]
+#                 meshes[i].verts = meshes[i].meshio_object.get_cells_type("triangle")
+
+#                 # Expand mesh coordinates
+#                 meshes[i].lon1 = meshes[i].meshio_object.points[
+#                     meshes[i].verts[:, 0], 0
+#                 ]
+#                 meshes[i].lon2 = meshes[i].meshio_object.points[
+#                     meshes[i].verts[:, 1], 0
+#                 ]
+#                 meshes[i].lon3 = meshes[i].meshio_object.points[
+#                     meshes[i].verts[:, 2], 0
+#                 ]
+#                 meshes[i].lat1 = meshes[i].meshio_object.points[
+#                     meshes[i].verts[:, 0], 1
+#                 ]
+#                 meshes[i].lat2 = meshes[i].meshio_object.points[
+#                     meshes[i].verts[:, 1], 1
+#                 ]
+#                 meshes[i].lat3 = meshes[i].meshio_object.points[
+#                     meshes[i].verts[:, 2], 1
+#                 ]
+#                 meshes[i].dep1 = meshes[i].meshio_object.points[
+#                     meshes[i].verts[:, 0], 2
+#                 ]
+#                 meshes[i].dep2 = meshes[i].meshio_object.points[
+#                     meshes[i].verts[:, 1], 2
+#                 ]
+#                 meshes[i].dep3 = meshes[i].meshio_object.points[
+#                     meshes[i].verts[:, 2], 2
+#                 ]
+#                 meshes[i].centroids = np.mean(
+#                     meshes[i].meshio_object.points[meshes[i].verts, :], axis=1
+#                 )
+#                 # Cartesian coordinates in meters
+#                 meshes[i].x1, meshes[i].y1, meshes[i].z1 = sph2cart(
+#                     meshes[i].lon1,
+#                     meshes[i].lat1,
+#                     RADIUS_EARTH + KM2M * meshes[i].dep1,
+#                 )
+#                 meshes[i].x2, meshes[i].y2, meshes[i].z2 = sph2cart(
+#                     meshes[i].lon2,
+#                     meshes[i].lat2,
+#                     RADIUS_EARTH + KM2M * meshes[i].dep2,
+#                 )
+#                 meshes[i].x3, meshes[i].y3, meshes[i].z3 = sph2cart(
+#                     meshes[i].lon3,
+#                     meshes[i].lat3,
+#                     RADIUS_EARTH + KM2M * meshes[i].dep3,
+#                 )
+
+#                 # Cartesian triangle centroids
+#                 meshes[i].x_centroid = (
+#                     meshes[i].x1 + meshes[i].x2 + meshes[i].x3
+#                 ) / 3.0
+#                 meshes[i].y_centroid = (
+#                     meshes[i].y1 + meshes[i].y2 + meshes[i].y3
+#                 ) / 3.0
+#                 meshes[i].z_centroid = (
+#                     meshes[i].z1 + meshes[i].z2 + meshes[i].z3
+#                 ) / 3.0
+
+#                 # Spherical triangle centroids
+#                 meshes[i].lon_centroid = (
+#                     meshes[i].lon1 + meshes[i].lon2 + meshes[i].lon3
+#                 ) / 3.0
+#                 meshes[i].lat_centroid = (
+#                     meshes[i].lat1 + meshes[i].lat2 + meshes[i].lat3
+#                 ) / 3.0
+
+#                 # Cross products for orientations
+#                 tri_leg1 = np.transpose(
+#                     [
+#                         np.deg2rad(meshes[i].lon2 - meshes[i].lon1),
+#                         np.deg2rad(meshes[i].lat2 - meshes[i].lat1),
+#                         (1 + KM2M * meshes[i].dep2 / RADIUS_EARTH)
+#                         - (1 + KM2M * meshes[i].dep1 / RADIUS_EARTH),
+#                     ]
+#                 )
+#                 tri_leg2 = np.transpose(
+#                     [
+#                         np.deg2rad(meshes[i].lon3 - meshes[i].lon1),
+#                         np.deg2rad(meshes[i].lat3 - meshes[i].lat1),
+#                         (1 + KM2M * meshes[i].dep3 / RADIUS_EARTH)
+#                         - (1 + KM2M * meshes[i].dep1 / RADIUS_EARTH),
+#                     ]
+#                 )
+#                 meshes[i].nv = np.cross(tri_leg1, tri_leg2)
+#                 azimuth, elevation, r = cart2sph(
+#                     meshes[i].nv[:, 0],
+#                     meshes[i].nv[:, 1],
+#                     meshes[i].nv[:, 2],
+#                 )
+#                 meshes[i].strike = wrap2360(-np.rad2deg(azimuth))
+#                 meshes[i].dip = 90 - np.rad2deg(elevation)
+#                 meshes[i].dip_flag = meshes[i].dip != 90
+#                 # Assign all mesh parameters to this mesh
+#                 for key, value in mesh_param[i].items():
+#                     meshes[i][key] = value
+#                 # Assign empty arrays for any unspecified parameters
+#                 mesh_default = {
+#                     "smoothing_weight": 1e0,
+#                     "n_eigen": 10,
+#                     "top_slip_rate_constraint": 0,
+#                     "bot_slip_rate_constraint": 0,
+#                     "side_slip_rate_constraint": 0,
+#                     "top_slip_rate_weight": 1,
+#                     "bot_slip_rate_weight": 1,
+#                     "side_slip_rate_weight": 1,
+#                     "coupling_constraint_idx": [],
+#                     "ss_slip_constraint_idx": [],
+#                     "ss_slip_constraint_rate": [],
+#                     "ss_slip_constraint_sig": [],
+#                     "ss_slip_constraint_weight": [],
+#                     "ds_slip_constraint_idx": [],
+#                     "ds_slip_constraint_rate": [],
+#                     "ds_slip_constraint_sig": [],
+#                     "ds_slip_constraint_weight": [],
+#                 }
+
+#                 for key, value in mesh_default.items():
+#                     if key not in meshes[i]:
+#                         meshes[i][key] = value
+
+#                 meshes[i].n_tde = meshes[i].lon1.size
+
+#                 # Calcuate areas of each triangle in mesh
+#                 triangle_vertex_array = np.zeros((meshes[i].n_tde, 3, 3))
+#                 triangle_vertex_array[:, 0, 0] = meshes[i].x1
+#                 triangle_vertex_array[:, 1, 0] = meshes[i].x2
+#                 triangle_vertex_array[:, 2, 0] = meshes[i].x3
+#                 triangle_vertex_array[:, 0, 1] = meshes[i].y1
+#                 triangle_vertex_array[:, 1, 1] = meshes[i].y2
+#                 triangle_vertex_array[:, 2, 1] = meshes[i].y3
+#                 triangle_vertex_array[:, 0, 2] = meshes[i].z1
+#                 triangle_vertex_array[:, 1, 2] = meshes[i].z2
+#                 triangle_vertex_array[:, 2, 2] = meshes[i].z3
+#                 meshes[i].areas = triangle_area(triangle_vertex_array)
+
+#                 get_mesh_edge_elements(meshes)
+#                 logger.success(f"Read: {mesh_param[i]['mesh_filename']}")
+#             get_mesh_perimeter(meshes)
+
+#     # Read station data
+#     if (
+#         not command.__contains__("station_file_name")
+#         or len(command.station_file_name) == 0
+#     ):
+#         station = pd.DataFrame(
+#             columns=[
+#                 "lon",
+#                 "lat",
+#                 "corr",
+#                 "other1",
+#                 "name",
+#                 "east_vel",
+#                 "north_vel",
+#                 "east_sig",
+#                 "north_sig",
+#                 "flag",
+#                 "up_vel",
+#                 "up_sig",
+#                 "east_adjust",
+#                 "north_adjust",
+#                 "up_adjust",
+#                 "depth",
+#                 "x",
+#                 "y",
+#                 "z",
+#                 "block_label",
+#             ]
+#         )
+#         logger.info(f"No station_file_name")
+#     else:
+#         station = pd.read_csv(command.station_file_name)
+#         station = station.loc[:, ~station.columns.str.match("Unnamed")]
+#         logger.success(f"Read: {command.station_file_name}")
+
+#     # Read Mogi source data
+#     if not command.__contains__("mogi_file_name") or len(command.mogi_file_name) == 0:
+#         mogi = pd.DataFrame(
+#             columns=[
+#                 "name",
+#                 "lon",
+#                 "lat",
+#                 "depth",
+#                 "volume_change_flag",
+#                 "volume_change",
+#                 "volume_change_sig",
+#             ]
+#         )
+#         logger.info(f"No mogi_file_name")
+#     else:
+#         mogi = pd.read_csv(command.mogi_file_name)
+#         mogi = mogi.loc[:, ~mogi.columns.str.match("Unnamed")]
+#         logger.success(f"Read: {command.mogi_file_name}")
+
+#     # Read SAR data
+#     if not command.__contains__("sar_file_name") or len(command.sar_file_name) == 0:
+#         sar = pd.DataFrame(
+#             columns=[
+#                 "lon",
+#                 "lat",
+#                 "depth",
+#                 "line_of_sight_change_val",
+#                 "line_of_sight_change_sig",
+#                 "look_vector_x",
+#                 "look_vector_y",
+#                 "look_vector_z",
+#                 "reference_point_x",
+#                 "reference_point_y",
+#             ]
+#         )
+#         logger.info(f"No sar_file_name")
+#     else:
+#         sar = pd.read_csv(command.sar_file_name)
+#         sar = sar.loc[:, ~sar.columns.str.match("Unnamed")]
+#         logger.success(f"Read: {command.sar_file_name}")
+#     return segment, block, meshes, station, mogi, sar
+
+
+# def wrap2360(lon):
+#     lon[np.where(lon < 0.0)] += 360.0
+#     return lon
+
+
+# def process_station(station, command):
+#     if bool(command.unit_sigmas):  # Assign unit uncertainties, if requested
+#         station.east_sig = np.ones_like(station.east_sig)
+#         station.north_sig = np.ones_like(station.north_sig)
+#         station.up_sig = np.ones_like(station.up_sig)
+
+#     station["depth"] = np.zeros_like(station.lon)
+#     station["x"], station["y"], station["z"] = sph2cart(
+#         station.lon, station.lat, RADIUS_EARTH
+#     )
+#     station = station.drop(np.where(station.flag == 0)[0])
+#     station = station.reset_index(drop=True)
+#     return station
+
+
+# def locking_depth_manager(segment, command):
+#     """
+#     This function assigns the locking depths given in the command file to any
+#     segment that has the same locking depth flag.  Segments with flag =
+#     0, 1 are untouched.
+#     """
+#     segment = segment.copy(deep=True)
+#     segment.locking_depth.values[segment.locking_depth_flag == 2] = (
+#         command.locking_depth_flag2
+#     )
+#     segment.locking_depth.values[segment.locking_depth_flag == 3] = (
+#         command.locking_depth_flag3
+#     )
+#     segment.locking_depth.values[segment.locking_depth_flag == 4] = (
+#         command.locking_depth_flag4
+#     )
+#     segment.locking_depth.values[segment.locking_depth_flag == 5] = (
+#         command.locking_depth_flag5
+#     )
+
+#     if bool(command.locking_depth_override_flag):
+#         segment.locking_depth.values = command.locking_depth_override_value
+#     return segment
+
+
+# def zero_mesh_segment_locking_depth(segment, meshes):
+#     """
+#     This function sets the locking depths of any segments that trace
+#     a mesh to zero, so that they have no rectangular elastic strain
+#     contribution, as the elastic strain is accounted for by the mesh.
+
+#     To have its locking depth set to zero, the segment's patch_flag
+#     and patch_file_name fields must not be equal to zero but also
+#     less than the number of available mesh files.
+#     """
+#     segment = segment.copy(deep=True)
+#     toggle_off = np.where(
+#         (segment.patch_flag != 0)
+#         & (segment.patch_file_name >= 0)
+#         & (segment.patch_file_name <= len(meshes))
+#     )[0]
+#     segment.locking_depth.values[toggle_off] = 0
+#     segment.burial_depth.values[toggle_off] = 0
+#     return segment
+
+
+# def order_endpoints_sphere(segment):
+#     """
+#     Endpoint ordering function, placing west point first.
+#     This converts the endpoint coordinates from spherical to Cartesian,
+#     then takes the cross product to test for ordering (i.e., a positive z
+#     component of cross(point1, point2) means that point1 is the western
+#     point). This method works for both (-180, 180) and (0, 360) longitude
+#     conventions.
+#     BJM: Not sure why cross product approach was definitely not working in
+#     python so I revereted to relative longitude check which sould be fine because
+#     we're always in 0-360 space.
+#     """
+#     segment_copy = copy.deepcopy(segment)
+#     endpoints1 = np.transpose(np.array([segment.x1, segment.y1, segment.z1]))
+#     endpoints2 = np.transpose(np.array([segment.x2, segment.y2, segment.z2]))
+#     cross_product = np.cross(endpoints1, endpoints2)
+#     swap_endpoint_idx = np.where(cross_product[:, 2] < 0)
+#     segment_copy.lon1.values[swap_endpoint_idx] = segment.lon2.values[swap_endpoint_idx]
+#     segment_copy.lat1.values[swap_endpoint_idx] = segment.lat2.values[swap_endpoint_idx]
+#     segment_copy.lon2.values[swap_endpoint_idx] = segment.lon1.values[swap_endpoint_idx]
+#     segment_copy.lat2.values[swap_endpoint_idx] = segment.lat1.values[swap_endpoint_idx]
+#     return segment_copy
+
+
+# def segment_centroids(segment):
+#     """Calculate segment centroids."""
+#     segment["centroid_x"] = np.zeros_like(segment.lon1)
+#     segment["centroid_y"] = np.zeros_like(segment.lon1)
+#     segment["centroid_z"] = np.zeros_like(segment.lon1)
+#     segment["centroid_lon"] = np.zeros_like(segment.lon1)
+#     segment["centroid_lat"] = np.zeros_like(segment.lon1)
+
+#     for i in range(len(segment)):
+#         segment_forward_azimuth, _, _ = GEOID.inv(
+#             segment.lon1[i], segment.lat1[i], segment.lon2[i], segment.lat2[i]
+#         )
+#         segment_down_dip_azimuth = segment_forward_azimuth + 90.0 * np.sign(
+#             np.cos(np.deg2rad(segment.dip[i]))
+#         )
+#         azimuth_xy_cartesian = (segment.y2[i] - segment.y1[i]) / (
+#             segment.x2[i] - segment.x1[i]
+#         )
+#         azimuth_xy_cartesian = np.arctan(-1.0 / azimuth_xy_cartesian)
+#         segment.centroid_z.values[i] = (
+#             segment.locking_depth[i] - segment.burial_depth[i]
+#         ) / 2.0
+#         segment_down_dip_distance = segment.centroid_z[i] / np.abs(
+#             np.tan(np.deg2rad(segment.dip[i]))
+#         )
+#         (
+#             segment.centroid_lon.values[i],
+#             segment.centroid_lat.values[i],
+#             _,
+#         ) = GEOID.fwd(
+#             segment.mid_lon[i],
+#             segment.mid_lat[i],
+#             segment_down_dip_azimuth,
+#             segment_down_dip_distance,
+#         )
+#         segment.centroid_x.values[i] = segment.mid_x[i] + np.sign(
+#             np.cos(np.deg2rad(segment.dip[i]))
+#         ) * segment_down_dip_distance * np.cos(azimuth_xy_cartesian)
+#         segment.centroid_y.values[i] = segment.mid_y[i] + np.sign(
+#             np.cos(np.deg2rad(segment.dip[i]))
+#         ) * segment_down_dip_distance * np.sin(azimuth_xy_cartesian)
+#     segment.centroid_lon.values[segment.centroid_lon < 0.0] += 360.0
+#     return segment
+
+
+# def process_segment(segment, command, meshes):
+#     """
+#     Add derived fields to segment dataframe
+#     """
+
+#     if bool(command.snap_segments):
+#         segment = snap_segments(segment, meshes)
+
+#     segment["x1"], segment["y1"], segment["z1"] = sph2cart(
+#         segment.lon1, segment.lat1, RADIUS_EARTH
+#     )
+#     segment["x2"], segment["y2"], segment["z2"] = sph2cart(
+#         segment.lon2, segment.lat2, RADIUS_EARTH
+#     )
+
+#     segment = order_endpoints_sphere(segment)
+
+#     segment["length"] = np.zeros(len(segment))
+#     segment["azimuth"] = np.zeros(len(segment))
+#     for i in range(len(segment)):
+#         segment.azimuth.values[i], _, segment.length.values[i] = GEOID.inv(
+#             segment.lon1[i], segment.lat1[i], segment.lon2[i], segment.lat2[i]
+#         )  # Segment azimuth, Segment length in meters
+
+#     # This calculation needs to account for the periodic nature of longitude.
+#     # Calculate the periodic longitudinal separation.
+#     # @BJM: Is this better done with GEIOD?
+#     sep = segment.lon2 - segment.lon1
+#     periodic_lon_separation = np.where(
+#         sep > 180, sep - 360, np.where(sep < -180, sep + 360, sep)
+#     )
+#     segment["mid_lon_plate_carree"] = (
+#         segment.lon1.values + periodic_lon_separation / 2.0
+#     )
+
+#     # No worries for latitude because there's no periodicity.
+#     segment["mid_lat_plate_carree"] = (segment.lat1.values + segment.lat2.values) / 2.0
+#     segment["mid_lon"] = np.zeros_like(segment.lon1)
+#     segment["mid_lat"] = np.zeros_like(segment.lon1)
+
+#     for i in range(len(segment)):
+#         segment.mid_lon.values[i], segment.mid_lat.values[i] = GEOID.npts(
+#             segment.lon1[i], segment.lat1[i], segment.lon2[i], segment.lat2[i], 1
+#         )[0]
+#     segment.mid_lon.values[segment.mid_lon < 0.0] += 360.0
+
+#     segment["mid_x"], segment["mid_y"], segment["mid_z"] = sph2cart(
+#         segment.mid_lon, segment.mid_lat, RADIUS_EARTH
+#     )
+#     segment = locking_depth_manager(segment, command)
+#     segment = zero_mesh_segment_locking_depth(segment, meshes)
+#     segment = segment_centroids(segment)
+#     return segment
+
+
+# def snap_segments(segment, meshes):
+#     """
+#     Replace segments tracing meshes with the actual top edges of those meshes
+#     """
+#     # For each mesh, find associated segments
+#     cut_segment_idx = []
+#     all_edge_segment = make_default_segment(0)
+#     for i in range(len(meshes)):
+#         these_segments = np.where(
+#             (segment.patch_flag != 0) & (segment.patch_file_name == i)
+#         )[0]
+#         cut_segment_idx = np.append(cut_segment_idx, these_segments)
+#         # Get top coordinates of the mesh
+#         top_el_indices = np.where(meshes[i].top_elements)
+#         edges = np.sort(meshes[i].ordered_edge_nodes[:-1], axis=1)
+#         top_verts = np.sort(meshes[i].verts[top_el_indices], axis=1)
+#         # Concatenate edges with vertex pairs
+#         edges1 = np.vstack((edges, top_verts[:, 0:2]))
+#         # Find unique edges
+#         unique_edges1, unique_indices1, unique_counts1 = np.unique(
+#             edges1, axis=0, return_index=True, return_counts=True
+#         )
+#         # But keep those edges that appear twice
+#         top_edge_indices1 = unique_indices1[np.where(unique_counts1 == 2)]
+#         # Same process with 2nd and 3rd columns of the mesh vertex array
+#         edges2 = np.vstack((edges, top_verts[:, 1:3]))
+#         unique_edges2, unique_indices2, unique_counts2 = np.unique(
+#             edges2, axis=0, return_index=True, return_counts=True
+#         )
+#         top_edge_indices2 = unique_indices2[np.where(unique_counts2 == 2)]
+#         # Final selection
+#         top_edge_indices = np.sort(np.hstack((top_edge_indices1, top_edge_indices2)))
+#         # Get new segment coordinates from these indices
+#         edge_segs = make_default_segment(len(top_edge_indices))
+#         edge_segs.lon1 = meshes[i].meshio_object.points[
+#             meshes[i].ordered_edge_nodes[top_edge_indices, 0], 0
+#         ]
+#         edge_segs.lat1 = meshes[i].meshio_object.points[
+#             meshes[i].ordered_edge_nodes[top_edge_indices, 0], 1
+#         ]
+#         edge_segs.lon2 = meshes[i].meshio_object.points[
+#             meshes[i].ordered_edge_nodes[top_edge_indices, 1], 0
+#         ]
+#         edge_segs.lat2 = meshes[i].meshio_object.points[
+#             meshes[i].ordered_edge_nodes[top_edge_indices, 1], 1
+#         ]
+#         edge_segs.locking_depth = +15
+#         edge_segs.patch_flag = +1
+#         edge_segs.patch_file_name = +i + 1
+#         all_edge_segment = all_edge_segment.append(edge_segs)
+
+#     # Get indices of segments to keep
+#     keep_segment_idx = np.setdiff1d(range(len(segment.lon1)), cut_segment_idx)
+#     # Isolate kept segments and reindex
+#     keep_segment = segment.loc[keep_segment_idx]
+#     new_index = range(len(keep_segment_idx))
+#     keep_segment.index = new_index
+#     # Find hanging endpoints; these mark terminations of mesh-replaced segments
+#     lons = np.hstack((keep_segment.lon1, keep_segment.lon2))
+#     lats = np.hstack((keep_segment.lat1, keep_segment.lat2))
+#     coords = np.array([lons, lats])
+#     unique_coords, indices, counts = np.unique(
+#         coords, axis=1, return_index=True, return_counts=True
+#     )
+#     hanging_idx = indices[np.where(counts == 1)]
+#     # Calculate distance to all mesh edge coordinates
+#     # Can't just use the terminations because we might have triple junctions in the middle of a mesh
+#     elons = np.hstack((all_edge_segment.lon1, all_edge_segment.lon2))
+#     elats = np.hstack((all_edge_segment.lat1, all_edge_segment.lat2))
+#     ecoords = np.array([elons, elats])
+#     hang_to_mesh_dist = cdist(coords[:, hanging_idx].T, ecoords.T)
+#     # Find closest edge coordinate
+#     closest_edge_idx = np.argmin(hang_to_mesh_dist, axis=1)
+#     # Replace segment coordinates with closest mesh coordinate
+#     # Using a loop because we need to evaluate whether to replace endpoint 1 or 2
+#     for i in range(len(closest_edge_idx)):
+#         if hanging_idx[i] < len(keep_segment.lon1):
+#             keep_segment.loc[hanging_idx[i], "lon1"] = ecoords[0, closest_edge_idx[i]]
+#             keep_segment.loc[hanging_idx[i], "lat1"] = ecoords[1, closest_edge_idx[i]]
+#         else:
+#             keep_segment.loc[hanging_idx[i] - len(keep_segment.lon1), "lon2"] = ecoords[
+#                 0, closest_edge_idx[i]
+#             ]
+#             keep_segment.loc[hanging_idx[i] - len(keep_segment.lon1), "lat2"] = ecoords[
+#                 1, closest_edge_idx[i]
+#             ]
+#     # Merge with mesh edge segments
+#     new_segment = keep_segment.append(all_edge_segment)
+#     new_index = range(len(new_segment))
+#     new_segment.index = new_index
+#     return new_segment
 
 
 def make_default_segment(length):
