@@ -395,6 +395,63 @@ def process_station(station, command):
     return station
 
 
+def process_sar(sar, command):
+    """
+    Preprocessing of SAR data.
+    """
+    if sar.empty:
+        sar["depth"] = np.zeros_like(sar.lon)
+
+        # Set the uncertainties to reflect the weights specified in the command file
+        # In constructing the data weight vector, the value is 1./Sar.dataSig.^2, so
+        # the adjustment made here is sar.dataSig / np.sqrt(command.sarWgt)
+        sar.line_of_sight_change_sig = sar.line_of_sight_change_sig / np.sqrt(
+            command.sar_weight
+        )
+        sar["x"], sar["y"], sar["z"] = sph2cart(sar.lon, sar.lat, RADIUS_EARTH)
+        sar["block_label"] = -1 * np.ones_like(sar.x)
+    else:
+        sar["dep"] = []
+        sar["x"] = []
+        sar["y"] = []
+        sar["x"] = []
+        sar["block_label"] = []
+    return sar
+
+
+def merge_geodetic_data(assembly, station, sar):
+    """
+    Merge GPS and InSAR data to a single assembly object
+    """
+    assembly.data.n_stations = len(station)
+    assembly.data.n_sar = len(sar)
+    assembly.data.east_vel = station.east_vel.to_numpy()
+    assembly.sigma.east_sig = station.east_sig.to_numpy()
+    assembly.data.north_vel = station.north_vel.to_numpy()
+    assembly.sigma.north_sig = station.north_sig.to_numpy()
+    assembly.data.up_vel = station.up_vel.to_numpy()
+    assembly.sigma.up_sig = station.up_sig.to_numpy()
+    assembly.data.sar_line_of_sight_change_val = sar.line_of_sight_change_val.to_numpy()
+    assembly.sigma.sar_line_of_sight_change_sig = (
+        sar.line_of_sight_change_sig.to_numpy()
+    )
+    assembly.data.lon = np.concatenate((station.lon.to_numpy(), sar.lon.to_numpy()))
+    assembly.data.lat = np.concatenate((station.lat.to_numpy(), sar.lat.to_numpy()))
+    assembly.data.depth = np.concatenate(
+        (station.depth.to_numpy(), sar.depth.to_numpy())
+    )
+    assembly.data.x = np.concatenate((station.x.to_numpy(), sar.x.to_numpy()))
+    assembly.data.y = np.concatenate((station.y.to_numpy(), sar.y.to_numpy()))
+    assembly.data.z = np.concatenate((station.z.to_numpy(), sar.z.to_numpy()))
+    assembly.data.block_label = np.concatenate(
+        (station.block_label.to_numpy(), sar.block_label.to_numpy())
+    )
+    assembly.index.sar_coordinate_idx = np.arange(
+        len(station), len(station) + len(sar)
+    )  # TODO: Not sure this is correct
+    return assembly
+
+
 def process_segment(segment, command, meshes):
     """
     Add derived fields to segment dataframe
@@ -658,6 +715,79 @@ def snap_segments(segment, meshes):
     return new_segment
 
 
+def assign_block_labels(segment, station, block, mogi, sar):
+    """
+    Ben Thompson's implementation of the half edge approach to the
+    block labeling problem and east/west assignment.
+    """
+    # segment = split_segments_crossing_meridian(segment)
+
+    np_segments = np.zeros((len(segment), 2, 2))
+    np_segments[:, 0, 0] = segment.lon1.to_numpy()
+    np_segments[:, 1, 0] = segment.lon2.to_numpy()
+    np_segments[:, 0, 1] = segment.lat1.to_numpy()
+    np_segments[:, 1, 1] = segment.lat2.to_numpy()
+
+    closure = celeri_closure.run_block_closure(np_segments)
+    labels = celeri_closure.get_segment_labels(closure)
+
+    segment["west_labels"] = labels[:, 0]
+    segment["east_labels"] = labels[:, 1]
+
+    # Check for unprocessed indices
+    unprocessed_indices = np.union1d(
+        np.where(segment["east_labels"] < 0),
+        np.where(segment["west_labels"] < 0),
+    )
+    if len(unprocessed_indices) > 0:
+        logger.warning("Found unproccessed indices")
+
+    # Find relative areas of each block to identify an external block
+    block["area_steradians"] = -1 * np.ones(len(block))
+    block["area_plate_carree"] = -1 * np.ones(len(block))
+    for i in range(closure.n_polygons()):
+        vs = closure.polygons[i].vertices
+        block.area_steradians.values[i] = closure.polygons[i].area_steradians
+        block.area_plate_carree.values[i] = polygon_area(vs[:, 0], vs[:, 1])
+
+    # Assign block labels points to block interior points
+    block["block_label"] = closure.assign_points(
+        block.interior_lon.to_numpy(), block.interior_lat.to_numpy()
+    )
+
+    # I copied this from the bottom of:
+    # https://stackoverflow.com/questions/39992502/rearrange-rows-of-pandas-dataframe-based-on-list-and-keeping-the-order
+    # and I definitely don't understand it all but emperically it seems to work.
+    block = (
+        block.set_index(block.block_label, append=True)
+        .sort_index(level=1)
+        .reset_index(1, drop=True)
+    )
+    block = block.reset_index()
+    block = block.loc[:, ~block.columns.str.match("index")]
+
+    # Assign block labels to GPS stations
+    if not station.empty:
+        station["block_label"] = closure.assign_points(
+            station.lon.to_numpy(), station.lat.to_numpy()
+        )
+
+    # Assign block labels to SAR locations
+    if not sar.empty:
+        sar["block_label"] = closure.assign_points(
+            sar.lon.to_numpy(), sar.lat.to_numpy()
+        )
+
+    # Assign block labels to Mogi sources
+    if not mogi.empty:
+        mogi["block_label"] = closure.assign_points(
+            mogi.lon.to_numpy(), mogi.lat.to_numpy()
+        )
+
+    return closure, block
+
+
+
 ##############################################################################################################################
 #                                                                                                                            #
 #                                                                                                                            #
@@ -672,7 +802,722 @@ def snap_segments(segment, meshes):
 #                                                                                                                            #
 #                                                                                                                            #
 ##############################################################################################################################
-   
+
+
+def get_elastic_operators(
+    operators: Dict,
+    meshes: List,
+    segment: pd.DataFrame,
+    station: pd.DataFrame,
+    command: Dict,
+):
+    """
+    Calculate (or load previously calculated) elastic operators from
+    both fully locked segments and TDE parameterizes surfaces
+
+    Args:
+        operators (Dict): Elastic operators will be added to this data structure
+        meshes (List): Geometries of meshes
+        segment (pd.DataFrame): All segment data
+        station (pd.DataFrame): All station data
+        command (Dict): All command data
+    """
+    if bool(command.reuse_elastic) and os.path.exists(command.reuse_elastic_file):
+        logger.info("Using precomputed elastic operators")
+        hdf5_file = h5py.File(command.reuse_elastic_file, "r")
+
+        operators.slip_rate_to_okada_to_velocities = np.array(
+            hdf5_file.get("slip_rate_to_okada_to_velocities")
+        )
+        for i in range(len(meshes)):
+            operators.tde_to_velocities[i] = np.array(
+                hdf5_file.get("tde_to_velocities_" + str(i))
+            )
+        hdf5_file.close()
+
+    else:
+        if not os.path.exists(command.reuse_elastic_file):
+            logger.warning("Precomputed elastic operator file not found")
+        logger.info("Computing elastic operators")
+
+        # Calculate Okada partials for all segments
+        operators.slip_rate_to_okada_to_velocities = get_segment_station_operator_okada(
+            segment, station, command
+        )
+
+        for i in range(len(meshes)):
+            logger.info(
+                f"Start: TDE slip to velocity calculation for mesh: {meshes[i].file_name}"
+            )
+            operators.tde_to_velocities[i] = get_tde_to_velocities_single_mesh(
+                meshes, station, command, mesh_idx=i
+            )
+            logger.success(
+                f"Finish: TDE slip to velocity calculation for mesh: {meshes[i].file_name}"
+            )
+
+        # Save elastic to velocity matrices
+        if bool(command.save_elastic):
+            # Check to see if "data/operators" folder exists and if not create it
+            if not os.path.exists(command.operators_folder):
+                os.mkdir(command.operators_folder)
+
+            logger.info(
+                "Saving elastic to velocity matrices to :" + command.save_elastic_file
+            )
+            hdf5_file = h5py.File(command.save_elastic_file, "w")
+
+            hdf5_file.create_dataset(
+                "slip_rate_to_okada_to_velocities",
+                data=operators.slip_rate_to_okada_to_velocities,
+            )
+            for i in range(len(meshes)):
+                hdf5_file.create_dataset(
+                    "tde_to_velocities_" + str(i),
+                    data=operators.tde_to_velocities[i],
+                )
+            hdf5_file.close()
+
+
+def get_elastic_operators_okada(
+    operators: Dict,
+    segment: pd.DataFrame,
+    station: pd.DataFrame,
+    command: Dict,
+):
+    """
+    NOTE: This is for the case with no TDEs.  May be redundant.  Consider
+
+    Calculate (or load previously calculated) elastic operators from
+    both fully locked segments and TDE parameterizes surfaces
+
+    Args:
+        operators (Dict): Elastic operators will be added to this data structure
+        segment (pd.DataFrame): All segment data
+        station (pd.DataFrame): All station data
+        command (Dict): All command data
+    """
+    if bool(command.reuse_elastic) and os.path.exists(command.reuse_elastic_file):
+        logger.info("Using precomputed elastic operators")
+        hdf5_file = h5py.File(command.reuse_elastic_file, "r")
+
+        operators.slip_rate_to_okada_to_velocities = np.array(
+            hdf5_file.get("slip_rate_to_okada_to_velocities")
+        )
+        hdf5_file.close()
+
+    else:
+        if not os.path.exists(command.reuse_elastic_file):
+            logger.warning("Precomputed elastic operator file not found")
+        logger.info("Computing elastic operators")
+
+        # Calculate Okada partials for all segments
+        operators.slip_rate_to_okada_to_velocities = get_segment_station_operator_okada(
+            segment, station, command
+        )
+
+        # Save elastic to velocity matrices
+        if bool(command.save_elastic):
+            # Check to see if "data/operators" folder exists and if not create it
+            if not os.path.exists(command.operators_folder):
+                os.mkdir(command.operators_folder)
+
+            logger.info(
+                "Saving elastic to velocity matrices to :" + command.save_elastic_file
+            )
+            hdf5_file = h5py.File(command.save_elastic_file, "w")
+
+            hdf5_file.create_dataset(
+                "slip_rate_to_okada_to_velocities",
+                data=operators.slip_rate_to_okada_to_velocities,
+            )
+            hdf5_file.close()
+
+
+def get_segment_station_operator_okada(segment, station, command):
+    """
+    Calculates the elastic displacement partial derivatives based on the Okada
+    formulation, using the source and receiver geometries defined in
+    dicitonaries segment and stations. Before calculating the partials for
+    each segment, a local oblique Mercator project is done.
+
+    The linear operator is structured as ():
+
+                ss(segment1)  ds(segment1) ts(segment1) ... ss(segmentN) ds(segmentN) ts(segmentN)
+    ve(station 1)
+    vn(station 1)
+    vu(station 1)
+    .
+    .
+    .
+    ve(station N)
+    vn(station N)
+    vu(station N)
+
+    """
+    if not station.empty:
+        okada_segment_operator = np.ones((3 * len(station), 3 * len(segment)))
+        # Loop through each segment and calculate displacements for each slip component
+        for i in tqdm(
+            range(len(segment)),
+            desc="Calculating Okada partials for segments",
+            colour="cyan",
+        ):
+            (
+                u_east_strike_slip,
+                u_north_strike_slip,
+                u_up_strike_slip,
+            ) = get_okada_displacements(
+                segment.lon1[i],
+                segment.lat1[i],
+                segment.lon2[i],
+                segment.lat2[i],
+                segment.locking_depth[i],
+                segment.burial_depth[i],
+                segment.dip[i],
+                segment.azimuth[i],
+                command.material_lambda,
+                command.material_mu,
+                1,
+                0,
+                0,
+                station.lon,
+                station.lat,
+            )
+            (
+                u_east_dip_slip,
+                u_north_dip_slip,
+                u_up_dip_slip,
+            ) = get_okada_displacements(
+                segment.lon1[i],
+                segment.lat1[i],
+                segment.lon2[i],
+                segment.lat2[i],
+                segment.locking_depth[i],
+                segment.burial_depth[i],
+                segment.dip[i],
+                segment.azimuth[i],
+                command.material_lambda,
+                command.material_mu,
+                0,
+                1,
+                0,
+                station.lon,
+                station.lat,
+            )
+            (
+                u_east_tensile_slip,
+                u_north_tensile_slip,
+                u_up_tensile_slip,
+            ) = get_okada_displacements(
+                segment.lon1[i],
+                segment.lat1[i],
+                segment.lon2[i],
+                segment.lat2[i],
+                segment.locking_depth[i],
+                segment.burial_depth[i],
+                segment.dip[i],
+                segment.azimuth[i],
+                command.material_lambda,
+                command.material_mu,
+                0,
+                0,
+                1,
+                station.lon,
+                station.lat,
+            )
+            segment_column_start_idx = 3 * i
+            okada_segment_operator[0::3, segment_column_start_idx] = np.squeeze(
+                u_east_strike_slip
+            )
+            okada_segment_operator[1::3, segment_column_start_idx] = np.squeeze(
+                u_north_strike_slip
+            )
+            okada_segment_operator[2::3, segment_column_start_idx] = np.squeeze(
+                u_up_strike_slip
+            )
+            okada_segment_operator[0::3, segment_column_start_idx + 1] = np.squeeze(
+                u_east_dip_slip
+            )
+            okada_segment_operator[1::3, segment_column_start_idx + 1] = np.squeeze(
+                u_north_dip_slip
+            )
+            okada_segment_operator[2::3, segment_column_start_idx + 1] = np.squeeze(
+                u_up_dip_slip
+            )
+            okada_segment_operator[0::3, segment_column_start_idx + 2] = np.squeeze(
+                u_east_tensile_slip
+            )
+            okada_segment_operator[1::3, segment_column_start_idx + 2] = np.squeeze(
+                u_north_tensile_slip
+            )
+            okada_segment_operator[2::3, segment_column_start_idx + 2] = np.squeeze(
+                u_up_tensile_slip
+            )
+    else:
+        okada_segment_operator = np.empty(1)
+    return okada_segment_operator
+
+
+def get_okada_displacements(
+    segment_lon1,
+    segment_lat1,
+    segment_lon2,
+    segment_lat2,
+    segment_locking_depth,
+    segment_burial_depth,
+    segment_dip,
+    segment_azimuth,
+    material_lambda,
+    material_mu,
+    strike_slip,
+    dip_slip,
+    tensile_slip,
+    station_lon,
+    station_lat,
+):
+    """
+    Caculate elastic displacements in a homogeneous elastic half-space.
+    Inputs are in geographic coordinates and then projected into a local
+    xy-plane using a oblique Mercator projection that is tangent and parallel
+    to the trace of the fault segment.  The elastic calculation is the
+    original Okada 1992 Fortran code acceccesed through T. Ben Thompson's
+    okada_wrapper: https://github.com/tbenthompson/okada_wrapper
+    """
+    segment_locking_depth *= KM2M
+    segment_burial_depth *= KM2M
+
+    # Make sure depths are expressed as positive
+    segment_locking_depth = np.abs(segment_locking_depth)
+    segment_burial_depth = np.abs(segment_burial_depth)
+
+    # Correct sign of dip-slip based on fault dip, as noted on p. 1023 of Okada (1992)
+    dip_slip *= np.sign(90 - segment_dip)
+
+    # Project coordinates to flat space using a local oblique Mercator projection
+    projection = get_segment_oblique_projection(
+        segment_lon1, segment_lat1, segment_lon2, segment_lat2
+    )
+    station_x, station_y = projection(station_lon, station_lat)
+    segment_x1, segment_y1 = projection(segment_lon1, segment_lat1)
+    segment_x2, segment_y2 = projection(segment_lon2, segment_lat2)
+
+    # Calculate geometric fault parameters
+    segment_strike = np.arctan2(
+        segment_y2 - segment_y1, segment_x2 - segment_x1
+    )  # radians
+    segment_length = np.sqrt(
+        (segment_y2 - segment_y1) ** 2.0 + (segment_x2 - segment_x1) ** 2.0
+    )
+    segment_up_dip_width = (segment_locking_depth - segment_burial_depth) / np.sin(
+        np.deg2rad(segment_dip)
+    )
+
+    # Translate stations and segment so that segment mid-point is at the origin
+    segment_x_mid = (segment_x1 + segment_x2) / 2.0
+    segment_y_mid = (segment_y1 + segment_y2) / 2.0
+    station_x -= segment_x_mid
+    station_y -= segment_y_mid
+    segment_x1 -= segment_x_mid
+    segment_x2 -= segment_x_mid
+    segment_y1 -= segment_y_mid
+    segment_y2 -= segment_y_mid
+
+    # Unrotate coordinates to eliminate strike, segment will lie along y = 0
+    rotation_matrix = np.array(
+        [
+            [np.cos(segment_strike), -np.sin(segment_strike)],
+            [np.sin(segment_strike), np.cos(segment_strike)],
+        ]
+    )
+    station_x_rotated, station_y_rotated = np.hsplit(
+        np.einsum("ij,kj->ik", np.dstack((station_x, station_y))[0], rotation_matrix.T),
+        2,
+    )
+
+    # Shift station y coordinates by surface projection of locking depth
+    # y_shift will be positive for dips <90 and negative for dips > 90
+    y_shift = np.cos(np.deg2rad(segment_dip)) * segment_up_dip_width
+    station_y_rotated += y_shift
+
+    # Elastic displacements from Okada 1992
+    alpha = (material_lambda + material_mu) / (material_lambda + 2 * material_mu)
+    u_x = np.zeros_like(station_x)
+    u_y = np.zeros_like(station_x)
+    u_up = np.zeros_like(station_x)
+    for i in range(len(station_x)):
+        _, u, _ = okada_wrapper.dc3dwrapper(
+            alpha,  # (lambda + mu) / (lambda + 2 * mu)
+            [
+                station_x_rotated[i],
+                station_y_rotated[i],
+                0,
+            ],  # (meters) observation point
+            segment_locking_depth,  # (meters) depth of the fault origin
+            segment_dip,  # (degrees) the dip-angle of the rectangular dislocation surface
+            [
+                -segment_length / 2,
+                segment_length / 2,
+            ],  # (meters) the along-strike range of the surface (al1,al2 in the original)
+            [
+                0,
+                segment_up_dip_width,
+            ],  # (meters) along-dip range of the surface (aw1, aw2 in the original)
+            [strike_slip, dip_slip, tensile_slip],
+        )  # (meters) strike-slip, dip-slip, tensile-slip
+        u_x[i] = u[0]
+        u_y[i] = u[1]
+        u_up[i] = u[2]
+
+    # Un-rotate displacement to account for projected fault strike
+    # u_east, u_north = np.hsplit(
+    #     np.einsum("ij,kj->ik", np.dstack((u_x, u_y))[0], rotation_matrix), 2
+    # )
+
+    # Rotate x, y displacements about geographic azimuth to yield east, north displacements
+    cosstrike = np.cos(np.radians(90 - segment_azimuth))
+    sinstrike = np.sin(np.radians(90 - segment_azimuth))
+    u_north = sinstrike * u_x + cosstrike * u_y
+    u_east = cosstrike * u_x - sinstrike * u_y
+    return u_east, u_north, u_up
+
+
+def get_rotation_to_slip_rate_partials(segment, block):
+    """
+    Calculate partial derivatives relating relative block motion to fault slip rates
+    """
+    n_segments = len(segment)
+    n_blocks = len(block)
+    fault_slip_rate_partials = np.zeros((3 * n_segments, 3 * n_blocks))
+    for i in range(n_segments):
+        # Project velocities from Cartesian to spherical coordinates at segment mid-points
+        row_idx = 3 * i
+        column_idx_east = 3 * segment.east_labels[i]
+        column_idx_west = 3 * segment.west_labels[i]
+        R = get_cross_partials([segment.mid_x[i], segment.mid_y[i], segment.mid_z[i]])
+        (
+            vel_north_to_omega_x,
+            vel_east_to_omega_x,
+            _,
+        ) = cartesian_vector_to_spherical_vector(
+            R[0, 0], R[1, 0], R[2, 0], segment.mid_lon[i], segment.mid_lat[i]
+        )
+        (
+            vel_north_to_omega_y,
+            vel_east_to_omega_y,
+            _,
+        ) = cartesian_vector_to_spherical_vector(
+            R[0, 1], R[1, 1], R[2, 1], segment.mid_lon[i], segment.mid_lat[i]
+        )
+        (
+            vel_north_to_omega_z,
+            vel_east_to_omega_z,
+            _,
+        ) = cartesian_vector_to_spherical_vector(
+            R[0, 2], R[1, 2], R[2, 2], segment.mid_lon[i], segment.mid_lat[i]
+        )
+
+        # Build unit vector for the fault
+        # Fault strike calculated in process_segment
+        # TODO: Need to check this vs. matlab azimuth for consistency
+        unit_x_parallel = np.cos(np.deg2rad(90 - segment.azimuth[i]))
+        unit_y_parallel = np.sin(np.deg2rad(90 - segment.azimuth[i]))
+        unit_x_perpendicular = np.sin(np.deg2rad(segment.azimuth[i] - 90))
+        unit_y_perpendicular = np.cos(np.deg2rad(segment.azimuth[i] - 90))
+
+        # Projection onto fault dip
+        if segment.lat2[i] < segment.lat1[i]:
+            unit_x_parallel = -unit_x_parallel
+            unit_y_parallel = -unit_y_parallel
+            unit_x_perpendicular = -unit_x_perpendicular
+            unit_y_perpendicular = -unit_y_perpendicular
+
+        # This is the logic for dipping vs. non-dipping faults
+        # If fault is dipping make it so that the dip slip rate has a fault normal
+        # component equal to the fault normal differential plate velocity.  This
+        # is kinematically consistent in the horizontal but *not* in the vertical.
+        if segment.dip[i] != 90:
+            scale_factor = 1 / abs(np.cos(np.deg2rad(segment.dip[i])))
+            slip_rate_matrix = np.array(
+                [
+                    [
+                        unit_x_parallel * vel_east_to_omega_x
+                        + unit_y_parallel * vel_north_to_omega_x,
+                        unit_x_parallel * vel_east_to_omega_y
+                        + unit_y_parallel * vel_north_to_omega_y,
+                        unit_x_parallel * vel_east_to_omega_z
+                        + unit_y_parallel * vel_north_to_omega_z,
+                    ],
+                    [
+                        scale_factor
+                        * (
+                            unit_x_perpendicular * vel_east_to_omega_x
+                            + unit_y_perpendicular * vel_north_to_omega_x
+                        ),
+                        scale_factor
+                        * (
+                            unit_x_perpendicular * vel_east_to_omega_y
+                            + unit_y_perpendicular * vel_north_to_omega_y
+                        ),
+                        scale_factor
+                        * (
+                            unit_x_perpendicular * vel_east_to_omega_z
+                            + unit_y_perpendicular * vel_north_to_omega_z
+                        ),
+                    ],
+                    [0, 0, 0],
+                ]
+            )
+        else:
+            scale_factor = (
+                -1
+            )  # This is for consistency with the Okada convention for tensile faulting
+            slip_rate_matrix = np.array(
+                [
+                    [
+                        unit_x_parallel * vel_east_to_omega_x
+                        + unit_y_parallel * vel_north_to_omega_x,
+                        unit_x_parallel * vel_east_to_omega_y
+                        + unit_y_parallel * vel_north_to_omega_y,
+                        unit_x_parallel * vel_east_to_omega_z
+                        + unit_y_parallel * vel_north_to_omega_z,
+                    ],
+                    [0, 0, 0],
+                    [
+                        scale_factor
+                        * (
+                            unit_x_perpendicular * vel_east_to_omega_x
+                            + unit_y_perpendicular * vel_north_to_omega_x
+                        ),
+                        scale_factor
+                        * (
+                            unit_x_perpendicular * vel_east_to_omega_y
+                            + unit_y_perpendicular * vel_north_to_omega_y
+                        ),
+                        scale_factor
+                        * (
+                            unit_x_perpendicular * vel_east_to_omega_z
+                            + unit_y_perpendicular * vel_north_to_omega_z
+                        ),
+                    ],
+                ]
+            )
+
+        fault_slip_rate_partials[
+            row_idx : row_idx + 3, column_idx_east : column_idx_east + 3
+        ] = slip_rate_matrix
+        fault_slip_rate_partials[
+            row_idx : row_idx + 3, column_idx_west : column_idx_west + 3
+        ] = -slip_rate_matrix
+    return fault_slip_rate_partials
+
+
+def get_block_motion_constraints(assembly: Dict, block: pd.DataFrame, command: Dict):
+    """
+    Applying a priori block motion constraints
+    """
+    block_constraint_partials = get_block_motion_constraint_partials(block)
+    assembly.index.block_constraints_idx = np.where(block.rotation_flag == 1)[0]
+
+    assembly.data.n_block_constraints = len(assembly.index.block_constraints_idx)
+    assembly.data.block_constraints = np.zeros(block_constraint_partials.shape[0])
+    assembly.sigma.block_constraints = np.zeros(block_constraint_partials.shape[0])
+    if assembly.data.n_block_constraints > 0:
+        (
+            assembly.data.block_constraints[0::3],
+            assembly.data.block_constraints[1::3],
+            assembly.data.block_constraints[2::3],
+        ) = sph2cart(
+            block.euler_lon[assembly.index.block_constraints_idx],
+            block.euler_lat[assembly.index.block_constraints_idx],
+            np.deg2rad(block.rotation_rate[assembly.index.block_constraints_idx]),
+        )
+        euler_pole_covariance_all = np.diag(
+            np.concatenate(
+                (
+                    np.deg2rad(
+                        block.euler_lat_sig[assembly.index.block_constraints_idx]
+                    ),
+                    np.deg2rad(
+                        block.euler_lon_sig[assembly.index.block_constraints_idx]
+                    ),
+                    np.deg2rad(
+                        block.rotation_rate_sig[assembly.index.block_constraints_idx]
+                    ),
+                )
+            )
+        )
+        (
+            assembly.sigma.block_constraints[0::3],
+            assembly.sigma.block_constraints[1::3],
+            assembly.sigma.block_constraints[2::3],
+        ) = euler_pole_covariance_to_rotation_vector_covariance(
+            assembly.data.block_constraints[0::3],
+            assembly.data.block_constraints[1::3],
+            assembly.data.block_constraints[2::3],
+            euler_pole_covariance_all,
+        )
+    assembly.sigma.block_constraint_weight = command.block_constraint_weight
+    return assembly, block_constraint_partials
+
+
+def get_block_motion_constraint_partials(block):
+    """
+    Partials for a priori block motion constraints.
+    Essentially a set of eye(3) matrices
+    """
+    # apriori_block_idx = np.where(block.apriori_flag.to_numpy() == 1)[0]
+    apriori_rotation_block_idx = np.where(block.rotation_flag.to_numpy() == 1)[0]
+
+    operator = np.zeros((3 * len(apriori_rotation_block_idx), 3 * len(block)))
+    for i in range(len(apriori_rotation_block_idx)):
+        start_row = 3 * i
+        start_column = 3 * apriori_rotation_block_idx[i]
+        operator[start_row : start_row + 3, start_column : start_column + 3] = np.eye(3)
+    return operator
+
+
+def get_slip_rate_constraints(assembly, segment, block, command):
+    n_total_slip_rate_contraints = (
+        np.sum(segment.ss_rate_flag.values)
+        + np.sum(segment.ds_rate_flag.values)
+        + np.sum(segment.ts_rate_flag.values)
+    )
+    if n_total_slip_rate_contraints > 0:
+        logger.info(f"Found {n_total_slip_rate_contraints} slip rate constraints")
+        for i in range(len(segment.lon1)):
+            if segment.ss_rate_flag[i] == 1:
+                logger.info(
+                    "Strike-slip rate constraint on "
+                    + segment.name[i].strip()
+                    + ": rate = "
+                    + "{:.2f}".format(segment.ss_rate[i])
+                    + " (mm/yr), 1-sigma uncertainty = +/-"
+                    + "{:.2f}".format(segment.ss_rate_sig[i])
+                    + " (mm/yr)"
+                )
+            if segment.ds_rate_flag[i] == 1:
+                logger.info(
+                    "Dip-slip rate constraint on "
+                    + segment.name[i].strip()
+                    + ": rate = "
+                    + "{:.2f}".format(segment.ds_rate[i])
+                    + " (mm/yr), 1-sigma uncertainty = +/-"
+                    + "{:.2f}".format(segment.ds_rate_sig[i])
+                    + " (mm/yr)"
+                )
+            if segment.ts_rate_flag[i] == 1:
+                logger.info(
+                    "Tensile-slip rate constraint on "
+                    + segment.name[i].strip()
+                    + ": rate = "
+                    + "{:.2f}".format(segment.ts_rate[i])
+                    + " (mm/yr), 1-sigma uncertainty = +/-"
+                    + "{:.2f}".format(segment.ts_rate_sig[i])
+                    + " (mm/yr)"
+                )
+    else:
+        logger.info("No slip rate constraints")
+
+    slip_rate_constraint_partials = get_rotation_to_slip_rate_partials(segment, block)
+
+    slip_rate_constraint_flag = interleave3(
+        segment.ss_rate_flag, segment.ds_rate_flag, segment.ts_rate_flag
+    )
+    assembly.index.slip_rate_constraints = np.where(slip_rate_constraint_flag == 1)[0]
+    assembly.data.n_slip_rate_constraints = len(assembly.index.slip_rate_constraints)
+
+    assembly.data.slip_rate_constraints = interleave3(
+        segment.ss_rate, segment.ds_rate, segment.ts_rate
+    )
+
+    assembly.data.slip_rate_constraints = assembly.data.slip_rate_constraints[
+        assembly.index.slip_rate_constraints
+    ]
+
+    assembly.sigma.slip_rate_constraints = interleave3(
+        segment.ss_rate_sig, segment.ds_rate_sig, segment.ts_rate_sig
+    )
+
+    assembly.sigma.slip_rate_constraints = assembly.sigma.slip_rate_constraints[
+        assembly.index.slip_rate_constraints
+    ]
+
+    slip_rate_constraint_partials = slip_rate_constraint_partials[
+        assembly.index.slip_rate_constraints, :
+    ]
+    assembly.sigma.slip_rate_constraint_weight = command.slip_constraint_weight
+    return assembly, slip_rate_constraint_partials
+
+
+def get_slip_rake_constraints(assembly, segment, block, command):
+    n_total_slip_rake_contraints = np.sum(segment.rake_flag.values)
+    if n_total_slip_rake_contraints > 0:
+        logger.info(f"Found {n_total_slip_rake_contraints} slip rake constraints")
+        for i in range(len(segment.lon1)):
+            if segment.rake_flag[i] == 1:
+                logger.info(
+                    "Rake constraint on "
+                    + segment.name[i].strip()
+                    + ": rake = "
+                    + "{:.2f}".format(segment.rake[i])
+                    + ", constraint strike = "
+                    + "{:.2f}".format(segment.rake_strike[i])
+                    + ", 1-sigma uncertainty = +/-"
+                    + "{:.2f}".format(segment.rake_sig[i])
+                )
+    else:
+        logger.info("No slip rake constraints")
+    # To keep this a standalone function, let's calculate the full set of slip rate partials
+    # TODO: Check how get_slip_rate_constraints is called to see if we need to recalculate the full set of partials, or if we can reuse a previous calculation
+    slip_rate_constraint_partials = get_rotation_to_slip_rate_partials(segment, block)
+    # Figure out effective rake. This is a simple correction of the rake data by the calculated strike of the segment
+    # The idea is that the source of the rake constraint will include its own strike (and dip), which may differ from the model segment geometry
+    # TODO: Full three-dimensional rotation of rake vector, based on strike and dip of constraint source?
+    effective_rakes = segment.rake[segment.rake_flag] + (
+        segment.strike[segment.rake_flag] - segment.rake_strike[segment.rake_flag]
+    )
+
+    # Find indices of constrained segments
+    assembly.index.slip_rake_constraints = np.where(segment.rake_flag == 1)[0]
+    assembly.data.n_slip_rake_constraints = len(assembly.index.slip_rake_constraints)
+
+    # Get component indices of slip rate partials
+    rake_constraint_component_indices = get_2component_index(
+        assembly.index.slip_rake_constraints
+    )
+    # Rotate slip partials about effective rake. We just want to use the second row (second basis vector) of a full rotation matrix, because we want to set slip in that direction to zero as a constraint
+    slip_rake_constraint_partials = (
+        np.cos(np.radians(effective_rakes))
+        * slip_rate_constraint_partials[rake_constraint_component_indices[0::2]]
+        + np.sin(np.radians(effective_rakes))
+        * slip_rate_constraint_partials[rake_constraint_component_indices[1::2]]
+    )
+
+    # Constraint data is all zeros, because we're setting slip perpendicular to the rake direction equal to zero
+    assembly.data.slip_rake_constraints = np.zeros(
+        assembly.data.n_total_slip_rake_contraints
+    )
+
+    # Insert sigmas into assembly dict
+    assembly.sigma.slip_rake_constraints = segment.rake_sig
+
+    # Using the same weighting here as for slip rate constraints.
+    assembly.sigma.slip_rake_constraint_weight = command.slip_constraint_weight
+    return assembly, slip_rake_constraint_partials
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ######################################################################
 #                                                                    #
@@ -688,6 +1533,71 @@ def snap_segments(segment, meshes):
 #                                                                    #                                                                  
 #                                                                    #
 ######################################################################
+
+def euler_pole_covariance_to_rotation_vector_covariance(
+    omega_x, omega_y, omega_z, euler_pole_covariance_all
+):
+    """
+    This function takes the model parameter covariance matrix
+    in terms of the Euler pole and rotation rate and linearly
+    propagates them to rotation vector space.
+    """
+    omega_x_sig = np.zeros_like(omega_x)
+    omega_y_sig = np.zeros_like(omega_y)
+    omega_z_sig = np.zeros_like(omega_z)
+    for i in range(len(omega_x)):
+        x = omega_x[i]
+        y = omega_y[i]
+        z = omega_z[i]
+        euler_pole_covariance_current = euler_pole_covariance_all[
+            3 * i : 3 * (i + 1), 3 * i : 3 * (i + 1)
+        ]
+
+        """
+        There may be cases where x, y and z are all zero.  This leads to /0 errors.  To avoid this  %%
+        we check for these cases and Let A = b * I where b is a small constant (10^-4) and I is     %%
+        the identity matrix
+        """
+        if (x == 0) and (y == 0):
+            euler_to_cartsian_operator = 1e-4 * np.eye(
+                3
+            )  # Set a default small value for rotation vector uncertainty
+        else:
+            # Calculate the partial derivatives
+            dlat_dx = -z / (x**2 + y**2) ** (3 / 2) / (1 + z**2 / (x**2 + y**2)) * x
+            dlat_dy = -z / (x**2 + y**2) ** (3 / 2) / (1 + z**2 / (x**2 + y**2)) * y
+            dlat_dz = 1 / (x**2 + y**2) ** (1 / 2) / (1 + z**2 / (x**2 + y**2))
+            dlon_dx = -y / x**2 / (1 + (y / x) ** 2)
+            dlon_dy = 1 / x / (1 + (y / x) ** 2)
+            dlon_dz = 0
+            dmag_dx = x / np.sqrt(x**2 + y**2 + z**2)
+            dmag_dy = y / np.sqrt(x**2 + y**2 + z**2)
+            dmag_dz = z / np.sqrt(x**2 + y**2 + z**2)
+            euler_to_cartsian_operator = np.array(
+                [
+                    [dlat_dx, dlat_dy, dlat_dz],
+                    [dlon_dx, dlon_dy, dlon_dz],
+                    [dmag_dx, dmag_dy, dmag_dz],
+                ]
+            )
+
+        # Propagate the Euler pole covariance matrix to a rotation rate
+        # covariance matrix
+        rotation_vector_covariance = (
+            np.linalg.inv(euler_to_cartsian_operator)
+            * euler_pole_covariance_current
+            * np.linalg.inv(euler_to_cartsian_operator).T
+        )
+
+        # Organized data for the return
+        main_diagonal_values = np.diag(rotation_vector_covariance)
+        omega_x_sig[i] = np.sqrt(main_diagonal_values[0])
+        omega_y_sig[i] = np.sqrt(main_diagonal_values[1])
+        omega_z_sig[i] = np.sqrt(main_diagonal_values[2])
+    return omega_x_sig, omega_y_sig, omega_z_sig
+
+
+
 
 #########################################################################################
 #                                                                                       #
@@ -763,6 +1673,188 @@ def wrap2360(lon):
     lon[np.where(lon < 0.0)] += 360.0
     return lon
 
+
+def make_default_segment(length):
+    """
+    Create a default segment Dict of specified length
+    """
+    default_segment = pd.DataFrame(
+        columns=[
+            "name",
+            "lon1",
+            "lat1",
+            "lon2",
+            "lat2",
+            "dip",
+            "res",
+            "other3",
+            "other6",
+            "other7",
+            "other8",
+            "other9",
+            "other10",
+            "other11",
+            "other12",
+            "locking_depth",
+            "locking_depth_sig",
+            "locking_depth_flag",
+            "dip_sig",
+            "dip_flag",
+            "ss_rate",
+            "ss_rate_sig",
+            "ss_rate_flag",
+            "ds_rate",
+            "ds_rate_sig",
+            "ds_rate_flag",
+            "ts_rate",
+            "ts_rate_sig",
+            "ts_rate_flag",
+            "burial_depth",
+            "burial_depth_sig",
+            "burial_depth_flag",
+            "resolution_override",
+            "resolution_other",
+            "patch_file_name",
+            "patch_flag",
+            "patch_slip_file",
+            "patch_slip_flag",
+        ]
+    )
+    # Set everything to zeros, then we'll fill in a few specific values
+    length_vec = range(length)
+    for key, value in default_segment.items():
+        default_segment[key] = np.zeros_like(length_vec)
+    default_segment.locking_depth = +15
+    default_segment.dip = +90
+    for i in range(len(default_segment.name)):
+        default_segment.name[i] = "segment_" + str(i)
+
+    return default_segment
+
+
+def polygon_area(x, y):
+    """
+    From: https://newbedev.com/calculate-area-of-polygon-given-x-y-coordinates
+    """
+    return 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
+
+
+def great_circle_latitude_find(lon1, lat1, lon2, lat2, lon):
+    """
+    Determines latitude as a function of longitude along a great circle.
+    LAT = gclatfind(LON1, LAT1, LON2, LAT2, LON) finds the latitudes of points of
+    specified LON that lie along the great circle defined by endpoints LON1, LAT1
+    and LON2, LAT2. Angles should be passed as degrees.
+    """
+    lon1 = np.deg2rad(lon1)
+    lat1 = np.deg2rad(lat1)
+    lon2 = np.deg2rad(lon2)
+    lat2 = np.deg2rad(lat2)
+    lon = np.deg2rad(lon)
+    lat = np.arctan(
+        np.tan(lat1) * np.sin(lon - lon2) / np.sin(lon1 - lon2)
+        - np.tan(lat2) * np.sin(lon - lon1) / np.sin(lon1 - lon2)
+    )
+    return lat
+
+
+def get_cross_partials(vector):
+    """
+    Returns a linear operator R that when multiplied by
+    vector a gives the cross product a cross b
+    """
+    return np.array(
+        [
+            [0, vector[2], -vector[1]],
+            [-vector[2], 0, vector[0]],
+            [vector[1], -vector[0], 0],
+        ]
+    )
+
+
+def cartesian_vector_to_spherical_vector(vel_x, vel_y, vel_z, lon, lat):
+    """
+    This function transforms vectors from Cartesian to spherical components.
+    Arguments:
+        vel_x: array of x components of velocity
+        vel_y: array of y components of velocity
+        vel_z: array of z components of velocity
+        lon: array of station longitudes
+        lat: array of station latitudes
+    Returned variables:
+        vel_north: array of north components of velocity
+        vel_east: array of east components of velocity
+        vel_up: array of up components of velocity
+    """
+    projection_matrix = np.array(
+        [
+            [
+                -np.sin(np.deg2rad(lat)) * np.cos(np.deg2rad(lon)),
+                -np.sin(np.deg2rad(lat)) * np.sin(np.deg2rad(lon)),
+                np.cos(np.deg2rad(lat)),
+            ],
+            [-np.sin(np.deg2rad(lon)), np.cos(np.deg2rad(lon)), 0],
+            [
+                -np.cos(np.deg2rad(lat)) * np.cos(np.deg2rad(lon)),
+                -np.cos(np.deg2rad(lat)) * np.sin(np.deg2rad(lon)),
+                -np.sin(np.deg2rad(lat)),
+            ],
+        ]
+    )
+    vel_north, vel_east, vel_up = np.dot(
+        projection_matrix, np.array([vel_x, vel_y, vel_z])
+    )
+    return vel_north, vel_east, vel_up
+
+
+def get_segment_oblique_projection(lon1, lat1, lon2, lat2, skew=True):
+    """
+    Use pyproj oblique mercator: https://proj.org/operations/projections/omerc.html
+
+    According to: https://proj.org/operations/projections/omerc.html
+    This is this already rotated by the fault strike but the rotation can be undone with +no_rot
+    > +no_rot
+    > No rectification (not “no rotation” as one may well assume).
+    > Do not take the last step from the skew uv-plane to the map XY plane.
+    > Note: This option is probably only marginally useful,
+    > but remains for (mostly) historical reasons.
+
+    The version with north still pointing "up" appears to be called the
+    Rectified skew orthomorphic projection or Hotine oblique Mercator projection
+    https://pro.arcgis.com/en/pro-app/latest/help/mapping/properties/rectified-skew-orthomorphic.htm
+    """
+    if lon1 > 180.0:
+        lon1 = lon1 - 360
+    if lon2 > 180.0:
+        lon2 = lon2 - 360
+
+    # Check if latitudes are too close to identical
+    # If lat1 and lat2 are the same at the 5 decimal place proj with fail
+    # Perturb lat2 slightly to avoid this.
+    if np.isclose(lat1, lat2):
+        latitude_offset = 0.001
+        lat2 += latitude_offset
+
+    projection_string = (
+        "+proj=omerc "
+        + "+lon_1="
+        + str(lon1)
+        + " "
+        + "+lat_1="
+        + str(lat1)
+        + " "
+        + "+lon_2="
+        + str(lon2)
+        + " "
+        + "+lat_2="
+        + str(lat2)
+        + " "
+        + "+ellps=WGS84"
+    )
+    if not skew:
+        projection_string += " +no_rot"
+    projection = pyproj.Proj(pyproj.CRS.from_proj4(projection_string))
+    return projection
 
 
 ################################################################################################
@@ -1374,1080 +2466,1080 @@ def wrap2360(lon):
 #     return new_segment
 
 
-def make_default_segment(length):
-    """
-    Create a default segment Dict of specified length
-    """
-    default_segment = pd.DataFrame(
-        columns=[
-            "name",
-            "lon1",
-            "lat1",
-            "lon2",
-            "lat2",
-            "dip",
-            "res",
-            "other3",
-            "other6",
-            "other7",
-            "other8",
-            "other9",
-            "other10",
-            "other11",
-            "other12",
-            "locking_depth",
-            "locking_depth_sig",
-            "locking_depth_flag",
-            "dip_sig",
-            "dip_flag",
-            "ss_rate",
-            "ss_rate_sig",
-            "ss_rate_flag",
-            "ds_rate",
-            "ds_rate_sig",
-            "ds_rate_flag",
-            "ts_rate",
-            "ts_rate_sig",
-            "ts_rate_flag",
-            "burial_depth",
-            "burial_depth_sig",
-            "burial_depth_flag",
-            "resolution_override",
-            "resolution_other",
-            "patch_file_name",
-            "patch_flag",
-            "patch_slip_file",
-            "patch_slip_flag",
-        ]
-    )
-    # Set everything to zeros, then we'll fill in a few specific values
-    length_vec = range(length)
-    for key, value in default_segment.items():
-        default_segment[key] = np.zeros_like(length_vec)
-    default_segment.locking_depth = +15
-    default_segment.dip = +90
-    for i in range(len(default_segment.name)):
-        default_segment.name[i] = "segment_" + str(i)
-
-    return default_segment
-
-
-def polygon_area(x, y):
-    """
-    From: https://newbedev.com/calculate-area-of-polygon-given-x-y-coordinates
-    """
-    return 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
-
-
-def assign_block_labels(segment, station, block, mogi, sar):
-    """
-    Ben Thompson's implementation of the half edge approach to the
-    block labeling problem and east/west assignment.
-    """
-    # segment = split_segments_crossing_meridian(segment)
-
-    np_segments = np.zeros((len(segment), 2, 2))
-    np_segments[:, 0, 0] = segment.lon1.to_numpy()
-    np_segments[:, 1, 0] = segment.lon2.to_numpy()
-    np_segments[:, 0, 1] = segment.lat1.to_numpy()
-    np_segments[:, 1, 1] = segment.lat2.to_numpy()
-
-    closure = celeri_closure.run_block_closure(np_segments)
-    labels = celeri_closure.get_segment_labels(closure)
-
-    segment["west_labels"] = labels[:, 0]
-    segment["east_labels"] = labels[:, 1]
-
-    # Check for unprocessed indices
-    unprocessed_indices = np.union1d(
-        np.where(segment["east_labels"] < 0),
-        np.where(segment["west_labels"] < 0),
-    )
-    if len(unprocessed_indices) > 0:
-        logger.warning("Found unproccessed indices")
-
-    # Find relative areas of each block to identify an external block
-    block["area_steradians"] = -1 * np.ones(len(block))
-    block["area_plate_carree"] = -1 * np.ones(len(block))
-    for i in range(closure.n_polygons()):
-        vs = closure.polygons[i].vertices
-        block.area_steradians.values[i] = closure.polygons[i].area_steradians
-        block.area_plate_carree.values[i] = polygon_area(vs[:, 0], vs[:, 1])
-
-    # Assign block labels points to block interior points
-    block["block_label"] = closure.assign_points(
-        block.interior_lon.to_numpy(), block.interior_lat.to_numpy()
-    )
-
-    # I copied this from the bottom of:
-    # https://stackoverflow.com/questions/39992502/rearrange-rows-of-pandas-dataframe-based-on-list-and-keeping-the-order
-    # and I definitely don't understand it all but emperically it seems to work.
-    block = (
-        block.set_index(block.block_label, append=True)
-        .sort_index(level=1)
-        .reset_index(1, drop=True)
-    )
-    block = block.reset_index()
-    block = block.loc[:, ~block.columns.str.match("index")]
-
-    # Assign block labels to GPS stations
-    if not station.empty:
-        station["block_label"] = closure.assign_points(
-            station.lon.to_numpy(), station.lat.to_numpy()
-        )
-
-    # Assign block labels to SAR locations
-    if not sar.empty:
-        sar["block_label"] = closure.assign_points(
-            sar.lon.to_numpy(), sar.lat.to_numpy()
-        )
-
-    # Assign block labels to Mogi sources
-    if not mogi.empty:
-        mogi["block_label"] = closure.assign_points(
-            mogi.lon.to_numpy(), mogi.lat.to_numpy()
-        )
-
-    return closure, block
-
-
-def great_circle_latitude_find(lon1, lat1, lon2, lat2, lon):
-    """
-    Determines latitude as a function of longitude along a great circle.
-    LAT = gclatfind(LON1, LAT1, LON2, LAT2, LON) finds the latitudes of points of
-    specified LON that lie along the great circle defined by endpoints LON1, LAT1
-    and LON2, LAT2. Angles should be passed as degrees.
-    """
-    lon1 = np.deg2rad(lon1)
-    lat1 = np.deg2rad(lat1)
-    lon2 = np.deg2rad(lon2)
-    lat2 = np.deg2rad(lat2)
-    lon = np.deg2rad(lon)
-    lat = np.arctan(
-        np.tan(lat1) * np.sin(lon - lon2) / np.sin(lon1 - lon2)
-        - np.tan(lat2) * np.sin(lon - lon1) / np.sin(lon1 - lon2)
-    )
-    return lat
-
-
-def process_sar(sar, command):
-    """
-    Preprocessing of SAR data.
-    """
-    if sar.empty:
-        sar["depth"] = np.zeros_like(sar.lon)
-
-        # Set the uncertainties to reflect the weights specified in the command file
-        # In constructing the data weight vector, the value is 1./Sar.dataSig.^2, so
-        # the adjustment made here is sar.dataSig / np.sqrt(command.sarWgt)
-        sar.line_of_sight_change_sig = sar.line_of_sight_change_sig / np.sqrt(
-            command.sar_weight
-        )
-        sar["x"], sar["y"], sar["z"] = sph2cart(sar.lon, sar.lat, RADIUS_EARTH)
-        sar["block_label"] = -1 * np.ones_like(sar.x)
-    else:
-        sar["dep"] = []
-        sar["x"] = []
-        sar["y"] = []
-        sar["x"] = []
-        sar["block_label"] = []
-    return sar
-
-
-def merge_geodetic_data(assembly, station, sar):
-    """
-    Merge GPS and InSAR data to a single assembly object
-    """
-    assembly.data.n_stations = len(station)
-    assembly.data.n_sar = len(sar)
-    assembly.data.east_vel = station.east_vel.to_numpy()
-    assembly.sigma.east_sig = station.east_sig.to_numpy()
-    assembly.data.north_vel = station.north_vel.to_numpy()
-    assembly.sigma.north_sig = station.north_sig.to_numpy()
-    assembly.data.up_vel = station.up_vel.to_numpy()
-    assembly.sigma.up_sig = station.up_sig.to_numpy()
-    assembly.data.sar_line_of_sight_change_val = sar.line_of_sight_change_val.to_numpy()
-    assembly.sigma.sar_line_of_sight_change_sig = (
-        sar.line_of_sight_change_sig.to_numpy()
-    )
-    assembly.data.lon = np.concatenate((station.lon.to_numpy(), sar.lon.to_numpy()))
-    assembly.data.lat = np.concatenate((station.lat.to_numpy(), sar.lat.to_numpy()))
-    assembly.data.depth = np.concatenate(
-        (station.depth.to_numpy(), sar.depth.to_numpy())
-    )
-    assembly.data.x = np.concatenate((station.x.to_numpy(), sar.x.to_numpy()))
-    assembly.data.y = np.concatenate((station.y.to_numpy(), sar.y.to_numpy()))
-    assembly.data.z = np.concatenate((station.z.to_numpy(), sar.z.to_numpy()))
-    assembly.data.block_label = np.concatenate(
-        (station.block_label.to_numpy(), sar.block_label.to_numpy())
-    )
-    assembly.index.sar_coordinate_idx = np.arange(
-        len(station), len(station) + len(sar)
-    )  # TODO: Not sure this is correct
-    return assembly
-
-
-def euler_pole_covariance_to_rotation_vector_covariance(
-    omega_x, omega_y, omega_z, euler_pole_covariance_all
-):
-    """
-    This function takes the model parameter covariance matrix
-    in terms of the Euler pole and rotation rate and linearly
-    propagates them to rotation vector space.
-    """
-    omega_x_sig = np.zeros_like(omega_x)
-    omega_y_sig = np.zeros_like(omega_y)
-    omega_z_sig = np.zeros_like(omega_z)
-    for i in range(len(omega_x)):
-        x = omega_x[i]
-        y = omega_y[i]
-        z = omega_z[i]
-        euler_pole_covariance_current = euler_pole_covariance_all[
-            3 * i : 3 * (i + 1), 3 * i : 3 * (i + 1)
-        ]
-
-        """
-        There may be cases where x, y and z are all zero.  This leads to /0 errors.  To avoid this  %%
-        we check for these cases and Let A = b * I where b is a small constant (10^-4) and I is     %%
-        the identity matrix
-        """
-        if (x == 0) and (y == 0):
-            euler_to_cartsian_operator = 1e-4 * np.eye(
-                3
-            )  # Set a default small value for rotation vector uncertainty
-        else:
-            # Calculate the partial derivatives
-            dlat_dx = -z / (x**2 + y**2) ** (3 / 2) / (1 + z**2 / (x**2 + y**2)) * x
-            dlat_dy = -z / (x**2 + y**2) ** (3 / 2) / (1 + z**2 / (x**2 + y**2)) * y
-            dlat_dz = 1 / (x**2 + y**2) ** (1 / 2) / (1 + z**2 / (x**2 + y**2))
-            dlon_dx = -y / x**2 / (1 + (y / x) ** 2)
-            dlon_dy = 1 / x / (1 + (y / x) ** 2)
-            dlon_dz = 0
-            dmag_dx = x / np.sqrt(x**2 + y**2 + z**2)
-            dmag_dy = y / np.sqrt(x**2 + y**2 + z**2)
-            dmag_dz = z / np.sqrt(x**2 + y**2 + z**2)
-            euler_to_cartsian_operator = np.array(
-                [
-                    [dlat_dx, dlat_dy, dlat_dz],
-                    [dlon_dx, dlon_dy, dlon_dz],
-                    [dmag_dx, dmag_dy, dmag_dz],
-                ]
-            )
-
-        # Propagate the Euler pole covariance matrix to a rotation rate
-        # covariance matrix
-        rotation_vector_covariance = (
-            np.linalg.inv(euler_to_cartsian_operator)
-            * euler_pole_covariance_current
-            * np.linalg.inv(euler_to_cartsian_operator).T
-        )
-
-        # Organized data for the return
-        main_diagonal_values = np.diag(rotation_vector_covariance)
-        omega_x_sig[i] = np.sqrt(main_diagonal_values[0])
-        omega_y_sig[i] = np.sqrt(main_diagonal_values[1])
-        omega_z_sig[i] = np.sqrt(main_diagonal_values[2])
-    return omega_x_sig, omega_y_sig, omega_z_sig
-
-
-def get_block_motion_constraint_partials(block):
-    """
-    Partials for a priori block motion constraints.
-    Essentially a set of eye(3) matrices
-    """
-    # apriori_block_idx = np.where(block.apriori_flag.to_numpy() == 1)[0]
-    apriori_rotation_block_idx = np.where(block.rotation_flag.to_numpy() == 1)[0]
-
-    operator = np.zeros((3 * len(apriori_rotation_block_idx), 3 * len(block)))
-    for i in range(len(apriori_rotation_block_idx)):
-        start_row = 3 * i
-        start_column = 3 * apriori_rotation_block_idx[i]
-        operator[start_row : start_row + 3, start_column : start_column + 3] = np.eye(3)
-    return operator
-
-
-def get_block_motion_constraints(assembly: Dict, block: pd.DataFrame, command: Dict):
-    """
-    Applying a priori block motion constraints
-    """
-    block_constraint_partials = get_block_motion_constraint_partials(block)
-    assembly.index.block_constraints_idx = np.where(block.rotation_flag == 1)[0]
-
-    assembly.data.n_block_constraints = len(assembly.index.block_constraints_idx)
-    assembly.data.block_constraints = np.zeros(block_constraint_partials.shape[0])
-    assembly.sigma.block_constraints = np.zeros(block_constraint_partials.shape[0])
-    if assembly.data.n_block_constraints > 0:
-        (
-            assembly.data.block_constraints[0::3],
-            assembly.data.block_constraints[1::3],
-            assembly.data.block_constraints[2::3],
-        ) = sph2cart(
-            block.euler_lon[assembly.index.block_constraints_idx],
-            block.euler_lat[assembly.index.block_constraints_idx],
-            np.deg2rad(block.rotation_rate[assembly.index.block_constraints_idx]),
-        )
-        euler_pole_covariance_all = np.diag(
-            np.concatenate(
-                (
-                    np.deg2rad(
-                        block.euler_lat_sig[assembly.index.block_constraints_idx]
-                    ),
-                    np.deg2rad(
-                        block.euler_lon_sig[assembly.index.block_constraints_idx]
-                    ),
-                    np.deg2rad(
-                        block.rotation_rate_sig[assembly.index.block_constraints_idx]
-                    ),
-                )
-            )
-        )
-        (
-            assembly.sigma.block_constraints[0::3],
-            assembly.sigma.block_constraints[1::3],
-            assembly.sigma.block_constraints[2::3],
-        ) = euler_pole_covariance_to_rotation_vector_covariance(
-            assembly.data.block_constraints[0::3],
-            assembly.data.block_constraints[1::3],
-            assembly.data.block_constraints[2::3],
-            euler_pole_covariance_all,
-        )
-    assembly.sigma.block_constraint_weight = command.block_constraint_weight
-    return assembly, block_constraint_partials
-
-
-def get_cross_partials(vector):
-    """
-    Returns a linear operator R that when multiplied by
-    vector a gives the cross product a cross b
-    """
-    return np.array(
-        [
-            [0, vector[2], -vector[1]],
-            [-vector[2], 0, vector[0]],
-            [vector[1], -vector[0], 0],
-        ]
-    )
-
-
-def cartesian_vector_to_spherical_vector(vel_x, vel_y, vel_z, lon, lat):
-    """
-    This function transforms vectors from Cartesian to spherical components.
-    Arguments:
-        vel_x: array of x components of velocity
-        vel_y: array of y components of velocity
-        vel_z: array of z components of velocity
-        lon: array of station longitudes
-        lat: array of station latitudes
-    Returned variables:
-        vel_north: array of north components of velocity
-        vel_east: array of east components of velocity
-        vel_up: array of up components of velocity
-    """
-    projection_matrix = np.array(
-        [
-            [
-                -np.sin(np.deg2rad(lat)) * np.cos(np.deg2rad(lon)),
-                -np.sin(np.deg2rad(lat)) * np.sin(np.deg2rad(lon)),
-                np.cos(np.deg2rad(lat)),
-            ],
-            [-np.sin(np.deg2rad(lon)), np.cos(np.deg2rad(lon)), 0],
-            [
-                -np.cos(np.deg2rad(lat)) * np.cos(np.deg2rad(lon)),
-                -np.cos(np.deg2rad(lat)) * np.sin(np.deg2rad(lon)),
-                -np.sin(np.deg2rad(lat)),
-            ],
-        ]
-    )
-    vel_north, vel_east, vel_up = np.dot(
-        projection_matrix, np.array([vel_x, vel_y, vel_z])
-    )
-    return vel_north, vel_east, vel_up
-
-
-def get_rotation_to_slip_rate_partials(segment, block):
-    """
-    Calculate partial derivatives relating relative block motion to fault slip rates
-    """
-    n_segments = len(segment)
-    n_blocks = len(block)
-    fault_slip_rate_partials = np.zeros((3 * n_segments, 3 * n_blocks))
-    for i in range(n_segments):
-        # Project velocities from Cartesian to spherical coordinates at segment mid-points
-        row_idx = 3 * i
-        column_idx_east = 3 * segment.east_labels[i]
-        column_idx_west = 3 * segment.west_labels[i]
-        R = get_cross_partials([segment.mid_x[i], segment.mid_y[i], segment.mid_z[i]])
-        (
-            vel_north_to_omega_x,
-            vel_east_to_omega_x,
-            _,
-        ) = cartesian_vector_to_spherical_vector(
-            R[0, 0], R[1, 0], R[2, 0], segment.mid_lon[i], segment.mid_lat[i]
-        )
-        (
-            vel_north_to_omega_y,
-            vel_east_to_omega_y,
-            _,
-        ) = cartesian_vector_to_spherical_vector(
-            R[0, 1], R[1, 1], R[2, 1], segment.mid_lon[i], segment.mid_lat[i]
-        )
-        (
-            vel_north_to_omega_z,
-            vel_east_to_omega_z,
-            _,
-        ) = cartesian_vector_to_spherical_vector(
-            R[0, 2], R[1, 2], R[2, 2], segment.mid_lon[i], segment.mid_lat[i]
-        )
-
-        # Build unit vector for the fault
-        # Fault strike calculated in process_segment
-        # TODO: Need to check this vs. matlab azimuth for consistency
-        unit_x_parallel = np.cos(np.deg2rad(90 - segment.azimuth[i]))
-        unit_y_parallel = np.sin(np.deg2rad(90 - segment.azimuth[i]))
-        unit_x_perpendicular = np.sin(np.deg2rad(segment.azimuth[i] - 90))
-        unit_y_perpendicular = np.cos(np.deg2rad(segment.azimuth[i] - 90))
-
-        # Projection onto fault dip
-        if segment.lat2[i] < segment.lat1[i]:
-            unit_x_parallel = -unit_x_parallel
-            unit_y_parallel = -unit_y_parallel
-            unit_x_perpendicular = -unit_x_perpendicular
-            unit_y_perpendicular = -unit_y_perpendicular
-
-        # This is the logic for dipping vs. non-dipping faults
-        # If fault is dipping make it so that the dip slip rate has a fault normal
-        # component equal to the fault normal differential plate velocity.  This
-        # is kinematically consistent in the horizontal but *not* in the vertical.
-        if segment.dip[i] != 90:
-            scale_factor = 1 / abs(np.cos(np.deg2rad(segment.dip[i])))
-            slip_rate_matrix = np.array(
-                [
-                    [
-                        unit_x_parallel * vel_east_to_omega_x
-                        + unit_y_parallel * vel_north_to_omega_x,
-                        unit_x_parallel * vel_east_to_omega_y
-                        + unit_y_parallel * vel_north_to_omega_y,
-                        unit_x_parallel * vel_east_to_omega_z
-                        + unit_y_parallel * vel_north_to_omega_z,
-                    ],
-                    [
-                        scale_factor
-                        * (
-                            unit_x_perpendicular * vel_east_to_omega_x
-                            + unit_y_perpendicular * vel_north_to_omega_x
-                        ),
-                        scale_factor
-                        * (
-                            unit_x_perpendicular * vel_east_to_omega_y
-                            + unit_y_perpendicular * vel_north_to_omega_y
-                        ),
-                        scale_factor
-                        * (
-                            unit_x_perpendicular * vel_east_to_omega_z
-                            + unit_y_perpendicular * vel_north_to_omega_z
-                        ),
-                    ],
-                    [0, 0, 0],
-                ]
-            )
-        else:
-            scale_factor = (
-                -1
-            )  # This is for consistency with the Okada convention for tensile faulting
-            slip_rate_matrix = np.array(
-                [
-                    [
-                        unit_x_parallel * vel_east_to_omega_x
-                        + unit_y_parallel * vel_north_to_omega_x,
-                        unit_x_parallel * vel_east_to_omega_y
-                        + unit_y_parallel * vel_north_to_omega_y,
-                        unit_x_parallel * vel_east_to_omega_z
-                        + unit_y_parallel * vel_north_to_omega_z,
-                    ],
-                    [0, 0, 0],
-                    [
-                        scale_factor
-                        * (
-                            unit_x_perpendicular * vel_east_to_omega_x
-                            + unit_y_perpendicular * vel_north_to_omega_x
-                        ),
-                        scale_factor
-                        * (
-                            unit_x_perpendicular * vel_east_to_omega_y
-                            + unit_y_perpendicular * vel_north_to_omega_y
-                        ),
-                        scale_factor
-                        * (
-                            unit_x_perpendicular * vel_east_to_omega_z
-                            + unit_y_perpendicular * vel_north_to_omega_z
-                        ),
-                    ],
-                ]
-            )
-
-        fault_slip_rate_partials[
-            row_idx : row_idx + 3, column_idx_east : column_idx_east + 3
-        ] = slip_rate_matrix
-        fault_slip_rate_partials[
-            row_idx : row_idx + 3, column_idx_west : column_idx_west + 3
-        ] = -slip_rate_matrix
-    return fault_slip_rate_partials
-
-
-def get_slip_rate_constraints(assembly, segment, block, command):
-    n_total_slip_rate_contraints = (
-        np.sum(segment.ss_rate_flag.values)
-        + np.sum(segment.ds_rate_flag.values)
-        + np.sum(segment.ts_rate_flag.values)
-    )
-    if n_total_slip_rate_contraints > 0:
-        logger.info(f"Found {n_total_slip_rate_contraints} slip rate constraints")
-        for i in range(len(segment.lon1)):
-            if segment.ss_rate_flag[i] == 1:
-                logger.info(
-                    "Strike-slip rate constraint on "
-                    + segment.name[i].strip()
-                    + ": rate = "
-                    + "{:.2f}".format(segment.ss_rate[i])
-                    + " (mm/yr), 1-sigma uncertainty = +/-"
-                    + "{:.2f}".format(segment.ss_rate_sig[i])
-                    + " (mm/yr)"
-                )
-            if segment.ds_rate_flag[i] == 1:
-                logger.info(
-                    "Dip-slip rate constraint on "
-                    + segment.name[i].strip()
-                    + ": rate = "
-                    + "{:.2f}".format(segment.ds_rate[i])
-                    + " (mm/yr), 1-sigma uncertainty = +/-"
-                    + "{:.2f}".format(segment.ds_rate_sig[i])
-                    + " (mm/yr)"
-                )
-            if segment.ts_rate_flag[i] == 1:
-                logger.info(
-                    "Tensile-slip rate constraint on "
-                    + segment.name[i].strip()
-                    + ": rate = "
-                    + "{:.2f}".format(segment.ts_rate[i])
-                    + " (mm/yr), 1-sigma uncertainty = +/-"
-                    + "{:.2f}".format(segment.ts_rate_sig[i])
-                    + " (mm/yr)"
-                )
-    else:
-        logger.info("No slip rate constraints")
-
-    slip_rate_constraint_partials = get_rotation_to_slip_rate_partials(segment, block)
-
-    slip_rate_constraint_flag = interleave3(
-        segment.ss_rate_flag, segment.ds_rate_flag, segment.ts_rate_flag
-    )
-    assembly.index.slip_rate_constraints = np.where(slip_rate_constraint_flag == 1)[0]
-    assembly.data.n_slip_rate_constraints = len(assembly.index.slip_rate_constraints)
-
-    assembly.data.slip_rate_constraints = interleave3(
-        segment.ss_rate, segment.ds_rate, segment.ts_rate
-    )
-
-    assembly.data.slip_rate_constraints = assembly.data.slip_rate_constraints[
-        assembly.index.slip_rate_constraints
-    ]
-
-    assembly.sigma.slip_rate_constraints = interleave3(
-        segment.ss_rate_sig, segment.ds_rate_sig, segment.ts_rate_sig
-    )
-
-    assembly.sigma.slip_rate_constraints = assembly.sigma.slip_rate_constraints[
-        assembly.index.slip_rate_constraints
-    ]
-
-    slip_rate_constraint_partials = slip_rate_constraint_partials[
-        assembly.index.slip_rate_constraints, :
-    ]
-    assembly.sigma.slip_rate_constraint_weight = command.slip_constraint_weight
-    return assembly, slip_rate_constraint_partials
-
-
-def get_slip_rake_constraints(assembly, segment, block, command):
-    n_total_slip_rake_contraints = np.sum(segment.rake_flag.values)
-    if n_total_slip_rake_contraints > 0:
-        logger.info(f"Found {n_total_slip_rake_contraints} slip rake constraints")
-        for i in range(len(segment.lon1)):
-            if segment.rake_flag[i] == 1:
-                logger.info(
-                    "Rake constraint on "
-                    + segment.name[i].strip()
-                    + ": rake = "
-                    + "{:.2f}".format(segment.rake[i])
-                    + ", constraint strike = "
-                    + "{:.2f}".format(segment.rake_strike[i])
-                    + ", 1-sigma uncertainty = +/-"
-                    + "{:.2f}".format(segment.rake_sig[i])
-                )
-    else:
-        logger.info("No slip rake constraints")
-    # To keep this a standalone function, let's calculate the full set of slip rate partials
-    # TODO: Check how get_slip_rate_constraints is called to see if we need to recalculate the full set of partials, or if we can reuse a previous calculation
-    slip_rate_constraint_partials = get_rotation_to_slip_rate_partials(segment, block)
-    # Figure out effective rake. This is a simple correction of the rake data by the calculated strike of the segment
-    # The idea is that the source of the rake constraint will include its own strike (and dip), which may differ from the model segment geometry
-    # TODO: Full three-dimensional rotation of rake vector, based on strike and dip of constraint source?
-    effective_rakes = segment.rake[segment.rake_flag] + (
-        segment.strike[segment.rake_flag] - segment.rake_strike[segment.rake_flag]
-    )
-
-    # Find indices of constrained segments
-    assembly.index.slip_rake_constraints = np.where(segment.rake_flag == 1)[0]
-    assembly.data.n_slip_rake_constraints = len(assembly.index.slip_rake_constraints)
-
-    # Get component indices of slip rate partials
-    rake_constraint_component_indices = get_2component_index(
-        assembly.index.slip_rake_constraints
-    )
-    # Rotate slip partials about effective rake. We just want to use the second row (second basis vector) of a full rotation matrix, because we want to set slip in that direction to zero as a constraint
-    slip_rake_constraint_partials = (
-        np.cos(np.radians(effective_rakes))
-        * slip_rate_constraint_partials[rake_constraint_component_indices[0::2]]
-        + np.sin(np.radians(effective_rakes))
-        * slip_rate_constraint_partials[rake_constraint_component_indices[1::2]]
-    )
-
-    # Constraint data is all zeros, because we're setting slip perpendicular to the rake direction equal to zero
-    assembly.data.slip_rake_constraints = np.zeros(
-        assembly.data.n_total_slip_rake_contraints
-    )
-
-    # Insert sigmas into assembly dict
-    assembly.sigma.slip_rake_constraints = segment.rake_sig
-
-    # Using the same weighting here as for slip rate constraints.
-    assembly.sigma.slip_rake_constraint_weight = command.slip_constraint_weight
-    return assembly, slip_rake_constraint_partials
-
-
-def get_segment_oblique_projection(lon1, lat1, lon2, lat2, skew=True):
-    """
-    Use pyproj oblique mercator: https://proj.org/operations/projections/omerc.html
-
-    According to: https://proj.org/operations/projections/omerc.html
-    This is this already rotated by the fault strike but the rotation can be undone with +no_rot
-    > +no_rot
-    > No rectification (not “no rotation” as one may well assume).
-    > Do not take the last step from the skew uv-plane to the map XY plane.
-    > Note: This option is probably only marginally useful,
-    > but remains for (mostly) historical reasons.
-
-    The version with north still pointing "up" appears to be called the
-    Rectified skew orthomorphic projection or Hotine oblique Mercator projection
-    https://pro.arcgis.com/en/pro-app/latest/help/mapping/properties/rectified-skew-orthomorphic.htm
-    """
-    if lon1 > 180.0:
-        lon1 = lon1 - 360
-    if lon2 > 180.0:
-        lon2 = lon2 - 360
-
-    # Check if latitudes are too close to identical
-    # If lat1 and lat2 are the same at the 5 decimal place proj with fail
-    # Perturb lat2 slightly to avoid this.
-    if np.isclose(lat1, lat2):
-        latitude_offset = 0.001
-        lat2 += latitude_offset
-
-    projection_string = (
-        "+proj=omerc "
-        + "+lon_1="
-        + str(lon1)
-        + " "
-        + "+lat_1="
-        + str(lat1)
-        + " "
-        + "+lon_2="
-        + str(lon2)
-        + " "
-        + "+lat_2="
-        + str(lat2)
-        + " "
-        + "+ellps=WGS84"
-    )
-    if not skew:
-        projection_string += " +no_rot"
-    projection = pyproj.Proj(pyproj.CRS.from_proj4(projection_string))
-    return projection
-
-
-def get_okada_displacements(
-    segment_lon1,
-    segment_lat1,
-    segment_lon2,
-    segment_lat2,
-    segment_locking_depth,
-    segment_burial_depth,
-    segment_dip,
-    segment_azimuth,
-    material_lambda,
-    material_mu,
-    strike_slip,
-    dip_slip,
-    tensile_slip,
-    station_lon,
-    station_lat,
-):
-    """
-    Caculate elastic displacements in a homogeneous elastic half-space.
-    Inputs are in geographic coordinates and then projected into a local
-    xy-plane using a oblique Mercator projection that is tangent and parallel
-    to the trace of the fault segment.  The elastic calculation is the
-    original Okada 1992 Fortran code acceccesed through T. Ben Thompson's
-    okada_wrapper: https://github.com/tbenthompson/okada_wrapper
-    """
-    segment_locking_depth *= KM2M
-    segment_burial_depth *= KM2M
-
-    # Make sure depths are expressed as positive
-    segment_locking_depth = np.abs(segment_locking_depth)
-    segment_burial_depth = np.abs(segment_burial_depth)
-
-    # Correct sign of dip-slip based on fault dip, as noted on p. 1023 of Okada (1992)
-    dip_slip *= np.sign(90 - segment_dip)
-
-    # Project coordinates to flat space using a local oblique Mercator projection
-    projection = get_segment_oblique_projection(
-        segment_lon1, segment_lat1, segment_lon2, segment_lat2
-    )
-    station_x, station_y = projection(station_lon, station_lat)
-    segment_x1, segment_y1 = projection(segment_lon1, segment_lat1)
-    segment_x2, segment_y2 = projection(segment_lon2, segment_lat2)
-
-    # Calculate geometric fault parameters
-    segment_strike = np.arctan2(
-        segment_y2 - segment_y1, segment_x2 - segment_x1
-    )  # radians
-    segment_length = np.sqrt(
-        (segment_y2 - segment_y1) ** 2.0 + (segment_x2 - segment_x1) ** 2.0
-    )
-    segment_up_dip_width = (segment_locking_depth - segment_burial_depth) / np.sin(
-        np.deg2rad(segment_dip)
-    )
-
-    # Translate stations and segment so that segment mid-point is at the origin
-    segment_x_mid = (segment_x1 + segment_x2) / 2.0
-    segment_y_mid = (segment_y1 + segment_y2) / 2.0
-    station_x -= segment_x_mid
-    station_y -= segment_y_mid
-    segment_x1 -= segment_x_mid
-    segment_x2 -= segment_x_mid
-    segment_y1 -= segment_y_mid
-    segment_y2 -= segment_y_mid
-
-    # Unrotate coordinates to eliminate strike, segment will lie along y = 0
-    rotation_matrix = np.array(
-        [
-            [np.cos(segment_strike), -np.sin(segment_strike)],
-            [np.sin(segment_strike), np.cos(segment_strike)],
-        ]
-    )
-    station_x_rotated, station_y_rotated = np.hsplit(
-        np.einsum("ij,kj->ik", np.dstack((station_x, station_y))[0], rotation_matrix.T),
-        2,
-    )
-
-    # Shift station y coordinates by surface projection of locking depth
-    # y_shift will be positive for dips <90 and negative for dips > 90
-    y_shift = np.cos(np.deg2rad(segment_dip)) * segment_up_dip_width
-    station_y_rotated += y_shift
-
-    # Elastic displacements from Okada 1992
-    alpha = (material_lambda + material_mu) / (material_lambda + 2 * material_mu)
-    u_x = np.zeros_like(station_x)
-    u_y = np.zeros_like(station_x)
-    u_up = np.zeros_like(station_x)
-    for i in range(len(station_x)):
-        _, u, _ = okada_wrapper.dc3dwrapper(
-            alpha,  # (lambda + mu) / (lambda + 2 * mu)
-            [
-                station_x_rotated[i],
-                station_y_rotated[i],
-                0,
-            ],  # (meters) observation point
-            segment_locking_depth,  # (meters) depth of the fault origin
-            segment_dip,  # (degrees) the dip-angle of the rectangular dislocation surface
-            [
-                -segment_length / 2,
-                segment_length / 2,
-            ],  # (meters) the along-strike range of the surface (al1,al2 in the original)
-            [
-                0,
-                segment_up_dip_width,
-            ],  # (meters) along-dip range of the surface (aw1, aw2 in the original)
-            [strike_slip, dip_slip, tensile_slip],
-        )  # (meters) strike-slip, dip-slip, tensile-slip
-        u_x[i] = u[0]
-        u_y[i] = u[1]
-        u_up[i] = u[2]
-
-    # Un-rotate displacement to account for projected fault strike
-    # u_east, u_north = np.hsplit(
-    #     np.einsum("ij,kj->ik", np.dstack((u_x, u_y))[0], rotation_matrix), 2
-    # )
-
-    # Rotate x, y displacements about geographic azimuth to yield east, north displacements
-    cosstrike = np.cos(np.radians(90 - segment_azimuth))
-    sinstrike = np.sin(np.radians(90 - segment_azimuth))
-    u_north = sinstrike * u_x + cosstrike * u_y
-    u_east = cosstrike * u_x - sinstrike * u_y
-    return u_east, u_north, u_up
-
-
-def get_segment_station_operator_okada(segment, station, command):
-    """
-    Calculates the elastic displacement partial derivatives based on the Okada
-    formulation, using the source and receiver geometries defined in
-    dicitonaries segment and stations. Before calculating the partials for
-    each segment, a local oblique Mercator project is done.
-
-    The linear operator is structured as ():
-
-                ss(segment1)  ds(segment1) ts(segment1) ... ss(segmentN) ds(segmentN) ts(segmentN)
-    ve(station 1)
-    vn(station 1)
-    vu(station 1)
-    .
-    .
-    .
-    ve(station N)
-    vn(station N)
-    vu(station N)
-
-    """
-    if not station.empty:
-        okada_segment_operator = np.ones((3 * len(station), 3 * len(segment)))
-        # Loop through each segment and calculate displacements for each slip component
-        for i in tqdm(
-            range(len(segment)),
-            desc="Calculating Okada partials for segments",
-            colour="cyan",
-        ):
-            (
-                u_east_strike_slip,
-                u_north_strike_slip,
-                u_up_strike_slip,
-            ) = get_okada_displacements(
-                segment.lon1[i],
-                segment.lat1[i],
-                segment.lon2[i],
-                segment.lat2[i],
-                segment.locking_depth[i],
-                segment.burial_depth[i],
-                segment.dip[i],
-                segment.azimuth[i],
-                command.material_lambda,
-                command.material_mu,
-                1,
-                0,
-                0,
-                station.lon,
-                station.lat,
-            )
-            (
-                u_east_dip_slip,
-                u_north_dip_slip,
-                u_up_dip_slip,
-            ) = get_okada_displacements(
-                segment.lon1[i],
-                segment.lat1[i],
-                segment.lon2[i],
-                segment.lat2[i],
-                segment.locking_depth[i],
-                segment.burial_depth[i],
-                segment.dip[i],
-                segment.azimuth[i],
-                command.material_lambda,
-                command.material_mu,
-                0,
-                1,
-                0,
-                station.lon,
-                station.lat,
-            )
-            (
-                u_east_tensile_slip,
-                u_north_tensile_slip,
-                u_up_tensile_slip,
-            ) = get_okada_displacements(
-                segment.lon1[i],
-                segment.lat1[i],
-                segment.lon2[i],
-                segment.lat2[i],
-                segment.locking_depth[i],
-                segment.burial_depth[i],
-                segment.dip[i],
-                segment.azimuth[i],
-                command.material_lambda,
-                command.material_mu,
-                0,
-                0,
-                1,
-                station.lon,
-                station.lat,
-            )
-            segment_column_start_idx = 3 * i
-            okada_segment_operator[0::3, segment_column_start_idx] = np.squeeze(
-                u_east_strike_slip
-            )
-            okada_segment_operator[1::3, segment_column_start_idx] = np.squeeze(
-                u_north_strike_slip
-            )
-            okada_segment_operator[2::3, segment_column_start_idx] = np.squeeze(
-                u_up_strike_slip
-            )
-            okada_segment_operator[0::3, segment_column_start_idx + 1] = np.squeeze(
-                u_east_dip_slip
-            )
-            okada_segment_operator[1::3, segment_column_start_idx + 1] = np.squeeze(
-                u_north_dip_slip
-            )
-            okada_segment_operator[2::3, segment_column_start_idx + 1] = np.squeeze(
-                u_up_dip_slip
-            )
-            okada_segment_operator[0::3, segment_column_start_idx + 2] = np.squeeze(
-                u_east_tensile_slip
-            )
-            okada_segment_operator[1::3, segment_column_start_idx + 2] = np.squeeze(
-                u_north_tensile_slip
-            )
-            okada_segment_operator[2::3, segment_column_start_idx + 2] = np.squeeze(
-                u_up_tensile_slip
-            )
-    else:
-        okada_segment_operator = np.empty(1)
-    return okada_segment_operator
-
-
-def get_elastic_operators(
-    operators: Dict,
-    meshes: List,
-    segment: pd.DataFrame,
-    station: pd.DataFrame,
-    command: Dict,
-):
-    """
-    Calculate (or load previously calculated) elastic operators from
-    both fully locked segments and TDE parameterizes surfaces
-
-    Args:
-        operators (Dict): Elastic operators will be added to this data structure
-        meshes (List): Geometries of meshes
-        segment (pd.DataFrame): All segment data
-        station (pd.DataFrame): All station data
-        command (Dict): All command data
-    """
-    if bool(command.reuse_elastic) and os.path.exists(command.reuse_elastic_file):
-        logger.info("Using precomputed elastic operators")
-        hdf5_file = h5py.File(command.reuse_elastic_file, "r")
-
-        operators.slip_rate_to_okada_to_velocities = np.array(
-            hdf5_file.get("slip_rate_to_okada_to_velocities")
-        )
-        for i in range(len(meshes)):
-            operators.tde_to_velocities[i] = np.array(
-                hdf5_file.get("tde_to_velocities_" + str(i))
-            )
-        hdf5_file.close()
-
-    else:
-        if not os.path.exists(command.reuse_elastic_file):
-            logger.warning("Precomputed elastic operator file not found")
-        logger.info("Computing elastic operators")
-
-        # Calculate Okada partials for all segments
-        operators.slip_rate_to_okada_to_velocities = get_segment_station_operator_okada(
-            segment, station, command
-        )
-
-        for i in range(len(meshes)):
-            logger.info(
-                f"Start: TDE slip to velocity calculation for mesh: {meshes[i].file_name}"
-            )
-            operators.tde_to_velocities[i] = get_tde_to_velocities_single_mesh(
-                meshes, station, command, mesh_idx=i
-            )
-            logger.success(
-                f"Finish: TDE slip to velocity calculation for mesh: {meshes[i].file_name}"
-            )
-
-        # Save elastic to velocity matrices
-        if bool(command.save_elastic):
-            # Check to see if "data/operators" folder exists and if not create it
-            if not os.path.exists(command.operators_folder):
-                os.mkdir(command.operators_folder)
-
-            logger.info(
-                "Saving elastic to velocity matrices to :" + command.save_elastic_file
-            )
-            hdf5_file = h5py.File(command.save_elastic_file, "w")
-
-            hdf5_file.create_dataset(
-                "slip_rate_to_okada_to_velocities",
-                data=operators.slip_rate_to_okada_to_velocities,
-            )
-            for i in range(len(meshes)):
-                hdf5_file.create_dataset(
-                    "tde_to_velocities_" + str(i),
-                    data=operators.tde_to_velocities[i],
-                )
-            hdf5_file.close()
-
-
-def get_elastic_operators_okada(
-    operators: Dict,
-    segment: pd.DataFrame,
-    station: pd.DataFrame,
-    command: Dict,
-):
-    """
-    Calculate (or load previously calculated) elastic operators from
-    both fully locked segments and TDE parameterizes surfaces
-
-    Args:
-        operators (Dict): Elastic operators will be added to this data structure
-        segment (pd.DataFrame): All segment data
-        station (pd.DataFrame): All station data
-        command (Dict): All command data
-    """
-    if bool(command.reuse_elastic) and os.path.exists(command.reuse_elastic_file):
-        logger.info("Using precomputed elastic operators")
-        hdf5_file = h5py.File(command.reuse_elastic_file, "r")
-
-        operators.slip_rate_to_okada_to_velocities = np.array(
-            hdf5_file.get("slip_rate_to_okada_to_velocities")
-        )
-        hdf5_file.close()
-
-    else:
-        if not os.path.exists(command.reuse_elastic_file):
-            logger.warning("Precomputed elastic operator file not found")
-        logger.info("Computing elastic operators")
-
-        # Calculate Okada partials for all segments
-        operators.slip_rate_to_okada_to_velocities = get_segment_station_operator_okada(
-            segment, station, command
-        )
-
-        # Save elastic to velocity matrices
-        if bool(command.save_elastic):
-            # Check to see if "data/operators" folder exists and if not create it
-            if not os.path.exists(command.operators_folder):
-                os.mkdir(command.operators_folder)
-
-            logger.info(
-                "Saving elastic to velocity matrices to :" + command.save_elastic_file
-            )
-            hdf5_file = h5py.File(command.save_elastic_file, "w")
-
-            hdf5_file.create_dataset(
-                "slip_rate_to_okada_to_velocities",
-                data=operators.slip_rate_to_okada_to_velocities,
-            )
-            hdf5_file.close()
+# def make_default_segment(length):
+#     """
+#     Create a default segment Dict of specified length
+#     """
+#     default_segment = pd.DataFrame(
+#         columns=[
+#             "name",
+#             "lon1",
+#             "lat1",
+#             "lon2",
+#             "lat2",
+#             "dip",
+#             "res",
+#             "other3",
+#             "other6",
+#             "other7",
+#             "other8",
+#             "other9",
+#             "other10",
+#             "other11",
+#             "other12",
+#             "locking_depth",
+#             "locking_depth_sig",
+#             "locking_depth_flag",
+#             "dip_sig",
+#             "dip_flag",
+#             "ss_rate",
+#             "ss_rate_sig",
+#             "ss_rate_flag",
+#             "ds_rate",
+#             "ds_rate_sig",
+#             "ds_rate_flag",
+#             "ts_rate",
+#             "ts_rate_sig",
+#             "ts_rate_flag",
+#             "burial_depth",
+#             "burial_depth_sig",
+#             "burial_depth_flag",
+#             "resolution_override",
+#             "resolution_other",
+#             "patch_file_name",
+#             "patch_flag",
+#             "patch_slip_file",
+#             "patch_slip_flag",
+#         ]
+#     )
+#     # Set everything to zeros, then we'll fill in a few specific values
+#     length_vec = range(length)
+#     for key, value in default_segment.items():
+#         default_segment[key] = np.zeros_like(length_vec)
+#     default_segment.locking_depth = +15
+#     default_segment.dip = +90
+#     for i in range(len(default_segment.name)):
+#         default_segment.name[i] = "segment_" + str(i)
+
+#     return default_segment
+
+
+# def polygon_area(x, y):
+#     """
+#     From: https://newbedev.com/calculate-area-of-polygon-given-x-y-coordinates
+#     """
+#     return 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
+
+
+# def assign_block_labels(segment, station, block, mogi, sar):
+#     """
+#     Ben Thompson's implementation of the half edge approach to the
+#     block labeling problem and east/west assignment.
+#     """
+#     # segment = split_segments_crossing_meridian(segment)
+
+#     np_segments = np.zeros((len(segment), 2, 2))
+#     np_segments[:, 0, 0] = segment.lon1.to_numpy()
+#     np_segments[:, 1, 0] = segment.lon2.to_numpy()
+#     np_segments[:, 0, 1] = segment.lat1.to_numpy()
+#     np_segments[:, 1, 1] = segment.lat2.to_numpy()
+
+#     closure = celeri_closure.run_block_closure(np_segments)
+#     labels = celeri_closure.get_segment_labels(closure)
+
+#     segment["west_labels"] = labels[:, 0]
+#     segment["east_labels"] = labels[:, 1]
+
+#     # Check for unprocessed indices
+#     unprocessed_indices = np.union1d(
+#         np.where(segment["east_labels"] < 0),
+#         np.where(segment["west_labels"] < 0),
+#     )
+#     if len(unprocessed_indices) > 0:
+#         logger.warning("Found unproccessed indices")
+
+#     # Find relative areas of each block to identify an external block
+#     block["area_steradians"] = -1 * np.ones(len(block))
+#     block["area_plate_carree"] = -1 * np.ones(len(block))
+#     for i in range(closure.n_polygons()):
+#         vs = closure.polygons[i].vertices
+#         block.area_steradians.values[i] = closure.polygons[i].area_steradians
+#         block.area_plate_carree.values[i] = polygon_area(vs[:, 0], vs[:, 1])
+
+#     # Assign block labels points to block interior points
+#     block["block_label"] = closure.assign_points(
+#         block.interior_lon.to_numpy(), block.interior_lat.to_numpy()
+#     )
+
+#     # I copied this from the bottom of:
+#     # https://stackoverflow.com/questions/39992502/rearrange-rows-of-pandas-dataframe-based-on-list-and-keeping-the-order
+#     # and I definitely don't understand it all but emperically it seems to work.
+#     block = (
+#         block.set_index(block.block_label, append=True)
+#         .sort_index(level=1)
+#         .reset_index(1, drop=True)
+#     )
+#     block = block.reset_index()
+#     block = block.loc[:, ~block.columns.str.match("index")]
+
+#     # Assign block labels to GPS stations
+#     if not station.empty:
+#         station["block_label"] = closure.assign_points(
+#             station.lon.to_numpy(), station.lat.to_numpy()
+#         )
+
+#     # Assign block labels to SAR locations
+#     if not sar.empty:
+#         sar["block_label"] = closure.assign_points(
+#             sar.lon.to_numpy(), sar.lat.to_numpy()
+#         )
+
+#     # Assign block labels to Mogi sources
+#     if not mogi.empty:
+#         mogi["block_label"] = closure.assign_points(
+#             mogi.lon.to_numpy(), mogi.lat.to_numpy()
+#         )
+
+#     return closure, block
+
+
+# def great_circle_latitude_find(lon1, lat1, lon2, lat2, lon):
+#     """
+#     Determines latitude as a function of longitude along a great circle.
+#     LAT = gclatfind(LON1, LAT1, LON2, LAT2, LON) finds the latitudes of points of
+#     specified LON that lie along the great circle defined by endpoints LON1, LAT1
+#     and LON2, LAT2. Angles should be passed as degrees.
+#     """
+#     lon1 = np.deg2rad(lon1)
+#     lat1 = np.deg2rad(lat1)
+#     lon2 = np.deg2rad(lon2)
+#     lat2 = np.deg2rad(lat2)
+#     lon = np.deg2rad(lon)
+#     lat = np.arctan(
+#         np.tan(lat1) * np.sin(lon - lon2) / np.sin(lon1 - lon2)
+#         - np.tan(lat2) * np.sin(lon - lon1) / np.sin(lon1 - lon2)
+#     )
+#     return lat
+
+
+# def process_sar(sar, command):
+#     """
+#     Preprocessing of SAR data.
+#     """
+#     if sar.empty:
+#         sar["depth"] = np.zeros_like(sar.lon)
+
+#         # Set the uncertainties to reflect the weights specified in the command file
+#         # In constructing the data weight vector, the value is 1./Sar.dataSig.^2, so
+#         # the adjustment made here is sar.dataSig / np.sqrt(command.sarWgt)
+#         sar.line_of_sight_change_sig = sar.line_of_sight_change_sig / np.sqrt(
+#             command.sar_weight
+#         )
+#         sar["x"], sar["y"], sar["z"] = sph2cart(sar.lon, sar.lat, RADIUS_EARTH)
+#         sar["block_label"] = -1 * np.ones_like(sar.x)
+#     else:
+#         sar["dep"] = []
+#         sar["x"] = []
+#         sar["y"] = []
+#         sar["x"] = []
+#         sar["block_label"] = []
+#     return sar
+
+
+# def merge_geodetic_data(assembly, station, sar):
+#     """
+#     Merge GPS and InSAR data to a single assembly object
+#     """
+#     assembly.data.n_stations = len(station)
+#     assembly.data.n_sar = len(sar)
+#     assembly.data.east_vel = station.east_vel.to_numpy()
+#     assembly.sigma.east_sig = station.east_sig.to_numpy()
+#     assembly.data.north_vel = station.north_vel.to_numpy()
+#     assembly.sigma.north_sig = station.north_sig.to_numpy()
+#     assembly.data.up_vel = station.up_vel.to_numpy()
+#     assembly.sigma.up_sig = station.up_sig.to_numpy()
+#     assembly.data.sar_line_of_sight_change_val = sar.line_of_sight_change_val.to_numpy()
+#     assembly.sigma.sar_line_of_sight_change_sig = (
+#         sar.line_of_sight_change_sig.to_numpy()
+#     )
+#     assembly.data.lon = np.concatenate((station.lon.to_numpy(), sar.lon.to_numpy()))
+#     assembly.data.lat = np.concatenate((station.lat.to_numpy(), sar.lat.to_numpy()))
+#     assembly.data.depth = np.concatenate(
+#         (station.depth.to_numpy(), sar.depth.to_numpy())
+#     )
+#     assembly.data.x = np.concatenate((station.x.to_numpy(), sar.x.to_numpy()))
+#     assembly.data.y = np.concatenate((station.y.to_numpy(), sar.y.to_numpy()))
+#     assembly.data.z = np.concatenate((station.z.to_numpy(), sar.z.to_numpy()))
+#     assembly.data.block_label = np.concatenate(
+#         (station.block_label.to_numpy(), sar.block_label.to_numpy())
+#     )
+#     assembly.index.sar_coordinate_idx = np.arange(
+#         len(station), len(station) + len(sar)
+#     )  # TODO: Not sure this is correct
+#     return assembly
+
+
+# def euler_pole_covariance_to_rotation_vector_covariance(
+#     omega_x, omega_y, omega_z, euler_pole_covariance_all
+# ):
+#     """
+#     This function takes the model parameter covariance matrix
+#     in terms of the Euler pole and rotation rate and linearly
+#     propagates them to rotation vector space.
+#     """
+#     omega_x_sig = np.zeros_like(omega_x)
+#     omega_y_sig = np.zeros_like(omega_y)
+#     omega_z_sig = np.zeros_like(omega_z)
+#     for i in range(len(omega_x)):
+#         x = omega_x[i]
+#         y = omega_y[i]
+#         z = omega_z[i]
+#         euler_pole_covariance_current = euler_pole_covariance_all[
+#             3 * i : 3 * (i + 1), 3 * i : 3 * (i + 1)
+#         ]
+
+#         """
+#         There may be cases where x, y and z are all zero.  This leads to /0 errors.  To avoid this  %%
+#         we check for these cases and Let A = b * I where b is a small constant (10^-4) and I is     %%
+#         the identity matrix
+#         """
+#         if (x == 0) and (y == 0):
+#             euler_to_cartsian_operator = 1e-4 * np.eye(
+#                 3
+#             )  # Set a default small value for rotation vector uncertainty
+#         else:
+#             # Calculate the partial derivatives
+#             dlat_dx = -z / (x**2 + y**2) ** (3 / 2) / (1 + z**2 / (x**2 + y**2)) * x
+#             dlat_dy = -z / (x**2 + y**2) ** (3 / 2) / (1 + z**2 / (x**2 + y**2)) * y
+#             dlat_dz = 1 / (x**2 + y**2) ** (1 / 2) / (1 + z**2 / (x**2 + y**2))
+#             dlon_dx = -y / x**2 / (1 + (y / x) ** 2)
+#             dlon_dy = 1 / x / (1 + (y / x) ** 2)
+#             dlon_dz = 0
+#             dmag_dx = x / np.sqrt(x**2 + y**2 + z**2)
+#             dmag_dy = y / np.sqrt(x**2 + y**2 + z**2)
+#             dmag_dz = z / np.sqrt(x**2 + y**2 + z**2)
+#             euler_to_cartsian_operator = np.array(
+#                 [
+#                     [dlat_dx, dlat_dy, dlat_dz],
+#                     [dlon_dx, dlon_dy, dlon_dz],
+#                     [dmag_dx, dmag_dy, dmag_dz],
+#                 ]
+#             )
+
+#         # Propagate the Euler pole covariance matrix to a rotation rate
+#         # covariance matrix
+#         rotation_vector_covariance = (
+#             np.linalg.inv(euler_to_cartsian_operator)
+#             * euler_pole_covariance_current
+#             * np.linalg.inv(euler_to_cartsian_operator).T
+#         )
+
+#         # Organized data for the return
+#         main_diagonal_values = np.diag(rotation_vector_covariance)
+#         omega_x_sig[i] = np.sqrt(main_diagonal_values[0])
+#         omega_y_sig[i] = np.sqrt(main_diagonal_values[1])
+#         omega_z_sig[i] = np.sqrt(main_diagonal_values[2])
+#     return omega_x_sig, omega_y_sig, omega_z_sig
+
+
+# def get_block_motion_constraint_partials(block):
+#     """
+#     Partials for a priori block motion constraints.
+#     Essentially a set of eye(3) matrices
+#     """
+#     # apriori_block_idx = np.where(block.apriori_flag.to_numpy() == 1)[0]
+#     apriori_rotation_block_idx = np.where(block.rotation_flag.to_numpy() == 1)[0]
+
+#     operator = np.zeros((3 * len(apriori_rotation_block_idx), 3 * len(block)))
+#     for i in range(len(apriori_rotation_block_idx)):
+#         start_row = 3 * i
+#         start_column = 3 * apriori_rotation_block_idx[i]
+#         operator[start_row : start_row + 3, start_column : start_column + 3] = np.eye(3)
+#     return operator
+
+
+# def get_block_motion_constraints(assembly: Dict, block: pd.DataFrame, command: Dict):
+#     """
+#     Applying a priori block motion constraints
+#     """
+#     block_constraint_partials = get_block_motion_constraint_partials(block)
+#     assembly.index.block_constraints_idx = np.where(block.rotation_flag == 1)[0]
+
+#     assembly.data.n_block_constraints = len(assembly.index.block_constraints_idx)
+#     assembly.data.block_constraints = np.zeros(block_constraint_partials.shape[0])
+#     assembly.sigma.block_constraints = np.zeros(block_constraint_partials.shape[0])
+#     if assembly.data.n_block_constraints > 0:
+#         (
+#             assembly.data.block_constraints[0::3],
+#             assembly.data.block_constraints[1::3],
+#             assembly.data.block_constraints[2::3],
+#         ) = sph2cart(
+#             block.euler_lon[assembly.index.block_constraints_idx],
+#             block.euler_lat[assembly.index.block_constraints_idx],
+#             np.deg2rad(block.rotation_rate[assembly.index.block_constraints_idx]),
+#         )
+#         euler_pole_covariance_all = np.diag(
+#             np.concatenate(
+#                 (
+#                     np.deg2rad(
+#                         block.euler_lat_sig[assembly.index.block_constraints_idx]
+#                     ),
+#                     np.deg2rad(
+#                         block.euler_lon_sig[assembly.index.block_constraints_idx]
+#                     ),
+#                     np.deg2rad(
+#                         block.rotation_rate_sig[assembly.index.block_constraints_idx]
+#                     ),
+#                 )
+#             )
+#         )
+#         (
+#             assembly.sigma.block_constraints[0::3],
+#             assembly.sigma.block_constraints[1::3],
+#             assembly.sigma.block_constraints[2::3],
+#         ) = euler_pole_covariance_to_rotation_vector_covariance(
+#             assembly.data.block_constraints[0::3],
+#             assembly.data.block_constraints[1::3],
+#             assembly.data.block_constraints[2::3],
+#             euler_pole_covariance_all,
+#         )
+#     assembly.sigma.block_constraint_weight = command.block_constraint_weight
+#     return assembly, block_constraint_partials
+
+
+# def get_cross_partials(vector):
+#     """
+#     Returns a linear operator R that when multiplied by
+#     vector a gives the cross product a cross b
+#     """
+#     return np.array(
+#         [
+#             [0, vector[2], -vector[1]],
+#             [-vector[2], 0, vector[0]],
+#             [vector[1], -vector[0], 0],
+#         ]
+#     )
+
+
+# def cartesian_vector_to_spherical_vector(vel_x, vel_y, vel_z, lon, lat):
+#     """
+#     This function transforms vectors from Cartesian to spherical components.
+#     Arguments:
+#         vel_x: array of x components of velocity
+#         vel_y: array of y components of velocity
+#         vel_z: array of z components of velocity
+#         lon: array of station longitudes
+#         lat: array of station latitudes
+#     Returned variables:
+#         vel_north: array of north components of velocity
+#         vel_east: array of east components of velocity
+#         vel_up: array of up components of velocity
+#     """
+#     projection_matrix = np.array(
+#         [
+#             [
+#                 -np.sin(np.deg2rad(lat)) * np.cos(np.deg2rad(lon)),
+#                 -np.sin(np.deg2rad(lat)) * np.sin(np.deg2rad(lon)),
+#                 np.cos(np.deg2rad(lat)),
+#             ],
+#             [-np.sin(np.deg2rad(lon)), np.cos(np.deg2rad(lon)), 0],
+#             [
+#                 -np.cos(np.deg2rad(lat)) * np.cos(np.deg2rad(lon)),
+#                 -np.cos(np.deg2rad(lat)) * np.sin(np.deg2rad(lon)),
+#                 -np.sin(np.deg2rad(lat)),
+#             ],
+#         ]
+#     )
+#     vel_north, vel_east, vel_up = np.dot(
+#         projection_matrix, np.array([vel_x, vel_y, vel_z])
+#     )
+#     return vel_north, vel_east, vel_up
+
+
+# def get_rotation_to_slip_rate_partials(segment, block):
+#     """
+#     Calculate partial derivatives relating relative block motion to fault slip rates
+#     """
+#     n_segments = len(segment)
+#     n_blocks = len(block)
+#     fault_slip_rate_partials = np.zeros((3 * n_segments, 3 * n_blocks))
+#     for i in range(n_segments):
+#         # Project velocities from Cartesian to spherical coordinates at segment mid-points
+#         row_idx = 3 * i
+#         column_idx_east = 3 * segment.east_labels[i]
+#         column_idx_west = 3 * segment.west_labels[i]
+#         R = get_cross_partials([segment.mid_x[i], segment.mid_y[i], segment.mid_z[i]])
+#         (
+#             vel_north_to_omega_x,
+#             vel_east_to_omega_x,
+#             _,
+#         ) = cartesian_vector_to_spherical_vector(
+#             R[0, 0], R[1, 0], R[2, 0], segment.mid_lon[i], segment.mid_lat[i]
+#         )
+#         (
+#             vel_north_to_omega_y,
+#             vel_east_to_omega_y,
+#             _,
+#         ) = cartesian_vector_to_spherical_vector(
+#             R[0, 1], R[1, 1], R[2, 1], segment.mid_lon[i], segment.mid_lat[i]
+#         )
+#         (
+#             vel_north_to_omega_z,
+#             vel_east_to_omega_z,
+#             _,
+#         ) = cartesian_vector_to_spherical_vector(
+#             R[0, 2], R[1, 2], R[2, 2], segment.mid_lon[i], segment.mid_lat[i]
+#         )
+
+#         # Build unit vector for the fault
+#         # Fault strike calculated in process_segment
+#         # TODO: Need to check this vs. matlab azimuth for consistency
+#         unit_x_parallel = np.cos(np.deg2rad(90 - segment.azimuth[i]))
+#         unit_y_parallel = np.sin(np.deg2rad(90 - segment.azimuth[i]))
+#         unit_x_perpendicular = np.sin(np.deg2rad(segment.azimuth[i] - 90))
+#         unit_y_perpendicular = np.cos(np.deg2rad(segment.azimuth[i] - 90))
+
+#         # Projection onto fault dip
+#         if segment.lat2[i] < segment.lat1[i]:
+#             unit_x_parallel = -unit_x_parallel
+#             unit_y_parallel = -unit_y_parallel
+#             unit_x_perpendicular = -unit_x_perpendicular
+#             unit_y_perpendicular = -unit_y_perpendicular
+
+#         # This is the logic for dipping vs. non-dipping faults
+#         # If fault is dipping make it so that the dip slip rate has a fault normal
+#         # component equal to the fault normal differential plate velocity.  This
+#         # is kinematically consistent in the horizontal but *not* in the vertical.
+#         if segment.dip[i] != 90:
+#             scale_factor = 1 / abs(np.cos(np.deg2rad(segment.dip[i])))
+#             slip_rate_matrix = np.array(
+#                 [
+#                     [
+#                         unit_x_parallel * vel_east_to_omega_x
+#                         + unit_y_parallel * vel_north_to_omega_x,
+#                         unit_x_parallel * vel_east_to_omega_y
+#                         + unit_y_parallel * vel_north_to_omega_y,
+#                         unit_x_parallel * vel_east_to_omega_z
+#                         + unit_y_parallel * vel_north_to_omega_z,
+#                     ],
+#                     [
+#                         scale_factor
+#                         * (
+#                             unit_x_perpendicular * vel_east_to_omega_x
+#                             + unit_y_perpendicular * vel_north_to_omega_x
+#                         ),
+#                         scale_factor
+#                         * (
+#                             unit_x_perpendicular * vel_east_to_omega_y
+#                             + unit_y_perpendicular * vel_north_to_omega_y
+#                         ),
+#                         scale_factor
+#                         * (
+#                             unit_x_perpendicular * vel_east_to_omega_z
+#                             + unit_y_perpendicular * vel_north_to_omega_z
+#                         ),
+#                     ],
+#                     [0, 0, 0],
+#                 ]
+#             )
+#         else:
+#             scale_factor = (
+#                 -1
+#             )  # This is for consistency with the Okada convention for tensile faulting
+#             slip_rate_matrix = np.array(
+#                 [
+#                     [
+#                         unit_x_parallel * vel_east_to_omega_x
+#                         + unit_y_parallel * vel_north_to_omega_x,
+#                         unit_x_parallel * vel_east_to_omega_y
+#                         + unit_y_parallel * vel_north_to_omega_y,
+#                         unit_x_parallel * vel_east_to_omega_z
+#                         + unit_y_parallel * vel_north_to_omega_z,
+#                     ],
+#                     [0, 0, 0],
+#                     [
+#                         scale_factor
+#                         * (
+#                             unit_x_perpendicular * vel_east_to_omega_x
+#                             + unit_y_perpendicular * vel_north_to_omega_x
+#                         ),
+#                         scale_factor
+#                         * (
+#                             unit_x_perpendicular * vel_east_to_omega_y
+#                             + unit_y_perpendicular * vel_north_to_omega_y
+#                         ),
+#                         scale_factor
+#                         * (
+#                             unit_x_perpendicular * vel_east_to_omega_z
+#                             + unit_y_perpendicular * vel_north_to_omega_z
+#                         ),
+#                     ],
+#                 ]
+#             )
+
+#         fault_slip_rate_partials[
+#             row_idx : row_idx + 3, column_idx_east : column_idx_east + 3
+#         ] = slip_rate_matrix
+#         fault_slip_rate_partials[
+#             row_idx : row_idx + 3, column_idx_west : column_idx_west + 3
+#         ] = -slip_rate_matrix
+#     return fault_slip_rate_partials
+
+
+# def get_slip_rate_constraints(assembly, segment, block, command):
+#     n_total_slip_rate_contraints = (
+#         np.sum(segment.ss_rate_flag.values)
+#         + np.sum(segment.ds_rate_flag.values)
+#         + np.sum(segment.ts_rate_flag.values)
+#     )
+#     if n_total_slip_rate_contraints > 0:
+#         logger.info(f"Found {n_total_slip_rate_contraints} slip rate constraints")
+#         for i in range(len(segment.lon1)):
+#             if segment.ss_rate_flag[i] == 1:
+#                 logger.info(
+#                     "Strike-slip rate constraint on "
+#                     + segment.name[i].strip()
+#                     + ": rate = "
+#                     + "{:.2f}".format(segment.ss_rate[i])
+#                     + " (mm/yr), 1-sigma uncertainty = +/-"
+#                     + "{:.2f}".format(segment.ss_rate_sig[i])
+#                     + " (mm/yr)"
+#                 )
+#             if segment.ds_rate_flag[i] == 1:
+#                 logger.info(
+#                     "Dip-slip rate constraint on "
+#                     + segment.name[i].strip()
+#                     + ": rate = "
+#                     + "{:.2f}".format(segment.ds_rate[i])
+#                     + " (mm/yr), 1-sigma uncertainty = +/-"
+#                     + "{:.2f}".format(segment.ds_rate_sig[i])
+#                     + " (mm/yr)"
+#                 )
+#             if segment.ts_rate_flag[i] == 1:
+#                 logger.info(
+#                     "Tensile-slip rate constraint on "
+#                     + segment.name[i].strip()
+#                     + ": rate = "
+#                     + "{:.2f}".format(segment.ts_rate[i])
+#                     + " (mm/yr), 1-sigma uncertainty = +/-"
+#                     + "{:.2f}".format(segment.ts_rate_sig[i])
+#                     + " (mm/yr)"
+#                 )
+#     else:
+#         logger.info("No slip rate constraints")
+
+#     slip_rate_constraint_partials = get_rotation_to_slip_rate_partials(segment, block)
+
+#     slip_rate_constraint_flag = interleave3(
+#         segment.ss_rate_flag, segment.ds_rate_flag, segment.ts_rate_flag
+#     )
+#     assembly.index.slip_rate_constraints = np.where(slip_rate_constraint_flag == 1)[0]
+#     assembly.data.n_slip_rate_constraints = len(assembly.index.slip_rate_constraints)
+
+#     assembly.data.slip_rate_constraints = interleave3(
+#         segment.ss_rate, segment.ds_rate, segment.ts_rate
+#     )
+
+#     assembly.data.slip_rate_constraints = assembly.data.slip_rate_constraints[
+#         assembly.index.slip_rate_constraints
+#     ]
+
+#     assembly.sigma.slip_rate_constraints = interleave3(
+#         segment.ss_rate_sig, segment.ds_rate_sig, segment.ts_rate_sig
+#     )
+
+#     assembly.sigma.slip_rate_constraints = assembly.sigma.slip_rate_constraints[
+#         assembly.index.slip_rate_constraints
+#     ]
+
+#     slip_rate_constraint_partials = slip_rate_constraint_partials[
+#         assembly.index.slip_rate_constraints, :
+#     ]
+#     assembly.sigma.slip_rate_constraint_weight = command.slip_constraint_weight
+#     return assembly, slip_rate_constraint_partials
+
+
+# def get_slip_rake_constraints(assembly, segment, block, command):
+#     n_total_slip_rake_contraints = np.sum(segment.rake_flag.values)
+#     if n_total_slip_rake_contraints > 0:
+#         logger.info(f"Found {n_total_slip_rake_contraints} slip rake constraints")
+#         for i in range(len(segment.lon1)):
+#             if segment.rake_flag[i] == 1:
+#                 logger.info(
+#                     "Rake constraint on "
+#                     + segment.name[i].strip()
+#                     + ": rake = "
+#                     + "{:.2f}".format(segment.rake[i])
+#                     + ", constraint strike = "
+#                     + "{:.2f}".format(segment.rake_strike[i])
+#                     + ", 1-sigma uncertainty = +/-"
+#                     + "{:.2f}".format(segment.rake_sig[i])
+#                 )
+#     else:
+#         logger.info("No slip rake constraints")
+#     # To keep this a standalone function, let's calculate the full set of slip rate partials
+#     # TODO: Check how get_slip_rate_constraints is called to see if we need to recalculate the full set of partials, or if we can reuse a previous calculation
+#     slip_rate_constraint_partials = get_rotation_to_slip_rate_partials(segment, block)
+#     # Figure out effective rake. This is a simple correction of the rake data by the calculated strike of the segment
+#     # The idea is that the source of the rake constraint will include its own strike (and dip), which may differ from the model segment geometry
+#     # TODO: Full three-dimensional rotation of rake vector, based on strike and dip of constraint source?
+#     effective_rakes = segment.rake[segment.rake_flag] + (
+#         segment.strike[segment.rake_flag] - segment.rake_strike[segment.rake_flag]
+#     )
+
+#     # Find indices of constrained segments
+#     assembly.index.slip_rake_constraints = np.where(segment.rake_flag == 1)[0]
+#     assembly.data.n_slip_rake_constraints = len(assembly.index.slip_rake_constraints)
+
+#     # Get component indices of slip rate partials
+#     rake_constraint_component_indices = get_2component_index(
+#         assembly.index.slip_rake_constraints
+#     )
+#     # Rotate slip partials about effective rake. We just want to use the second row (second basis vector) of a full rotation matrix, because we want to set slip in that direction to zero as a constraint
+#     slip_rake_constraint_partials = (
+#         np.cos(np.radians(effective_rakes))
+#         * slip_rate_constraint_partials[rake_constraint_component_indices[0::2]]
+#         + np.sin(np.radians(effective_rakes))
+#         * slip_rate_constraint_partials[rake_constraint_component_indices[1::2]]
+#     )
+
+#     # Constraint data is all zeros, because we're setting slip perpendicular to the rake direction equal to zero
+#     assembly.data.slip_rake_constraints = np.zeros(
+#         assembly.data.n_total_slip_rake_contraints
+#     )
+
+#     # Insert sigmas into assembly dict
+#     assembly.sigma.slip_rake_constraints = segment.rake_sig
+
+#     # Using the same weighting here as for slip rate constraints.
+#     assembly.sigma.slip_rake_constraint_weight = command.slip_constraint_weight
+#     return assembly, slip_rake_constraint_partials
+
+
+# def get_segment_oblique_projection(lon1, lat1, lon2, lat2, skew=True):
+#     """
+#     Use pyproj oblique mercator: https://proj.org/operations/projections/omerc.html
+
+#     According to: https://proj.org/operations/projections/omerc.html
+#     This is this already rotated by the fault strike but the rotation can be undone with +no_rot
+#     > +no_rot
+#     > No rectification (not “no rotation” as one may well assume).
+#     > Do not take the last step from the skew uv-plane to the map XY plane.
+#     > Note: This option is probably only marginally useful,
+#     > but remains for (mostly) historical reasons.
+
+#     The version with north still pointing "up" appears to be called the
+#     Rectified skew orthomorphic projection or Hotine oblique Mercator projection
+#     https://pro.arcgis.com/en/pro-app/latest/help/mapping/properties/rectified-skew-orthomorphic.htm
+#     """
+#     if lon1 > 180.0:
+#         lon1 = lon1 - 360
+#     if lon2 > 180.0:
+#         lon2 = lon2 - 360
+
+#     # Check if latitudes are too close to identical
+#     # If lat1 and lat2 are the same at the 5 decimal place proj with fail
+#     # Perturb lat2 slightly to avoid this.
+#     if np.isclose(lat1, lat2):
+#         latitude_offset = 0.001
+#         lat2 += latitude_offset
+
+#     projection_string = (
+#         "+proj=omerc "
+#         + "+lon_1="
+#         + str(lon1)
+#         + " "
+#         + "+lat_1="
+#         + str(lat1)
+#         + " "
+#         + "+lon_2="
+#         + str(lon2)
+#         + " "
+#         + "+lat_2="
+#         + str(lat2)
+#         + " "
+#         + "+ellps=WGS84"
+#     )
+#     if not skew:
+#         projection_string += " +no_rot"
+#     projection = pyproj.Proj(pyproj.CRS.from_proj4(projection_string))
+#     return projection
+
+
+# def get_okada_displacements(
+#     segment_lon1,
+#     segment_lat1,
+#     segment_lon2,
+#     segment_lat2,
+#     segment_locking_depth,
+#     segment_burial_depth,
+#     segment_dip,
+#     segment_azimuth,
+#     material_lambda,
+#     material_mu,
+#     strike_slip,
+#     dip_slip,
+#     tensile_slip,
+#     station_lon,
+#     station_lat,
+# ):
+#     """
+#     Caculate elastic displacements in a homogeneous elastic half-space.
+#     Inputs are in geographic coordinates and then projected into a local
+#     xy-plane using a oblique Mercator projection that is tangent and parallel
+#     to the trace of the fault segment.  The elastic calculation is the
+#     original Okada 1992 Fortran code acceccesed through T. Ben Thompson's
+#     okada_wrapper: https://github.com/tbenthompson/okada_wrapper
+#     """
+#     segment_locking_depth *= KM2M
+#     segment_burial_depth *= KM2M
+
+#     # Make sure depths are expressed as positive
+#     segment_locking_depth = np.abs(segment_locking_depth)
+#     segment_burial_depth = np.abs(segment_burial_depth)
+
+#     # Correct sign of dip-slip based on fault dip, as noted on p. 1023 of Okada (1992)
+#     dip_slip *= np.sign(90 - segment_dip)
+
+#     # Project coordinates to flat space using a local oblique Mercator projection
+#     projection = get_segment_oblique_projection(
+#         segment_lon1, segment_lat1, segment_lon2, segment_lat2
+#     )
+#     station_x, station_y = projection(station_lon, station_lat)
+#     segment_x1, segment_y1 = projection(segment_lon1, segment_lat1)
+#     segment_x2, segment_y2 = projection(segment_lon2, segment_lat2)
+
+#     # Calculate geometric fault parameters
+#     segment_strike = np.arctan2(
+#         segment_y2 - segment_y1, segment_x2 - segment_x1
+#     )  # radians
+#     segment_length = np.sqrt(
+#         (segment_y2 - segment_y1) ** 2.0 + (segment_x2 - segment_x1) ** 2.0
+#     )
+#     segment_up_dip_width = (segment_locking_depth - segment_burial_depth) / np.sin(
+#         np.deg2rad(segment_dip)
+#     )
+
+#     # Translate stations and segment so that segment mid-point is at the origin
+#     segment_x_mid = (segment_x1 + segment_x2) / 2.0
+#     segment_y_mid = (segment_y1 + segment_y2) / 2.0
+#     station_x -= segment_x_mid
+#     station_y -= segment_y_mid
+#     segment_x1 -= segment_x_mid
+#     segment_x2 -= segment_x_mid
+#     segment_y1 -= segment_y_mid
+#     segment_y2 -= segment_y_mid
+
+#     # Unrotate coordinates to eliminate strike, segment will lie along y = 0
+#     rotation_matrix = np.array(
+#         [
+#             [np.cos(segment_strike), -np.sin(segment_strike)],
+#             [np.sin(segment_strike), np.cos(segment_strike)],
+#         ]
+#     )
+#     station_x_rotated, station_y_rotated = np.hsplit(
+#         np.einsum("ij,kj->ik", np.dstack((station_x, station_y))[0], rotation_matrix.T),
+#         2,
+#     )
+
+#     # Shift station y coordinates by surface projection of locking depth
+#     # y_shift will be positive for dips <90 and negative for dips > 90
+#     y_shift = np.cos(np.deg2rad(segment_dip)) * segment_up_dip_width
+#     station_y_rotated += y_shift
+
+#     # Elastic displacements from Okada 1992
+#     alpha = (material_lambda + material_mu) / (material_lambda + 2 * material_mu)
+#     u_x = np.zeros_like(station_x)
+#     u_y = np.zeros_like(station_x)
+#     u_up = np.zeros_like(station_x)
+#     for i in range(len(station_x)):
+#         _, u, _ = okada_wrapper.dc3dwrapper(
+#             alpha,  # (lambda + mu) / (lambda + 2 * mu)
+#             [
+#                 station_x_rotated[i],
+#                 station_y_rotated[i],
+#                 0,
+#             ],  # (meters) observation point
+#             segment_locking_depth,  # (meters) depth of the fault origin
+#             segment_dip,  # (degrees) the dip-angle of the rectangular dislocation surface
+#             [
+#                 -segment_length / 2,
+#                 segment_length / 2,
+#             ],  # (meters) the along-strike range of the surface (al1,al2 in the original)
+#             [
+#                 0,
+#                 segment_up_dip_width,
+#             ],  # (meters) along-dip range of the surface (aw1, aw2 in the original)
+#             [strike_slip, dip_slip, tensile_slip],
+#         )  # (meters) strike-slip, dip-slip, tensile-slip
+#         u_x[i] = u[0]
+#         u_y[i] = u[1]
+#         u_up[i] = u[2]
+
+#     # Un-rotate displacement to account for projected fault strike
+#     # u_east, u_north = np.hsplit(
+#     #     np.einsum("ij,kj->ik", np.dstack((u_x, u_y))[0], rotation_matrix), 2
+#     # )
+
+#     # Rotate x, y displacements about geographic azimuth to yield east, north displacements
+#     cosstrike = np.cos(np.radians(90 - segment_azimuth))
+#     sinstrike = np.sin(np.radians(90 - segment_azimuth))
+#     u_north = sinstrike * u_x + cosstrike * u_y
+#     u_east = cosstrike * u_x - sinstrike * u_y
+#     return u_east, u_north, u_up
+
+
+# def get_segment_station_operator_okada(segment, station, command):
+#     """
+#     Calculates the elastic displacement partial derivatives based on the Okada
+#     formulation, using the source and receiver geometries defined in
+#     dicitonaries segment and stations. Before calculating the partials for
+#     each segment, a local oblique Mercator project is done.
+
+#     The linear operator is structured as ():
+
+#                 ss(segment1)  ds(segment1) ts(segment1) ... ss(segmentN) ds(segmentN) ts(segmentN)
+#     ve(station 1)
+#     vn(station 1)
+#     vu(station 1)
+#     .
+#     .
+#     .
+#     ve(station N)
+#     vn(station N)
+#     vu(station N)
+
+#     """
+#     if not station.empty:
+#         okada_segment_operator = np.ones((3 * len(station), 3 * len(segment)))
+#         # Loop through each segment and calculate displacements for each slip component
+#         for i in tqdm(
+#             range(len(segment)),
+#             desc="Calculating Okada partials for segments",
+#             colour="cyan",
+#         ):
+#             (
+#                 u_east_strike_slip,
+#                 u_north_strike_slip,
+#                 u_up_strike_slip,
+#             ) = get_okada_displacements(
+#                 segment.lon1[i],
+#                 segment.lat1[i],
+#                 segment.lon2[i],
+#                 segment.lat2[i],
+#                 segment.locking_depth[i],
+#                 segment.burial_depth[i],
+#                 segment.dip[i],
+#                 segment.azimuth[i],
+#                 command.material_lambda,
+#                 command.material_mu,
+#                 1,
+#                 0,
+#                 0,
+#                 station.lon,
+#                 station.lat,
+#             )
+#             (
+#                 u_east_dip_slip,
+#                 u_north_dip_slip,
+#                 u_up_dip_slip,
+#             ) = get_okada_displacements(
+#                 segment.lon1[i],
+#                 segment.lat1[i],
+#                 segment.lon2[i],
+#                 segment.lat2[i],
+#                 segment.locking_depth[i],
+#                 segment.burial_depth[i],
+#                 segment.dip[i],
+#                 segment.azimuth[i],
+#                 command.material_lambda,
+#                 command.material_mu,
+#                 0,
+#                 1,
+#                 0,
+#                 station.lon,
+#                 station.lat,
+#             )
+#             (
+#                 u_east_tensile_slip,
+#                 u_north_tensile_slip,
+#                 u_up_tensile_slip,
+#             ) = get_okada_displacements(
+#                 segment.lon1[i],
+#                 segment.lat1[i],
+#                 segment.lon2[i],
+#                 segment.lat2[i],
+#                 segment.locking_depth[i],
+#                 segment.burial_depth[i],
+#                 segment.dip[i],
+#                 segment.azimuth[i],
+#                 command.material_lambda,
+#                 command.material_mu,
+#                 0,
+#                 0,
+#                 1,
+#                 station.lon,
+#                 station.lat,
+#             )
+#             segment_column_start_idx = 3 * i
+#             okada_segment_operator[0::3, segment_column_start_idx] = np.squeeze(
+#                 u_east_strike_slip
+#             )
+#             okada_segment_operator[1::3, segment_column_start_idx] = np.squeeze(
+#                 u_north_strike_slip
+#             )
+#             okada_segment_operator[2::3, segment_column_start_idx] = np.squeeze(
+#                 u_up_strike_slip
+#             )
+#             okada_segment_operator[0::3, segment_column_start_idx + 1] = np.squeeze(
+#                 u_east_dip_slip
+#             )
+#             okada_segment_operator[1::3, segment_column_start_idx + 1] = np.squeeze(
+#                 u_north_dip_slip
+#             )
+#             okada_segment_operator[2::3, segment_column_start_idx + 1] = np.squeeze(
+#                 u_up_dip_slip
+#             )
+#             okada_segment_operator[0::3, segment_column_start_idx + 2] = np.squeeze(
+#                 u_east_tensile_slip
+#             )
+#             okada_segment_operator[1::3, segment_column_start_idx + 2] = np.squeeze(
+#                 u_north_tensile_slip
+#             )
+#             okada_segment_operator[2::3, segment_column_start_idx + 2] = np.squeeze(
+#                 u_up_tensile_slip
+#             )
+#     else:
+#         okada_segment_operator = np.empty(1)
+#     return okada_segment_operator
+
+
+# def get_elastic_operators(
+#     operators: Dict,
+#     meshes: List,
+#     segment: pd.DataFrame,
+#     station: pd.DataFrame,
+#     command: Dict,
+# ):
+#     """
+#     Calculate (or load previously calculated) elastic operators from
+#     both fully locked segments and TDE parameterizes surfaces
+
+#     Args:
+#         operators (Dict): Elastic operators will be added to this data structure
+#         meshes (List): Geometries of meshes
+#         segment (pd.DataFrame): All segment data
+#         station (pd.DataFrame): All station data
+#         command (Dict): All command data
+#     """
+#     if bool(command.reuse_elastic) and os.path.exists(command.reuse_elastic_file):
+#         logger.info("Using precomputed elastic operators")
+#         hdf5_file = h5py.File(command.reuse_elastic_file, "r")
+
+#         operators.slip_rate_to_okada_to_velocities = np.array(
+#             hdf5_file.get("slip_rate_to_okada_to_velocities")
+#         )
+#         for i in range(len(meshes)):
+#             operators.tde_to_velocities[i] = np.array(
+#                 hdf5_file.get("tde_to_velocities_" + str(i))
+#             )
+#         hdf5_file.close()
+
+#     else:
+#         if not os.path.exists(command.reuse_elastic_file):
+#             logger.warning("Precomputed elastic operator file not found")
+#         logger.info("Computing elastic operators")
+
+#         # Calculate Okada partials for all segments
+#         operators.slip_rate_to_okada_to_velocities = get_segment_station_operator_okada(
+#             segment, station, command
+#         )
+
+#         for i in range(len(meshes)):
+#             logger.info(
+#                 f"Start: TDE slip to velocity calculation for mesh: {meshes[i].file_name}"
+#             )
+#             operators.tde_to_velocities[i] = get_tde_to_velocities_single_mesh(
+#                 meshes, station, command, mesh_idx=i
+#             )
+#             logger.success(
+#                 f"Finish: TDE slip to velocity calculation for mesh: {meshes[i].file_name}"
+#             )
+
+#         # Save elastic to velocity matrices
+#         if bool(command.save_elastic):
+#             # Check to see if "data/operators" folder exists and if not create it
+#             if not os.path.exists(command.operators_folder):
+#                 os.mkdir(command.operators_folder)
+
+#             logger.info(
+#                 "Saving elastic to velocity matrices to :" + command.save_elastic_file
+#             )
+#             hdf5_file = h5py.File(command.save_elastic_file, "w")
+
+#             hdf5_file.create_dataset(
+#                 "slip_rate_to_okada_to_velocities",
+#                 data=operators.slip_rate_to_okada_to_velocities,
+#             )
+#             for i in range(len(meshes)):
+#                 hdf5_file.create_dataset(
+#                     "tde_to_velocities_" + str(i),
+#                     data=operators.tde_to_velocities[i],
+#                 )
+#             hdf5_file.close()
+
+
+# def get_elastic_operators_okada(
+#     operators: Dict,
+#     segment: pd.DataFrame,
+#     station: pd.DataFrame,
+#     command: Dict,
+# ):
+#     """
+#     Calculate (or load previously calculated) elastic operators from
+#     both fully locked segments and TDE parameterizes surfaces
+
+#     Args:
+#         operators (Dict): Elastic operators will be added to this data structure
+#         segment (pd.DataFrame): All segment data
+#         station (pd.DataFrame): All station data
+#         command (Dict): All command data
+#     """
+#     if bool(command.reuse_elastic) and os.path.exists(command.reuse_elastic_file):
+#         logger.info("Using precomputed elastic operators")
+#         hdf5_file = h5py.File(command.reuse_elastic_file, "r")
+
+#         operators.slip_rate_to_okada_to_velocities = np.array(
+#             hdf5_file.get("slip_rate_to_okada_to_velocities")
+#         )
+#         hdf5_file.close()
+
+#     else:
+#         if not os.path.exists(command.reuse_elastic_file):
+#             logger.warning("Precomputed elastic operator file not found")
+#         logger.info("Computing elastic operators")
+
+#         # Calculate Okada partials for all segments
+#         operators.slip_rate_to_okada_to_velocities = get_segment_station_operator_okada(
+#             segment, station, command
+#         )
+
+#         # Save elastic to velocity matrices
+#         if bool(command.save_elastic):
+#             # Check to see if "data/operators" folder exists and if not create it
+#             if not os.path.exists(command.operators_folder):
+#                 os.mkdir(command.operators_folder)
+
+#             logger.info(
+#                 "Saving elastic to velocity matrices to :" + command.save_elastic_file
+#             )
+#             hdf5_file = h5py.File(command.save_elastic_file, "w")
+
+#             hdf5_file.create_dataset(
+#                 "slip_rate_to_okada_to_velocities",
+#                 data=operators.slip_rate_to_okada_to_velocities,
+#             )
+#             hdf5_file.close()
 
 
 def station_row_keep(assembly):
