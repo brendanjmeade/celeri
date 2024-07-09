@@ -64,6 +64,7 @@ def plot_segment_displacements(
         segment.locking_depth[segment_idx],
         segment.burial_depth[segment_idx],
         segment.dip[segment_idx],
+        segment.azimuth[segment_idx],
         command.material_lambda,
         command.material_mu,
         strike_slip,
@@ -78,6 +79,10 @@ def plot_segment_displacements(
         [segment.lat1[segment_idx], segment.lat2[segment_idx]],
         "-r",
     )
+    uplimit = np.max(np.abs(u_up))
+    plt.scatter(
+        station.lon, station.lat, c=u_up, s=10, cmap="bwr", vmin=-uplimit, vmax=uplimit
+    )
     plt.quiver(
         station.lon,
         station.lat,
@@ -86,6 +91,7 @@ def plot_segment_displacements(
         scale=quiver_scale,
         scale_units="inches",
     )
+
     plt.xlim([lon_min, lon_max])
     plt.ylim([lat_min, lat_max])
     plt.gca().set_aspect("equal", adjustable="box")
