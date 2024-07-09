@@ -1,0 +1,22 @@
+[
+  {
+    "mesh_filename": "",
+    "smoothing_weight": 1e0,
+    "n_eigen": 10,
+    "top_slip_rate_constraint": 0,
+    "bot_slip_rate_constraint": 0,
+    "side_slip_rate_constraint": 0,
+    "top_slip_rate_weight": 1,
+    "bot_slip_rate_weight": 1,
+    "side_slip_rate_weight": 1,
+    "a_priori_slip_filename": "",
+    "ss_slip_constraint_idx": [],
+    "ss_slip_constraint_rate": [],
+    "ss_slip_constraint_sig": [],
+    "ss_slip_constraint_weight": [],
+    "ds_slip_constraint_idx": [],
+    "ds_slip_constraint_rate": [],
+    "ds_slip_constraint_sig": [],
+    "ds_slip_constraint_weight": []
+  }
+]

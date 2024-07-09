@@ -459,7 +459,6 @@ def order_endpoints_sphere(segment):
     endpoints2 = np.transpose(np.array([segment.x2, segment.y2, segment.z2]))
     cross_product = np.cross(endpoints1, endpoints2)
     swap_endpoint_idx = np.where(cross_product[:, 2] < 0)
-    swap_endpoint_idx = np.where(segment.lon1 > segment.lon2)
     segment_copy.lon1.values[swap_endpoint_idx] = segment.lon2.values[swap_endpoint_idx]
     segment_copy.lat1.values[swap_endpoint_idx] = segment.lat2.values[swap_endpoint_idx]
     segment_copy.lon2.values[swap_endpoint_idx] = segment.lon1.values[swap_endpoint_idx]
