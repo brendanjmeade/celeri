@@ -5,23 +5,24 @@
         "n_eigen": 20,
         "top_slip_rate_constraint": 0,
         "bot_slip_rate_constraint": 1,
-        "side_slip_rate_constraint": 1,
-        "a_priori_slip_filename": ""
+        "side_slip_rate_constraint": 0,
+        "a_priori_slip_filename": "",
+        "ss_slip_constraint_rate": []
     },
     {
         "mesh_filename": "../data/mesh/japan.msh",
         "smoothing_weight": 1e14,
         "n_eigen": 20,
-        "top_slip_rate_constraint": 1,
+        "top_slip_rate_constraint": 0,
         "bot_slip_rate_constraint": 1,
-        "side_slip_rate_constraint": 1,
+        "side_slip_rate_constraint": 0,
         "a_priori_slip_filename": ""
     },
     {
         "mesh_filename": "../data/mesh/sagami.msh",
-        "smoothing_weight": 1e13,
+        "smoothing_weight": 1e14,
         "n_eigen": 20,
-        "top_slip_rate_constraint": 1,
+        "top_slip_rate_constraint": 0,
         "bot_slip_rate_constraint": 1,
         "side_slip_rate_constraint": 1,
         "a_priori_slip_filename": ""

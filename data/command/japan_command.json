@@ -56,7 +56,7 @@
   "sar_weight": 0,
   "save_elastic": 1,
   "save_elastic_file": "../data/operators/japan_elastic_operators.hdf5",
-  "segment_file_name": "../data/segment/japan_segment.csv",
+  "segment_file_name": "../data/segment/japan_new380_adjusted_segment.csv",
   "slip_constraint_weight": 100000,
   "slip_constraint_weight_max": 100000,
   "slip_constraint_weight_min": 100000,

@@ -265,7 +265,6 @@ def read_data(command: Dict):
                     "bot_slip_rate_weight": 1,
                     "side_slip_rate_weight": 1,
                     "coupling_constraint_idx": [],
-                    
                     "ss_slip_constraint_idx": [],
                     "ss_slip_constraint_rate": [],
                     "ss_slip_constraint_sig": [],
@@ -460,6 +459,7 @@ def order_endpoints_sphere(segment):
     endpoints2 = np.transpose(np.array([segment.x2, segment.y2, segment.z2]))
     cross_product = np.cross(endpoints1, endpoints2)
     swap_endpoint_idx = np.where(cross_product[:, 2] < 0)
+    swap_endpoint_idx = np.where(segment.lon1 > segment.lon2)
     segment_copy.lon1.values[swap_endpoint_idx] = segment.lon2.values[swap_endpoint_idx]
     segment_copy.lat1.values[swap_endpoint_idx] = segment.lat2.values[swap_endpoint_idx]
     segment_copy.lon2.values[swap_endpoint_idx] = segment.lon1.values[swap_endpoint_idx]
@@ -520,13 +520,6 @@ def process_segment(segment, command, meshes):
     if bool(command.snap_segments):
         segment = snap_segments(segment, meshes)
 
-    segment["length"] = np.zeros(len(segment))
-    segment["azimuth"] = np.zeros(len(segment))
-    for i in range(len(segment)):
-        segment.azimuth.values[i], _, segment.length.values[i] = GEOID.inv(
-            segment.lon1[i], segment.lat1[i], segment.lon2[i], segment.lat2[i]
-        )  # Segment azimuth, Segment length in meters
-
     segment["x1"], segment["y1"], segment["z1"] = sph2cart(
         segment.lon1, segment.lat1, RADIUS_EARTH
     )
@@ -535,6 +528,13 @@ def process_segment(segment, command, meshes):
     )
 
     segment = order_endpoints_sphere(segment)
+
+    segment["length"] = np.zeros(len(segment))
+    segment["azimuth"] = np.zeros(len(segment))
+    for i in range(len(segment)):
+        segment.azimuth.values[i], _, segment.length.values[i] = GEOID.inv(
+            segment.lon1[i], segment.lat1[i], segment.lon2[i], segment.lat2[i]
+        )  # Segment azimuth, Segment length in meters
 
     # This calculation needs to account for the periodic nature of longitude.
     # Calculate the periodic longitudinal separation.
@@ -613,7 +613,7 @@ def snap_segments(segment, meshes):
         edge_segs.lat2 = meshes[i].meshio_object.points[
             meshes[i].ordered_edge_nodes[top_edge_indices, 1], 1
         ]
-        edge_segs.locking_depth = -15
+        edge_segs.locking_depth = +15
         edge_segs.patch_flag = +1
         edge_segs.patch_file_name = +i + 1
         all_edge_segment = all_edge_segment.append(edge_segs)
@@ -1368,6 +1368,7 @@ def get_okada_displacements(
     segment_locking_depth,
     segment_burial_depth,
     segment_dip,
+    segment_azimuth,
     material_lambda,
     material_mu,
     strike_slip,
@@ -1386,6 +1387,13 @@ def get_okada_displacements(
     """
     segment_locking_depth *= KM2M
     segment_burial_depth *= KM2M
+
+    # Make sure depths are expressed as positive
+    segment_locking_depth = np.abs(segment_locking_depth)
+    segment_burial_depth = np.abs(segment_burial_depth)
+
+    # Correct sign of dip-slip based on fault dip, as noted on p. 1023 of Okada (1992)
+    dip_slip *= np.sign(90 - segment_dip)
 
     # Project coordinates to flat space using a local oblique Mercator projection
     projection = get_segment_oblique_projection(
@@ -1428,6 +1436,11 @@ def get_okada_displacements(
         2,
     )
 
+    # Shift station y coordinates by surface projection of locking depth
+    # y_shift will be positive for dips <90 and negative for dips > 90
+    y_shift = np.cos(np.deg2rad(segment_dip)) * segment_up_dip_width
+    station_y_rotated += y_shift
+
     # Elastic displacements from Okada 1992
     alpha = (material_lambda + material_mu) / (material_lambda + 2 * material_mu)
     u_x = np.zeros_like(station_x)
@@ -1458,9 +1471,15 @@ def get_okada_displacements(
         u_up[i] = u[2]
 
     # Un-rotate displacement to account for projected fault strike
-    u_east, u_north = np.hsplit(
-        np.einsum("ij,kj->ik", np.dstack((u_x, u_y))[0], rotation_matrix), 2
-    )
+    # u_east, u_north = np.hsplit(
+    #     np.einsum("ij,kj->ik", np.dstack((u_x, u_y))[0], rotation_matrix), 2
+    # )
+
+    # Rotate x, y displacements about geographic azimuth to yield east, north displacements
+    cosstrike = np.cos(np.radians(90 - segment_azimuth))
+    sinstrike = np.sin(np.radians(90 - segment_azimuth))
+    u_north = sinstrike * u_x + cosstrike * u_y
+    u_east = cosstrike * u_x - sinstrike * u_y
     return u_east, u_north, u_up
 
 
@@ -1505,6 +1524,7 @@ def get_segment_station_operator_okada(segment, station, command):
                 segment.locking_depth[i],
                 segment.burial_depth[i],
                 segment.dip[i],
+                segment.azimuth[i],
                 command.material_lambda,
                 command.material_mu,
                 1,
@@ -1525,6 +1545,7 @@ def get_segment_station_operator_okada(segment, station, command):
                 segment.locking_depth[i],
                 segment.burial_depth[i],
                 segment.dip[i],
+                segment.azimuth[i],
                 command.material_lambda,
                 command.material_mu,
                 0,
@@ -1545,6 +1566,7 @@ def get_segment_station_operator_okada(segment, station, command):
                 segment.locking_depth[i],
                 segment.burial_depth[i],
                 segment.dip[i],
+                segment.azimuth[i],
                 command.material_lambda,
                 command.material_mu,
                 0,
