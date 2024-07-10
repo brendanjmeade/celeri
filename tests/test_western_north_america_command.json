@@ -40,7 +40,7 @@
     "mesh_parameters_file_name": "./tests/test_western_north_america_mesh_parameters.json",
     "mogi_file_name": "",
     "n_iterations": 1,
-    "operators_folder": "../data/operators/",
+    "operators_folder": "./",
     "pickle_save": 0,
     "plot_estimation_summary": 1,
     "plot_input_summary": 1,
