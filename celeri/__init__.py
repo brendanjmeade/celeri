@@ -67,16 +67,21 @@ from .celeri import (
     get_transverse_projection,
     get_segment_oblique_projection,
     lsqlin_qp,
-)
-
-
-from .celeri_vis import (
     plot_matrix_abs_log,
     plot_meshes,
     plot_rotation_components,
     plot_strain_rate_components_for_block,
     plot_segment_displacements,
 )
+
+
+# from .celeri_vis import (
+#     plot_matrix_abs_log,
+#     plot_meshes,
+#     plot_rotation_components,
+#     plot_strain_rate_components_for_block,
+#     plot_segment_displacements,
+# )
 
 
 try:
