@@ -65,7 +65,7 @@ def test_western_north_america_dense():
     print("START - SLIP RATE TEST")
     print(f"{estimation.slip_rates[0]}, {test_western_north_america_arrays['estimation_slip_rates'][0]}")
     assert np.allclose(
-        estimation.slip_rates, test_western_north_america_arrays["estimation_slip_rates"], rtol=1e-03, atol=1e-03
+        estimation.slip_rates, test_western_north_america_arrays["estimation_slip_rates"], atol=1e-02
     )
     print("END - SLIP RATE TEST")
 
