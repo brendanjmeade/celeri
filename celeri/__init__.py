@@ -74,16 +74,6 @@ from .celeri import (
     plot_segment_displacements,
 )
 
-
-# from .celeri_vis import (
-#     plot_matrix_abs_log,
-#     plot_meshes,
-#     plot_rotation_components,
-#     plot_strain_rate_components_for_block,
-#     plot_segment_displacements,
-# )
-
-
 try:
     __version__ = pkg_resources.get_distribution(__name__).version
 except Exception:
