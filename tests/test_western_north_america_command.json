@@ -53,7 +53,7 @@
     "sar_file_name": "",
     "sar_ramp": 0,
     "sar_weight": 0,
-    "save_elastic": 1,
+    "save_elastic": 0,
     "save_elastic_file": "../data/operators/western_north_america_elastic_operators.hdf5",
     "segment_file_name": "./tests/test_western_north_america_segment.csv",
     "slip_constraint_weight": 1e5,
