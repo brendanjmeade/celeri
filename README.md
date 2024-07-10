@@ -1,9 +1,7 @@
-<p align="center">
-  <img src="https://user-images.githubusercontent.com/4225359/132613223-257e6e17-83bd-49a4-8bbc-326cc117f6ec.png" width=700 />
-</p>
+
 
 # Next generation earthquake cycle imaging
-`celeri` is a python based package designed to image earthquake cycle activity including the spatial and time varying fault coupling across geometrically complex fault systems at large scales. It features:
+`celeri` is a python-based package designed to image earthquake cycle activity including the spatial and time varying fault coupling across geometrically complex fault systems at large scales. It features:
 
 - Friendly [Jupyter notebook examples](https://github.com/brendanjmeade/celeri/blob/main/notebooks/celeri_dense.ipynb)
 - Beautiful web-based model building with [`celeri_ui`](https://brendanjmeade.github.io/celeri_ui/)
@@ -15,7 +13,6 @@
 
 
 # Getting started
-
 To set up a development conda environment, run the following commands in the `celeri` folder.
 ```
 conda config --prepend channels conda-forge
@@ -108,4 +105,4 @@ flowchart TD
 We think celeri is pretty great but there are other alternatives worth considering:
 - Jack Loveless' and Brendan Meade's Matlab-based [Blocks](https://github.com/jploveless/Blocks) 
 - Rob McCaffrey's Fortran-based [TDEFNODE](https://robmccaffrey.github.io/TDEFNODE/TDEFNODE.html)
-- Richard Styron's Julia-based (and clevery named!) [Oiler](https://github.com/cossatot/Oiler)
+- Richard Styron's Julia-based (and cleverly named!) [Oiler](https://github.com/cossatot/Oiler)
