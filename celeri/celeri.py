@@ -52,7 +52,6 @@ DEG_PER_MYR_TO_RAD_PER_YR = 1 / 1e3  # TODO: What should this conversion be?
 N_MESH_DIM = 3
 
 
-
 ###############################################################
 #                                                             #
 #                                                             #
@@ -226,6 +225,7 @@ def get_command(command_file_name):
     command = addict.Dict(sorted(command.items()))
 
     return command
+
 
 def read_data(command: Dict):
     logger.info("Reading data files")
@@ -471,10 +471,9 @@ def read_data(command: Dict):
     return segment, block, meshes, station, mogi, sar
 
 
-
 ####################################################################################################
 #                                                                                                  #
-#                                                                                                  #           
+#                                                                                                  #
 #  88888888ba   88888888ba     ,ad8888ba,      ,ad8888ba,   88888888888  ad88888ba    ad88888ba    #
 #  88      "8b  88      "8b   d8"'    `"8b    d8"'    `"8b  88          d8"     "8b  d8"     "8b   #
 #  88      ,8P  88      ,8P  d8'        `8b  d8'            88          Y8,          Y8,           #
@@ -483,7 +482,7 @@ def read_data(command: Dict):
 #  88           88    `8b    Y8,        ,8P  Y8,            88                  `8b          `8b   #
 #  88           88     `8b    Y8a.    .a8P    Y8a.    .a8P  88          Y8a     a8P  Y8a     a8P   #
 #  88           88      `8b    `"Y8888Y"'      `"Y8888Y"'   88888888888  "Y88888P"    "Y88888P"    #
-#                                                                                                  #                               
+#                                                                                                  #
 #                                                                                                  #
 ####################################################################################################
 def triangle_area(triangles):
@@ -940,7 +939,6 @@ def station_row_keep(assembly):
     return assembly
 
 
-
 def get_block_centroid(segment, block_idx):
     """
     Calculate centroid of a block based on boundary polygon
@@ -1354,6 +1352,7 @@ def get_index(assembly, station, block, meshes):
     index.n_operator_cols = 3 * index.n_blocks + 2 * index.n_tde_total
     return index
 
+
 def get_index_no_meshes(assembly, station, block):
     # NOTE: Merge with above if possible.
     # Make sure empty meshes work
@@ -1389,7 +1388,6 @@ def get_index_no_meshes(assembly, station, block):
     )
     index.n_operator_cols = 3 * index.n_blocks
     return index
-
 
 
 def get_processed_data_structures(command):
@@ -2613,9 +2611,11 @@ def get_rotation_to_tri_slip_rate_partials(meshes, mesh_idx, segment, block):
     for a single mesh. Called within a loop from get_tde_coupling_constraints()
     """
     n_blocks = len(block)
-    # Calculate right-hand rule strike for each segment
-    rhrstrike = segment.azimuth + 180 * (segment.dip > 90)
     tri_slip_rate_partials = np.zeros((3 * meshes.n_tde, 3 * n_blocks))
+
+    # Generate strikes for elements using same sign convention as segments
+    tristrike = meshes.strike
+    tristrike[meshes.strike > 180] -= 180
     # Find subset of segments that are replaced by this mesh
     seg_replace_idx = np.where(
         (segment.patch_flag != 0) & (segment.patch_file_name == mesh_idx)
@@ -2683,21 +2683,27 @@ def get_rotation_to_tri_slip_rate_partials(meshes, mesh_idx, segment, block):
             meshes.lat_centroid[el_idx],
         )
         # Project about fault strike
-        unit_x_parallel = np.sin(np.deg2rad(meshes.strike[el_idx]))
-        unit_y_parallel = np.cos(np.deg2rad(meshes.strike[el_idx]))
-        unit_x_perpendicular = np.cos(np.deg2rad(meshes.strike[el_idx]))
-        unit_y_perpendicular = -np.sin(np.deg2rad(meshes.strike[el_idx]))
+        unit_x_parallel = np.cos(np.deg2rad(90 - tristrike[el_idx]))
+        unit_y_parallel = np.sin(np.deg2rad(90 - tristrike[el_idx]))
+        unit_x_perpendicular = np.sin(np.deg2rad(tristrike[el_idx] - 90))
+        unit_y_perpendicular = np.cos(np.deg2rad(tristrike[el_idx] - 90))
         # Project by fault dip
-        scale_factor = -1.0 / abs(np.cos(np.deg2rad(meshes.dip[el_idx])))
+        scale_factor = 1.0 / abs(np.cos(np.deg2rad(meshes.dip[el_idx])))
         slip_rate_matrix = np.array(
             [
                 [
-                    unit_x_parallel * vel_east_to_omega_x
-                    + unit_y_parallel * vel_north_to_omega_x,
-                    unit_x_parallel * vel_east_to_omega_y
-                    + unit_y_parallel * vel_north_to_omega_y,
-                    unit_x_parallel * vel_east_to_omega_z
-                    + unit_y_parallel * vel_north_to_omega_z,
+                    (
+                        unit_x_parallel * vel_east_to_omega_x
+                        + unit_y_parallel * vel_north_to_omega_x
+                    ),
+                    (
+                        unit_x_parallel * vel_east_to_omega_y
+                        + unit_y_parallel * vel_north_to_omega_y
+                    ),
+                    (
+                        unit_x_parallel * vel_east_to_omega_z
+                        + unit_y_parallel * vel_north_to_omega_z
+                    ),
                 ],
                 [
                     scale_factor
@@ -2719,15 +2725,11 @@ def get_rotation_to_tri_slip_rate_partials(meshes, mesh_idx, segment, block):
                 [0, 0, 0],
             ]
         )
-        sign_corr = 1
-        # if (rhrstrike[meshes.closest_segment_idx[el_idx]] > 90) & (
-        #     rhrstrike[meshes.closest_segment_idx[el_idx]] < 270
-        # ):
-        #     sign_corr = -1
-        # if (rhrstrike[meshes.closest_segment_idx[el_idx]] > 0) & (
-        #     rhrstrike[meshes.closest_segment_idx[el_idx]] < 180
-        # ):
-        #     sign_corr = 1
+        # This correction gives -1 for strikes > 90
+        # Equivalent to the if statement in get_rotation_to_slip_rate_partials
+        sign_corr = -np.sign(meshes.strike[el_idx] - 90)
+
+        # Insert this element's partials into operator
         tri_slip_rate_partials[
             row_idx : row_idx + 3, column_idx_east : column_idx_east + 3
         ] = (sign_corr * slip_rate_matrix)
@@ -2735,8 +2737,6 @@ def get_rotation_to_tri_slip_rate_partials(meshes, mesh_idx, segment, block):
             row_idx : row_idx + 3, column_idx_west : column_idx_west + 3
         ] = (sign_corr * -slip_rate_matrix)
     return tri_slip_rate_partials
-
-
 
 
 def get_block_motion_constraints(assembly: Dict, block: pd.DataFrame, command: Dict):
@@ -3535,7 +3535,6 @@ def get_h_matrices_for_tde_meshes(
     return H, col_norms
 
 
-
 ######################################################################
 #                                                                    #
 #                                                                    #
@@ -3547,7 +3546,7 @@ def get_h_matrices_for_tde_meshes(
 #          `8b  Y8,        ,8P  88         `8b d8'      88           #
 #  Y8a     a8P   Y8a.    .a8P   88          `888'       88           #
 #   "Y88888P"     `"Y8888Y"'    88888888888  `8'        88888888888  #
-#                                                                    #                                                                  
+#                                                                    #
 #                                                                    #
 ######################################################################
 
@@ -3902,7 +3901,6 @@ def lsqlin_qp(
     # Run CVXOPT.SQP solver
     sol = cvxopt.solvers.qp(Q, q.T, A, b, Aeq, beq, None, x0)
     return sol
-
 
 
 def matvec_wrapper(h_matrix_solve_parameters):
@@ -4612,7 +4610,6 @@ def build_and_solve_dense_no_meshes(command, assembly, operators, data):
     return estimation, operators, index
 
 
-
 #########################################################################################
 #                                                                                       #
 #                                                                                       #
@@ -4763,7 +4760,6 @@ def write_output_supplemental(
             os.path.join(command.output_path, command.run_name + ".pkl"), "wb"
         ) as f:
             pickle.dump([command, index, data, operators, estimation, assembly], f)
-
 
 
 ########################################################
@@ -5393,8 +5389,6 @@ def plot_estimation_summary(
     )
 
 
-
-
 ################################################################################################
 #                                                                                              #
 #                                                                                              #
@@ -5424,6 +5418,7 @@ def get_logger(command):
     logger.info("RUN_NAME: " + command.run_name)
     logger.info(f"Write log file: {command.output_path}/{command.run_name}.log")
     return logger
+
 
 def wrap2360(lon):
     lon[np.where(lon < 0.0)] += 360.0
@@ -5802,4 +5797,3 @@ def align_velocities(df_1, df_2, distance_threshold):
     df_1_aligned["north_vel"] = df_1_aligned["north_vel"] + rotated_vels_match[1::2]
 
     return df_1_aligned
-

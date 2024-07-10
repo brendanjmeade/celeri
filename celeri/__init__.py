@@ -67,6 +67,7 @@ from .celeri import (
     get_transverse_projection,
     get_segment_oblique_projection,
     lsqlin_qp,
+    snap_segments,
 )
 
 
