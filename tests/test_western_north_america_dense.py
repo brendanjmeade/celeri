@@ -5,7 +5,7 @@ import celeri
 
 def test_western_north_america_dense():
     # Western North America example
-    command_file_name = "test_western_north_america_command.json"
+    command_file_name = "./tests/test_western_north_america_command.json"
 
     command = celeri.get_command(command_file_name)
     celeri.create_output_folder(command)
@@ -60,7 +60,7 @@ def test_western_north_america_dense():
     celeri.post_process_estimation(estimation, operators, station, index)
 
     # Compare with known answer
-    test_western_north_america_arrays = np.load("test_western_north_america_arrays.npz")
+    test_western_north_america_arrays = np.load("./tests/test_western_north_america_arrays.npz")
     assert np.allclose(
         estimation.slip_rates, test_western_north_america_arrays["estimation_slip_rates"]
     )

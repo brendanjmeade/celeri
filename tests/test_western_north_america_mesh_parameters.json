@@ -1,6 +1,6 @@
 [
   {
-    "mesh_filename": "test_western_north_america_cascadia.msh",
+    "mesh_filename": "./tests/test_western_north_america_cascadia.msh",
     "smoothing_weight": 1e18,
     "n_modes": 20,
     "n_modes_strike_slip": 20,
