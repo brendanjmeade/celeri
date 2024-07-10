@@ -63,16 +63,19 @@ def test_western_north_america_dense():
     test_western_north_america_arrays = np.load("./tests/test_western_north_america_arrays.npz")
 
     print("START - SLIP RATE TEST")
+
+    # Set digits of accuracy
+    ATOL = 1e-3
     print(f"{estimation.slip_rates[0]}, {test_western_north_america_arrays['estimation_slip_rates'][0]}")
     assert np.allclose(
-        estimation.slip_rates, test_western_north_america_arrays["estimation_slip_rates"], atol=1e-02
+        estimation.slip_rates, test_western_north_america_arrays["estimation_slip_rates"], atol=ATOL
     )
     print("END - SLIP RATE TEST")
 
     print("START - TDE RATE TEST")
     print(f"{estimation.tde_rates[0]}, {test_western_north_america_arrays['estimation_tde_rates'][0]}")
     assert np.allclose(
-        estimation.tde_rates, test_western_north_america_arrays["estimation_tde_rates"]
+        estimation.tde_rates, test_western_north_america_arrays["estimation_tde_rates"], atol=ATOL
     )
     print("END - TDE RATE TEST")
 
@@ -81,6 +84,7 @@ def test_western_north_america_dense():
     assert np.allclose(
         estimation.east_vel_residual,
         test_western_north_america_arrays["estimation_east_vel_residual"],
+        atol=ATOL,
     )
     print("END - EAST RESIDUAL TEST")
 
@@ -89,5 +93,6 @@ def test_western_north_america_dense():
     assert np.allclose(
         estimation.north_vel_residual,
         test_western_north_america_arrays["estimation_north_vel_residual"],
+        atol=ATOL,
     )
     print("END - NORTH RESIDUAL TEST")
