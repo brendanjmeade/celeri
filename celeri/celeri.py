@@ -265,7 +265,6 @@ def get_new_folder_name():
     """
     # Get all folder names
     folder_names = glob.glob("./../runs/*/")
-    print(folder_names)
 
     # Remove trailing slashes
     folder_names = [folder_name.rstrip(os.sep) for folder_name in folder_names]
@@ -273,12 +272,20 @@ def get_new_folder_name():
     # Remove anything before numerical folder name
     folder_names = [folder_name[-10:] for folder_name in folder_names]
 
-    # Convert each string to an integer using a list comprehension
-    folder_numbers = [int(folder_name) for folder_name in folder_names]
+    # Check to see if the folder name is a native run number
+    folder_names_runs = list()
+    for folder_name in folder_names:
+        try:
+            folder_names_runs.append(int(folder_name))
+        except ValueError as ex:
+            pass
 
     # Get new folder name
-    new_folder_number = np.max(folder_numbers) + 1
-    new_folder_name = f"{new_folder_number:010d}"
+    if len(folder_names_runs) == 0:
+        new_folder_name = "0000000001"
+    else:
+        new_folder_number = np.max(folder_names_runs) + 1
+        new_folder_name = f"{new_folder_number:010d}"
 
     return new_folder_name
 
