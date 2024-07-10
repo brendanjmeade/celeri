@@ -3,6 +3,7 @@ import argparse
 import copy
 import cvxopt
 import datetime
+import glob
 import h5py
 import json
 import meshio
@@ -233,7 +234,8 @@ def get_command(command_file_name):
     command.file_name = command_file_name
 
     # Add run_name and output_path
-    command.run_name = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+    # command.run_name = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+    command.run_name = get_new_folder_name()
     command.output_path = os.path.join(command.base_runs_folder, command.run_name)
     # command.file_name = command_file_name
 
@@ -241,6 +243,47 @@ def get_command(command_file_name):
     command = addict.Dict(sorted(command.items()))
 
     return command
+
+
+def get_new_folder_name():
+    """
+    Generate a new folder name based on existing numeric folder names.
+
+    This function scans the current directory for folders with numeric names,
+    identifies the highest number, and returns a new folder name that is one
+    greater than the highest number, formatted as a zero-padded 10-digit string.
+
+    Returns:
+        str: A new folder name as a zero-padded 10-digit string.
+
+    Raises:
+        ValueError: If no numeric folder names are found in the current directory.
+
+    Example:
+        If the current directory contains folders named "0000000001", "0000000002",
+        and "0000000003", the function will return "0000000004".
+    """
+    # Get all folder names
+    folder_names = glob.glob("./../runs/*/")
+    print(folder_names)
+
+    # Remove trailing slashes
+    folder_names = [folder_name.rstrip(os.sep) for folder_name in folder_names]
+
+    # Remove anything before numerical folder name
+    folder_names = [folder_name[-10:] for folder_name in folder_names]
+
+    # Convert each string to an integer using a list comprehension
+    folder_numbers = [int(folder_name) for folder_name in folder_names]
+
+    # Get new folder name
+    new_folder_number = np.max(folder_numbers) + 1
+    new_folder_name = f"{new_folder_number:010d}"
+
+    return new_folder_name
+
+
+
 
 def read_data(command: Dict):
     logger.info("Reading data files")
