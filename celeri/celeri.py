@@ -37,12 +37,27 @@ from . import celeri_closure
 from .celeri_util import sph2cart, cart2sph
 from celeri.hmatrix import build_hmatrix_from_mesh_tdes
 
-# Global constants
+
+###############################################################################################################################
+#                                                                                                                             #
+#    ,ad8888ba,    ,ad8888ba,    888b      88   ad88888ba  888888888888    db         888b      88  888888888888  ad88888ba   #
+#   d8"'    `"8b  d8"'    `"8b   8888b     88  d8"     "8b      88        d88b        8888b     88       88      d8"     "8b  #
+#  d8'           d8'        `8b  88 `8b    88  Y8,              88       d8'`8b       88 `8b    88       88      Y8,          #
+#  88            88          88  88  `8b   88  `Y8aaaaa,        88      d8'  `8b      88  `8b   88       88      `Y8aaaaa,    #
+#  88            88          88  88   `8b  88    `"""""8b,      88     d8YaaaaY8b     88   `8b  88       88        `"""""8b,  #
+#  Y8,           Y8,        ,8P  88    `8b 88          `8b      88    d8""""""""8b    88    `8b 88       88              `8b  #
+#   Y8a.    .a8P  Y8a.    .a8P   88     `8888  Y8a     a8P      88   d8'        `8b   88     `8888       88      Y8a     a8P  #
+#    `"Y8888Y"'    `"Y8888Y"'    88      `888   "Y88888P"       88  d8'          `8b  88      `888       88       "Y88888P"   #
+#                                                                                                                             #
+#                                                                                                                             #
+###############################################################################################################################
+
+
 GEOID = pyproj.Geod(ellps="WGS84")
 KM2M = 1.0e3
 M2MM = 1.0e3
 RADIUS_EARTH = np.float64((GEOID.a + GEOID.b) / 2)
-DEG_PER_MYR_TO_RAD_PER_YR = 1 / 1e3  # TODO: What should this conversion be?
+DEG_PER_MYR_TO_RAD_PER_YR = 1 / 1e3
 # The conversion should be 1 / 1e3. Linear units for Cartesian conversions are
 # in meters, but we need to convert them to mm to be consistent with mm/yr
 # geodetic constraints units. Rotation constraints are expressed in deg/Myr,
