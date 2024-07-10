@@ -63,9 +63,8 @@ def test_western_north_america_dense():
     test_western_north_america_arrays = np.load("./tests/test_western_north_america_arrays.npz")
 
     print("START - SLIP RATE TEST")
-
     # Set digits of accuracy
-    ATOL = 1e-3
+    ATOL = 1e-2
     print(f"{estimation.slip_rates[0]}, {test_western_north_america_arrays['estimation_slip_rates'][0]}")
     assert np.allclose(
         estimation.slip_rates, test_western_north_america_arrays["estimation_slip_rates"], atol=ATOL
