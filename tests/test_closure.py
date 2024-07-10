@@ -1,6 +1,8 @@
 import numpy as np
 from celeri.celeri_closure import run_block_closure, get_segment_labels, Polygon
 
+import celeri
+
 def test_closure():
     # First test a simple two triangle geometry.
     np_segments = np.array(
