@@ -28,4 +28,5 @@ jobs:
         pip install --no-use-pep517 -e .
     - name: Test
       run: |
-        pytest ./tests/test_western_north_america_dense.py
+        pytest ./tests/test_basic.py ./tests/test_western_north_america_dense.py ./celeri/celeri_closure.py
+
