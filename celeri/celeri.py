@@ -65,7 +65,7 @@ DEG_PER_MYR_TO_RAD_PER_YR = 1 / 1e3
 # to the right rate units, we need 1e-3*m*rad/Myr. This conversion is applied in
 # get_data_vector (JPL 12/31/23)
 N_MESH_DIM = 3
-
+EPS = np.finfo(float).eps
 
 
 ###############################################################
