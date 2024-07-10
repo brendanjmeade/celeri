@@ -1,5 +1,3 @@
-import addict
-import sys
 import warnings
 import numpy as np
 
@@ -7,76 +5,6 @@ import okada_wrapper
 import cutde.halfspace as cutde_halfspace
 
 import celeri
-
-
-# def test_end2end():
-#     """
-#     This does not actually check for correctness much at all,
-#     but just tests to make sure that a full block model run executes without errors.
-#     """
-#     command_file_name = "./data/western_north_america/basic_command.json"
-#     command, segment, block, meshes, station, mogi, sar = celeri.read_data(
-#         command_file_name
-#     )
-#     station = celeri.process_station(station, command)
-#     segment = celeri.process_segment(segment, command, meshes)
-#     sar = celeri.process_sar(sar, command)
-#     closure, block = celeri.assign_block_labels(segment, station, block, mogi, sar)
-#     assert closure.n_polygons() == 31
-
-#     assembly = addict.Dict()
-#     operators = addict.Dict()
-#     assembly = celeri.merge_geodetic_data(assembly, station, sar)
-#     assembly, operators.block_motion_constraints = celeri.get_block_motion_constraints(
-#         assembly, block, command
-#     )
-#     assembly, operators.slip_rate_constraints = celeri.get_slip_rate_constraints(
-#         assembly, segment, block, command
-#     )
-
-#     # Get all elastic operators for segments and TDEs
-#     # Force the calculation of elastic partials rather than reading stored version
-#     command.reuse_elastic = "no"
-#     celeri.get_elastic_operators(operators, meshes, segment, station, command)
-#     assert np.allclose(
-#         -1.1692932114810847e-08, operators.meshes[0].tde_to_velocities[0, 0]
-#     )
-
-#     # Get TDE smoothing operators
-#     celeri.get_all_mesh_smoothing_matrices(meshes, operators)
-#     celeri.get_all_mesh_smoothing_matrices_simple(meshes, operators)
-
-
-def test_global_closure():
-    """
-    This check to make sure that the closure algorithm returns a known
-    (and hopefully correct!) answer for the global closure problem.
-    Right now all this does is check for the correct number of blocks and
-    against one set of polygon edge indices
-    """
-    import os
-
-    command_file_name = "./data/command/global_command_for_pytest.json"
-    command = celeri.get_command(command_file_name)
-    logger = celeri.get_logger(command)
-    segment, block, meshes, station, mogi, sar = celeri.read_data(command)
-
-    station = celeri.process_station(station, command)
-    segment = celeri.process_segment(segment, command, meshes)
-    sar = celeri.process_sar(sar, command)
-    closure, block = celeri.assign_block_labels(segment, station, block, mogi, sar)
-
-    # Compare calculated edge indices with stored edge indices
-    all_edge_idxs = np.array([])
-    for i in range(closure.n_polygons()):
-        all_edge_idxs = np.concatenate(
-            (all_edge_idxs, np.array(closure.polygons[i].edge_idxs))
-        )
-
-    with open("./tests/global_closure_test_data.npy", "rb") as f:
-        all_edge_idxs_stored = np.load(f)
-
-    assert np.allclose(all_edge_idxs, all_edge_idxs_stored)
 
 
 def test_okada_equals_cutde():
@@ -192,17 +120,6 @@ def test_okada_equals_cutde():
     # The final result "u_cutde" will be a (10000, 3) array with the components of displacement
     # for every observation point.
     u_cutde = np.sum(disp_mat.dot(slip[0]), axis=2)
-
-    # Uncomment to plot.
-    # field_cutde = u_cutde[:,0].reshape((nx, ny))
-    # field_okada = u_x_okada.reshape((nx, ny))
-    # plt.subplot(1,2,1)
-    # plt.contourf(x_obs_mat, y_obs_mat, field_cutde)
-    # plt.colorbar()
-    # plt.subplot(1,2,2)
-    # plt.contourf(x_obs_mat, y_obs_mat, field_okada)
-    # plt.colorbar()
-    # plt.show()
 
     np.testing.assert_almost_equal(u_cutde[:, 0], u_x_okada)
     np.testing.assert_almost_equal(u_cutde[:, 1], u_y_okada)

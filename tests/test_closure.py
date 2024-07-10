@@ -63,6 +63,7 @@ def test_interior_point_edge_crossing():
     p = Polygon(None, np.arange(4), vs)
     np.testing.assert_allclose(p.interior, (5, 7.5))
 
+
 def test_exterior_block():
     # ordering has the outside on the right
     vs = np.array([
@@ -81,3 +82,36 @@ def test_exterior_block():
         p.contains_point(np.array([5.0, -5.0]), np.array([0.5, 0.5])),
         [False, True]
     )
+
+
+def test_global_closure():
+    """
+    This check to make sure that the closure algorithm returns a known
+    (and hopefully correct!) answer for the global closure problem.
+    Right now all this does is check for the correct number of blocks and
+    against one set of polygon edge indices
+    """
+    import os
+
+    command_file_name = "./data/command/global_command_for_pytest.json"
+    command = celeri.get_command(command_file_name)
+    logger = celeri.get_logger(command)
+    segment, block, meshes, station, mogi, sar = celeri.read_data(command)
+
+    station = celeri.process_station(station, command)
+    segment = celeri.process_segment(segment, command, meshes)
+    sar = celeri.process_sar(sar, command)
+    closure, block = celeri.assign_block_labels(segment, station, block, mogi, sar)
+
+    # Compare calculated edge indices with stored edge indices
+    all_edge_idxs = np.array([])
+    for i in range(closure.n_polygons()):
+        all_edge_idxs = np.concatenate(
+            (all_edge_idxs, np.array(closure.polygons[i].edge_idxs))
+        )
+
+    with open("./tests/global_closure_test_data.npy", "rb") as f:
+        all_edge_idxs_stored = np.load(f)
+
+    assert np.allclose(all_edge_idxs, all_edge_idxs_stored)
+
