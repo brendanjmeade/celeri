@@ -55,7 +55,7 @@ def test_western_north_america_dense():
 
     # Estimate block model parameters (dense)
     index, estimation = celeri.assemble_and_solve_dense(
-        command, assembly, operators, station, block, meshes
+        command, assembly, operators, station, block, meshes, mogi,
     )
     celeri.post_process_estimation(estimation, operators, station, index)
 
