@@ -3117,7 +3117,6 @@ def get_block_strain_rate_to_velocities_partials(block, station, segment):
             block_centroid_lon, block_centroid_lat = get_block_centroid(
                 segment, strain_rate_block_idx[i]
             )
-            print([block_centroid_lon, block_centroid_lat])
             # Find stations on current block
             station_idx = np.where(station.block_label == strain_rate_block_idx[i])[0]
             stations_block_lon = station.lon[station_idx].to_numpy()

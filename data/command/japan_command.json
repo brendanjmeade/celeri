@@ -41,7 +41,7 @@
   "mogi_file_name": "../data/mogi/japan_mogi.csv",
   "n_iterations": 1,
   "operators_folder": "../data/operators/",
-  "pickle_save": 0,
+  "pickle_save": 1,
   "plot_estimation_summary": 1,
   "plot_input_summary": 1,
   "pmag_tri_smooth": 0,
