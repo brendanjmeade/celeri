@@ -3089,7 +3089,6 @@ def get_strain_rate_displacements(
     lon_obs = np.deg2rad(lon_obs)
     lat_obs = latitude_to_colatitude(lat_obs)
     lat_obs = np.deg2rad(lat_obs)
-
     # Calculate displacements from homogeneous strain
     u_up = np.zeros(
         lon_obs.size
@@ -3118,7 +3117,7 @@ def get_block_strain_rate_to_velocities_partials(block, station, segment):
             block_centroid_lon, block_centroid_lat = get_block_centroid(
                 segment, strain_rate_block_idx[i]
             )
-
+            print([block_centroid_lon, block_centroid_lat])
             # Find stations on current block
             station_idx = np.where(station.block_label == strain_rate_block_idx[i])[0]
             stations_block_lon = station.lon[station_idx].to_numpy()
@@ -3165,17 +3164,17 @@ def get_block_strain_rate_to_velocities_partials(block, station, segment):
                 strain_rate_lon_lat=1,
             )
             block_strain_rate_operator[3 * station_idx, 3 * i] = vel_east_lon_lon
-            block_strain_rate_operator[3 * station_idx, 3 * i + 1] = vel_east_lat_lat
+            block_strain_rate_operator[3 * station_idx, 3 * i + 1] = -vel_east_lat_lat
             block_strain_rate_operator[3 * station_idx, 3 * i + 2] = vel_east_lon_lat
             block_strain_rate_operator[3 * station_idx + 1, 3 * i] = vel_north_lon_lon
             block_strain_rate_operator[3 * station_idx + 1, 3 * i + 1] = (
-                vel_north_lat_lat
+                -vel_north_lat_lat
             )
             block_strain_rate_operator[3 * station_idx + 1, 3 * i + 2] = (
                 vel_north_lon_lat
             )
             block_strain_rate_operator[3 * station_idx + 2, 3 * i] = vel_up_lon_lon
-            block_strain_rate_operator[3 * station_idx + 2, 3 * i + 1] = vel_up_lat_lat
+            block_strain_rate_operator[3 * station_idx + 2, 3 * i + 1] = -vel_up_lat_lat
             block_strain_rate_operator[3 * station_idx + 2, 3 * i + 2] = vel_up_lon_lat
     return block_strain_rate_operator, strain_rate_block_idx
 
@@ -4840,9 +4839,7 @@ def write_output(
 
     # Write all major variables to .pkl file in output folder
     if bool(command.pickle_save):
-        with open(
-            os.path.join(command.output_path, "output" + ".pkl"), "wb"
-        ) as f:
+        with open(os.path.join(command.output_path, "output" + ".pkl"), "wb") as f:
             pickle.dump([command, estimation, station, segment, block, meshes], f)
 
 
@@ -6003,13 +6000,14 @@ def latitude_to_colatitude(lat):
     """
     if lat.size == 1:  # Deal with the scalar case
         if lat >= 0:
-            lat = 90.0 - lat
+            colat = 90.0 - lat
         elif lat < 0:
-            lat = -90.0 - lat
+            colat = -90.0 - lat
     else:  # Deal with the array case
-        lat[np.where(lat >= 0)[0]] = 90.0 - lat[np.where(lat >= 0)[0]]
-        lat[np.where(lat < 0)[0]] = -90.0 - lat[np.where(lat < 0)[0]]
-    return lat
+        colat = np.zeros_like(lat)
+        colat[np.where(lat >= 0)[0]] = 90.0 - lat[np.where(lat >= 0)[0]]
+        colat[np.where(lat < 0)[0]] = -90.0 - lat[np.where(lat < 0)[0]]
+    return colat
 
 
 def get_transverse_projection(lon0, lat0):
