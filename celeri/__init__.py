@@ -69,6 +69,7 @@ from .celeri import (
     plot_rotation_components,
     plot_strain_rate_components_for_block,
     plot_segment_displacements,
+    get_newest_run_folder,
 )
 
 try:
