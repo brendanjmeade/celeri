@@ -1241,7 +1241,7 @@ def get_mesh_edge_elements(meshes: List):
         meshes[i].side_elements = sides
 
 
-def get_index(assembly, station, block, meshes):
+def get_index(assembly, station, block, mogi, meshes):
     # Create dictionary to store indices and sizes for operator building
     index = addict.Dict()
     index.n_stations = assembly.data.n_stations
@@ -1263,6 +1263,14 @@ def get_index(assembly, station, block, meshes):
     index.end_slip_rate_constraints_row = (
         index.start_slip_rate_constraints_row + index.n_slip_rate_constraints
     )
+    index.n_block_strain_components = 3 * np.sum(block.strain_rate_flag)
+    index.start_block_strain_col = index.end_block_col
+    index.end_block_strain_col = (
+        index.start_block_strain_col + index.n_block_strain_components
+    )
+    index.n_mogi = len(mogi)
+    index.start_mogi_col = index.end_block_strain_col
+    index.end_mogi_col = index.start_mogi_col + index.n_mogi
 
     index.n_tde_total = 0
     index.n_tde_constraints_total = 0
@@ -3099,10 +3107,11 @@ def get_block_strain_rate_to_velocities_partials(block, station, segment):
     Calculate strain partial derivatives assuming a strain centroid at the center of each block
     """
     strain_rate_block_idx = np.where(block.strain_rate_flag.to_numpy() > 0)[0]
+    # Allocate space. Zero width, if no blocks should have strain estimated, helps with indexing
+    block_strain_rate_operator = np.zeros(
+        (3 * len(station), 3 * strain_rate_block_idx.size)
+    )
     if strain_rate_block_idx.size > 0:
-        block_strain_rate_operator = np.zeros(
-            (3 * len(station), 3 * strain_rate_block_idx.size)
-        )
         for i in range(strain_rate_block_idx.size):
             # Find centroid of current block
             block_centroid_lon, block_centroid_lat = get_block_centroid(
@@ -3167,8 +3176,6 @@ def get_block_strain_rate_to_velocities_partials(block, station, segment):
             block_strain_rate_operator[3 * station_idx + 2, 3 * i] = vel_up_lon_lon
             block_strain_rate_operator[3 * station_idx + 2, 3 * i + 1] = vel_up_lat_lat
             block_strain_rate_operator[3 * station_idx + 2, 3 * i + 2] = vel_up_lon_lat
-    else:
-        block_strain_rate_operator = np.empty(0)
     return block_strain_rate_operator, strain_rate_block_idx
 
 
@@ -3612,8 +3619,10 @@ def get_h_matrices_for_tde_meshes(
 ######################################################################
 
 
-def assemble_and_solve_dense(command, assembly, operators, station, block, meshes):
-    index = get_index(assembly, station, block, meshes)
+def assemble_and_solve_dense(
+    command, assembly, operators, station, block, mogi, meshes
+):
+    index = get_index(assembly, station, block, mogi, meshes)
     estimation = addict.Dict()
     estimation.data_vector = get_data_vector(assembly, index, meshes)
     estimation.weighting_vector = get_weighting_vector(command, station, meshes, index)
