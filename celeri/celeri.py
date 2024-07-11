@@ -3162,6 +3162,9 @@ def get_block_strain_rate_to_velocities_partials(block, station, segment):
                 strain_rate_lat_lat=0,
                 strain_rate_lon_lat=1,
             )
+            # The sign convention established here (with negative signs on the lat_lat components) is that
+            # positive longitudinal strain is extensional, and
+            # positive shear strain is sinistral (counterclockwise)
             block_strain_rate_operator[3 * station_idx, 3 * i] = vel_east_lon_lon
             block_strain_rate_operator[3 * station_idx, 3 * i + 1] = -vel_east_lat_lat
             block_strain_rate_operator[3 * station_idx, 3 * i + 2] = vel_east_lon_lat
