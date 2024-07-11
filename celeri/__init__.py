@@ -70,6 +70,13 @@ from .celeri import (
     plot_strain_rate_components_for_block,
     plot_segment_displacements,
     get_newest_run_folder,
+    read_run,
+    get_default_plotting_dict,
+    plot_common_elements,
+    plot_vel_arrows_elements,
+    plot_vels,
+    plot_residuals,
+    plot_segment_rates,
 )
 
 try:
