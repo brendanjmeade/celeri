@@ -4772,7 +4772,7 @@ def write_output(
     # Write all major variables to .pkl file in output folder
     if bool(command.pickle_save):
         with open(
-            os.path.join(command.output_path, command.run_name + ".pkl"), "wb"
+            os.path.join(command.output_path, "output" + ".pkl"), "wb"
         ) as f:
             pickle.dump([command, estimation, station, segment, block, meshes], f)
 
