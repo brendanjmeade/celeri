@@ -3007,10 +3007,10 @@ def get_slip_rake_constraints(assembly, segment, block, command):
 
 def get_mogi_to_velocities_partials(mogi, station, command):
     """
-    Mogi volume change to station displacment operator
+    Mogi volume change to station displacement operator
     """
     if mogi.empty:
-        mogi_operator = np.empty(0)
+        mogi_operator = np.zeros((3*len(station), 0))
     else:
         poissons_ratio = command.material_mu / (
             2 * (command.material_lambda + command.material_mu)
