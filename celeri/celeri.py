@@ -1241,7 +1241,7 @@ def get_mesh_edge_elements(meshes: List):
         meshes[i].side_elements = sides
 
 
-def get_index(assembly, station, block, mogi, meshes):
+def get_index(assembly, station, block, meshes, mogi):
     # Create dictionary to store indices and sizes for operator building
     index = addict.Dict()
     index.n_stations = assembly.data.n_stations
@@ -1263,15 +1263,6 @@ def get_index(assembly, station, block, mogi, meshes):
     index.end_slip_rate_constraints_row = (
         index.start_slip_rate_constraints_row + index.n_slip_rate_constraints
     )
-    index.n_block_strain_components = 3 * np.sum(block.strain_rate_flag)
-    index.start_block_strain_col = index.end_block_col
-    index.end_block_strain_col = (
-        index.start_block_strain_col + index.n_block_strain_components
-    )
-    index.n_mogi = len(mogi)
-    index.start_mogi_col = index.end_block_strain_col
-    index.end_mogi_col = index.start_mogi_col + index.n_mogi
-
     index.n_tde_total = 0
     index.n_tde_constraints_total = 0
     for i in range(len(meshes)):
@@ -1411,6 +1402,16 @@ def get_index(assembly, station, block, mogi, meshes):
                             index.end_tde_constraint_row_eigen[i] = (
                                 index.end_tde_constraint_row_eigen[i - 1]
                             )
+    # Index for block strain
+    index.n_block_strain_components = 3 * np.sum(block.strain_rate_flag)
+    index.start_block_strain_col = index.end_tde_col[i]
+    index.end_block_strain_col = (
+        index.start_block_strain_col + index.n_block_strain_components
+    )
+    # Index for Mogi sources
+    index.n_mogi = len(mogi)
+    index.start_mogi_col = index.end_block_strain_col
+    index.end_mogi_col = index.start_mogi_col + index.n_mogi
 
     index.n_operator_rows = (
         2 * index.n_stations
@@ -3364,7 +3365,10 @@ def get_full_dense_operator(operators, meshes, index):
             + index.n_slip_rate_constraints
             + 2 * index.n_tde_total
             + index.n_tde_constraints_total,
-            3 * index.n_blocks + 2 * index.n_tde_total,
+            3 * index.n_blocks
+            + index.n_block_strain_components
+            + index.n_mogi
+            + 2 * index.n_tde_total,
         )
     )
 
@@ -3457,16 +3461,26 @@ def get_full_dense_operator(operators, meshes, index):
                 meshes[i].side_slip_idx,
                 :,
             ]
+    # Insert block strain operator
+    operator[
+        index.start_station_row : index.end_station_row,
+        index.start_block_strain_col : index.end_block_strain_col,
+    ] = operators.block_strain_rate_to_velocities[index.station_row_keep_index, :]
 
-        # Insert TDE coupling constraints into estimation operator
-        # The identity matrices were already inserted as part of the standard slip constraints,
-        # so here we can just insert the rotation-to-slip partials into the block rotation columns
-        # operator[
-        #     index.start_tde_coup_constraint_row[i] : index.end_tde_coup_constraint_row[
-        #         i
-        #     ],
-        #     index.start_block_col : index.end_block_col,
-        # ] = operators.tde_coupling_constraints[i]
+    # Insert Mogi source operators
+    operator[
+        index.start_station_row : index.end_station_row,
+        index.start_mogi_col : index.end_mogi_col,
+    ] = operators.mogi_to_velocities[index.station_row_keep_index, :]
+    # Insert TDE coupling constraints into estimation operator
+    # The identity matrices were already inserted as part of the standard slip constraints,
+    # so here we can just insert the rotation-to-slip partials into the block rotation columns
+    # operator[
+    #     index.start_tde_coup_constraint_row[i] : index.end_tde_coup_constraint_row[
+    #         i
+    #     ],
+    #     index.start_block_col : index.end_block_col,
+    # ] = operators.tde_coupling_constraints[i]
 
     return operator
 
@@ -3620,9 +3634,9 @@ def get_h_matrices_for_tde_meshes(
 
 
 def assemble_and_solve_dense(
-    command, assembly, operators, station, block, mogi, meshes
+    command, assembly, operators, station, block, meshes, mogi
 ):
-    index = get_index(assembly, station, block, mogi, meshes)
+    index = get_index(assembly, station, block, meshes, mogi)
     estimation = addict.Dict()
     estimation.data_vector = get_data_vector(assembly, index, meshes)
     estimation.weighting_vector = get_weighting_vector(command, station, meshes, index)
@@ -3655,6 +3669,7 @@ def post_process_estimation(
         station (pd.DataFrame): GPS station data
         idx (Dict): Indices and counts of data and array sizes
     """
+    # Convert rotation vectors to Euler poles
 
     estimation.predictions = estimation.operator @ estimation.state_vector
     estimation.vel = estimation.predictions[0 : 2 * index.n_stations]
@@ -3695,6 +3710,24 @@ def post_process_estimation(
     estimation.dip_slip_rates = estimation.slip_rates[1::3]
     estimation.tensile_slip_rates = estimation.slip_rates[2::3]
 
+    # Extract estimated block strain rates
+    estimation.block_strain_rates = estimation.state_vector[
+        3 * index.n_blocks
+        + 2 * index.n_tde_total : 3 * index.n_blocks
+        + 2 * index.n_tde_total
+        + index.n_block_strain_components
+    ]
+
+    # Extract Mogi parameters
+    estimation.mogi_volume_change_rates = estimation.state_vector[
+        +3 * index.n_blocks
+        + 2 * index.n_tde_total
+        + index.n_block_strain_components : +3 * index.n_blocks
+        + 2 * index.n_tde_total
+        + index.n_block_strain_components
+        + index.n_mogi
+    ]
+
     # Calculate rotation only velocities
     estimation.vel_rotation = (
         operators.rotation_to_velocities[index.station_row_keep_index, :]
@@ -3714,8 +3747,20 @@ def post_process_estimation(
     estimation.north_vel_elastic_segment = estimation.vel_elastic_segment[1::2]
 
     # TODO: Calculate block strain rate velocities
-    estimation.east_vel_block_strain_rate = np.zeros(len(station))
-    estimation.north_vel_block_strain_rate = np.zeros(len(station))
+    estimation.vel_block_strain_rate = (
+        operators.block_strain_rate_to_velocities[index.station_row_keep_index, :]
+        @ estimation.block_strain_rates
+    )
+    estimation.east_vel_block_strain_rate = estimation.vel_block_strain_rate[0::2]
+    estimation.north_vel_block_strain_rate = estimation.vel_block_strain_rate[1::2]
+
+    # Calculate Mogi source velocities
+    estimation.vel_mogi = (
+        operators.mogi_to_velocities[index.station_row_keep_index, :]
+        @ estimation.mogi_volume_change_rates
+    )
+    estimation.east_vel_mogi = estimation.vel_mogi[0::2]
+    estimation.north_vel_mogi = estimation.vel_mogi[1::2]
 
     # Calculate TDE velocities
     estimation.vel_tde = np.zeros(2 * index.n_stations)
@@ -4712,6 +4757,7 @@ def write_output(
     segment: pd.DataFrame,
     block: pd.DataFrame,
     meshes: Dict,
+    mogi=[],
 ):
     # Add model velocities to station dataframe and write .csv
     station["model_east_vel"] = estimation.east_vel
@@ -4729,6 +4775,8 @@ def write_output(
     station["model_north_vel_block_strain_rate"] = (
         estimation.north_vel_block_strain_rate
     )
+    station["model_east_vel_mogi"] = estimation.east_vel_mogi
+    station["model_north_vel_mogi"] = estimation.north_vel_mogi
     station_output_file_name = command.output_path + "/" + "model_station.csv"
     station.to_csv(station_output_file_name, index=False, float_format="%0.4f")
 
@@ -4743,6 +4791,18 @@ def write_output(
     segment.to_csv(segment_output_file_name, index=False, float_format="%0.4f")
 
     # TODO: Add rotation rates and block strain rate block dataframe and write .csv
+    # block["euler_lon"] =
+    # block["euler_lon_sig"] =
+    # block["euler_lat"] =
+    # block["euler_lat_sig"] =
+    # block["rotation_rate"]=
+    # block["rotation_rate_sig"]=
+    # block["rotation_flag"]=
+    # block["apriori_flag"]=
+
+    # Add volume change rates to Mogi source dataframe
+    # mogi["volume_change"] = estimation.mogi_volume_change_rates
+    # mogi["volume_change_sig"] = estimation.mogi_volume_change_rates
 
     # Construct mesh geometry dataframe
     if command.solve_type != "dense_no_meshes":
