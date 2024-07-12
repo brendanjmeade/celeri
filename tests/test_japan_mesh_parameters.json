@@ -1,0 +1,30 @@
+[
+    {
+        "mesh_filename": "./tests/test_japan_nankai.msh",
+        "smoothing_weight": 7e14,
+        "n_eigen": 20,
+        "top_slip_rate_constraint": 0,
+        "bot_slip_rate_constraint": 1,
+        "side_slip_rate_constraint": 0,
+        "a_priori_slip_filename": "",
+        "ss_slip_constraint_rate": []
+    },
+    {
+        "mesh_filename": "./tests/test_japan_japan.msh",
+        "smoothing_weight": 1e14,
+        "n_eigen": 20,
+        "top_slip_rate_constraint": 0,
+        "bot_slip_rate_constraint": 1,
+        "side_slip_rate_constraint": 0,
+        "a_priori_slip_filename": ""
+    },
+    {
+        "mesh_filename": "./tests/test_japan_sagami.msh",
+        "smoothing_weight": 1e14,
+        "n_eigen": 20,
+        "top_slip_rate_constraint": 0,
+        "bot_slip_rate_constraint": 1,
+        "side_slip_rate_constraint": 1,
+        "a_priori_slip_filename": ""
+    }
+]

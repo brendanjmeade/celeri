@@ -1,0 +1,4 @@
+name,lon,lat,depth,volume_change_flag,volume_change,volume_change_sig
+Izu,139.521,34.067,4.2,0,0,0
+Aira,130.667,31.667,10,0,0,0
+Usu,140.843,42.541,10,0,0,0
