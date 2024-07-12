@@ -1273,6 +1273,31 @@ def get_index(assembly, station, block, meshes, mogi):
     )
     index.n_tde_total = 0
     index.n_tde_constraints_total = 0
+    # A bunch of declarations of TDE-related indices as arrays, otherwise they're dicts
+    index.n_tde = np.zeros((len(meshes),), dtype=int)
+    index.n_tde_constraints = np.zeros((len(meshes),), dtype=int)
+    index.start_tde_col = np.zeros((len(meshes),), dtype=int)
+    index.end_tde_col = np.zeros((len(meshes),), dtype=int)
+    index.start_tde_smoothing_row = np.zeros((len(meshes),), dtype=int)
+    index.end_tde_smoothing_row = np.zeros((len(meshes),), dtype=int)
+    index.start_tde_constraint_row = np.zeros((len(meshes),), dtype=int)
+    index.end_tde_constraint_row = np.zeros((len(meshes),), dtype=int)
+    index.start_tde_top_constraint_row = np.zeros((len(meshes),), dtype=int)
+    index.end_tde_top_constraint_row = np.zeros((len(meshes),), dtype=int)
+    index.start_tde_bot_constraint_row = np.zeros((len(meshes),), dtype=int)
+    index.end_tde_bot_constraint_row = np.zeros((len(meshes),), dtype=int)
+    index.start_tde_side_constraint_row = np.zeros((len(meshes),), dtype=int)
+    index.end_tde_side_constraint_row = np.zeros((len(meshes),), dtype=int)
+    index.start_tde_coup_constraint_row = np.zeros((len(meshes),), dtype=int)
+    index.end_tde_coup_constraint_row = np.zeros((len(meshes),), dtype=int)
+    index.start_tde_ss_slip_constraint_row = np.zeros((len(meshes),), dtype=int)
+    index.end_tde_ss_slip_constraint_row = np.zeros((len(meshes),), dtype=int)
+    index.start_tde_ds_slip_constraint_row = np.zeros((len(meshes),), dtype=int)
+    index.end_tde_ds_slip_constraint_row = np.zeros((len(meshes),), dtype=int)
+    index.start_tde_col_eigen = np.zeros((len(meshes),), dtype=int)
+    index.end_tde_col_eigen = np.zeros((len(meshes),), dtype=int)
+    index.start_tde_constraint_row_eigen = np.zeros((len(meshes),), dtype=int)
+    index.end_tde_constraint_row_eigen = np.zeros((len(meshes),), dtype=int)
     for i in range(len(meshes)):
         index.n_tde[i] = meshes[i].n_tde
         index.n_tde_total += index.n_tde[i]
@@ -1412,7 +1437,7 @@ def get_index(assembly, station, block, meshes, mogi):
                             )
     # Index for block strain
     index.n_block_strain_components = 3 * np.sum(block.strain_rate_flag)
-    index.start_block_strain_col = index.end_tde_col[i]
+    index.start_block_strain_col = index.end_tde_col[-1]
     index.end_block_strain_col = (
         index.start_block_strain_col + index.n_block_strain_components
     )
@@ -3018,7 +3043,7 @@ def get_mogi_to_velocities_partials(mogi, station, command):
     Mogi volume change to station displacement operator
     """
     if mogi.empty:
-        mogi_operator = np.zeros((3*len(station), 0))
+        mogi_operator = np.zeros((3 * len(station), 0))
     else:
         poissons_ratio = command.material_mu / (
             2 * (command.material_lambda + command.material_mu)
