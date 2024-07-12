@@ -1,7 +1,10 @@
 import numpy as np
+import os
+
 from celeri.celeri_closure import run_block_closure, get_segment_labels, Polygon
 
 import celeri
+
 
 def test_closure():
     # First test a simple two triangle geometry.
@@ -41,6 +44,7 @@ def test_closure():
     assert closure_meridian.polygons[0].contains_point(np.array([2]), np.array([2]))
     assert closure_meridian.polygons[2].contains_point(np.array([8]), np.array([8]))
     assert closure_meridian.polygons[1].contains_point(np.array([50]), np.array([50]))
+
 
 def test_interior_point_edge_crossing():
     # The first edge examined will be the one from (0,0) to (10,0). The
@@ -93,9 +97,8 @@ def test_global_closure():
     Right now all this does is check for the correct number of blocks and
     against one set of polygon edge indices
     """
-    import os
 
-    command_file_name = "./data/command/global_command_for_pytest.json"
+    command_file_name = "./tests/test_closure_command.json"
     command = celeri.get_command(command_file_name)
     logger = celeri.get_logger(command)
     segment, block, meshes, station, mogi, sar = celeri.read_data(command)
@@ -112,7 +115,7 @@ def test_global_closure():
             (all_edge_idxs, np.array(closure.polygons[i].edge_idxs))
         )
 
-    with open("./tests/global_closure_test_data.npy", "rb") as f:
+    with open("./tests/test_closure_arrays.npy", "rb") as f:
         all_edge_idxs_stored = np.load(f)
 
     assert np.allclose(all_edge_idxs, all_edge_idxs_stored)
