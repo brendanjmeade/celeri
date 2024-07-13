@@ -28,5 +28,5 @@ jobs:
         pip install --no-use-pep517 -e .
     - name: Test
       run: |
-        pytest ./tests/test_closure.py ./tests/test_okada_equals_cutde.py ./tests/test_western_north_america_dense.py
+        pytest ./tests/test_closure.py ./tests/test_okada_equals_cutde.py ./tests/test_western_north_america_dense.py ./tests/test_japan_dense.py
 
