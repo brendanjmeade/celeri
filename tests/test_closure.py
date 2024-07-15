@@ -100,7 +100,7 @@ def test_global_closure():
 
     command_file_name = "./tests/test_closure_command.json"
     command = celeri.get_command(command_file_name)
-    logger = celeri.get_logger(command)
+    # logger = celeri.get_logger(command)
     segment, block, meshes, station, mogi, sar = celeri.read_data(command)
 
     station = celeri.process_station(station, command)

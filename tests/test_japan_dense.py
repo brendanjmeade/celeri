@@ -8,7 +8,7 @@ def test_japan_dense():
     command_file_name = "./tests/test_japan_command.json"
 
     command = celeri.get_command(command_file_name)
-    celeri.create_output_folder(command)
+    # celeri.create_output_folder(command)
     # logger = celeri.get_logger(command)
     segment, block, meshes, station, mogi, sar = celeri.read_data(command)
     station = celeri.process_station(station, command)
