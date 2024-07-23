@@ -28,7 +28,7 @@
     "a_priori_slip_filename": ""
   },
   {
-    "mesh_filename": "../data/mesh/ribbon_mesh1.msh",
+    "mesh_filename": "../data/mesh/japan_new380_adjusted_segment_ribbonmesh_ribbonmesh1.msh",
     "smoothing_weight": 1.0,
     "n_eigen": 10,
     "top_slip_rate_constraint": 0,
@@ -48,7 +48,7 @@
     "ds_slip_constraint_weight": []
   },
   {
-    "mesh_filename": "../data/mesh/ribbon_mesh2.msh",
+    "mesh_filename": "../data/mesh/japan_new380_adjusted_segment_ribbonmesh_ribbonmesh2.msh",
     "smoothing_weight": 1.0,
     "n_eigen": 10,
     "top_slip_rate_constraint": 0,
