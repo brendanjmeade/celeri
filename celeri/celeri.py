@@ -6366,7 +6366,7 @@ def plot_fault_geometry(p, segment, meshes):
         y_edge = y_coords[meshes[i].ordered_edge_nodes[:, 0]]
         x_edge = np.append(x_edge, x_coords[meshes[0].ordered_edge_nodes[0, 0]])
         y_edge = np.append(y_edge, y_coords[meshes[0].ordered_edge_nodes[0, 0]])
-        plt.plot(x_edge, y_edge, color="red", linewidth=1)
+        plt.plot(x_edge, y_edge, color="red", linewidth=1, linestyle='--')
 
     for i in range(len(segment)):
         if segment.patch_file_name[i] == -1:
