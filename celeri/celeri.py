@@ -6314,6 +6314,76 @@ def plot_segment_rates(p, segment, estimation, rate_type, rate_scale=1):
     ).get_frame().set_boxstyle("Square")
 
 
+def plot_fault_geometry(p, segment, meshes):
+    """
+    Plots the fault geometry (segments and triangular dislocation element meshes) on a map.
+
+    The function creates a plot with segments color-coded and line width scaled based on the slip rates.
+    The colors represent:
+    - Black : Standard segments
+    - Red : Segments replaced by triangular dislocation element meshes
+
+    Parameters:
+    -----------
+    p : object
+        An object containing plot configurations such as figure size, fonts, colors, and map boundaries.
+    segment : DataFrame
+        A pandas DataFrame containing segment data with columns 'lon1', 'lon2', 'lat1', and 'lat2' for
+        the start and end coordinates of each segment.
+    meshes : Dict
+
+    Returns:
+    --------
+    None
+    """
+    plt.figure(figsize=p.FIGSIZE_VECTORS)
+
+    plot_common_elements(p, segment, p.LON_RANGE, p.LAT_RANGE)
+
+    plt.fill(
+        p.WORLD_BOUNDARIES["lon"],
+        p.WORLD_BOUNDARIES["lat"],
+        color=p.LAND_COLOR,
+        linewidth=p.LAND_LINEWIDTH,
+        zorder=p.LAND_ZORDER,
+    )
+
+    for i in range(len(meshes)):
+        x_coords = meshes[i].meshio_object.points[:, 0]
+        y_coords = meshes[i].meshio_object.points[:, 1]
+        vertex_array = np.asarray(meshes[i].verts)
+
+        ax = plt.gca()
+        xy = np.c_[x_coords, y_coords]
+        verts = xy[vertex_array]
+        pc = matplotlib.collections.PolyCollection(
+            verts, edgecolor="none", alpha=0.2, facecolor="red"
+        )
+        ax.add_collection(pc)
+
+        # Add mesh edge
+        x_edge = x_coords[meshes[i].ordered_edge_nodes[:, 0]]
+        y_edge = y_coords[meshes[i].ordered_edge_nodes[:, 0]]
+        x_edge = np.append(x_edge, x_coords[meshes[0].ordered_edge_nodes[0, 0]])
+        y_edge = np.append(y_edge, y_coords[meshes[0].ordered_edge_nodes[0, 0]])
+        plt.plot(x_edge, y_edge, color="red", linewidth=1)
+
+    for i in range(len(segment)):
+        if segment.patch_file_name[i] == -1:
+            plt.plot(
+                [segment.lon1[i], segment.lon2[i]],
+                [segment.lat1[i], segment.lat2[i]],
+                "-k",
+                linewidth=1,
+            )
+        else:
+            plt.plot(
+                [segment.lon1[i], segment.lon2[i]],
+                [segment.lat1[i], segment.lat2[i]],
+                "-r",
+                linewidth=1,
+            )
+
 
 ################################################################################################
 #                                                                                              #

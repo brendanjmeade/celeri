@@ -77,6 +77,7 @@ from .celeri import (
     plot_vels,
     plot_residuals,
     plot_segment_rates,
+    plot_fault_geometry,
 )
 
 try:
