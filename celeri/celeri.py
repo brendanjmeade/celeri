@@ -298,6 +298,44 @@ def get_new_folder_name():
     return new_folder_name
 
 
+def get_default_mesh_parameters():
+    default_mesh_parameters = {"mesh_filename": "",
+        "smoothing_weight": 1e0,
+        "n_modes_strike_slip": 10,
+        "n_modes_dip_slip": 10,
+        "top_slip_rate_constraint": 0,
+        "bot_slip_rate_constraint": 0,
+        "side_slip_rate_constraint": 0,
+        "top_slip_rate_weight": 1e0,
+        "bot_slip_rate_weight": 1e0,
+        "side_slip_rate_weight": 1e0,
+        "a_priori_slip_filename": "",
+        "ss_slip_constraint_idx": [],
+        "ss_slip_constraint_rate": [],
+        "ss_slip_constraint_sig": [],
+        "ss_slip_constraint_weight": [],
+        "ds_slip_constraint_idx": [],
+        "ds_slip_constraint_rate": [],
+        "ds_slip_constraint_sig": [],
+        "ds_slip_constraint_weight": [],
+        "coupling_constraint_idx": [],
+        "coupling_constraint_frac": [1.0],
+        "coupling_constraint_sigma": [1.0],
+        "coupling_constraint_weight": [1e0],
+        "mesh_tde_bound": [1],
+        "mesh_tde_slip_rate_bound_lower_ss": ["-inf"],
+        "mesh_tde_slip_rate_bound_upper_ss": ["inf"],
+        "mesh_tde_slip_rate_bound_lower_ds": [0],
+        "mesh_tde_slip_rate_bound_upper_ds": [1],
+        "mesh_tde_coupling_bound": [0],
+        "mesh_tde_coupling_bound_lower_ss": ["-inf"],
+        "mesh_tde_coupling_upper_ss": ["inf"],
+        "mesh_tde_coupling_lower_ds": [0],
+        "mesh_tde_coupling_upper_ds": [1],
+        "mesh_tde_modes_bc_weight": 1e0}
+    return default_mesh_parameters
+
+
 def read_data(command: Dict):
     logger.info("Reading data files")
     # Read segment data
@@ -420,26 +458,28 @@ def read_data(command: Dict):
                 # Assign all mesh parameters to this mesh
                 for key, value in mesh_param[i].items():
                     meshes[i][key] = value
+
                 # Assign empty arrays for any unspecified parameters
-                mesh_default = {
-                    "smoothing_weight": 1e0,
-                    "n_eigen": 10,
-                    "top_slip_rate_constraint": 0,
-                    "bot_slip_rate_constraint": 0,
-                    "side_slip_rate_constraint": 0,
-                    "top_slip_rate_weight": 1,
-                    "bot_slip_rate_weight": 1,
-                    "side_slip_rate_weight": 1,
-                    "coupling_constraint_idx": [],
-                    "ss_slip_constraint_idx": [],
-                    "ss_slip_constraint_rate": [],
-                    "ss_slip_constraint_sig": [],
-                    "ss_slip_constraint_weight": [],
-                    "ds_slip_constraint_idx": [],
-                    "ds_slip_constraint_rate": [],
-                    "ds_slip_constraint_sig": [],
-                    "ds_slip_constraint_weight": [],
-                }
+                mesh_default = get_default_mesh_parameters()
+                # mesh_default = {
+                #     "smoothing_weight": 1e0,
+                #     "n_eigen": 10,
+                #     "top_slip_rate_constraint": 0,
+                #     "bot_slip_rate_constraint": 0,
+                #     "side_slip_rate_constraint": 0,
+                #     "top_slip_rate_weight": 1,
+                #     "bot_slip_rate_weight": 1,
+                #     "side_slip_rate_weight": 1,
+                #     "coupling_constraint_idx": [],
+                #     "ss_slip_constraint_idx": [],
+                #     "ss_slip_constraint_rate": [],
+                #     "ss_slip_constraint_sig": [],
+                #     "ss_slip_constraint_weight": [],
+                #     "ds_slip_constraint_idx": [],
+                #     "ds_slip_constraint_rate": [],
+                #     "ds_slip_constraint_sig": [],
+                #     "ds_slip_constraint_weight": [],
+                # }
 
                 for key, value in mesh_default.items():
                     if key not in meshes[i]:

@@ -78,6 +78,7 @@ from .celeri import (
     plot_residuals,
     plot_segment_rates,
     plot_fault_geometry,
+    get_default_mesh_parameters,
 )
 
 try:
