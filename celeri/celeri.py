@@ -455,6 +455,7 @@ def read_data(command: Dict):
                 meshes[i].strike = wrap2360(-np.rad2deg(azimuth))
                 meshes[i].dip = 90 - np.rad2deg(elevation)
                 meshes[i].dip_flag = meshes[i].dip != 90
+
                 # Assign all mesh parameters to this mesh
                 for key, value in mesh_param[i].items():
                     meshes[i][key] = value
@@ -501,6 +502,12 @@ def read_data(command: Dict):
                 meshes[i].areas = triangle_area(triangle_vertex_array)
 
                 get_mesh_edge_elements(meshes)
+
+                # EIGEN: Calculate derived eigenmode parameters
+                # Set n_modes to the greater of strike-slip or dip slip modes
+                meshes[i].n_modes = np.max([meshes[i].n_modes_strike_slip, meshes[i].n_modes_dip_slip])
+                meshes[i].n_modes_total = meshes[i].n_modes_strike_slip + meshes[i].n_modes_dip_slip
+
                 logger.success(f"Read: {mesh_param[i]['mesh_filename']}")
             get_mesh_perimeter(meshes)
 
