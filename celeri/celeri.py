@@ -13,6 +13,7 @@ import pytest
 import os
 import matplotlib.pyplot as plt
 import matplotlib.collections
+import matplotlib.path
 import warnings
 import shutil
 import sys
@@ -5926,7 +5927,6 @@ def get_default_plotting_dict(command, estimation, station):
     vel_scale = round(vel_scale / 5) * 5
 
     p = addict.Dict()
-    p.WORLD_BOUNDARIES = sio.loadmat("WorldHiVectors.mat")
     p.FIGSIZE_VECTORS = (12, 6)
     p.FONTSIZE = 16
     p.LON_RANGE = command.lon_range
@@ -5962,6 +5962,32 @@ def get_default_plotting_dict(command, estimation, station):
     p.SEGMENT_LINE_WIDTH_INNER = 1.0
     p.SEGMENT_LINE_COLOR_OUTER = "k"
     p.SEGMENT_LINE_COLOR_INNER = "w"
+
+    # Read coastlines and trim to within map boundaries
+
+    WORLD_BOUNDARIES = sio.loadmat("WorldHiVectors.mat")
+
+    # Buffer around map frame
+    shift = 5
+    # Use matplotlib path tool to make a rectangle
+    maprect = matplotlib.path.Path(
+        [
+            (p.LON_RANGE[0] - shift, p.LAT_RANGE[0] - shift),
+            (p.LON_RANGE[1] + shift, p.LAT_RANGE[0] - shift),
+            (p.LON_RANGE[1] + shift, p.LAT_RANGE[1] + shift),
+            (p.LON_RANGE[0] - shift, p.LAT_RANGE[1] + shift),
+        ]
+    )
+    lon = WORLD_BOUNDARIES["lon"]
+    lat = WORLD_BOUNDARIES["lat"]
+    coastpoints = np.array((lon[:, 0], lat[:, 0])).T
+    # Find coast points within rectangle
+    coast_idx = maprect.contains_points(coastpoints)
+    # Make sure NaNs that separate land bodies are intact
+    coast_idx[np.isnan(lon[:, 0])] = True
+    # Add coordinates to dict
+    p.coastlon = coastpoints[coast_idx, 0]
+    p.coastlat = coastpoints[coast_idx, 1]
     return p
 
 
@@ -6074,8 +6100,8 @@ def plot_vel_arrows_elements(p, lon, lat, east_velocity, north_velocity, arrow_s
 
     # Draw land
     plt.fill(
-        p.WORLD_BOUNDARIES["lon"],
-        p.WORLD_BOUNDARIES["lat"],
+        p.coastlon,
+        p.coastlat,
         color=p.LAND_COLOR,
         linewidth=p.LAND_LINEWIDTH,
         zorder=p.LAND_ZORDER,
@@ -6259,8 +6285,8 @@ def plot_segment_rates(p, segment, estimation, rate_type, rate_scale=1):
     plot_common_elements(p, segment, p.LON_RANGE, p.LAT_RANGE)
 
     plt.fill(
-        p.WORLD_BOUNDARIES["lon"],
-        p.WORLD_BOUNDARIES["lat"],
+        p.coastlon,
+        p.coastlat,
         color=p.LAND_COLOR,
         linewidth=p.LAND_LINEWIDTH,
         zorder=p.LAND_ZORDER,
@@ -6388,8 +6414,8 @@ def plot_fault_geometry(p, segment, meshes):
     plot_common_elements(p, segment, p.LON_RANGE, p.LAT_RANGE)
 
     plt.fill(
-        p.WORLD_BOUNDARIES["lon"],
-        p.WORLD_BOUNDARIES["lat"],
+        p.coastlon,
+        p.coastlat,
         color=p.LAND_COLOR,
         linewidth=p.LAND_LINEWIDTH,
         zorder=p.LAND_ZORDER,
@@ -6413,7 +6439,7 @@ def plot_fault_geometry(p, segment, meshes):
         y_edge = y_coords[meshes[i].ordered_edge_nodes[:, 0]]
         x_edge = np.append(x_edge, x_coords[meshes[0].ordered_edge_nodes[0, 0]])
         y_edge = np.append(y_edge, y_coords[meshes[0].ordered_edge_nodes[0, 0]])
-        plt.plot(x_edge, y_edge, color="red", linewidth=1, linestyle='--')
+        plt.plot(x_edge, y_edge, color="red", linewidth=1, linestyle="--")
 
     for i in range(len(segment)):
         if segment.patch_file_name[i] == -1:
