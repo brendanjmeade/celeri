@@ -2,8 +2,8 @@
     {
         "mesh_filename": "../data/mesh/nankai.msh",
         "smoothing_weight": 7e14,
-        "n_modes_strike_slip": 20,
-        "n_modes_dip_slip": 20,
+        "n_modes_strike_slip": 5,
+        "n_modes_dip_slip": 5,
         "top_slip_rate_constraint": 0,
         "bot_slip_rate_constraint": 1,
         "side_slip_rate_constraint": 0,
@@ -43,8 +43,8 @@
     {
         "mesh_filename": "../data/mesh/japan.msh",
         "smoothing_weight": 1e14,
-        "n_modes_strike_slip": 20,
-        "n_modes_dip_slip": 20,
+        "n_modes_strike_slip": 5,
+        "n_modes_dip_slip": 5,
         "top_slip_rate_constraint": 0,
         "bot_slip_rate_constraint": 1,
         "side_slip_rate_constraint": 0,
@@ -84,8 +84,8 @@
     {
         "mesh_filename": "../data/mesh/sagami.msh",
         "smoothing_weight": 1e14,
-        "n_modes_strike_slip": 20,
-        "n_modes_dip_slip": 20,
+        "n_modes_strike_slip": 5,
+        "n_modes_dip_slip": 5,
         "top_slip_rate_constraint": 0,
         "bot_slip_rate_constraint": 1,
         "side_slip_rate_constraint": 1,
