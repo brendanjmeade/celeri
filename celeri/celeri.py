@@ -514,8 +514,9 @@ def read_data(command: Dict):
                 )
 
                 logger.success(f"Read: {mesh_param[i]['mesh_filename']}")
-            get_mesh_perimeter(meshes)
             get_mesh_edge_elements(meshes)
+            get_mesh_perimeter(meshes)
+            
 
     # Read station data
     if (
