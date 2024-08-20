@@ -300,7 +300,8 @@ def get_new_folder_name():
 
 
 def get_default_mesh_parameters():
-    default_mesh_parameters = {"mesh_filename": "",
+    default_mesh_parameters = {
+        "mesh_filename": "",
         "smoothing_weight": 1e0,
         "n_modes_strike_slip": 10,
         "n_modes_dip_slip": 10,
@@ -333,7 +334,8 @@ def get_default_mesh_parameters():
         "mesh_tde_coupling_upper_ss": ["inf"],
         "mesh_tde_coupling_lower_ds": [0],
         "mesh_tde_coupling_upper_ds": [1],
-        "mesh_tde_modes_bc_weight": 1e0}
+        "mesh_tde_modes_bc_weight": 1e0,
+    }
     return default_mesh_parameters
 
 
@@ -502,14 +504,17 @@ def read_data(command: Dict):
                 triangle_vertex_array[:, 2, 2] = meshes[i].z3
                 meshes[i].areas = triangle_area(triangle_vertex_array)
 
-                get_mesh_edge_elements(meshes)
-
                 # EIGEN: Calculate derived eigenmode parameters
                 # Set n_modes to the greater of strike-slip or dip slip modes
-                meshes[i].n_modes = np.max([meshes[i].n_modes_strike_slip, meshes[i].n_modes_dip_slip])
-                meshes[i].n_modes_total = meshes[i].n_modes_strike_slip + meshes[i].n_modes_dip_slip
+                meshes[i].n_modes = np.max(
+                    [meshes[i].n_modes_strike_slip, meshes[i].n_modes_dip_slip]
+                )
+                meshes[i].n_modes_total = (
+                    meshes[i].n_modes_strike_slip + meshes[i].n_modes_dip_slip
+                )
 
                 logger.success(f"Read: {mesh_param[i]['mesh_filename']}")
+            get_mesh_edge_elements(meshes)
             get_mesh_perimeter(meshes)
 
     # Read station data
@@ -1213,6 +1218,10 @@ def get_mesh_edge_elements(meshes: List):
         coords = meshes[i].meshio_object.points
         vertices = meshes[i].verts
 
+        # Get element centroid depths
+        el_depths = coords[vertices, 2]
+        centroid_depths = np.mean(el_depths, axis=1)
+
         # Arrays of all element side node pairs
         side_1 = np.sort(np.vstack((vertices[:, 0], vertices[:, 1])).T, 1)
         side_2 = np.sort(np.vstack((vertices[:, 1], vertices[:, 2])).T, 1)
@@ -1267,6 +1276,20 @@ def get_mesh_edge_elements(meshes: List):
         tops[side_1_in_edge_idx[top1]] = True
         tops[side_2_in_edge_idx[top2]] = True
         tops[side_3_in_edge_idx[top3]] = True
+        # Make sure elements are really shallow
+        # Depending on element shapes, some side elements can satisfy the depth difference criterion
+        depth_count, depth_bins = np.histogram(centroid_depths[tops], bins="doane")
+        depth_bin_min = depth_bins[0:-1]
+        depth_bin_max = depth_bins[1:]
+        bin_std = np.std(depth_bins)
+        zero_idx = np.where(depth_count == 0)[0]
+        if len(zero_idx) > 0:
+            if (
+                np.abs(depth_bin_max[zero_idx[0]] - depth_bin_min[zero_idx[-1] + 1])
+                > 10
+            ):
+                tops[centroid_depths < depth_bins[zero_idx[0]]] = False
+        # Assign in to meshes dict
         meshes[i].top_elements = tops
 
         # Bottom elements are those where the depth difference between the non-edge node
@@ -1285,6 +1308,17 @@ def get_mesh_edge_elements(meshes: List):
         bots[side_1_in_edge_idx[bot1]] = True
         bots[side_2_in_edge_idx[bot2]] = True
         bots[side_3_in_edge_idx[bot3]] = True
+        # Make sure elements are really deep
+        # Depending on element shapes, some side elements can satisfy the depth difference criterion
+        depth_count, depth_bins = np.histogram(centroid_depths[bots], bins="doane")
+        depth_bin_min = depth_bins[0:-1]
+        depth_bin_max = depth_bins[1:]
+        bin_std = np.std(depth_bins)
+        zero_idx = np.where(depth_count == 0)[0]
+        if len(zero_idx) > 0:
+            if abs(depth_bin_min[zero_idx[-1]] - depth_bin_max[zero_idx[0] - 1]) > 10:
+                bots[centroid_depths > depth_bin_min[zero_idx[-1]]] = False
+        # Assign in to meshes dict
         meshes[i].bot_elements = bots
 
         # Side elements are a set difference between all edges and tops, bottoms
@@ -2700,9 +2734,9 @@ def get_tde_slip_rate_constraints(meshes: List, operators: Dict):
                 np.asarray(meshes[i].coupling_constraint_idx)
             )
             start_row += end_row
-            end_row += len(meshes[i].coupling_constraint_idx)
+            end_row += 2 * len(meshes[i].coupling_constraint_idx)
             tde_slip_rate_constraints[start_row:end_row, meshes[i].coup_idx] = np.eye(
-                len(meshes[i].coupling_constraint_idx)
+                2 * len(meshes[i].coupling_constraint_idx)
             )
         if len(meshes[i].ss_slip_constraint_idx) > 0:
             ss_idx = get_2component_index(np.asarray(meshes[i].ss_slip_constraint_idx))
@@ -5626,7 +5660,13 @@ def plot_meshes(meshes: List, fill_value: np.array, ax):
         pc = matplotlib.collections.PolyCollection(
             verts, edgecolor="none", cmap="rainbow"
         )
-        pc.set_array(fill_value)
+        if i == 0:
+            fill_start = 0
+            fill_end = meshes[i].n_tde
+        else:
+            fill_start = fill_end
+            fill_end = fill_start + meshes[i].n_tde
+        pc.set_array(fill_value[fill_start:fill_end])
         ax.add_collection(pc)
         ax.autoscale()
         plt.colorbar(pc, label="slip (mm/yr)")
