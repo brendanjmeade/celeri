@@ -516,7 +516,6 @@ def read_data(command: Dict):
                 logger.success(f"Read: {mesh_param[i]['mesh_filename']}")
             get_mesh_edge_elements(meshes)
             get_mesh_perimeter(meshes)
-            
 
     # Read station data
     if (
@@ -2735,9 +2734,9 @@ def get_tde_slip_rate_constraints(meshes: List, operators: Dict):
                 np.asarray(meshes[i].coupling_constraint_idx)
             )
             start_row += end_row
-            end_row += len(meshes[i].coupling_constraint_idx)
+            end_row += 2 * len(meshes[i].coupling_constraint_idx)
             tde_slip_rate_constraints[start_row:end_row, meshes[i].coup_idx] = np.eye(
-                len(meshes[i].coupling_constraint_idx)
+                2 * len(meshes[i].coupling_constraint_idx)
             )
         if len(meshes[i].ss_slip_constraint_idx) > 0:
             ss_idx = get_2component_index(np.asarray(meshes[i].ss_slip_constraint_idx))
