@@ -504,8 +504,6 @@ def read_data(command: Dict):
                 triangle_vertex_array[:, 2, 2] = meshes[i].z3
                 meshes[i].areas = triangle_area(triangle_vertex_array)
 
-                get_mesh_edge_elements(meshes)
-
                 # EIGEN: Calculate derived eigenmode parameters
                 # Set n_modes to the greater of strike-slip or dip slip modes
                 meshes[i].n_modes = np.max(
@@ -517,6 +515,7 @@ def read_data(command: Dict):
 
                 logger.success(f"Read: {mesh_param[i]['mesh_filename']}")
             get_mesh_perimeter(meshes)
+            get_mesh_edge_elements(meshes)
 
     # Read station data
     if (
@@ -1279,13 +1278,16 @@ def get_mesh_edge_elements(meshes: List):
         tops[side_3_in_edge_idx[top3]] = True
         # Make sure elements are really shallow
         # Depending on element shapes, some side elements can satisfy the depth difference criterion
-        depth_count, depth_bins = np.histogram(centroid_depths[tops], bins='doane')
+        depth_count, depth_bins = np.histogram(centroid_depths[tops], bins="doane")
         depth_bin_min = depth_bins[0:-1]
         depth_bin_max = depth_bins[1:]
         bin_std = np.std(depth_bins)
         zero_idx = np.where(depth_count == 0)[0]
         if len(zero_idx) > 0:
-            if np.abs(depth_bin_max[zero_idx[0]] - depth_bin_min[zero_idx[-1]+1]) > 10:
+            if (
+                np.abs(depth_bin_max[zero_idx[0]] - depth_bin_min[zero_idx[-1] + 1])
+                > 10
+            ):
                 tops[centroid_depths < depth_bins[zero_idx[0]]] = False
         # Assign in to meshes dict
         meshes[i].top_elements = tops
@@ -1308,15 +1310,13 @@ def get_mesh_edge_elements(meshes: List):
         bots[side_3_in_edge_idx[bot3]] = True
         # Make sure elements are really deep
         # Depending on element shapes, some side elements can satisfy the depth difference criterion
-        depth_count, depth_bins = np.histogram(centroid_depths[bots], bins='doane')
+        depth_count, depth_bins = np.histogram(centroid_depths[bots], bins="doane")
         depth_bin_min = depth_bins[0:-1]
         depth_bin_max = depth_bins[1:]
         bin_std = np.std(depth_bins)
         zero_idx = np.where(depth_count == 0)[0]
         if len(zero_idx) > 0:
-            if abs(depth_bin_min[zero_idx[-1]] - depth_bin_max[zero_idx[0]-1]) > 10:
-                print(abs(depth_bin_min[zero_idx[-1]] - depth_bin_max[zero_idx[0]-1]))
-                print(depth_bin_min[zero_idx[-1]])
+            if abs(depth_bin_min[zero_idx[-1]] - depth_bin_max[zero_idx[0] - 1]) > 10:
                 bots[centroid_depths > depth_bin_min[zero_idx[-1]]] = False
         # Assign in to meshes dict
         meshes[i].bot_elements = bots
