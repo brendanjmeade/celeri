@@ -1468,55 +1468,55 @@ def get_index(assembly, station, block, meshes, mogi):
                 index.start_tde_ds_slip_constraint_row[i] + len(meshes[i].ds_slip_idx)
             )
 
-            # Add eigen specific entries to index
-            index.start_tde_col_eigen = np.zeros(len(meshes), dtype=int)
-            index.end_tde_col_eigen = np.zeros(len(meshes), dtype=int)
-            index.start_tde_constraint_row_eigen = np.zeros(len(meshes), dtype=int)
-            index.end_tde_constraint_row_eigen = np.zeros(len(meshes), dtype=int)
+            # # Add eigen specific entries to index
+            # index.start_tde_col_eigen = np.zeros(len(meshes), dtype=int)
+            # index.end_tde_col_eigen = np.zeros(len(meshes), dtype=int)
+            # index.start_tde_constraint_row_eigen = np.zeros(len(meshes), dtype=int)
+            # index.end_tde_constraint_row_eigen = np.zeros(len(meshes), dtype=int)
 
-            # TODO: Double-check this:
-            # Eigenvalue indexing should be unchanged by the above specification
-            # of indices for individual constraint styles, because n_tde_constraints
-            # is tracked correctly as the total number of constraint rows (2 each for
-            # coupling constraints, one each for slip component constraints)
-            if len(meshes) > 0:
-                for i in range(len(meshes)):
-                    if i == 0:
-                        index.start_tde_col_eigen[i] = 3 * len(block)
-                        index.end_tde_col_eigen[i] = (
-                            index.start_tde_col_eigen[i] + 2 * meshes[i].n_eigen
-                        )
-                        if meshes[i].n_tde_constraints > 0:
-                            index.start_tde_constraint_row_eigen[i] = (
-                                index.end_slip_rate_constraints_row
-                            )
-                            index.end_tde_constraint_row_eigen[i] = (
-                                index.start_tde_constraint_row_eigen[i]
-                                + meshes[i].n_tde_constraints
-                            )
-                        else:
-                            index.start_tde_constraint_row_eigen[i] = 0
-                            index.end_tde_constraint_row_eigen[i] = 0
-                    else:
-                        index.start_tde_col_eigen[i] = index.end_tde_col_eigen[i - 1]
-                        index.end_tde_col_eigen[i] = (
-                            index.start_tde_col_eigen[i] + 2 * meshes[i].n_eigen
-                        )
-                        if meshes[i].n_tde_constraints > 0:
-                            index.start_tde_constraint_row_eigen[i] = (
-                                index.end_tde_constraint_row_eigen[i - 1]
-                            )
-                            index.end_tde_constraint_row_eigen[i] = (
-                                index.start_tde_constraint_row_eigen[i]
-                                + meshes[i].n_tde_constraints
-                            )
-                        else:
-                            index.start_tde_constraint_row_eigen[i] = (
-                                index.end_tde_constraint_row_eigen[i - 1]
-                            )
-                            index.end_tde_constraint_row_eigen[i] = (
-                                index.end_tde_constraint_row_eigen[i - 1]
-                            )
+            # # TODO: Double-check this:
+            # # Eigenvalue indexing should be unchanged by the above specification
+            # # of indices for individual constraint styles, because n_tde_constraints
+            # # is tracked correctly as the total number of constraint rows (2 each for
+            # # coupling constraints, one each for slip component constraints)
+            # if len(meshes) > 0:
+            #     for i in range(len(meshes)):
+            #         if i == 0:
+            #             index.start_tde_col_eigen[i] = 3 * len(block)
+            #             index.end_tde_col_eigen[i] = (
+            #                 index.start_tde_col_eigen[i] + 2 * meshes[i].n_eigen
+            #             )
+            #             if meshes[i].n_tde_constraints > 0:
+            #                 index.start_tde_constraint_row_eigen[i] = (
+            #                     index.end_slip_rate_constraints_row
+            #                 )
+            #                 index.end_tde_constraint_row_eigen[i] = (
+            #                     index.start_tde_constraint_row_eigen[i]
+            #                     + meshes[i].n_tde_constraints
+            #                 )
+            #             else:
+            #                 index.start_tde_constraint_row_eigen[i] = 0
+            #                 index.end_tde_constraint_row_eigen[i] = 0
+            #         else:
+            #             index.start_tde_col_eigen[i] = index.end_tde_col_eigen[i - 1]
+            #             index.end_tde_col_eigen[i] = (
+            #                 index.start_tde_col_eigen[i] + 2 * meshes[i].n_eigen
+            #             )
+            #             if meshes[i].n_tde_constraints > 0:
+            #                 index.start_tde_constraint_row_eigen[i] = (
+            #                     index.end_tde_constraint_row_eigen[i - 1]
+            #                 )
+            #                 index.end_tde_constraint_row_eigen[i] = (
+            #                     index.start_tde_constraint_row_eigen[i]
+            #                     + meshes[i].n_tde_constraints
+            #                 )
+            #             else:
+            #                 index.start_tde_constraint_row_eigen[i] = (
+            #                     index.end_tde_constraint_row_eigen[i - 1]
+            #                 )
+            #                 index.end_tde_constraint_row_eigen[i] = (
+            #                     index.end_tde_constraint_row_eigen[i - 1]
+            #                 )
     # Index for block strain
     index.n_block_strain_components = 3 * np.sum(block.strain_rate_flag)
     index.start_block_strain_col = index.end_tde_col[-1]
