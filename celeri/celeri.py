@@ -5204,7 +5204,8 @@ def plot_input_summary(
     plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
     plt.title("Mogi sources")
     common_plot_elements(segment, lon_range, lat_range)
-    plt.plot(mogi.lon, mogi.lat, "r+")
+    if len(mogi.lon > 0):
+        plt.plot(mogi.lon, mogi.lat, "r+")
 
     # Skip a subplot
     subplot_index += 1
