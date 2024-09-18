@@ -351,6 +351,110 @@ def read_data(command: Dict):
     block = block.loc[:, ~block.columns.str.match("Unnamed")]
     logger.success(f"Read: {command.block_file_name}")
 
+    def read_mesh(filename):
+        mesh = addict.Dict()
+        mesh.meshio_object = meshio.read(filename)
+        mesh.file_name = filename
+        mesh.verts = mesh.meshio_object.get_cells_type("triangle")
+
+        # Expand mesh coordinates
+        mesh.lon1 = mesh.meshio_object.points[mesh.verts[:, 0], 0]
+        mesh.lon2 = mesh.meshio_object.points[mesh.verts[:, 1], 0]
+        mesh.lon3 = mesh.meshio_object.points[mesh.verts[:, 2], 0]
+        mesh.lat1 = mesh.meshio_object.points[mesh.verts[:, 0], 1]
+        mesh.lat2 = mesh.meshio_object.points[mesh.verts[:, 1], 1]
+        mesh.lat3 = mesh.meshio_object.points[mesh.verts[:, 2], 1]
+        mesh.dep1 = mesh.meshio_object.points[mesh.verts[:, 0], 2]
+        mesh.dep2 = mesh.meshio_object.points[mesh.verts[:, 1], 2]
+        mesh.dep3 = mesh.meshio_object.points[mesh.verts[:, 2], 2]
+        mesh.centroids = np.mean(mesh.meshio_object.points[mesh.verts, :], axis=1)
+        # Cartesian coordinates in meters
+        mesh.x1, mesh.y1, mesh.z1 = sph2cart(
+            mesh.lon1,
+            mesh.lat1,
+            RADIUS_EARTH + KM2M * mesh.dep1,
+        )
+        mesh.x2, mesh.y2, mesh.z2 = sph2cart(
+            mesh.lon2,
+            mesh.lat2,
+            RADIUS_EARTH + KM2M * mesh.dep2,
+        )
+        mesh.x3, mesh.y3, mesh.z3 = sph2cart(
+            mesh.lon3,
+            mesh.lat3,
+            RADIUS_EARTH + KM2M * mesh.dep3,
+        )
+
+        # Cartesian triangle centroids
+        mesh.x_centroid = (mesh.x1 + mesh.x2 + mesh.x3) / 3.0
+        mesh.y_centroid = (mesh.y1 + mesh.y2 + mesh.y3) / 3.0
+        mesh.z_centroid = (mesh.z1 + mesh.z2 + mesh.z3) / 3.0
+
+        # Spherical triangle centroids
+        mesh.lon_centroid = (mesh.lon1 + mesh.lon2 + mesh.lon3) / 3.0
+        mesh.lat_centroid = (mesh.lat1 + mesh.lat2 + mesh.lat3) / 3.0
+
+        # Cross products for orientations
+        tri_leg1 = np.transpose(
+            [
+                np.deg2rad(mesh.lon2 - mesh.lon1),
+                np.deg2rad(mesh.lat2 - mesh.lat1),
+                (1 + KM2M * mesh.dep2 / RADIUS_EARTH)
+                - (1 + KM2M * mesh.dep1 / RADIUS_EARTH),
+            ]
+        )
+        tri_leg2 = np.transpose(
+            [
+                np.deg2rad(mesh.lon3 - mesh.lon1),
+                np.deg2rad(mesh.lat3 - mesh.lat1),
+                (1 + KM2M * mesh.dep3 / RADIUS_EARTH)
+                - (1 + KM2M * mesh.dep1 / RADIUS_EARTH),
+            ]
+        )
+        mesh.nv = np.cross(tri_leg1, tri_leg2)
+        azimuth, elevation, r = cart2sph(
+            mesh.nv[:, 0],
+            mesh.nv[:, 1],
+            mesh.nv[:, 2],
+        )
+        mesh.strike = wrap2360(-np.rad2deg(azimuth))
+        mesh.dip = 90 - np.rad2deg(elevation)
+        mesh.dip_flag = mesh.dip != 90
+
+        # Assign all mesh parameters to this mesh
+        for key, value in mesh_param[i].items():
+            mesh[key] = value
+
+        # Assign empty arrays for any unspecified parameters
+        mesh_default = get_default_mesh_parameters()
+        for key, value in mesh_default.items():
+            if key not in mesh:
+                mesh[key] = value
+
+        mesh.n_tde = mesh.lon1.size
+
+        # Calcuate areas of each triangle in mesh
+        triangle_vertex_array = np.zeros((mesh.n_tde, 3, 3))
+        triangle_vertex_array[:, 0, 0] = mesh.x1
+        triangle_vertex_array[:, 1, 0] = mesh.x2
+        triangle_vertex_array[:, 2, 0] = mesh.x3
+        triangle_vertex_array[:, 0, 1] = mesh.y1
+        triangle_vertex_array[:, 1, 1] = mesh.y2
+        triangle_vertex_array[:, 2, 1] = mesh.y3
+        triangle_vertex_array[:, 0, 2] = mesh.z1
+        triangle_vertex_array[:, 1, 2] = mesh.z2
+        triangle_vertex_array[:, 2, 2] = mesh.z3
+        mesh.areas = triangle_area(triangle_vertex_array)
+
+        # EIGEN: Calculate derived eigenmode parameters
+        # Set n_modes to the greater of strike-slip or dip slip modes
+        mesh.n_modes = np.max([mesh.n_modes_strike_slip, mesh.n_modes_dip_slip])
+        mesh.n_modes_total = mesh.n_modes_strike_slip + mesh.n_modes_dip_slip
+
+        logger.success(f"Read: {mesh_param[i]['mesh_filename']}")
+        return mesh
+
+
     # Read mesh data - List of dictionary version
     meshes = []
     if command.mesh_parameters_file_name != "":
@@ -519,108 +623,6 @@ def read_data(command: Dict):
             get_mesh_edge_elements(meshes)
             get_mesh_perimeter(meshes)
 
-    def read_mesh(filename):
-        mesh = []
-        mesh.meshio_object = meshio.read(filename)
-        mesh.file_name = filename
-        mesh.verts = mesh.meshio_object.get_cells_type("triangle")
-
-        # Expand mesh coordinates
-        mesh.lon1 = mesh.meshio_object.points[mesh.verts[:, 0], 0]
-        mesh.lon2 = mesh.meshio_object.points[mesh.verts[:, 1], 0]
-        mesh.lon3 = mesh.meshio_object.points[mesh.verts[:, 2], 0]
-        mesh.lat1 = mesh.meshio_object.points[mesh.verts[:, 0], 1]
-        mesh.lat2 = mesh.meshio_object.points[mesh.verts[:, 1], 1]
-        mesh.lat3 = mesh.meshio_object.points[mesh.verts[:, 2], 1]
-        mesh.dep1 = mesh.meshio_object.points[mesh.verts[:, 0], 2]
-        mesh.dep2 = mesh.meshio_object.points[mesh.verts[:, 1], 2]
-        mesh.dep3 = mesh.meshio_object.points[mesh.verts[:, 2], 2]
-        mesh.centroids = np.mean(mesh.meshio_object.points[mesh.verts, :], axis=1)
-        # Cartesian coordinates in meters
-        mesh.x1, mesh.y1, mesh.z1 = sph2cart(
-            mesh.lon1,
-            mesh.lat1,
-            RADIUS_EARTH + KM2M * mesh.dep1,
-        )
-        mesh.x2, mesh.y2, mesh.z2 = sph2cart(
-            mesh.lon2,
-            mesh.lat2,
-            RADIUS_EARTH + KM2M * mesh.dep2,
-        )
-        mesh.x3, mesh.y3, mesh.z3 = sph2cart(
-            mesh.lon3,
-            mesh.lat3,
-            RADIUS_EARTH + KM2M * mesh.dep3,
-        )
-
-        # Cartesian triangle centroids
-        mesh.x_centroid = (mesh.x1 + mesh.x2 + mesh.x3) / 3.0
-        mesh.y_centroid = (mesh.y1 + mesh.y2 + mesh.y3) / 3.0
-        mesh.z_centroid = (mesh.z1 + mesh.z2 + mesh.z3) / 3.0
-
-        # Spherical triangle centroids
-        mesh.lon_centroid = (mesh.lon1 + mesh.lon2 + mesh.lon3) / 3.0
-        mesh.lat_centroid = (mesh.lat1 + mesh.lat2 + mesh.lat3) / 3.0
-
-        # Cross products for orientations
-        tri_leg1 = np.transpose(
-            [
-                np.deg2rad(mesh.lon2 - mesh.lon1),
-                np.deg2rad(mesh.lat2 - mesh.lat1),
-                (1 + KM2M * mesh.dep2 / RADIUS_EARTH)
-                - (1 + KM2M * mesh.dep1 / RADIUS_EARTH),
-            ]
-        )
-        tri_leg2 = np.transpose(
-            [
-                np.deg2rad(mesh.lon3 - mesh.lon1),
-                np.deg2rad(mesh.lat3 - mesh.lat1),
-                (1 + KM2M * mesh.dep3 / RADIUS_EARTH)
-                - (1 + KM2M * mesh.dep1 / RADIUS_EARTH),
-            ]
-        )
-        mesh.nv = np.cross(tri_leg1, tri_leg2)
-        azimuth, elevation, r = cart2sph(
-            mesh.nv[:, 0],
-            mesh.nv[:, 1],
-            mesh.nv[:, 2],
-        )
-        mesh.strike = wrap2360(-np.rad2deg(azimuth))
-        mesh.dip = 90 - np.rad2deg(elevation)
-        mesh.dip_flag = mesh.dip != 90
-
-        # Assign all mesh parameters to this mesh
-        for key, value in mesh_param[i].items():
-            mesh[key] = value
-
-        # Assign empty arrays for any unspecified parameters
-        mesh_default = get_default_mesh_parameters()
-        for key, value in mesh_default.items():
-            if key not in mesh:
-                mesh[key] = value
-
-        mesh.n_tde = mesh.lon1.size
-
-        # Calcuate areas of each triangle in mesh
-        triangle_vertex_array = np.zeros((mesh.n_tde, 3, 3))
-        triangle_vertex_array[:, 0, 0] = mesh.x1
-        triangle_vertex_array[:, 1, 0] = mesh.x2
-        triangle_vertex_array[:, 2, 0] = mesh.x3
-        triangle_vertex_array[:, 0, 1] = mesh.y1
-        triangle_vertex_array[:, 1, 1] = mesh.y2
-        triangle_vertex_array[:, 2, 1] = mesh.y3
-        triangle_vertex_array[:, 0, 2] = mesh.z1
-        triangle_vertex_array[:, 1, 2] = mesh.z2
-        triangle_vertex_array[:, 2, 2] = mesh.z3
-        mesh.areas = triangle_area(triangle_vertex_array)
-
-        # EIGEN: Calculate derived eigenmode parameters
-        # Set n_modes to the greater of strike-slip or dip slip modes
-        mesh.n_modes = np.max([mesh.n_modes_strike_slip, mesh.n_modes_dip_slip])
-        mesh.n_modes_total = mesh.n_modes_strike_slip + mesh.n_modes_dip_slip
-
-        logger.success(f"Read: {mesh_param[i]['mesh_filename']}")
-        return mesh
 
     # Read station data
     if (
