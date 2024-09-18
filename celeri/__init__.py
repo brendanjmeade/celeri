@@ -80,6 +80,20 @@ from .celeri import (
     plot_segment_rates,
     plot_fault_geometry,
     get_default_mesh_parameters,
+    get_index_eigen,
+    get_eigenvalues_and_eigenvectors,
+    get_eigenvectors_to_tde_slip,
+    get_data_vector_eigen,
+    get_weighting_vector_eigen,
+    get_full_dense_operator_eigen,
+    get_slip_rate_bounds,
+    get_qp_tde_inequality_operator_and_data_vector,
+    get_qp_slip_rate_inequality_operator_and_data_vector,
+    get_qp_all_inequality_operator_and_data_vector,
+    plot_mesh_mode,
+    plot_tde_boundary_condition_labels,
+    diagnose_matrix,
+    post_process_estimation_eigen,
 )
 
 try:
