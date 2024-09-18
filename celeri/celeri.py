@@ -300,6 +300,7 @@ def get_new_folder_name():
 
 
 def get_default_mesh_parameters():
+    # Empty/default arrays for mesh parameters
     default_mesh_parameters = {
         "mesh_filename": "",
         "smoothing_weight": 1e0,
@@ -339,6 +340,113 @@ def get_default_mesh_parameters():
     return default_mesh_parameters
 
 
+def read_mesh(filename):
+    # Standalone reader for a single .msh file
+    # Outputs to mesh (Dict)
+    mesh = addict.Dict()
+    meshobj = meshio.read(filename)
+    mesh.file_name = filename
+    mesh.points = meshobj.points
+    mesh.verts = meshio.CellBlock("triangle", meshobj.get_cells_type("triangle")).data
+
+    # Expand mesh coordinates
+    mesh.lon1 = mesh.points[mesh.verts[:, 0], 0]
+    mesh.lon2 = mesh.points[mesh.verts[:, 1], 0]
+    mesh.lon3 = mesh.points[mesh.verts[:, 2], 0]
+    mesh.lat1 = mesh.points[mesh.verts[:, 0], 1]
+    mesh.lat2 = mesh.points[mesh.verts[:, 1], 1]
+    mesh.lat3 = mesh.points[mesh.verts[:, 2], 1]
+    mesh.dep1 = mesh.points[mesh.verts[:, 0], 2]
+    mesh.dep2 = mesh.points[mesh.verts[:, 1], 2]
+    mesh.dep3 = mesh.points[mesh.verts[:, 2], 2]
+    mesh.centroids = np.mean(mesh.points[mesh.verts, :], axis=1)
+    # Cartesian coordinates in meters
+    mesh.x1, mesh.y1, mesh.z1 = sph2cart(
+        mesh.lon1,
+        mesh.lat1,
+        RADIUS_EARTH + KM2M * mesh.dep1,
+    )
+    mesh.x2, mesh.y2, mesh.z2 = sph2cart(
+        mesh.lon2,
+        mesh.lat2,
+        RADIUS_EARTH + KM2M * mesh.dep2,
+    )
+    mesh.x3, mesh.y3, mesh.z3 = sph2cart(
+        mesh.lon3,
+        mesh.lat3,
+        RADIUS_EARTH + KM2M * mesh.dep3,
+    )
+
+    # Cartesian triangle centroids
+    mesh.x_centroid = (mesh.x1 + mesh.x2 + mesh.x3) / 3.0
+    mesh.y_centroid = (mesh.y1 + mesh.y2 + mesh.y3) / 3.0
+    mesh.z_centroid = (mesh.z1 + mesh.z2 + mesh.z3) / 3.0
+
+    # Spherical triangle centroids
+    mesh.lon_centroid = (mesh.lon1 + mesh.lon2 + mesh.lon3) / 3.0
+    mesh.lat_centroid = (mesh.lat1 + mesh.lat2 + mesh.lat3) / 3.0
+
+    # Cross products for orientations
+    tri_leg1 = np.transpose(
+        [
+            np.deg2rad(mesh.lon2 - mesh.lon1),
+            np.deg2rad(mesh.lat2 - mesh.lat1),
+            (1 + KM2M * mesh.dep2 / RADIUS_EARTH)
+            - (1 + KM2M * mesh.dep1 / RADIUS_EARTH),
+        ]
+    )
+    tri_leg2 = np.transpose(
+        [
+            np.deg2rad(mesh.lon3 - mesh.lon1),
+            np.deg2rad(mesh.lat3 - mesh.lat1),
+            (1 + KM2M * mesh.dep3 / RADIUS_EARTH)
+            - (1 + KM2M * mesh.dep1 / RADIUS_EARTH),
+        ]
+    )
+    mesh.nv = np.cross(tri_leg1, tri_leg2)
+    azimuth, elevation, r = cart2sph(
+        mesh.nv[:, 0],
+        mesh.nv[:, 1],
+        mesh.nv[:, 2],
+    )
+    mesh.strike = wrap2360(-np.rad2deg(azimuth))
+    mesh.dip = 90 - np.rad2deg(elevation)
+    mesh.dip_flag = mesh.dip != 90
+
+    # Assign all mesh parameters to this mesh
+    # for key, value in mesh_param[i].items():
+    #     mesh[key] = value
+
+    # # Assign empty arrays for any unspecified parameters
+    # mesh_default = get_default_mesh_parameters()
+    # for key, value in mesh_default.items():
+    #     if key not in mesh:
+    #         mesh[key] = value
+
+    mesh.n_tde = mesh.lon1.size
+
+    # Calcuate areas of each triangle in mesh
+    triangle_vertex_array = np.zeros((mesh.n_tde, 3, 3))
+    triangle_vertex_array[:, 0, 0] = mesh.x1
+    triangle_vertex_array[:, 1, 0] = mesh.x2
+    triangle_vertex_array[:, 2, 0] = mesh.x3
+    triangle_vertex_array[:, 0, 1] = mesh.y1
+    triangle_vertex_array[:, 1, 1] = mesh.y2
+    triangle_vertex_array[:, 2, 1] = mesh.y3
+    triangle_vertex_array[:, 0, 2] = mesh.z1
+    triangle_vertex_array[:, 1, 2] = mesh.z2
+    triangle_vertex_array[:, 2, 2] = mesh.z3
+    mesh.areas = triangle_area(triangle_vertex_array)
+
+    # EIGEN: Calculate derived eigenmode parameters
+    # Set n_modes to the greater of strike-slip or dip slip modes
+    # mesh.n_modes = np.max([mesh.n_modes_strike_slip, mesh.n_modes_dip_slip])
+    # mesh.n_modes_total = mesh.n_modes_strike_slip + mesh.n_modes_dip_slip
+
+    logger.success(f"Read: {filename}")
+    return mesh
+
+
 def read_data(command: Dict):
     logger.info("Reading data files")
     # Read segment data
@@ -351,110 +459,6 @@ def read_data(command: Dict):
     block = block.loc[:, ~block.columns.str.match("Unnamed")]
     logger.success(f"Read: {command.block_file_name}")
 
-    def read_mesh(filename):
-        mesh = addict.Dict()
-        mesh.meshio_object = meshio.read(filename)
-        mesh.file_name = filename
-        mesh.verts = mesh.meshio_object.get_cells_type("triangle")
-
-        # Expand mesh coordinates
-        mesh.lon1 = mesh.meshio_object.points[mesh.verts[:, 0], 0]
-        mesh.lon2 = mesh.meshio_object.points[mesh.verts[:, 1], 0]
-        mesh.lon3 = mesh.meshio_object.points[mesh.verts[:, 2], 0]
-        mesh.lat1 = mesh.meshio_object.points[mesh.verts[:, 0], 1]
-        mesh.lat2 = mesh.meshio_object.points[mesh.verts[:, 1], 1]
-        mesh.lat3 = mesh.meshio_object.points[mesh.verts[:, 2], 1]
-        mesh.dep1 = mesh.meshio_object.points[mesh.verts[:, 0], 2]
-        mesh.dep2 = mesh.meshio_object.points[mesh.verts[:, 1], 2]
-        mesh.dep3 = mesh.meshio_object.points[mesh.verts[:, 2], 2]
-        mesh.centroids = np.mean(mesh.meshio_object.points[mesh.verts, :], axis=1)
-        # Cartesian coordinates in meters
-        mesh.x1, mesh.y1, mesh.z1 = sph2cart(
-            mesh.lon1,
-            mesh.lat1,
-            RADIUS_EARTH + KM2M * mesh.dep1,
-        )
-        mesh.x2, mesh.y2, mesh.z2 = sph2cart(
-            mesh.lon2,
-            mesh.lat2,
-            RADIUS_EARTH + KM2M * mesh.dep2,
-        )
-        mesh.x3, mesh.y3, mesh.z3 = sph2cart(
-            mesh.lon3,
-            mesh.lat3,
-            RADIUS_EARTH + KM2M * mesh.dep3,
-        )
-
-        # Cartesian triangle centroids
-        mesh.x_centroid = (mesh.x1 + mesh.x2 + mesh.x3) / 3.0
-        mesh.y_centroid = (mesh.y1 + mesh.y2 + mesh.y3) / 3.0
-        mesh.z_centroid = (mesh.z1 + mesh.z2 + mesh.z3) / 3.0
-
-        # Spherical triangle centroids
-        mesh.lon_centroid = (mesh.lon1 + mesh.lon2 + mesh.lon3) / 3.0
-        mesh.lat_centroid = (mesh.lat1 + mesh.lat2 + mesh.lat3) / 3.0
-
-        # Cross products for orientations
-        tri_leg1 = np.transpose(
-            [
-                np.deg2rad(mesh.lon2 - mesh.lon1),
-                np.deg2rad(mesh.lat2 - mesh.lat1),
-                (1 + KM2M * mesh.dep2 / RADIUS_EARTH)
-                - (1 + KM2M * mesh.dep1 / RADIUS_EARTH),
-            ]
-        )
-        tri_leg2 = np.transpose(
-            [
-                np.deg2rad(mesh.lon3 - mesh.lon1),
-                np.deg2rad(mesh.lat3 - mesh.lat1),
-                (1 + KM2M * mesh.dep3 / RADIUS_EARTH)
-                - (1 + KM2M * mesh.dep1 / RADIUS_EARTH),
-            ]
-        )
-        mesh.nv = np.cross(tri_leg1, tri_leg2)
-        azimuth, elevation, r = cart2sph(
-            mesh.nv[:, 0],
-            mesh.nv[:, 1],
-            mesh.nv[:, 2],
-        )
-        mesh.strike = wrap2360(-np.rad2deg(azimuth))
-        mesh.dip = 90 - np.rad2deg(elevation)
-        mesh.dip_flag = mesh.dip != 90
-
-        # Assign all mesh parameters to this mesh
-        for key, value in mesh_param[i].items():
-            mesh[key] = value
-
-        # Assign empty arrays for any unspecified parameters
-        mesh_default = get_default_mesh_parameters()
-        for key, value in mesh_default.items():
-            if key not in mesh:
-                mesh[key] = value
-
-        mesh.n_tde = mesh.lon1.size
-
-        # Calcuate areas of each triangle in mesh
-        triangle_vertex_array = np.zeros((mesh.n_tde, 3, 3))
-        triangle_vertex_array[:, 0, 0] = mesh.x1
-        triangle_vertex_array[:, 1, 0] = mesh.x2
-        triangle_vertex_array[:, 2, 0] = mesh.x3
-        triangle_vertex_array[:, 0, 1] = mesh.y1
-        triangle_vertex_array[:, 1, 1] = mesh.y2
-        triangle_vertex_array[:, 2, 1] = mesh.y3
-        triangle_vertex_array[:, 0, 2] = mesh.z1
-        triangle_vertex_array[:, 1, 2] = mesh.z2
-        triangle_vertex_array[:, 2, 2] = mesh.z3
-        mesh.areas = triangle_area(triangle_vertex_array)
-
-        # EIGEN: Calculate derived eigenmode parameters
-        # Set n_modes to the greater of strike-slip or dip slip modes
-        mesh.n_modes = np.max([mesh.n_modes_strike_slip, mesh.n_modes_dip_slip])
-        mesh.n_modes_total = mesh.n_modes_strike_slip + mesh.n_modes_dip_slip
-
-        logger.success(f"Read: {mesh_param[i]['mesh_filename']}")
-        return mesh
-
-
     # Read mesh data - List of dictionary version
     meshes = []
     if command.mesh_parameters_file_name != "":
@@ -465,164 +469,35 @@ def read_data(command: Dict):
         if len(mesh_param) > 0:
             for i in range(len(mesh_param)):
                 meshes.append(addict.Dict())
+                # Read current mesh using separate read_mesh function
                 this_mesh = read_mesh(mesh_param[i]["mesh_filename"])
                 meshes[i] = this_mesh
-            #     meshes[i].meshio_object = meshio.read(mesh_param[i]["mesh_filename"])
-            #     meshes[i].file_name = mesh_param[i]["mesh_filename"]
-            #     meshes[i].verts = meshes[i].meshio_object.get_cells_type("triangle")
 
-            #     # Expand mesh coordinates
-            #     meshes[i].lon1 = meshes[i].meshio_object.points[
-            #         meshes[i].verts[:, 0], 0
-            #     ]
-            #     meshes[i].lon2 = meshes[i].meshio_object.points[
-            #         meshes[i].verts[:, 1], 0
-            #     ]
-            #     meshes[i].lon3 = meshes[i].meshio_object.points[
-            #         meshes[i].verts[:, 2], 0
-            #     ]
-            #     meshes[i].lat1 = meshes[i].meshio_object.points[
-            #         meshes[i].verts[:, 0], 1
-            #     ]
-            #     meshes[i].lat2 = meshes[i].meshio_object.points[
-            #         meshes[i].verts[:, 1], 1
-            #     ]
-            #     meshes[i].lat3 = meshes[i].meshio_object.points[
-            #         meshes[i].verts[:, 2], 1
-            #     ]
-            #     meshes[i].dep1 = meshes[i].meshio_object.points[
-            #         meshes[i].verts[:, 0], 2
-            #     ]
-            #     meshes[i].dep2 = meshes[i].meshio_object.points[
-            #         meshes[i].verts[:, 1], 2
-            #     ]
-            #     meshes[i].dep3 = meshes[i].meshio_object.points[
-            #         meshes[i].verts[:, 2], 2
-            #     ]
-            #     meshes[i].centroids = np.mean(
-            #         meshes[i].meshio_object.points[meshes[i].verts, :], axis=1
-            #     )
-            #     # Cartesian coordinates in meters
-            #     meshes[i].x1, meshes[i].y1, meshes[i].z1 = sph2cart(
-            #         meshes[i].lon1,
-            #         meshes[i].lat1,
-            #         RADIUS_EARTH + KM2M * meshes[i].dep1,
-            #     )
-            #     meshes[i].x2, meshes[i].y2, meshes[i].z2 = sph2cart(
-            #         meshes[i].lon2,
-            #         meshes[i].lat2,
-            #         RADIUS_EARTH + KM2M * meshes[i].dep2,
-            #     )
-            #     meshes[i].x3, meshes[i].y3, meshes[i].z3 = sph2cart(
-            #         meshes[i].lon3,
-            #         meshes[i].lat3,
-            #         RADIUS_EARTH + KM2M * meshes[i].dep3,
-            #     )
+                # Assign all mesh parameters to this mesh
+                for key, value in mesh_param[i].items():
+                    meshes[i][key] = value
 
-            #     # Cartesian triangle centroids
-            #     meshes[i].x_centroid = (
-            #         meshes[i].x1 + meshes[i].x2 + meshes[i].x3
-            #     ) / 3.0
-            #     meshes[i].y_centroid = (
-            #         meshes[i].y1 + meshes[i].y2 + meshes[i].y3
-            #     ) / 3.0
-            #     meshes[i].z_centroid = (
-            #         meshes[i].z1 + meshes[i].z2 + meshes[i].z3
-            #     ) / 3.0
+                # Assign empty arrays for any unspecified parameters
+                mesh_default = get_default_mesh_parameters()
+                for key, value in mesh_default.items():
+                    if key not in meshes[i]:
+                        meshes[i][key] = value
 
-            #     # Spherical triangle centroids
-            #     meshes[i].lon_centroid = (
-            #         meshes[i].lon1 + meshes[i].lon2 + meshes[i].lon3
-            #     ) / 3.0
-            #     meshes[i].lat_centroid = (
-            #         meshes[i].lat1 + meshes[i].lat2 + meshes[i].lat3
-            #     ) / 3.0
-
-            #     # Cross products for orientations
-            #     tri_leg1 = np.transpose(
-            #         [
-            #             np.deg2rad(meshes[i].lon2 - meshes[i].lon1),
-            #             np.deg2rad(meshes[i].lat2 - meshes[i].lat1),
-            #             (1 + KM2M * meshes[i].dep2 / RADIUS_EARTH)
-            #             - (1 + KM2M * meshes[i].dep1 / RADIUS_EARTH),
-            #         ]
-            #     )
-            #     tri_leg2 = np.transpose(
-            #         [
-            #             np.deg2rad(meshes[i].lon3 - meshes[i].lon1),
-            #             np.deg2rad(meshes[i].lat3 - meshes[i].lat1),
-            #             (1 + KM2M * meshes[i].dep3 / RADIUS_EARTH)
-            #             - (1 + KM2M * meshes[i].dep1 / RADIUS_EARTH),
-            #         ]
-            #     )
-            #     meshes[i].nv = np.cross(tri_leg1, tri_leg2)
-            #     azimuth, elevation, r = cart2sph(
-            #         meshes[i].nv[:, 0],
-            #         meshes[i].nv[:, 1],
-            #         meshes[i].nv[:, 2],
-            #     )
-            #     meshes[i].strike = wrap2360(-np.rad2deg(azimuth))
-            #     meshes[i].dip = 90 - np.rad2deg(elevation)
-            #     meshes[i].dip_flag = meshes[i].dip != 90
-
-            #     # Assign all mesh parameters to this mesh
-            #     for key, value in mesh_param[i].items():
-            #         meshes[i][key] = value
-
-            #     # Assign empty arrays for any unspecified parameters
-            #     mesh_default = get_default_mesh_parameters()
-            #     # mesh_default = {
-            #     #     "smoothing_weight": 1e0,
-            #     #     "n_eigen": 10,
-            #     #     "top_slip_rate_constraint": 0,
-            #     #     "bot_slip_rate_constraint": 0,
-            #     #     "side_slip_rate_constraint": 0,
-            #     #     "top_slip_rate_weight": 1,
-            #     #     "bot_slip_rate_weight": 1,
-            #     #     "side_slip_rate_weight": 1,
-            #     #     "coupling_constraint_idx": [],
-            #     #     "ss_slip_constraint_idx": [],
-            #     #     "ss_slip_constraint_rate": [],
-            #     #     "ss_slip_constraint_sig": [],
-            #     #     "ss_slip_constraint_weight": [],
-            #     #     "ds_slip_constraint_idx": [],
-            #     #     "ds_slip_constraint_rate": [],
-            #     #     "ds_slip_constraint_sig": [],
-            #     #     "ds_slip_constraint_weight": [],
-            #     # }
-
-            #     for key, value in mesh_default.items():
-            #         if key not in meshes[i]:
-            #             meshes[i][key] = value
-
-            #     meshes[i].n_tde = meshes[i].lon1.size
-
-            #     # Calcuate areas of each triangle in mesh
-            #     triangle_vertex_array = np.zeros((meshes[i].n_tde, 3, 3))
-            #     triangle_vertex_array[:, 0, 0] = meshes[i].x1
-            #     triangle_vertex_array[:, 1, 0] = meshes[i].x2
-            #     triangle_vertex_array[:, 2, 0] = meshes[i].x3
-            #     triangle_vertex_array[:, 0, 1] = meshes[i].y1
-            #     triangle_vertex_array[:, 1, 1] = meshes[i].y2
-            #     triangle_vertex_array[:, 2, 1] = meshes[i].y3
-            #     triangle_vertex_array[:, 0, 2] = meshes[i].z1
-            #     triangle_vertex_array[:, 1, 2] = meshes[i].z2
-            #     triangle_vertex_array[:, 2, 2] = meshes[i].z3
-            #     meshes[i].areas = triangle_area(triangle_vertex_array)
-
-            #     # EIGEN: Calculate derived eigenmode parameters
-            #     # Set n_modes to the greater of strike-slip or dip slip modes
-            #     meshes[i].n_modes = np.max(
-            #         [meshes[i].n_modes_strike_slip, meshes[i].n_modes_dip_slip]
-            #     )
-            #     meshes[i].n_modes_total = (
-            #         meshes[i].n_modes_strike_slip + meshes[i].n_modes_dip_slip
-            #     )
-
-            #     logger.success(f"Read: {mesh_param[i]['mesh_filename']}")
+                # EIGEN: Calculate derived eigenmode parameters
+                # Set n_modes to the greater of strike-slip or dip slip modes
+                meshes[i].n_modes = np.max(
+                    [
+                        mesh_param[i]["n_modes_strike_slip"],
+                        mesh_param[i]["n_modes_dip_slip"],
+                    ]
+                )
+                meshes[i].n_modes_total = (
+                    mesh_param[i]["n_modes_strike_slip"]
+                    + mesh_param[i]["n_modes_dip_slip"]
+                )
+            # Get mesh perimeter information for all meshes
             get_mesh_edge_elements(meshes)
             get_mesh_perimeter(meshes)
-
 
     # Read station data
     if (
@@ -724,8 +599,8 @@ def triangle_area(triangles):
 
 def get_mesh_perimeter(meshes):
     for i in range(len(meshes)):
-        x_coords = meshes[i].meshio_object.points[:, 0]
-        y_coords = meshes[i].meshio_object.points[:, 1]
+        x_coords = meshes[i].points[:, 0]
+        y_coords = meshes[i].points[:, 1]
         meshes[i].x_perimeter = x_coords[meshes[i].ordered_edge_nodes[:, 0]]
         meshes[i].y_perimeter = y_coords[meshes[i].ordered_edge_nodes[:, 0]]
         meshes[i].x_perimeter = np.append(
@@ -1020,16 +895,16 @@ def snap_segments(segment, meshes):
         top_edge_indices = np.sort(np.hstack((top_edge_indices1, top_edge_indices2)))
         # Get new segment coordinates from these indices
         edge_segs = make_default_segment(len(top_edge_indices))
-        edge_segs.lon1 = meshes[i].meshio_object.points[
+        edge_segs.lon1 = meshes[i].points[
             meshes[i].ordered_edge_nodes[top_edge_indices, 0], 0
         ]
-        edge_segs.lat1 = meshes[i].meshio_object.points[
+        edge_segs.lat1 = meshes[i].points[
             meshes[i].ordered_edge_nodes[top_edge_indices, 0], 1
         ]
-        edge_segs.lon2 = meshes[i].meshio_object.points[
+        edge_segs.lon2 = meshes[i].points[
             meshes[i].ordered_edge_nodes[top_edge_indices, 1], 0
         ]
-        edge_segs.lat2 = meshes[i].meshio_object.points[
+        edge_segs.lat2 = meshes[i].points[
             meshes[i].ordered_edge_nodes[top_edge_indices, 1], 1
         ]
         edge_segs.locking_depth = +15
@@ -1322,7 +1197,7 @@ def get_mesh_edge_elements(meshes: List):
     get_ordered_edge_nodes(meshes)
 
     for i in range(len(meshes)):
-        coords = meshes[i].meshio_object.points
+        coords = meshes[i].points
         vertices = meshes[i].verts
 
         # Get element centroid depths
@@ -3877,8 +3752,8 @@ def get_weighting_vector_eigen(command, station, meshes, index):
         + index.n_tde_constraints_total
     )
 
-    weighting_vector[index.start_station_row : index.end_station_row] = (
-        interleave2(1 / (station.east_sig**2), 1 / (station.north_sig**2))
+    weighting_vector[index.start_station_row : index.end_station_row] = interleave2(
+        1 / (station.east_sig**2), 1 / (station.north_sig**2)
     )
 
     weighting_vector[
@@ -3900,7 +3775,6 @@ def get_weighting_vector_eigen(command, station, meshes, index):
         ] = meshes[i].bot_slip_rate_weight * np.ones(index.n_tde_constraints[i])
 
     return weighting_vector
-
 
 
 def get_full_dense_operator_block_only(operators, index):
@@ -4115,12 +3989,8 @@ def get_full_dense_operator_eigen(operators, meshes, index):
     # EIGEN Eigenvector to velocity matrix
     for i in range(index.n_meshes):
         # Eliminate vertical elastic velocities
-        tde_keep_row_index = get_keep_index_12(
-            operators.tde_to_velocities[i].shape[0]
-        )
-        tde_keep_col_index = get_keep_index_12(
-            operators.tde_to_velocities[i].shape[1]
-        )
+        tde_keep_row_index = get_keep_index_12(operators.tde_to_velocities[i].shape[0])
+        tde_keep_col_index = get_keep_index_12(operators.tde_to_velocities[i].shape[1])
 
         # Create eigenvector to velocities operator
         operators.eigen_to_velocities[i] = (
@@ -4249,11 +4119,10 @@ def get_slip_rate_bounds(segment, block):
     )[slip_rate_bounds_idx]
 
     # Linear opeartor for slip rate bounds
-    slip_rate_bound_partials = get_rotation_to_slip_rate_partials(
-        segment, block
-    )[slip_rate_bounds_idx, :]
+    slip_rate_bound_partials = get_rotation_to_slip_rate_partials(segment, block)[
+        slip_rate_bounds_idx, :
+    ]
     return slip_rate_bound_min, slip_rate_bound_max, slip_rate_bound_partials
-
 
 
 def get_qp_tde_inequality_operator_and_data_vector(index, meshes, operators):
@@ -4323,9 +4192,7 @@ def get_qp_all_inequality_operator_and_data_vector(
 
     # Get QP slip rate bounds
     qp_slip_rate_inequality_matrix, qp_slip_rate_inequality_data_vector = (
-        get_qp_slip_rate_inequality_operator_and_data_vector(
-            index, segment, block
-        )
+        get_qp_slip_rate_inequality_operator_and_data_vector(index, segment, block)
     )
 
     # NOTE: This effectively doubles the memory requirements for the problem.
@@ -4366,6 +4233,7 @@ def get_qp_slip_rate_inequality_operator_and_data_vector(index, segment, block):
     slip_rate_bound_data_vector = np.hstack((slip_rate_bound_max, -slip_rate_bound_min))
 
     return slip_rate_bound_matrix, slip_rate_bound_data_vector
+
 
 def get_elastic_operator_single_mesh(
     meshes: List, station: pd.DataFrame, command: Dict, mesh_index: np.int_
@@ -4563,8 +4431,6 @@ def get_eigenvectors_to_tde_slip(operators, meshes):
         logger.success(
             f"Finish: Eigenvectors to TDE slip for mesh: {meshes[i].file_name}"
         )
-
-
 
 
 ######################################################################
@@ -6251,8 +6117,8 @@ def plot_input_summary(
         is_constrained_tde[meshes[i].ss_slip_constraint_idx] = 3
         is_constrained_tde[meshes[i].ds_slip_constraint_idx] = 3
         is_constrained_tde[meshes[i].coupling_constraint_idx] = 2
-        x_coords = meshes[i].meshio_object.points[:, 0]
-        y_coords = meshes[i].meshio_object.points[:, 1]
+        x_coords = meshes[i].points[:, 0]
+        y_coords = meshes[i].points[:, 1]
         vertex_array = np.asarray(meshes[i].verts)
         ax = plt.gca()
         xy = np.c_[x_coords, y_coords]
@@ -6513,8 +6379,8 @@ def plot_estimation_summary(
             fill_value_range = [np.min(fill_value), np.max(fill_value)]
             ax = plt.gca()
             for i in range(len(meshes)):
-                x_coords = meshes[i].meshio_object.points[:, 0]
-                y_coords = meshes[i].meshio_object.points[:, 1]
+                x_coords = meshes[i].points[:, 0]
+                y_coords = meshes[i].points[:, 1]
                 vertex_array = np.asarray(meshes[i].verts)
 
                 xy = np.c_[x_coords, y_coords]
@@ -6555,8 +6421,8 @@ def plot_estimation_summary(
             fill_value_range = [np.min(fill_value), np.max(fill_value)]
             ax = plt.gca()
             for i in range(len(meshes)):
-                x_coords = meshes[i].meshio_object.points[:, 0]
-                y_coords = meshes[i].meshio_object.points[:, 1]
+                x_coords = meshes[i].points[:, 0]
+                y_coords = meshes[i].points[:, 1]
                 vertex_array = np.asarray(meshes[i].verts)
 
                 xy = np.c_[x_coords, y_coords]
@@ -6625,8 +6491,8 @@ def plot_matrix_abs_log(matrix):
 
 def plot_meshes(meshes: List, fill_value: np.array, ax):
     for i in range(len(meshes)):
-        x_coords = meshes[i].meshio_object.points[:, 0]
-        y_coords = meshes[i].meshio_object.points[:, 1]
+        x_coords = meshes[i].points[:, 0]
+        y_coords = meshes[i].points[:, 1]
         vertex_array = np.asarray(meshes[i].verts)
 
         if not ax:
@@ -7438,8 +7304,8 @@ def plot_fault_geometry(p, segment, meshes):
     )
 
     for i in range(len(meshes)):
-        x_coords = meshes[i].meshio_object.points[:, 0]
-        y_coords = meshes[i].meshio_object.points[:, 1]
+        x_coords = meshes[i].points[:, 0]
+        y_coords = meshes[i].points[:, 1]
         vertex_array = np.asarray(meshes[i].verts)
 
         ax = plt.gca()
@@ -7527,7 +7393,6 @@ def plot_tde_boundary_condition_labels(meshes, mesh_idx):
     plt.gca().set_aspect("equal")
     plt.title(f"{meshes[mesh_idx].file_name}, {mesh_idx=}")
     plt.show()
-
 
 
 ################################################################################################
@@ -8022,11 +7887,11 @@ def diagnose_matrix(mat):
     """
     Visualizes and diagnoses a matrix for rank deficiency.
 
-    This function generates visualizations of the input matrix and scans for 
-    the first rank deficient column. It creates two plots: one showing the 
-    logarithm of the absolute values of the matrix elements, and another 
-    showing the sparsity pattern of the matrix. It then iterates through the 
-    columns of the matrix to identify the first column where the rank is 
+    This function generates visualizations of the input matrix and scans for
+    the first rank deficient column. It creates two plots: one showing the
+    logarithm of the absolute values of the matrix elements, and another
+    showing the sparsity pattern of the matrix. It then iterates through the
+    columns of the matrix to identify the first column where the rank is
     deficient.
 
     Parameters:

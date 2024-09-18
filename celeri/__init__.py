@@ -2,6 +2,7 @@ import pkg_resources
 
 from .celeri import (
     read_data,
+    read_mesh,
     process_station,
     process_segment,
     process_sar,
