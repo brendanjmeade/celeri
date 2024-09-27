@@ -4,6 +4,7 @@ function segment2csv(segment_file_name)
 
 % Read file from old .segment format
 segment = ReadSegmentTri(segment_file_name);
+sizeseg = size(segment.lon1);
 
 % Create new field names
 segment.locking_depth = segment.lDep;
@@ -29,6 +30,15 @@ segment.patch_file_name = segment.patchFile - 1; % Make all 0 into -1
 segment.patch_flag = segment.patchTog;
 segment.patch_slip_file = segment.patchSlipFile;
 segment.patch_slip_flag = segment.patchSlipTog;
+segment.ss_rate_bound_flag = zeros(sizeseg);
+segment.ss_rate_bound_min = -1.0*ones(sizeseg);
+segment.ss_rate_bound_max = 1.0*ones(sizeseg);
+segment.ds_rate_bound_flag = zeros(sizeseg)
+segment.ds_rate_bound_min = -1.0*ones(sizeseg);
+segment.ds_rate_bound_max = 1.0*ones(sizeseg);
+segment.ts_rate_bound_flag = zeros(sizeseg)
+segment.ts_rate_bound_min = -1.0*ones(sizeseg);
+segment.ts_rate_bound_max = 1.0*ones(sizeseg);
 
 % Delete old field names
 segment = rmfield(segment, "lDep");
