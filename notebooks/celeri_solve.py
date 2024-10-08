@@ -31,6 +31,11 @@ def main(args: Dict):
         estimation, operators, index = celeri.build_and_solve_dense_no_meshes(
             command, assembly, operators, data
         )
+    elif command.solve_type == "qp_kl":
+        logger.info("Quadratic programming with KL modes")
+        estimation, operators, index = celeri.build_and_solve_qp_kl(
+            command, assembly, operators, data
+        )
 
     # Copy input files and adata structures to output folder
     celeri.write_output_supplemental(

@@ -5682,6 +5682,77 @@ def build_and_solve_dense_no_meshes(command, assembly, operators, data):
     return estimation, operators, index
 
 
+def build_and_solve_qp_kl(command, assembly, operators, data):
+    # NOTE: Used in celeri_solve.py
+    logger.info("build_and_solve_qp_kl")
+    logger.info("PLACEHOLDER")
+
+    # # Get all elastic operators for segments and TDEs
+    # get_elastic_operators(operators, data.meshes, data.segment, data.station, command)
+
+    # # Get TDE smoothing operators
+    # get_all_mesh_smoothing_matrices(data.meshes, operators)
+
+    # # Get non-elastic operators
+    # operators.rotation_to_velocities = get_rotation_to_velocities_partials(
+    #     data.station, data.block.shape[0]
+    # )
+    # operators.global_float_block_rotation = get_global_float_block_rotation_partials(
+    #     data.station
+    # )
+    # assembly, operators.block_motion_constraints = get_block_motion_constraints(
+    #     assembly, data.block, command
+    # )
+    # assembly, operators.slip_rate_constraints = get_slip_rate_constraints(
+    #     assembly, data.segment, data.block, command
+    # )
+    # operators.rotation_to_slip_rate = get_rotation_to_slip_rate_partials(
+    #     data.segment, data.block
+    # )
+    # (
+    #     operators.block_strain_rate_to_velocities,
+    #     strain_rate_block_index,
+    # ) = get_block_strain_rate_to_velocities_partials(
+    #     data.block, data.station, data.segment
+    # )
+    # operators.mogi_to_velocities = get_mogi_to_velocities_partials(
+    #     data.mogi, data.station, command
+    # )
+    # get_tde_slip_rate_constraints(data.meshes, operators)
+
+    # # Direct solve dense linear system
+    # logger.info("Start: Dense assemble and solve")
+    # start_solve_time = timeit.default_timer()
+    # index, estimation = assemble_and_solve_dense(
+    #     command, assembly, operators, data.station, data.block, data.meshes
+    # )
+    # end_solve_time = timeit.default_timer()
+    # logger.success(
+    #     f"Finish: Dense assemble and solve: {end_solve_time - start_solve_time:0.2f} seconds for solve"
+    # )
+
+    # post_process_estimation(estimation, operators, data.station, index)
+
+    # write_output(
+    #     command, estimation, data.station, data.segment, data.block, data.meshes
+    # )
+
+    # if bool(command.plot_estimation_summary):
+    #     plot_estimation_summary(
+    #         command,
+    #         data.segment,
+    #         data.station,
+    #         data.meshes,
+    #         estimation,
+    #         lon_range=command.lon_range,
+    #         lat_range=command.lat_range,
+    #         quiver_scale=command.quiver_scale,
+    #     )
+
+    # return estimation, operators, index
+
+
+
 #########################################################################################
 #                                                                                       #
 #                                                                                       #
