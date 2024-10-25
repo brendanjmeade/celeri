@@ -33,6 +33,7 @@ from .celeri import (
     get_shared_sides,
     write_output,
     create_output_folder,
+    assemble_and_solve_dense,
     build_and_solve_dense,
     get_index,
     get_data_vector,
