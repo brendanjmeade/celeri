@@ -5476,7 +5476,7 @@ def build_and_solve_dense(command, assembly, operators, data):
     logger.info("Start: Dense assemble and solve")
     start_solve_time = timeit.default_timer()
     index, estimation = assemble_and_solve_dense(
-        command, assembly, operators, data.station, data.block, data.meshes
+        command, assembly, operators, data.station, data.block, data.meshes, data.mogi
     )
     end_solve_time = timeit.default_timer()
     logger.success(
@@ -5750,7 +5750,6 @@ def build_and_solve_qp_kl(command, assembly, operators, data):
     #     )
 
     # return estimation, operators, index
-
 
 
 #########################################################################################
