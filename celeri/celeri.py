@@ -4181,6 +4181,13 @@ def get_qp_tde_inequality_operator_and_data_vector(index, meshes, operators):
                 index.start_col_eigen[i] : index.end_col_eigen[i],
             ] = operators.eigenvectors_to_tde_slip[i]
 
+            plt.figure()
+            plt.imshow(np.log10(np.abs(to_plot)), aspect="auto")
+            plt.title(f"{i=}")
+            plt.colorbar()
+            plt.show()
+
+
         elif meshes[i].qp_mesh_tde_bound_coupling == 1:
             logger.info(f"USING TDE COUPLING BOUNDS FOR MESH {i}")
             # TDE coupling constraints go here
@@ -4230,8 +4237,33 @@ def get_qp_tde_inequality_operator_and_data_vector(index, meshes, operators):
                 index.start_col_eigen[i] : index.end_col_eigen[i],
             ] = operators.eigenvectors_to_tde_slip[i]
 
-            # Insert TDE slip rate rotation partials.
-            # DO THESE EXIST YET???
+            # Insert TDE slip rate rotation partials
+            # Insert TDE slip rate partials into QP constraint data vector for lower bounds (note negative sign)
+            print(f"{operators.eigenvectors_to_tde_slip[i].shape=}")
+            print(f"{operators.rotation_to_tri_slip_rate[i].shape=}")
+            
+            qp_constraint_matrix[
+                index.qp_constraint_tde_rate_start_row_eigen[
+                    i
+                ] : index.qp_constraint_tde_rate_start_row_eigen[i]
+                + 2 * index.n_tde[i],
+                0 : index.start_col_eigen[i],
+            ] = -operators.rotation_to_tri_slip_rate[i]
+
+            qp_constraint_matrix[
+                index.qp_constraint_tde_rate_start_row_eigen[i]
+                + 2 * index.n_tde[i] : index.qp_constraint_tde_rate_end_row_eigen[i],
+                0 : index.start_col_eigen[i],
+            ] = operators.rotation_to_tri_slip_rate[i]
+
+            to_plot = qp_constraint_matrix[
+                index.qp_constraint_tde_rate_start_row_eigen[i] : index.qp_constraint_tde_rate_end_row_eigen[i], :]
+            
+            plt.figure()
+            plt.imshow(np.log10(np.abs(to_plot)), aspect="auto")
+            plt.title(f"{i=}")
+            plt.colorbar()
+            plt.show()
 
     return qp_constraint_matrix, qp_constraint_data_vector
 
