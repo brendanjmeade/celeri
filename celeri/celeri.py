@@ -4132,8 +4132,9 @@ def get_qp_tde_inequality_operator_and_data_vector(index, meshes, operators):
     qp_constraint_data_vector = np.zeros(4 * index.n_tde_total)
 
     for i in range(index.n_meshes):
-        logger.info(f"USING TDE SLIP RATE CONSTRAINTS FOR MESH {i}")
         if meshes[i].qp_mesh_tde_bound == 1:
+            logger.info(f"USING TDE SLIP RATE CONSTRAINTS FOR MESH {i}")
+
             # TDE strike- and dip-slip rate lower bounds
             lower_bound_current_mesh = interleave2(
                 meshes[i].qp_mesh_tde_slip_rate_lower_bound_ss
@@ -4180,53 +4181,53 @@ def get_qp_tde_inequality_operator_and_data_vector(index, meshes, operators):
                 index.start_col_eigen[i] : index.end_col_eigen[i],
             ] = operators.eigenvectors_to_tde_slip[i]
 
-        else:
-            # TDE coupling constraints go here
-            # TDE strike- and dip-slip coupling lower bounds
-            lower_bound_current_mesh = interleave2(
-                meshes[i].qp_mesh_tde_slip_rate_lower_bound_ss_coupling
-                * np.ones(index.n_tde[i]),
-                meshes[i].qp_mesh_tde_slip_rate_lower_bound_ds_coupling
-                * np.ones(index.n_tde[i]),
-            )
+        # else:
+        #     # TDE coupling constraints go here
+        #     # TDE strike- and dip-slip coupling lower bounds
+        #     lower_bound_current_mesh = interleave2(
+        #         meshes[i].qp_mesh_tde_slip_rate_lower_bound_ss_coupling
+        #         * np.ones(index.n_tde[i]),
+        #         meshes[i].qp_mesh_tde_slip_rate_lower_bound_ds_coupling
+        #         * np.ones(index.n_tde[i]),
+        #     )
 
-            # TDE strike- and dip-slip coupling upper bounds
-            upper_bound_current_mesh = interleave2(
-                meshes[i].qp_mesh_tde_slip_rate_upper_bound_ss_coupling
-                * np.ones(index.n_tde[i]),
-                meshes[i].qp_mesh_tde_slip_rate_upper_bound_ds_coupling
-                * np.ones(index.n_tde[i]),
-            )
+        #     # TDE strike- and dip-slip coupling upper bounds
+        #     upper_bound_current_mesh = interleave2(
+        #         meshes[i].qp_mesh_tde_slip_rate_upper_bound_ss_coupling
+        #         * np.ones(index.n_tde[i]),
+        #         meshes[i].qp_mesh_tde_slip_rate_upper_bound_ds_coupling
+        #         * np.ones(index.n_tde[i]),
+        #     )
 
-            # Insert TDE lower bounds into QP constraint data vector (note negative sign)
-            qp_constraint_data_vector[
-                index.qp_constraint_tde_rate_start_row_eigen[
-                    i
-                ] : index.qp_constraint_tde_rate_start_row_eigen[i]
-                + 2 * index.n_tde[i]
-            ] = -lower_bound_current_mesh
+        #     # Insert TDE lower bounds into QP constraint data vector (note negative sign)
+        #     qp_constraint_data_vector[
+        #         index.qp_constraint_tde_rate_start_row_eigen[
+        #             i
+        #         ] : index.qp_constraint_tde_rate_start_row_eigen[i]
+        #         + 2 * index.n_tde[i]
+        #     ] = -lower_bound_current_mesh
 
-            # Insert TDE upper bounds into QP constraint data vector
-            qp_constraint_data_vector[
-                index.qp_constraint_tde_rate_start_row_eigen[i]
-                + 2 * index.n_tde[i] : index.qp_constraint_tde_rate_end_row_eigen[i]
-            ] = upper_bound_current_mesh
+        #     # Insert TDE upper bounds into QP constraint data vector
+        #     qp_constraint_data_vector[
+        #         index.qp_constraint_tde_rate_start_row_eigen[i]
+        #         + 2 * index.n_tde[i] : index.qp_constraint_tde_rate_end_row_eigen[i]
+        #     ] = upper_bound_current_mesh
 
-            # Insert eigenmode to TDE slip operator into QP constraint data vector for lower bounds (note negative sign)
-            qp_constraint_matrix[
-                index.qp_constraint_tde_rate_start_row_eigen[
-                    i
-                ] : index.qp_constraint_tde_rate_start_row_eigen[i]
-                + 2 * index.n_tde[i],
-                index.start_col_eigen[i] : index.end_col_eigen[i],
-            ] = -operators.eigenvectors_to_tde_slip[i]
+        #     # Insert eigenmode to TDE slip operator into QP constraint data vector for lower bounds (note negative sign)
+        #     qp_constraint_matrix[
+        #         index.qp_constraint_tde_rate_start_row_eigen[
+        #             i
+        #         ] : index.qp_constraint_tde_rate_start_row_eigen[i]
+        #         + 2 * index.n_tde[i],
+        #         index.start_col_eigen[i] : index.end_col_eigen[i],
+        #     ] = -operators.eigenvectors_to_tde_slip[i]
 
-            # Insert eigenmode to TDE slip operator into QP constraint data vector for lower bounds
-            qp_constraint_matrix[
-                index.qp_constraint_tde_rate_start_row_eigen[i]
-                + 2 * index.n_tde[i] : index.qp_constraint_tde_rate_end_row_eigen[i],
-                index.start_col_eigen[i] : index.end_col_eigen[i],
-            ] = operators.eigenvectors_to_tde_slip[i]
+        #     # Insert eigenmode to TDE slip operator into QP constraint data vector for lower bounds
+        #     qp_constraint_matrix[
+        #         index.qp_constraint_tde_rate_start_row_eigen[i]
+        #         + 2 * index.n_tde[i] : index.qp_constraint_tde_rate_end_row_eigen[i],
+        #         index.start_col_eigen[i] : index.end_col_eigen[i],
+        #     ] = operators.eigenvectors_to_tde_slip[i]
 
             # Insert TDE slip rate rotation partials.
             # DO THESE EXIST YET???
