@@ -3182,7 +3182,9 @@ def get_rotation_to_tri_slip_rate_partials(meshes, mesh_idx, segment, block):
         )
         # This correction gives -1 for strikes > 90
         # Equivalent to the if statement in get_rotation_to_slip_rate_partials
-        sign_corr = -np.sign(meshes.strike[el_idx] - 90)
+        # sign_corr = -np.sign(meshes.strike[el_idx] - 90)
+        sign_corr = 1.0
+
 
         # Insert this element's partials into operator
         tri_slip_rate_partials[
