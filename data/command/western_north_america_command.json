@@ -55,7 +55,7 @@
     "sar_weight": 0,
     "save_elastic": 1,
     "save_elastic_file": "../data/operators/western_north_america_elastic_operators.hdf5",
-    "segment_file_name": "../data/segment/western_north_america_segment.csv",
+    "segment_file_name": "../data/segment/western_north_america_segment_cascdip.csv",
     "slip_constraint_weight": 1e5,
     "slip_constraint_weight_max": 0.00001,
     "slip_constraint_weight_min": 0.00001,

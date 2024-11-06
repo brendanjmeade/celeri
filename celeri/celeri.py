@@ -3069,8 +3069,16 @@ def get_rotation_to_tri_slip_rate_partials(meshes, mesh_idx, segment, block):
     tri_slip_rate_partials = np.zeros((3 * meshes.n_tde, 3 * n_blocks))
 
     # Generate strikes for elements using same sign convention as segments
-    tristrike = meshes.strike
+    dipdir = np.array(
+        meshes.strike + 90
+    )  # Dip direction. Not wrapping to 360 so we can use it as a threshold
+    # dipdir(dipdir > 360) -= 360
+    tristrike = np.array(meshes.strike)
     tristrike[meshes.strike > 180] -= 180
+    tristrike2 = np.array(meshes.strike)
+    tristrike2[meshes.strike > 180] -= 360
+    tridip = np.array(meshes.dip)
+    tridip[meshes.strike > 180] = 180 - tridip[meshes.strike > 180]
     # Find subset of segments that are replaced by this mesh
     seg_replace_idx = np.where(
         (segment.patch_flag != 0) & (segment.patch_file_name == mesh_idx)
@@ -3090,6 +3098,29 @@ def get_rotation_to_tri_slip_rate_partials(meshes, mesh_idx, segment, block):
     # Add segment labels to elements
     meshes.east_labels = np.array(segment.east_labels[meshes.closest_segment_idx])
     meshes.west_labels = np.array(segment.west_labels[meshes.closest_segment_idx])
+
+    # Check for switching of block labels
+    seg_dip_dir = np.array(segment.azimuth)
+    seg_dip_dir = seg_dip_dir + np.sign(np.cos(np.deg2rad(segment.dip))) * 90
+    seg_dip_dir_x = np.cos(np.deg2rad(90 - seg_dip_dir))
+    seg_dip_dir_y = np.sin(np.deg2rad(90 - seg_dip_dir))
+    seg_comps = np.vstack(
+        [seg_dip_dir_x[:], seg_dip_dir_y[:], np.zeros_like(seg_dip_dir_x)]
+    ).T
+    tri_dip_dir = np.array(meshes.strike) + 90
+    tri_dip_dir_x = np.cos(np.deg2rad(90 - tri_dip_dir))
+    tri_dip_dir_y = np.sin(np.deg2rad(90 - tri_dip_dir))
+    tri_comps = np.vstack(
+        [tri_dip_dir_x[:], tri_dip_dir_y[:], np.zeros_like(tri_dip_dir_x)]
+    ).T
+    north_tri_cross = np.cross(
+        np.array([0, 1, 0]),
+        tri_comps,
+    )
+    north_seg_cross = np.cross(
+        np.array([0, 1, 0]),
+        seg_comps,
+    )
 
     # Find rotation partials for each element
     for el_idx in range(meshes.n_tde):
@@ -3137,13 +3168,21 @@ def get_rotation_to_tri_slip_rate_partials(meshes, mesh_idx, segment, block):
             meshes.lon_centroid[el_idx],
             meshes.lat_centroid[el_idx],
         )
+        # This correction gives -1 for strikes > 90
+        # Equivalent to the if statement in get_rotation_to_slip_rate_partials
+        sign_corr = -np.sign(tristrike[el_idx] - (90 + 1e-5))
+        # sign_corr = np.sign(meshes.strike[el_idx] - (180 + 1e-5))
+        # Sign correction based on dip direction. Sign is flipped for south-dipping elements
+        # sign_corr = -np.sign(dipdir[el_idx] - (270 + 1e-5))
+
+        # sign_corr = 1
         # Project about fault strike
-        unit_x_parallel = np.cos(np.deg2rad(90 - tristrike[el_idx]))
-        unit_y_parallel = np.sin(np.deg2rad(90 - tristrike[el_idx]))
-        unit_x_perpendicular = np.sin(np.deg2rad(tristrike[el_idx] - 90))
-        unit_y_perpendicular = np.cos(np.deg2rad(tristrike[el_idx] - 90))
+        unit_x_parallel = sign_corr * np.cos(np.deg2rad(90 - tristrike[el_idx]))
+        unit_y_parallel = sign_corr * np.sin(np.deg2rad(90 - tristrike[el_idx]))
+        unit_x_perpendicular = sign_corr * np.sin(np.deg2rad(tristrike[el_idx] - 90))
+        unit_y_perpendicular = sign_corr * np.cos(np.deg2rad(tristrike[el_idx] - 90))
         # Project by fault dip
-        scale_factor = 1.0 / abs(np.cos(np.deg2rad(meshes.dip[el_idx])))
+        scale_factor = 1.0 / (np.cos(np.deg2rad(meshes.dip[el_idx])))
         slip_rate_matrix = np.array(
             [
                 [
@@ -3180,17 +3219,28 @@ def get_rotation_to_tri_slip_rate_partials(meshes, mesh_idx, segment, block):
                 [0, 0, 0],
             ]
         )
-        # This correction gives -1 for strikes > 90
-        # Equivalent to the if statement in get_rotation_to_slip_rate_partials
-        sign_corr = -np.sign(meshes.strike[el_idx] - 90)
-
+        # Additional sign correction needs to compare TDE strike and corresponding segment strike
+        # If they're on different sides of an E-W line, we need to apply a negative sign
+        # This effectively flips the east and west labels
+        # Equivalently, this situation is where the dip directions of the segment and triangle are
+        # on different sides of a N-S line
+        # ew_switch = np.sign(meshes.strike[el_idx] - 270) * np.sign(
+        #     segment.azimuth[meshes.closest_segment_idx[el_idx]] - 90
+        # )
+        # ew_switch = np.sign(90 - tristrike2[el_idx]) * np.sign(
+        #     90 - segment.azimuth[meshes.closest_segment_idx[el_idx]]
+        # )
+        ew_switch = np.sign(north_tri_cross[el_idx, 2]) * np.sign(
+            north_seg_cross[meshes.closest_segment_idx[el_idx], 2]
+        )
+        # ew_switch = 1
         # Insert this element's partials into operator
         tri_slip_rate_partials[
             row_idx : row_idx + 3, column_idx_east : column_idx_east + 3
-        ] = (sign_corr * slip_rate_matrix)
+        ] = (ew_switch * slip_rate_matrix)
         tri_slip_rate_partials[
             row_idx : row_idx + 3, column_idx_west : column_idx_west + 3
-        ] = (sign_corr * -slip_rate_matrix)
+        ] = (-ew_switch * slip_rate_matrix)
     return tri_slip_rate_partials
 
 
