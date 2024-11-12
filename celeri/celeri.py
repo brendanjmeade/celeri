@@ -7536,12 +7536,25 @@ def plot_tde_boundary_condition_labels(meshes, mesh_idx):
 def get_logger(command):
     # Create logger
     logger.remove()  # Remove any existing loggers includeing default stderr
-    logger.add(
-        sys.stdout,
-        # format="[{level}] {message}",
-        # format="<cyan>[{level}]</cyan> <green>{message}</green>",
-        colorize=True,
+
+    # Define the custom format
+    log_format = (
+        "<level>{level}</level>: "
+        "<level>{message}</level> - "
+        "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - "
+        "<green>{time:YYYY-MM-DD HH:mm:ss}</green>"
     )
+
+    # Configure the logger with the custom format
+    # logger.remove()  # Remove default logger configuration
+    logger.add(lambda msg: print(msg, end=""), format=log_format, colorize=True)
+
+    # logger.add(
+    #     sys.stdout,
+    #     # format="[{level}] {message}",
+    #     # format="<cyan>[{level}]</cyan> <green>{message}</green>",
+    #     colorize=True,
+    # )
     # logger.add(command.run_name + ".log")
     logger.add(command.output_path + "/" + command.run_name + ".log")
     logger.info(f"Read: {command.file_name}")
