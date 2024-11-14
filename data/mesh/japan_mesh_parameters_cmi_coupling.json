@@ -2,8 +2,8 @@
     {
         "mesh_filename": "../data/mesh/nankai.msh",
         "smoothing_weight": 7e14,
-        "n_modes_strike_slip": 50,
-        "n_modes_dip_slip": 50,
+        "n_modes_strike_slip": 100,
+        "n_modes_dip_slip": 100,
         "top_slip_rate_constraint": 0,
         "bot_slip_rate_constraint": 0,
         "side_slip_rate_constraint": 0,
