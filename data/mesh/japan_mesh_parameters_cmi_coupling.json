@@ -31,7 +31,7 @@
         "qp_mesh_tde_bound_coupling": 0,
         "qp_mesh_tde_slip_rate_lower_bound_ss_coupling": -1.0,
         "qp_mesh_tde_slip_rate_upper_bound_ss_coupling": 1.0,
-        "qp_mesh_tde_slip_rate_lower_bound_ds_coupling": -0.1,
+        "qp_mesh_tde_slip_rate_lower_bound_ds_coupling": -1.0,
         "qp_mesh_tde_slip_rate_upper_bound_ds_coupling": 1.0,
         "mesh_tde_bound": [1],
         "mesh_tde_slip_rate_bound_lower_ss": ["-inf"],
