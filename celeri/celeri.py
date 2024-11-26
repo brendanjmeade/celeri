@@ -3049,7 +3049,7 @@ def get_tde_coupling_constraints(meshes, segment, block, operators):
     # Loop only over meshes that are tied to fault segments.  This *should*
     # eliminate touching CMI meshes which have problems with this function
     # becase it assumes that a mesh is tied to segments.
-    for mesh_idx in range(np.max(segment.patch_file_name)):
+    for mesh_idx in range(np.max(segment.patch_file_name) + 1):
         operators.rotation_to_tri_slip_rate[mesh_idx] = (
             get_rotation_to_tri_slip_rate_partials(
                 meshes[mesh_idx], mesh_idx, segment, block
