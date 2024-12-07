@@ -5912,6 +5912,68 @@ def write_output(
         mesh_output_file_name = command.output_path + "/" + "model_meshes.csv"
         mesh_outputs.to_csv(mesh_output_file_name, index=False)
 
+        # Write a lot to a single hdf file
+        hdf_output_file_name = command.output_path + "/" + "model.hdf5"
+        with h5py.File(hdf_output_file_name, "w") as hdf:
+            for i in range(len(meshes)):
+                grp = hdf.create_group(f"mesh_{i}")
+                mesh_name = os.path.splitext(os.path.basename(meshes[i].file_name))[0]
+                hdf.attrs["mesh_name"] = mesh_name
+
+                # Write mesh geometry
+                grp.create_dataset(f"points", data=meshes[i].points)
+                grp.create_dataset(f"verts", data=meshes[i].verts)
+
+                # Write mesh scalars (we'll add more later)
+                if i == 0:
+                    mesh_start_idx = 0
+                    mesh_end_idx = meshes[i].n_tde
+                else:
+                    mesh_start_idx = mesh_end_idx
+                    mesh_end_idx = mesh_start_idx + meshes[i].n_tde
+                grp.create_dataset(
+                    f"strike_slip",
+                    data=estimation.tde_strike_slip_rates[mesh_start_idx:mesh_end_idx],
+                )
+                grp.create_dataset(
+                    f"dip_slip",
+                    data=estimation.tde_dip_slip_rates[mesh_start_idx:mesh_end_idx],
+                )
+                grp.create_dataset(
+                    f"tensile_slip",
+                    data=np.zeros_like(
+                        estimation.tde_dip_slip_rates[mesh_start_idx:mesh_end_idx]
+                    ),
+                )
+
+            # Save segment information
+            segment_no_name = segment.drop("name", axis=1)
+            # Store the segment data
+            hdf.create_dataset("segment", data=segment_no_name.to_numpy())
+            # Store the segment column as a separate dataset
+            string_dtype = h5py.string_dtype(encoding="utf-8")  # Variable-length UTF-8 strings
+            hdf.create_dataset(
+                "segment_names", data=segment["name"].to_numpy(dtype=object), dtype=string_dtype
+            )
+            # Store the column names as attributes
+            hdf.attrs["columns"] = np.array(segment_no_name.columns, dtype=h5py.string_dtype())
+            # Store the index as an attribute
+            hdf.attrs["index"] = segment_no_name.index.to_numpy()
+
+            # Save station information
+            station_no_name = station.drop("name", axis=1)
+            # Store the station data
+            hdf.create_dataset("station", data=station_no_name.to_numpy())
+            # Store the segment column as a separate dataset
+            string_dtype = h5py.string_dtype(encoding="utf-8")  # Variable-length UTF-8 strings
+            hdf.create_dataset(
+                "station_names", data=station["name"].to_numpy(dtype=object), dtype=string_dtype
+            )
+            # Store the column names as attributes
+            hdf.attrs["columns"] = np.array(station_no_name.columns, dtype=h5py.string_dtype())
+            # Store the index as an attribute
+            hdf.attrs["index"] = station_no_name.index.to_numpy()
+
     # Write the command dict to an a json file
     args_command_output_file_name = (
         command.output_path + "/args_" + os.path.basename(command.file_name)
