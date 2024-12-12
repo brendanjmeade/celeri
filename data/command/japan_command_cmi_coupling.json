@@ -48,7 +48,7 @@
   "printslipcons": 0,
   "quiver_scale": 100,
   "repl": 1,
-  "reuse_elastic": 0,
+  "reuse_elastic": 1,
   "reuse_elastic_file": "../data/operators/japan_cmi_elastic_operators.hdf5",
   "ridge_param": 0,
   "sar_file_name": "",
