@@ -8,6 +8,8 @@
   "block_constraint_weight_steps": 1,
   "block_file_name": "../data/block/japan_block.csv",
   "btol": 0.0001,
+  "coupling_bounds_total_percentage_satisfied_target": 95,
+  "coupling_bounds_max_iter": 500,
   "fault_resolution": 500,
   "global_elastic_cutoff_distance": 2000000,
   "global_elastic_cutoff_distance_flag": 0,
