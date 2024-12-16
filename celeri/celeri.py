@@ -5924,6 +5924,15 @@ def write_output(
                 grp.create_dataset(f"points", data=meshes[i].points)
                 grp.create_dataset(f"verts", data=meshes[i].verts)
 
+                # Calculate and write Cartesian mesh geometry
+                meshes[i].points_cartesian = np.zeros(meshes[i].points.shape)
+                meshes[i].points_cartesian[:, 0], meshes[i].points_cartesian[:, 1], meshes[i].points_cartesian[:, 2] = sph2cart(
+                        meshes[i].points[:, 0],
+                        meshes[i].points[:, 1],
+                        RADIUS_EARTH + KM2M * meshes[i].points[:, 2],
+                    )
+                grp.create_dataset(f"points_cartesian", data=meshes[i].points_cartesian)
+
                 # Write mesh scalars (we'll add more later)
                 if i == 0:
                     mesh_start_idx = 0
