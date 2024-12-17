@@ -3045,7 +3045,11 @@ def get_tde_coupling_constraints(meshes, segment, block, operators):
     """
     Get partials relating block motion to TDE slip rates for coupling constraints
     """
-    for mesh_idx in range(len(meshes)):
+    # for mesh_idx in range(len(meshes)):
+    # Loop only over meshes that are tied to fault segments.  This *should*
+    # eliminate touching CMI meshes which have problems with this function
+    # becase it assumes that a mesh is tied to segments.
+    for mesh_idx in range(np.max(segment.patch_file_name) + 1):
         operators.rotation_to_tri_slip_rate[mesh_idx] = (
             get_rotation_to_tri_slip_rate_partials(
                 meshes[mesh_idx], mesh_idx, segment, block
@@ -5908,6 +5912,77 @@ def write_output(
         mesh_output_file_name = command.output_path + "/" + "model_meshes.csv"
         mesh_outputs.to_csv(mesh_output_file_name, index=False)
 
+        # Write a lot to a single hdf file
+        hdf_output_file_name = command.output_path + "/" + "model.hdf5"
+        with h5py.File(hdf_output_file_name, "w") as hdf:
+            for i in range(len(meshes)):
+                grp = hdf.create_group(f"mesh_{i}")
+                mesh_name = os.path.splitext(os.path.basename(meshes[i].file_name))[0]
+                hdf.attrs["mesh_name"] = mesh_name
+
+                # Write mesh geometry
+                grp.create_dataset(f"points", data=meshes[i].points)
+                grp.create_dataset(f"verts", data=meshes[i].verts)
+
+                # Calculate and write Cartesian mesh geometry
+                meshes[i].points_cartesian = np.zeros(meshes[i].points.shape)
+                meshes[i].points_cartesian[:, 0], meshes[i].points_cartesian[:, 1], meshes[i].points_cartesian[:, 2] = sph2cart(
+                        meshes[i].points[:, 0],
+                        meshes[i].points[:, 1],
+                        RADIUS_EARTH + KM2M * meshes[i].points[:, 2],
+                    )
+                grp.create_dataset(f"points_cartesian", data=meshes[i].points_cartesian)
+
+                # Write mesh scalars (we'll add more later)
+                if i == 0:
+                    mesh_start_idx = 0
+                    mesh_end_idx = meshes[i].n_tde
+                else:
+                    mesh_start_idx = mesh_end_idx
+                    mesh_end_idx = mesh_start_idx + meshes[i].n_tde
+                grp.create_dataset(
+                    f"strike_slip",
+                    data=estimation.tde_strike_slip_rates[mesh_start_idx:mesh_end_idx],
+                )
+                grp.create_dataset(
+                    f"dip_slip",
+                    data=estimation.tde_dip_slip_rates[mesh_start_idx:mesh_end_idx],
+                )
+                grp.create_dataset(
+                    f"tensile_slip",
+                    data=np.zeros_like(
+                        estimation.tde_dip_slip_rates[mesh_start_idx:mesh_end_idx]
+                    ),
+                )
+
+            # Save segment information
+            segment_no_name = segment.drop("name", axis=1)
+            # Store the segment data
+            hdf.create_dataset("segment", data=segment_no_name.to_numpy())
+            # Store the segment column as a separate dataset
+            string_dtype = h5py.string_dtype(encoding="utf-8")  # Variable-length UTF-8 strings
+            hdf.create_dataset(
+                "segment_names", data=segment["name"].to_numpy(dtype=object), dtype=string_dtype
+            )
+            # Store the column names as attributes
+            hdf.attrs["columns"] = np.array(segment_no_name.columns, dtype=h5py.string_dtype())
+            # Store the index as an attribute
+            hdf.attrs["index"] = segment_no_name.index.to_numpy()
+
+            # Save station information
+            station_no_name = station.drop("name", axis=1)
+            # Store the station data
+            hdf.create_dataset("station", data=station_no_name.to_numpy())
+            # Store the segment column as a separate dataset
+            string_dtype = h5py.string_dtype(encoding="utf-8")  # Variable-length UTF-8 strings
+            hdf.create_dataset(
+                "station_names", data=station["name"].to_numpy(dtype=object), dtype=string_dtype
+            )
+            # Store the column names as attributes
+            hdf.attrs["columns"] = np.array(station_no_name.columns, dtype=h5py.string_dtype())
+            # Store the index as an attribute
+            hdf.attrs["index"] = station_no_name.index.to_numpy()
+
     # Write the command dict to an a json file
     args_command_output_file_name = (
         command.output_path + "/args_" + os.path.basename(command.file_name)
@@ -7532,12 +7607,25 @@ def plot_tde_boundary_condition_labels(meshes, mesh_idx):
 def get_logger(command):
     # Create logger
     logger.remove()  # Remove any existing loggers includeing default stderr
-    logger.add(
-        sys.stdout,
-        # format="[{level}] {message}",
-        # format="<cyan>[{level}]</cyan> <green>{message}</green>",
-        colorize=True,
+
+    # Define the custom format
+    log_format = (
+        "<level>{level}</level>: "
+        "<level>{message}</level> - "
+        "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - "
+        "<green>{time:YYYY-MM-DD HH:mm:ss}</green>"
     )
+
+    # Configure the logger with the custom format
+    # logger.remove()  # Remove default logger configuration
+    logger.add(lambda msg: print(msg, end=""), format=log_format, colorize=True)
+
+    # logger.add(
+    #     sys.stdout,
+    #     # format="[{level}] {message}",
+    #     # format="<cyan>[{level}]</cyan> <green>{message}</green>",
+    #     colorize=True,
+    # )
     # logger.add(command.run_name + ".log")
     logger.add(command.output_path + "/" + command.run_name + ".log")
     logger.info(f"Read: {command.file_name}")
