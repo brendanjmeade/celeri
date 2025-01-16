@@ -5913,25 +5913,43 @@ def write_output(
         mesh_outputs.to_csv(mesh_output_file_name, index=False)
 
         # Write a lot to a single hdf file
-        hdf_output_file_name = command.output_path + "/" + "model.hdf5"
+        hdf_output_file_name = command.output_path + "/" + f"model_{command.run_name}.hdf5"
         with h5py.File(hdf_output_file_name, "w") as hdf:
-            for i in range(len(meshes)):
-                grp = hdf.create_group(f"mesh_{i}")
-                mesh_name = os.path.splitext(os.path.basename(meshes[i].file_name))[0]
-                hdf.attrs["mesh_name"] = mesh_name
+            # Meta data
+            hdf.create_dataset("run_name", data=command.run_name.encode("utf-8"), dtype=h5py.string_dtype(encoding="utf-8"))
+            hdf.create_dataset("earth_radius", data=6371.0)
 
+            # Write command dictionary
+            grp = hdf.create_group("command")
+            for key, value in command.items():
+                if isinstance(value, str):
+                    # Handle strings specially
+                    grp.create_dataset(key, data=value.encode("utf-8"), 
+                                    dtype=h5py.string_dtype(encoding="utf-8"))
+                else:
+                    # Handle numeric values
+                    grp.create_dataset(key, data=value)
+
+
+            # Write meshes
+            for i in range(len(meshes)):
+                grp = hdf.create_group(f"meshes/mesh_{i:05}")
+                mesh_name = os.path.splitext(os.path.basename(meshes[i].file_name))[0]
+                grp.create_dataset("mesh_name", data=mesh_name.encode("utf-8"), dtype=h5py.string_dtype(encoding="utf-8"))
+                grp.create_dataset("n_time_steps", data=1)
+                
                 # Write mesh geometry
-                grp.create_dataset(f"points", data=meshes[i].points)
+                grp.create_dataset(f"coordinates", data=meshes[i].points)
                 grp.create_dataset(f"verts", data=meshes[i].verts)
 
                 # Calculate and write Cartesian mesh geometry
-                meshes[i].points_cartesian = np.zeros(meshes[i].points.shape)
-                meshes[i].points_cartesian[:, 0], meshes[i].points_cartesian[:, 1], meshes[i].points_cartesian[:, 2] = sph2cart(
-                        meshes[i].points[:, 0],
-                        meshes[i].points[:, 1],
-                        RADIUS_EARTH + KM2M * meshes[i].points[:, 2],
-                    )
-                grp.create_dataset(f"points_cartesian", data=meshes[i].points_cartesian)
+                # meshes[i].points_cartesian = np.zeros(meshes[i].points.shape)
+                # meshes[i].points_cartesian[:, 0], meshes[i].points_cartesian[:, 1], meshes[i].points_cartesian[:, 2] = sph2cart(
+                #         meshes[i].points[:, 0],
+                #         meshes[i].points[:, 1],
+                #         RADIUS_EARTH + KM2M * meshes[i].points[:, 2],
+                #     )
+                # grp.create_dataset(f"points_cartesian", data=meshes[i].points_cartesian)
 
                 # Write mesh scalars (we'll add more later)
                 if i == 0:
