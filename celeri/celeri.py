@@ -5936,7 +5936,7 @@ def write_output(
                 grp = hdf.create_group(f"meshes/mesh_{i:05}")
                 mesh_name = os.path.splitext(os.path.basename(meshes[i].file_name))[0]
                 grp.create_dataset("mesh_name", data=mesh_name.encode("utf-8"), dtype=h5py.string_dtype(encoding="utf-8"))
-                grp.create_dataset("n_time_steps", data=1)
+                # grp.create_dataset("n_time_steps", data=1)
                 
                 # Write mesh geometry
                 grp.create_dataset(f"coordinates", data=meshes[i].points)
