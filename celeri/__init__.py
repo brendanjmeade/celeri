@@ -1,5 +1,3 @@
-import pkg_resources
-
 from .celeri import (
     read_data,
     read_mesh,
@@ -100,7 +98,9 @@ from .celeri import (
 )
 
 try:
-    __version__ = pkg_resources.get_distribution(__name__).version
+    from importlib.metadata import version
+
+    __version__ = version("celeri")
 except Exception:
     __version__ = "unknown"
 
