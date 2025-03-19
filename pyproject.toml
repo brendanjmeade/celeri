@@ -1,11 +1,10 @@
 [build-system]
-requires = ["hatchling<2"]
+requires = ["hatchling<2", "hatch-vcs<0.5.0", "hatch-fancy-pypi-readme"]
 build-backend = "hatchling.build"
 
 [project]
 name = "celeri"
-version = "0.0.1"
-readme = "README.md"
+dynamic = ["version", "readme"]
 description = "Next generation earthquake cycle kinematics"
 requires-python = ">=3.7"
 license = {file = "LICENSE"}
@@ -13,7 +12,15 @@ authors = [
     {name = "Brendan Meade", email = "brendanjmeade@gmail.com"},
 ]
 dependencies = []
-classifiers = []
+classifiers = [
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: BSD License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Topic :: Scientific/Engineering :: Visualization",
+    "Operating System :: OS Independent",
+]
 
 [project.urls]
 Homepage = "https://github.com/brendanjmeade/celeri"
@@ -31,6 +38,46 @@ exclude = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["celeri"]
+
+[tool.hatch.version]
+# Determine the version number based on Git tags
+source = "vcs"
+# Ensure that the version number is of the form vX.Y.Z
+tag-pattern = '''^v(\d+\.\d+\.\d+)$'''
+
+[tool.hatch.version.raw-options]
+# See configuration details in
+# <https://setuptools-scm.readthedocs.io/en/latest/extending/#version-number-construction>
+# The following avoids the weird default behavior of incrementing the version number
+# before a release is made.
+version_scheme = "no-guess-dev"
+
+# Relative links to GitHub in the README.md file break when rendered on PyPI.
+# hatch-fancy-pypi-readme fixes this issue by replacing the relative links with
+# absolute links to the raw content on GitHub.
+# <https://github.com/hynek/hatch-fancy-pypi-readme>
+[tool.hatch.metadata.hooks.fancy-pypi-readme]
+content-type = "text/markdown"
+
+[[tool.hatch.metadata.hooks.fancy-pypi-readme.fragments]]
+path = "README.md"
+
+[[tool.hatch.metadata.hooks.fancy-pypi-readme.substitutions]]
+# Image links should go to the raw content on GitHub
+# <https://stackoverflow.com/a/46875147>
+pattern = '\[(.*?)\]\(((?!https?://)\S+\.(png|jpe?g|svg|gif))\)'
+replacement = '[\1](https://raw.githubusercontent.com/brendanjmeade/celeri/main/\g<2>)'
+
+[[tool.hatch.metadata.hooks.fancy-pypi-readme.substitutions]]
+# Handle also HTML image tags
+pattern = '''(<img\b[^>]*\bsrc=)(['"])((?!https?://)[^'"]+)(['"][^>]*>)'''
+replacement = '<img src="https://raw.githubusercontent.com/brendanjmeade/celeri/main/\g<3>\g<4>'
+
+[[tool.hatch.metadata.hooks.fancy-pypi-readme.substitutions]]
+# Remaining non-image relative links map to the normal absolute GitHub URL
+# <https://stackoverflow.com/a/46875147>
+pattern = '\[(.*?)\]\(((?!https?://)\S+)\)'
+replacement = '[\1](https://github.com/brendanjmeade/celeri/tree/main/\g<2>)'
 
 [tool.pytest.ini_options]
 addopts = "-s --tb=short"
