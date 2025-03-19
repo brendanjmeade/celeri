@@ -11,7 +11,26 @@ license = {file = "LICENSE"}
 authors = [
     {name = "Brendan Meade", email = "brendanjmeade@gmail.com"},
 ]
-dependencies = []
+dependencies = [
+    "addict",
+    "cvxopt",
+    "h5py",
+    "meshio",
+    "scipy",
+    "pyproj",
+    "pytest",
+    "ipython",
+    "matplotlib",
+    "numpy",
+    "pandas",
+    "okada-wrapper",
+    "cutde",
+    "ismember",
+    "loguru",
+    "tqdm",
+    "spherical-geometry",
+    "gmsh",
+]
 classifiers = [
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
