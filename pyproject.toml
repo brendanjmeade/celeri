@@ -1,2 +1,36 @@
+[build-system]
+requires = ["hatchling<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "celeri"
+version = "0.0.1"
+readme = "README.md"
+description = "Next generation earthquake cycle kinematics"
+requires-python = ">=3.7"
+license = {file = "LICENSE"}
+authors = [
+    {name = "Brendan Meade", email = "brendanjmeade@gmail.com"},
+]
+dependencies = []
+classifiers = []
+
+[project.urls]
+Homepage = "https://github.com/brendanjmeade/celeri"
+
+[tool.hatch.build.targets.sdist]
+# We only really need the main package and the tests in order to build and verify
+# the package.
+exclude = [
+  "/.github",
+  "/convert",
+  "/data",
+  "/meshing",
+  "/notebooks",
+] 
+
+[tool.hatch.build.targets.wheel]
+packages = ["celeri"]
+
 [tool.pytest.ini_options]
 addopts = "-s --tb=short"
