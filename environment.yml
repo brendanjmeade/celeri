@@ -25,11 +25,11 @@ dependencies:
   - fortran-compiler
   - cutde
   - ghostscript
+  - spherical-geometry
+  - loguru
+  - pygmt
+  - gmsh
   - pip
   - pip:
-      - spherical_geometry
-      - loguru
       - okada_wrapper
-      - pygmt
-      - gmsh
       - ismember
