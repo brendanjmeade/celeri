@@ -13,7 +13,12 @@
 
 
 # Getting started
-To set up a development conda environment, run the following commands in the `celeri` folder.
+To set up a development conda environment, install [pixi](https://pixi.sh/) and run the following command in the `celeri` folder.
+```bash
+pixi shell
+```
+
+Alternatively, run the following commands in the `celeri` folder.
 ```
 conda config --prepend channels conda-forge
 conda env create
@@ -21,7 +26,7 @@ conda activate celeri
 pip install --no-use-pep517 -e .
 ```
 
-Then start your favorite notebook viewer (`jupyter lab` or `vscode`) and open and run `celeri.ipynb`.
+Once you are in a pixi shell or have activated the conda environment, start your favorite notebook viewer (`jupyter lab` or `vscode`) and open and run `celeri.ipynb`.
 
 
 ### Folder structure and file locations for applications
