@@ -1,0 +1,43 @@
+# This file is used by the pixi environment manager <https://pixi.sh>.
+# It is equivalent to the `environment.yml`. The environment can be activated
+# with the command `pixi shell`.
+
+[project]
+name = "celeri"
+platforms = ["linux-64", "osx-64", "osx-arm64", "win-64"]
+channels = ["conda-forge"]
+
+[dependencies]
+addict = "*"
+colorcet = "*"
+compilers = "*"
+cutde = "*"
+cvxopt = "*"
+cvxpy = "*"
+dill = "*"
+fortran-compiler = "*"
+ghostscript = "*"
+gmsh = "*"
+h5py = "*"
+ipympl = "*"
+jupyterlab = "*"
+loguru = "*"
+lxml = "*"
+matplotlib = "*"
+meshio = "*"
+numpy = "*"
+pandas = "*"
+pip = "*"
+pygmt = "*"
+pyproj = "*"
+pytest = "*"
+rich = "*"
+scikit-learn = "*"
+scipy = "*"
+spherical-geometry = "*"
+tqdm = "*"
+
+[pypi-dependencies]
+ismember = "*"
+okada-wrapper = "*"
+celeri = {path = ".", editable = true}
