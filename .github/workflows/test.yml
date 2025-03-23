@@ -12,24 +12,18 @@ jobs:
       fail-fast: false
       matrix:
         os: ["ubuntu-latest"]
-        python-version: ["3.7", "3.8", "3.13"]
-    name: Test (${{ matrix.python-version }}, ${{ matrix.os }})
+        pixi-environment: ["py38", "py39", "default"]
+    name: Test (${{ matrix.pixi-environment }}, ${{ matrix.os }})
     runs-on:  ${{ matrix.os }}
     defaults:
       run:
         shell: bash -l {0}
     steps:
     - uses: actions/checkout@v2
-    - uses: mamba-org/setup-micromamba@v2
+    - uses: prefix-dev/setup-pixi@v0.8.3
       with:
-        cache-environment: true
-        environment-file: environment.yml
-        create-args: >-
-          python=${{ matrix.python-version }}.*
-    - name: Install
-      run: |
-        pip install --no-use-pep517 -e .
+        cache: true
+        environments: ${{ matrix.pixi-environment }}
     - name: Test
       run: |
-        pytest ./tests/test_closure.py ./tests/test_okada_equals_cutde.py ./tests/test_western_north_america_dense.py ./tests/test_japan_dense.py
-
+        pixi run -e ${{ matrix.pixi-environment }} pytest ./tests/test_closure.py ./tests/test_okada_equals_cutde.py ./tests/test_western_north_america_dense.py ./tests/test_japan_dense.py
