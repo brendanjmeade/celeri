@@ -2134,79 +2134,46 @@ def get_segment_station_operator_okada(segment, station, command):
     vu(station N)
 
     """
-    if not station.empty:
-        okada_segment_operator = np.ones((3 * len(station), 3 * len(segment)))
-        # Loop through each segment and calculate displacements for each slip component
-        for i in tqdm(
-            range(len(segment)),
-            desc="Calculating Okada partials for segments",
-            colour="cyan",
-        ):
-            u_slip = {}
-            for slip_type in ["strike", "dip", "tensile"]:            
-                (
-                    u_east_slip,
-                    u_north_slip,
-                    u_up_slip,
-                ) = get_okada_displacements(
-                    segment.lon1[i],
-                    segment.lat1[i],
-                    segment.lon2[i],
-                    segment.lat2[i],
-                    segment.locking_depth[i],
-                    segment.burial_depth[i],
-                    segment.dip[i],
-                    segment.azimuth[i],
-                    command.material_lambda,
-                    command.material_mu,
-                    1 if slip_type == "strike" else 0,
-                    1 if slip_type == "dip" else 0,
-                    1 if slip_type == "tensile" else 0,
-                    station.lon,
-                    station.lat,
-                )
-                if slip_type == "strike":
-                    u_east_strike_slip = u_east_slip
-                    u_north_strike_slip = u_north_slip
-                    u_up_strike_slip = u_up_slip
-                elif slip_type == "dip":
-                    u_east_dip_slip = u_east_slip
-                    u_north_dip_slip = u_north_slip
-                    u_up_dip_slip = u_up_slip
-                elif slip_type == "tensile":
-                    u_east_tensile_slip = u_east_slip
-                    u_north_tensile_slip = u_north_slip
-                    u_up_tensile_slip = u_up_slip
-            segment_column_start_idx = 3 * i
-            okada_segment_operator[0::3, segment_column_start_idx] = np.squeeze(
-                u_east_strike_slip
+    if station.empty:
+        return np.empty(1)
+
+    n_segments = len(segment)
+    n_stations = len(station)
+    okada_segment_operator = np.full((3 * n_stations, 3 * n_segments), np.nan)
+
+    for i in tqdm(range(n_segments), desc="Calculating Okada partials for segments", colour="cyan"):
+        for slip_type in ["strike", "dip", "tensile"]:
+            # Each `u` has shape (n_stations, )
+            u_east, u_north, u_up = get_okada_displacements(
+                segment.lon1[i],
+                segment.lat1[i],
+                segment.lon2[i],
+                segment.lat2[i],
+                segment.locking_depth[i],
+                segment.burial_depth[i],
+                segment.dip[i],
+                segment.azimuth[i],
+                command.material_lambda,
+                command.material_mu,
+                1 if slip_type == "strike" else 0,
+                1 if slip_type == "dip" else 0,
+                1 if slip_type == "tensile" else 0,
+                station.lon,
+                station.lat,
             )
-            okada_segment_operator[1::3, segment_column_start_idx] = np.squeeze(
-                u_north_strike_slip
-            )
-            okada_segment_operator[2::3, segment_column_start_idx] = np.squeeze(
-                u_up_strike_slip
-            )
-            okada_segment_operator[0::3, segment_column_start_idx + 1] = np.squeeze(
-                u_east_dip_slip
-            )
-            okada_segment_operator[1::3, segment_column_start_idx + 1] = np.squeeze(
-                u_north_dip_slip
-            )
-            okada_segment_operator[2::3, segment_column_start_idx + 1] = np.squeeze(
-                u_up_dip_slip
-            )
-            okada_segment_operator[0::3, segment_column_start_idx + 2] = np.squeeze(
-                u_east_tensile_slip
-            )
-            okada_segment_operator[1::3, segment_column_start_idx + 2] = np.squeeze(
-                u_north_tensile_slip
-            )
-            okada_segment_operator[2::3, segment_column_start_idx + 2] = np.squeeze(
-                u_up_tensile_slip
-            )
-    else:
-        okada_segment_operator = np.empty(1)
+            if slip_type == "strike":
+                col_idx = 3 * i
+            elif slip_type == "dip":
+                col_idx = 3 * i + 1
+            elif slip_type == "tensile":
+                col_idx = 3 * i + 2
+            else:
+                raise ValueError(f"Invalid slip type: {slip_type}")
+            # The i::3 notation sets an offset of i and a skip of 3 so that
+            # east/north/up displacements are interleaved.
+            okada_segment_operator[0::3, col_idx] = np.squeeze(u_east)
+            okada_segment_operator[1::3, col_idx] = np.squeeze(u_north)
+            okada_segment_operator[2::3, col_idx] = np.squeeze(u_up)
     return okada_segment_operator
 
 
