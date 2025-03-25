@@ -42,15 +42,8 @@ ismember = "*"
 okada-wrapper = "*"
 celeri = {path = ".", editable = true}
 
-[feature.py38]
-platforms = ["linux-64", "osx-64"]
-
-[feature.py38.dependencies]
-python = "3.8.*"
-
 [feature.py39.dependencies]
 python = "3.9.*"
 
 [environments]
-py38 = ["py38"]
 py39 = ["py39"]
