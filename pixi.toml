@@ -41,3 +41,9 @@ tqdm = "*"
 ismember = "*"
 okada-wrapper = "*"
 celeri = {path = ".", editable = true}
+
+[feature.py39.dependencies]
+python = "3.9.*"
+
+[environments]
+py39 = ["py39"]
