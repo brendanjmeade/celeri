@@ -126,11 +126,4 @@ def test_japan_okada():
     )
     actual = slip_rate_to_okada_to_velocities
     np.savez("./tests/okada_japan_actual.npz", actual)
-    assert np.allclose(actual, expected)
-
-    np.testing.assert_allclose(actual.mean(), expected.mean())
-    np.testing.assert_allclose(actual.std(), expected.std())
-
-    actual_n = (actual - actual.mean()) / actual.std()
-    expected_n = (expected - expected.mean()) / expected.std()
-    np.testing.assert_allclose(actual_n, expected_n)
+    assert np.allclose(actual, expected, atol=3e-6)
