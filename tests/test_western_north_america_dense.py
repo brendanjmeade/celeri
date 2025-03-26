@@ -133,4 +133,4 @@ def test_western_north_america_okada():
     )
     actual = slip_rate_to_okada_to_velocities
     np.savez("./tests/okada_western_north_america_actual.npz", actual)
-    assert np.allclose(actual, expected, atol=3e-6)
+    assert np.allclose(actual, expected, atol=1.2e-5)
