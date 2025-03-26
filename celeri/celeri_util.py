@@ -37,7 +37,16 @@ def dc3dwrapper_cutde_disp(alpha, xo, depth, dip, strike_width, dip_width, dislo
     # alpha = (lambda + mu) / (lambda + 2 mu)
     # poissons_ratio = lambda / 2(lambda + mu)
     poissons_ratio = 1 - 1 / (2 * alpha)
-    obs_pts = np.array([xo])
+
+    # This is slightly more robust than:
+    # # obs_pt = np.asarray(xo)
+    # because it works with inhomogeneous types, e.g.
+    # # xo = [np.array([1]), np.array([2]), 0]
+    obs_pt = np.concatenate([np.atleast_1d(x) for x in xo])
+    # assert obs_pt.shape == (3,)
+
+    obs_pts = np.array([obs_pt])
+    # assert obs_pts.shape == (1, 3)
 
     # Vertices of the rectangle
     dip_rad = np.deg2rad(dip)
