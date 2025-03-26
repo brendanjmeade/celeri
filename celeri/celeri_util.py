@@ -34,6 +34,11 @@ def dc3dwrapper_cutde_disp(alpha, xo, depth, dip, strike_width, dip_width, dislo
     )
     ```
     """
+    if dip_width[0] == dip_width[1]:
+        # cutde returns nan when two vertices coincide, but the
+        # correct answer is obviously zero.
+        return np.zeros(3)
+
     # alpha = (lambda + mu) / (lambda + 2 mu)
     # poissons_ratio = lambda / 2(lambda + mu)
     poissons_ratio = 1 - 1 / (2 * alpha)
