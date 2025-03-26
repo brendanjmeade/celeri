@@ -22,7 +22,6 @@ import timeit
 import IPython
 import numpy as np
 import pandas as pd
-import okada_wrapper
 import cutde.halfspace as cutde_halfspace
 import scipy.io as sio
 
@@ -44,7 +43,7 @@ import scipy.sparse.linalg
 
 
 from . import celeri_closure
-from .celeri_util import sph2cart, cart2sph
+from celeri.celeri_util import dc3dwrapper_cutde_disp, sph2cart, cart2sph
 from celeri.hmatrix import build_hmatrix_from_mesh_tdes
 
 
@@ -2231,9 +2230,8 @@ def get_okada_displacements(
     Caculate elastic displacements in a homogeneous elastic half-space.
     Inputs are in geographic coordinates and then projected into a local
     xy-plane using a oblique Mercator projection that is tangent and parallel
-    to the trace of the fault segment.  The elastic calculation is the
-    original Okada 1992 Fortran code acceccesed through T. Ben Thompson's
-    okada_wrapper: https://github.com/tbenthompson/okada_wrapper
+    to the trace of the fault segment.  The elastic calculation is through
+    T. Ben Thompson's cutde library using two TDEs for each rectangle.
     """
     segment_locking_depth *= KM2M
     segment_burial_depth *= KM2M
@@ -2297,7 +2295,7 @@ def get_okada_displacements(
     u_y = np.zeros_like(station_x)
     u_up = np.zeros_like(station_x)
     for i in range(len(station_x)):
-        _, u, _ = okada_wrapper.dc3dwrapper(
+        u = dc3dwrapper_cutde_disp(
             alpha,  # (lambda + mu) / (lambda + 2 * mu)
             [
                 station_x_rotated[i],
