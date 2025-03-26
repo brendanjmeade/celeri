@@ -97,8 +97,11 @@ def dc3dwrapper_cutde_disp(alpha, xo, depth, dip, strike_width, dip_width, dislo
     # (obs, space, triangle, slip)
     assert disp_mat.shape == (1, 3, 2, 3)
 
-    slip_vec = np.array(dislocation)  # (strike, dip, open)
-    assert slip_vec.shape == (3,)
+    if dip_width[1] < dip_width[0]:
+        slip_vec = np.array([-dislocation[0], dislocation[1], -dislocation[2]])
+    else:
+        slip_vec = np.array(dislocation)
+    assert slip_vec.shape == (3,)  # (strike, dip, tensile)
 
     # Sum over the triangle axis and contract the slip axis with the slip vector.
     disp_vec = np.einsum("ijkl,l->ij", disp_mat, slip_vec)
