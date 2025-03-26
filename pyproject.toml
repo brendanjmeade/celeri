@@ -23,7 +23,6 @@ dependencies = [
     "matplotlib",
     "numpy",
     "pandas",
-    "okada-wrapper",
     "cutde",
     "ismember",
     "loguru",
