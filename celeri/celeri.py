@@ -2247,10 +2247,12 @@ def get_okada_displacements(
             [np.sin(segment_strike), np.cos(segment_strike)],
         ]
     )
-    station_x_rotated, station_y_rotated = np.hsplit(
-        np.einsum("ij,kj->ik", np.dstack((station_x, station_y))[0], rotation_matrix.T),
-        2,
+    station_xy_rotated = np.einsum(
+        "ij,kj->ik",
+        np.dstack((station_x, station_y))[0],
+        rotation_matrix.T,
     )
+    station_x_rotated, station_y_rotated = np.hsplit(station_xy_rotated, 2)
 
     # Shift station y coordinates by surface projection of locking depth
     # y_shift will be positive for dips <90 and negative for dips > 90
