@@ -2802,8 +2802,8 @@ packages:
   timestamp: 1738620712841
 - pypi: .
   name: celeri
-  version: 0.1.0.post1.dev6+g525f8c4.d20250320
-  sha256: f2caccdfc6cd874cf0ccc291025234d58f54ad538d45248372a84be89f5ec565
+  version: 0.0.post1.dev1325+g6d0b973.d20250326
+  sha256: 567ce70694f61355e22be3ce4bdbb7ab85f2fc0ad6ac5a738b5257b3da519ae5
   requires_dist:
   - addict
   - cutde
@@ -2816,7 +2816,6 @@ packages:
   - matplotlib
   - meshio
   - numpy
-  - okada-wrapper
   - pandas
   - pyproj
   - pytest
