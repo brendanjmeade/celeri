@@ -20,7 +20,6 @@ import matplotlib.path
 import matplotlib.pyplot as plt
 import meshio
 import numpy as np
-import okada_wrapper
 import pandas as pd
 import pyproj
 import pytest
@@ -36,7 +35,7 @@ from scipy.spatial.distance import cdist
 from tqdm import tqdm
 
 from celeri import celeri_closure
-from celeri.celeri_util import cart2sph, sph2cart
+from celeri.celeri_util import cart2sph, dc3dwrapper_cutde_disp, sph2cart
 from celeri.hmatrix import build_hmatrix_from_mesh_tdes
 
 ###############################################################################################################################  # noqa:E501
@@ -2141,7 +2140,9 @@ def get_segment_station_operator_okada(segment, station, command):
     n_stations = len(station)
     okada_segment_operator = np.full((3 * n_stations, 3 * n_segments), np.nan)
 
-    for i in tqdm(range(n_segments), desc="Calculating Okada partials for segments", colour="cyan"):
+    for i in tqdm(
+        range(n_segments), desc="Calculating Okada partials for segments", colour="cyan"
+    ):
         for slip_type in ["strike", "dip", "tensile"]:
             # Each `u` has shape (n_stations, )
             u_east, u_north, u_up = get_okada_displacements(
@@ -2197,9 +2198,8 @@ def get_okada_displacements(
     """Caculate elastic displacements in a homogeneous elastic half-space.
     Inputs are in geographic coordinates and then projected into a local
     xy-plane using a oblique Mercator projection that is tangent and parallel
-    to the trace of the fault segment.  The elastic calculation is the
-    original Okada 1992 Fortran code acceccesed through T. Ben Thompson's
-    okada_wrapper: https://github.com/tbenthompson/okada_wrapper.
+    to the trace of the fault segment.  The elastic calculation is through
+    T. Ben Thompson's cutde library using two TDEs for each rectangle.
     """
     segment_locking_depth *= KM2M
     segment_burial_depth *= KM2M
@@ -2263,7 +2263,7 @@ def get_okada_displacements(
     u_y = np.zeros_like(station_x)
     u_up = np.zeros_like(station_x)
     for i in range(len(station_x)):
-        _, u, _ = okada_wrapper.dc3dwrapper(
+        u = dc3dwrapper_cutde_disp(
             alpha,  # (lambda + mu) / (lambda + 2 * mu)
             [
                 station_x_rotated[i],
