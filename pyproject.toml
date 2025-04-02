@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "celeri"
 dynamic = ["version", "readme"]
 description = "Next generation earthquake cycle kinematics"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 license = {file = "LICENSE"}
 authors = [
     {name = "Brendan Meade", email = "brendanjmeade@gmail.com"},
