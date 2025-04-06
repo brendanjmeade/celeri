@@ -1,7 +1,7 @@
 # %%
-%load_ext autoreload
-%autoreload 2
-%config InlineBackend.figure_format = "retina"
+# !%load_ext autoreload
+# !%autoreload 2
+# !%config InlineBackend.figure_format = "retina"
 
 # %%
 import addict
