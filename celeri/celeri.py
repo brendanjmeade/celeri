@@ -7875,7 +7875,7 @@ def get_segment_oblique_projection(lon1, lat1, lon2, lat2, skew=True):
     According to: https://proj.org/operations/projections/omerc.html
     This is this already rotated by the fault strike but the rotation can be undone with +no_rot
     > +no_rot
-    > No rectification (not “no rotation” as one may well assume).
+    > No rectification (not "no rotation" as one may well assume).
     > Do not take the last step from the skew uv-plane to the map XY plane.
     > Note: This option is probably only marginally useful,
     > but remains for (mostly) historical reasons.
