@@ -94,7 +94,9 @@ def test_exterior_block():
 
 
 def test_global_closure():
-    """This check to make sure that the closure algorithm returns a known
+    """Check for an answer to the global closure problem.
+
+    Make sure that the closure algorithm returns a known
     (and hopefully correct!) answer for the global closure problem.
     Right now all this does is check for the correct number of blocks and
     against one set of polygon edge indices.
