@@ -4697,6 +4697,7 @@ def post_process_estimation_eigen(estimation_eigen, operators, station, index):
     # Isolate strike- and dip-slip rates
     estimation_eigen.tde_strike_slip_rates = estimation_eigen.tde_rates[0::2]
     estimation_eigen.tde_dip_slip_rates = estimation_eigen.tde_rates[1::2]
+    estimation_eigen.tde_tensile_slip_rates = np.zeros_like(estimation_eigen.tde_dip_slip_rates)
 
     # Create a pseudo state vector that is the length of a TDE state vector
     estimation_eigen.pseudo_tde_state_vector = np.zeros(
@@ -4710,6 +4711,16 @@ def post_process_estimation_eigen(estimation_eigen, operators, station, index):
     estimation_eigen.pseudo_tde_state_vector[
         index.start_tde_col[0] : index.end_tde_col[-1]
     ] = estimation_eigen.tde_rates
+
+    # Calculate and insert kinematic and coupling triangle rates
+    # TODO: This is a placeholder for the real calculation of TDE kinematic
+    # and coupling rates
+    estimation_eigen.tde_strike_slip_rates_kinematic = np.zeros_like(estimation_eigen.tde_strike_slip_rates)
+    estimation_eigen.tde_dip_slip_rates_kinematic = np.zeros_like(estimation_eigen.tde_dip_slip_rates)
+    estimation_eigen.tde_tensile_slip_rates_kinematic = np.zeros_like(estimation_eigen.tde_tensile_slip_rates)
+    estimation_eigen.tde_strike_slip_rates_coupling = np.zeros_like(estimation_eigen.tde_strike_slip_rates)
+    estimation_eigen.tde_dip_slip_rates_coupling = np.zeros_like(estimation_eigen.tde_dip_slip_rates)
+    estimation_eigen.tde_tensile_slip_rates_coupling = np.zeros_like(estimation_eigen.tde_tensile_slip_rates)
 
     # Extract segment slip rates from state vector
     estimation_eigen.slip_rates = (
@@ -5913,6 +5924,41 @@ def write_output(
         mesh_outputs.to_csv(mesh_output_file_name, index=False)
 
         # Write a lot to a single hdf file
+        def add_dataset(output_file_name, dataset_name, dataset):
+            with h5py.File(output_file_name, "r+") as hdf:
+                # Handle the case where dataset_name starts with '/'
+                parts = dataset_name.strip("/").split("/")
+                current_path = ""
+
+                # Create groups for each level of the path
+                for part in parts[:-1]:
+                    if not part:  # Skip empty parts
+                        continue
+
+                    if current_path:
+                        current_path = current_path + "/" + part
+                    else:
+                        current_path = part
+
+                    # If this path exists and is a Dataset, delete it
+                    if current_path in hdf and isinstance(hdf[current_path], h5py.Dataset):
+                        del hdf[current_path]
+
+                    # Create group if it doesn't exist
+                    if current_path not in hdf:
+                        try:
+                            hdf.create_group(current_path)
+                        except ValueError as e:
+                            raise
+
+                # Now handle the final dataset
+                if dataset_name in hdf:
+                    del hdf[dataset_name]  # Remove the existing dataset
+
+                # Create the new dataset
+                hdf.create_dataset(dataset_name, data=dataset)
+
+
         hdf_output_file_name = command.output_path + "/" + f"model_{command.run_name}.hdf5"
         with h5py.File(hdf_output_file_name, "w") as hdf:
             # Meta data
@@ -5942,36 +5988,68 @@ def write_output(
                 grp.create_dataset(f"coordinates", data=meshes[i].points)
                 grp.create_dataset(f"verts", data=meshes[i].verts)
 
-                # Calculate and write Cartesian mesh geometry
-                # meshes[i].points_cartesian = np.zeros(meshes[i].points.shape)
-                # meshes[i].points_cartesian[:, 0], meshes[i].points_cartesian[:, 1], meshes[i].points_cartesian[:, 2] = sph2cart(
-                #         meshes[i].points[:, 0],
-                #         meshes[i].points[:, 1],
-                #         RADIUS_EARTH + KM2M * meshes[i].points[:, 2],
-                #     )
-                # grp.create_dataset(f"points_cartesian", data=meshes[i].points_cartesian)
 
                 # Write mesh scalars (we'll add more later)
+                print(f"/meshes/mesh_{i:05}/dip_slip/{0:012}")
+
                 if i == 0:
                     mesh_start_idx = 0
                     mesh_end_idx = meshes[i].n_tde
                 else:
                     mesh_start_idx = mesh_end_idx
                     mesh_end_idx = mesh_start_idx + meshes[i].n_tde
+
                 grp.create_dataset(
-                    f"strike_slip",
+                    f"/meshes/mesh_{i:05}/strike_slip/{0:012}",
                     data=estimation.tde_strike_slip_rates[mesh_start_idx:mesh_end_idx],
                 )
                 grp.create_dataset(
-                    f"dip_slip",
+                    f"/meshes/mesh_{i:05}/dip_slip/{0:012}",
                     data=estimation.tde_dip_slip_rates[mesh_start_idx:mesh_end_idx],
                 )
                 grp.create_dataset(
-                    f"tensile_slip",
+                    f"/meshes/mesh_{i:05}/tensile_slip/{0:012}",
                     data=np.zeros_like(
                         estimation.tde_dip_slip_rates[mesh_start_idx:mesh_end_idx]
                     ),
                 )
+
+                # Kinematic slip rates
+                grp.create_dataset(
+                    f"/meshes/mesh_{i:05}/strike_slip_kinematic/{0:012}",
+                    data=estimation.tde_strike_slip_rates_kinematic[mesh_start_idx:mesh_end_idx],
+                )
+                grp.create_dataset(
+                    f"/meshes/mesh_{i:05}/dip_slip_kinematic/{0:012}",
+                    data=estimation.tde_dip_slip_rates_kinematic[mesh_start_idx:mesh_end_idx],
+                )
+                grp.create_dataset(
+                    f"/meshes/mesh_{i:05}/tensile_slip_kinematic/{0:012}",
+                    data=np.zeros_like(
+                        estimation.tde_dip_slip_rates_kinematic[mesh_start_idx:mesh_end_idx]
+                    ),
+                )
+
+                # Coupling rates
+                grp.create_dataset(
+                    f"/meshes/mesh_{i:05}/strike_slip_coupling/{0:012}",
+                    data=estimation.tde_strike_slip_rates_coupling[mesh_start_idx:mesh_end_idx],
+                )
+                grp.create_dataset(
+                    f"/meshes/mesh_{i:05}/dip_slip_coupling/{0:012}",
+                    data=estimation.tde_dip_slip_rates_coupling[mesh_start_idx:mesh_end_idx],
+                )
+                grp.create_dataset(
+                    f"/meshes/mesh_{i:05}/tensile_slip_coupling/{0:012}",
+                    data=np.zeros_like(
+                        estimation.tde_dip_slip_rates_coupling[mesh_start_idx:mesh_end_idx]
+                    ),
+                )
+
+            # Try saving segment rate data in parsli style
+            hdf.create_dataset(f"/segments/strike_slip/{0:012}", data=estimation.strike_slip_rates)
+            hdf.create_dataset(f"/segments/dip_slip/{0:012}", data=estimation.dip_slip_rates)
+            hdf.create_dataset(f"/segments/tensile_slip/{0:012}", data=estimation.tensile_slip_rates)
 
             # Save segment information
             segment_no_name = segment.drop("name", axis=1)
