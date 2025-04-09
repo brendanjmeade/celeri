@@ -6046,21 +6046,10 @@ def write_output(
                     ),
                 )
 
-
-                # grp.create_dataset(
-                #     f"strike_slip",
-                #     data=estimation.tde_strike_slip_rates[mesh_start_idx:mesh_end_idx],
-                # )
-                # grp.create_dataset(
-                #     f"dip_slip",
-                #     data=estimation.tde_dip_slip_rates[mesh_start_idx:mesh_end_idx],
-                # )
-                # grp.create_dataset(
-                #     f"tensile_slip",
-                #     data=np.zeros_like(
-                #         estimation.tde_dip_slip_rates[mesh_start_idx:mesh_end_idx]
-                #     ),
-                # )
+            # Try saving segment rate data in parsli style
+            hdf.create_dataset(f"/segments/strike_slip/{0:012}", data=estimation.strike_slip_rates)
+            hdf.create_dataset(f"/segments/dip_slip/{0:012}", data=estimation.dip_slip_rates)
+            hdf.create_dataset(f"/segments/tensile_slip/{0:012}", data=estimation.tensile_slip_rates)
 
             # Save segment information
             segment_no_name = segment.drop("name", axis=1)
