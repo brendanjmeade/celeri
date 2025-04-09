@@ -5913,6 +5913,41 @@ def write_output(
         mesh_outputs.to_csv(mesh_output_file_name, index=False)
 
         # Write a lot to a single hdf file
+        def add_dataset(output_file_name, dataset_name, dataset):
+            with h5py.File(output_file_name, "r+") as hdf:
+                # Handle the case where dataset_name starts with '/'
+                parts = dataset_name.strip("/").split("/")
+                current_path = ""
+
+                # Create groups for each level of the path
+                for part in parts[:-1]:
+                    if not part:  # Skip empty parts
+                        continue
+
+                    if current_path:
+                        current_path = current_path + "/" + part
+                    else:
+                        current_path = part
+
+                    # If this path exists and is a Dataset, delete it
+                    if current_path in hdf and isinstance(hdf[current_path], h5py.Dataset):
+                        del hdf[current_path]
+
+                    # Create group if it doesn't exist
+                    if current_path not in hdf:
+                        try:
+                            hdf.create_group(current_path)
+                        except ValueError as e:
+                            raise
+
+                # Now handle the final dataset
+                if dataset_name in hdf:
+                    del hdf[dataset_name]  # Remove the existing dataset
+
+                # Create the new dataset
+                hdf.create_dataset(dataset_name, data=dataset)
+
+
         hdf_output_file_name = command.output_path + "/" + f"model_{command.run_name}.hdf5"
         with h5py.File(hdf_output_file_name, "w") as hdf:
             # Meta data
