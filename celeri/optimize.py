@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import time
 from typing import Callable, cast, Any
 import addict
 import pandas as pd
@@ -19,6 +20,13 @@ from celeri import (
 
 @dataclass
 class CeleriProblem:
+    """
+    Represents a problem configuration for Celeri fault slip rate modeling.
+
+    Stores indices, meshes, operators, and various data components needed
+    for solving interseismic coupling and fault slip rate problems.
+    """
+
     index: dict
     meshes: addict.Dict
     operators: addict.Dict
@@ -33,38 +41,80 @@ class CeleriProblem:
         n_segment_meshes = np.max(self.segment.patch_file_name).astype(int) + 1
         return list(range(n_segment_meshes))
 
+    @property
+    def total_mesh_points(self):
+        return sum([self.meshes[idx]["n_tde"] for idx in self.segment_mesh_indices])
+
 
 @dataclass
 class CouplingItem:
-    kinematic: cp.Expression
-    kinematic_smooth: cp.Expression
-    estimated: cp.Expression
+    """
+    Coupling between kinematic and estimated slip rates for a fault segment.
+
+    Stores both raw and smoothed kinematic slip rates along with estimated slip rates.
+    """
+
+    kinematic: cp.Expression | np.ndarray
+    kinematic_smooth: cp.Expression | np.ndarray
+    estimated: cp.Expression | np.ndarray
+
+    def copy_numpy(self) -> "CouplingItem":
+        """Copy this item with all values as numpy arrays."""
+        return CouplingItem(
+            kinematic=self.kinematic_numpy(smooth=False),
+            kinematic_smooth=self.kinematic_numpy(smooth=True),
+            estimated=self.estimated_numpy(),
+        )
+
+    def kinematic_numpy(self, *, smooth: bool) -> np.ndarray:
+        """Return kinematic slip rates as a numpy array."""
+        if smooth:
+            kinematic = self.kinematic_smooth
+        else:
+            kinematic = self.kinematic
+
+        if isinstance(kinematic, cp.Expression):
+            kinematic = kinematic.value
+
+        if kinematic is None:
+            raise ValueError("Coupling has not been fit")
+
+        return kinematic
+
+    def estimated_numpy(self) -> np.ndarray:
+        """Return estimated slip rates as a numpy array."""
+        estimated = self.estimated
+
+        if isinstance(estimated, cp.Expression):
+            estimated = estimated.value
+
+        if estimated is None:
+            raise ValueError("Coupling has not been fit")
+
+        return estimated
 
     def out_of_bounds(self, *, smooth_kinematic: bool, tol=1e-8) -> tuple[int, int]:
-        if smooth_kinematic:
-            kinematic = self.kinematic_smooth.value
-        else:
-            kinematic = self.kinematic.value
-        estimated = self.estimated.value
+        """Count slip rates that violate coupling constraints.
 
-        if kinematic is None or estimated is None:
-            raise ValueError("Coupling has not been fit")
+        Args:
+            smooth_kinematic: Whether to use smoothed kinematic values to
+            compute the couplings.
+            tol: Tolerance for constraint violation.
+
+        Returns:
+            Tuple of (number of out-of-bounds points, total points).
+        """
+        kinematic = self.kinematic_numpy(smooth=smooth_kinematic)
+        estimated = self.estimated_numpy()
 
         total = len(kinematic)
         is_oob = estimated**2 - estimated * kinematic > tol
         return is_oob.sum(), total
 
     def constraint_loss(self, *, smooth_kinematic: bool) -> float:
-        if smooth_kinematic:
-            kinematic = self.kinematic_smooth.value
-        else:
-            kinematic = self.kinematic.value
-        estimated = self.estimated.value
-
-        if kinematic is None:
-            raise ValueError("Coupling has not been fit")
-        if estimated is None:
-            raise ValueError("Coupling has not been fit")
+        """Calculate quadratic coupling constraint violation"""
+        kinematic = self.kinematic_numpy(smooth=smooth_kinematic)
+        estimated = self.estimated_numpy()
 
         constraint = estimated**2 - estimated * kinematic
         return np.clip(constraint, 0, np.inf).sum()
@@ -74,15 +124,28 @@ class CouplingItem:
 class Coupling:
     strike_slip: CouplingItem
     dip_slip: CouplingItem
-    combined: CouplingItem
 
     def out_of_bounds(
         self, *, smooth_kinematic: bool, tol: float = 1e-8
     ) -> tuple[int, int]:
-        return self.combined.out_of_bounds(smooth_kinematic=smooth_kinematic, tol=tol)
+        oob1, total1 = self.strike_slip.out_of_bounds(
+            smooth_kinematic=smooth_kinematic, tol=tol
+        )
+        oob2, total2 = self.dip_slip.out_of_bounds(
+            smooth_kinematic=smooth_kinematic, tol=tol
+        )
+        return oob1 + oob2, total1 + total2
 
     def constraint_loss(self, *, smooth_kinematic: bool) -> float:
-        return self.combined.constraint_loss(smooth_kinematic=smooth_kinematic)
+        loss1 = self.strike_slip.constraint_loss(smooth_kinematic=smooth_kinematic)
+        loss2 = self.dip_slip.constraint_loss(smooth_kinematic=smooth_kinematic)
+        return loss1 + loss2
+
+    def copy_numpy(self) -> "Coupling":
+        return Coupling(
+            strike_slip=self.strike_slip.copy_numpy(),
+            dip_slip=self.dip_slip.copy_numpy(),
+        )
 
 
 @dataclass
@@ -92,6 +155,15 @@ class VelocityLimitItem:
     constraints_matrix_kinematic: cp.Parameter | None = None
     constraints_matrix_estimated: cp.Parameter | None = None
     constraints_vector: cp.Parameter | None = None
+
+    def copy(self) -> "VelocityLimitItem":
+        return VelocityLimitItem(
+            kinematic_lower=self.kinematic_lower.copy(),
+            kinematic_upper=self.kinematic_upper.copy(),
+            constraints_matrix_kinematic=None,
+            constraints_matrix_estimated=None,
+            constraints_vector=None,
+        )
 
     @classmethod
     def from_scalar(
@@ -146,7 +218,7 @@ class VelocityLimitItem:
 
         def bounded_through_points(x1, y1, x2, y2):
             """
-            Computes coefficients for a line inequality passing through two points.
+            Compute coefficients for a line inequality passing through two points.
 
             Creates the linear inequality: coef_x * x + coef_y * y <= const
             which corresponds to: (y2-y1)*(x-x1) - (x2-x1)*(y-y1) <= 0
@@ -214,7 +286,7 @@ class VelocityLimitItem:
 
     def plot_constraint(self, index=0, figsize=(8, 6)):
         """
-        Plots the constraint boundaries for a specific mesh point.
+        Plot the constraint boundaries for a specific mesh point.
 
         Args:
             index: Index of the mesh point to visualize
@@ -329,6 +401,12 @@ class VelocityLimit:
         self.strike_slip.update_constraints()
         self.dip_slip.update_constraints()
 
+    def copy(self) -> "VelocityLimit":
+        return VelocityLimit(
+            strike_slip=self.strike_slip.copy(),
+            dip_slip=self.dip_slip.copy(),
+        )
+
 
 @dataclass
 class Minimizer:
@@ -439,6 +517,7 @@ def build_cvxpy_problem(
     mccormick: bool = False,
     smooth_kinematic: bool = True,
     slip_rate_reduction: float | None = None,
+    velocity_as_variable: bool = False,
 ) -> Minimizer:
     qp_inequality_constraints_matrix, qp_inequality_constraints_data_vector = (
         get_qp_all_inequality_operator_and_data_vector(
@@ -497,107 +576,111 @@ def build_cvxpy_problem(
     coupling = {}
     constraints = []
 
-    #to_kinematic_tde_rates = problem.operators.rotation_to_tri_slip_rate[mesh_idx]
-    #p = params[0 : 3 * len(problem.block)]
-
-    #scale_ = np.max(np.abs(to_kinematic_tde_rates), axis=1)
-    #if p.value is not None:
-    #    val = to_kinematic_tde_rates @ p.value
-    #else:
-    #    val = None
-
-    #kinematic_tde_rates = cp.Variable(shape=(to_kinematic_tde_rates.shape[0],), value=val)
-    #constraints.append(kinematic_tde_rates / scale_ == (sparse.csr_array(to_kinematic_tde_rates) @ p) / scale_)
-
+    def adapt_operator(array: np.ndarray):
+        return sparse.csr_array(array)
 
     for mesh_idx in problem.segment_mesh_indices:
-        kinematic_tde_rates = (
-            sparse.coo_array(problem.operators.rotation_to_tri_slip_rate[mesh_idx])
-            @ params[0 : 3 * len(problem.block)]
+        # Matrix vector components of kinematic velocities
+        param_slice = slice(0, 3 * len(problem.block))
+        kinematic_params = params_raw[param_slice]
+        kinematic_operator = (
+            problem.operators.rotation_to_tri_slip_rate[mesh_idx]
+            / scale[None, param_slice]
         )
 
-        # Get estimated elastic rates on mesh elements
-        estimated_tde_rates = (
-            sparse.coo_array(problem.operators.eigenvectors_to_tde_slip[mesh_idx])
-            @ params[
-                problem.index["start_col_eigen"][mesh_idx] : problem.index[
-                    "end_col_eigen"
-                ][mesh_idx]
-            ]
+        kinematic_operator = adapt_operator(kinematic_operator)
+
+        # Matrix vector components of estimated velocities
+        start = problem.index["start_col_eigen"][mesh_idx]
+        end = problem.index["end_col_eigen"][mesh_idx]
+        param_slice = slice(start, end)
+        estimated_params = params_raw[param_slice]
+        estimated_operator = (
+            problem.operators.eigenvectors_to_tde_slip[mesh_idx]
+            / scale[None, param_slice]
         )
 
-        def get_coupling_linear(estimated_slip, kinematic_slip):
-            # Smooth kinematic slip
-            kinematic_slip = (
-                sparse.coo_array(problem.operators.linear_guassian_smoothing[mesh_idx])
-                @ kinematic_slip
+        estimated_operator = adapt_operator(estimated_operator)
+
+        smoothing_operator = problem.operators.linear_guassian_smoothing[mesh_idx]
+
+        smoothing_operator = adapt_operator(smoothing_operator)
+
+        # Extract strike and dip components (even and odd indices)
+        indices = {
+            "strike_slip": slice(None, None, 2),
+            "dip_slip": slice(1, None, 2),
+        }
+
+        # Create components dictionary to store both strike and dip slip items
+        components = {}
+
+        def replace_with_constrained_var(operator, vector):
+            # scale_constraint = np.abs(operator.todense()).max(1)
+            if sparse.issparse(operator):
+                scale_constraint = np.linalg.norm(operator.toarray(), axis=1)
+            else:
+                scale_constraint = np.linalg.norm(operator, axis=1)
+            variable = cp.Variable(shape=operator.shape[0])
+            constraint = (
+                operator @ vector
+            ) / scale_constraint == variable / scale_constraint
+            return variable, constraint
+
+        # Process strike and dip components with the same code
+        for name, idx in indices.items():
+            # Get smoothed kinematic rates for component
+            kinematic_smooth_op = smoothing_operator @ kinematic_operator[idx]
+
+            kinematic_smooth_op = adapt_operator(kinematic_smooth_op)
+            kinematic_op = adapt_operator(kinematic_operator[idx])
+            estimated_op = adapt_operator(estimated_operator[idx])
+
+            kinematic_smooth = kinematic_smooth_op @ kinematic_params
+            kinematic = kinematic_op @ kinematic_params
+            estimated = estimated_op @ estimated_params
+
+            if velocity_as_variable and smooth_kinematic:
+                kinematic_smooth, constraint = replace_with_constrained_var(
+                    kinematic_smooth_op, kinematic_params
+                )
+                constraints.append(constraint)
+            elif velocity_as_variable and not smooth_kinematic:
+                kinematic, constraint = replace_with_constrained_var(
+                    kinematic_op, kinematic_params
+                )
+                constraints.append(constraint)
+
+            if velocity_as_variable:
+                estimated, constraint = replace_with_constrained_var(
+                    estimated_op, estimated_params
+                )
+                constraints.append(constraint)
+
+            # Create CouplingItem for this component
+            components[name] = CouplingItem(
+                kinematic=kinematic,
+                kinematic_smooth=kinematic_smooth,
+                estimated=estimated,
             )
 
-            coupling = estimated_slip / kinematic_slip
-            return coupling, kinematic_slip
-
-        # Calculate strike-slip and dip-slip coupling with linear coupling matrix
-        tde_coupling_ss, kinematic_tde_rates_ss_smooth = get_coupling_linear(
-            estimated_tde_rates[0::2],
-            kinematic_tde_rates[0::2],
-        )
-        tde_coupling_ds, kinematic_tde_rates_ds_smooth = get_coupling_linear(
-            estimated_tde_rates[1::2],
-            kinematic_tde_rates[1::2],
+        # Create and store Coupling
+        coupling[mesh_idx] = Coupling(
+            strike_slip=components["strike_slip"],
+            dip_slip=components["dip_slip"],
         )
 
-        strike_slip = CouplingItem(
-            kinematic=kinematic_tde_rates[0::2],
-            kinematic_smooth=kinematic_tde_rates_ss_smooth,
-            estimated=estimated_tde_rates[0::2],
-        )
-
-        dip_slip = CouplingItem(
-            kinematic=kinematic_tde_rates[1::2],
-            kinematic_smooth=kinematic_tde_rates_ds_smooth,
-            estimated=estimated_tde_rates[1::2],
-        )
-
-        combined = CouplingItem(
-            kinematic=kinematic_tde_rates,
-            kinematic_smooth=cast(
-                cp.Expression,
-                cp.concatenate(
-                    [
-                        kinematic_tde_rates_ss_smooth[:, None],
-                        kinematic_tde_rates_ds_smooth[:, None],
-                    ],
-                    axis=1,
-                ),
-            ),
-            estimated=estimated_tde_rates,
-        )
-
-        mesh_coupling = Coupling(
-            strike_slip=strike_slip,
-            dip_slip=dip_slip,
-            combined=combined,
-        )
-        coupling[mesh_idx] = mesh_coupling
-
-        for name, item in {
-            "strike_slip": mesh_coupling.strike_slip,
-            "dip_slip": mesh_coupling.dip_slip,
-        }.items():
-            estimated = item.estimated
-            if smooth_kinematic:
-                kinematic = item.kinematic_smooth
-            else:
-                kinematic = item.kinematic
-
-            if velocity_limits is None:
-                continue
-
-            limits = getattr(velocity_limits[mesh_idx], name)
-            constraints.append(limits.build_constraints(kinematic, estimated))
+        # Apply velocity limits if provided
+        if velocity_limits is not None:
+            for name, item in components.items():
+                kinematic = (
+                    item.kinematic_smooth if smooth_kinematic else item.kinematic
+                )
+                limits = getattr(velocity_limits[mesh_idx], name)
+                constraints.append(limits.build_constraints(kinematic, item.estimated))
 
     A_hat = np.array(A / scale)
-    A_scale = np.abs(A_hat).max(1)
+    A_scale = np.linalg.norm(A_hat, axis=1)
     A_hat_ = A_hat / A_scale[:, None]
     b_hat = b / A_scale
 
@@ -605,7 +688,7 @@ def build_cvxpy_problem(
     objective = cp.Minimize(
         cp.quad_form(params_raw, 0.5 * P_hat, True) - (d.T @ C) @ params
     )
-    constraint = sparse.csr_array(A_hat_) @ params_raw <= b_hat
+    constraint = adapt_operator(A_hat_) @ params_raw <= b_hat
 
     constraints.append(constraint)
 
@@ -622,23 +705,19 @@ def build_cvxpy_problem(
     )
 
 
-def tighten_kinematic_bounds(
+def _tighten_kinematic_bounds(
     minimizer: Minimizer,
-    max_limit: float,
+    *,
+    velocity_upper: float,
+    velocity_lower: float,
     tighten_all: bool = True,
     factor: float = 0.5,
 ):
     assert factor > 0 and factor < 1
 
     def tighten_item(limits: VelocityLimitItem, coupling: CouplingItem):
-        estimated = coupling.estimated.value
-        if minimizer.smooth_kinematic:
-            kinematic = coupling.kinematic_smooth.value
-        else:
-            kinematic = coupling.kinematic.value
-
-        if estimated is None or kinematic is None:
-            raise ValueError("Minimizer has not been fit")
+        estimated = coupling.estimated_numpy()
+        kinematic = coupling.kinematic_numpy(smooth=minimizer.smooth_kinematic)
 
         upper = limits.kinematic_upper.copy()
         lower = limits.kinematic_lower.copy()
@@ -679,10 +758,10 @@ def tighten_kinematic_bounds(
         # Just fix the sign once the interval only positive or negative
         fixed_sign = lower >= 0
         lower[fixed_sign] = 0.0
-        upper[fixed_sign] = max_limit
+        upper[fixed_sign] = velocity_upper
 
         fixed_sign = upper <= 0
-        lower[fixed_sign] = -max_limit
+        lower[fixed_sign] = velocity_lower
         upper[fixed_sign] = 0.0
 
         limits.kinematic_lower = lower
@@ -694,7 +773,147 @@ def tighten_kinematic_bounds(
 
     velocity_limits = {}
     for idx in minimizer.problem.segment_mesh_indices:
-        length = minimizer.problem.meshes[idx]["n_tde"]
         velocity_limits[idx] = limits[idx].apply_with_coupling(
             tighten_item, minimizer.coupling[idx]
         )
+
+
+@dataclass
+class MinimizerTrace:
+    problem: CeleriProblem
+    params: list[np.ndarray]
+    params_raw: list[np.ndarray]
+    coupling: list[dict[int, Coupling]]
+    velocit_limits: list[dict[int, VelocityLimit] | None]
+    objective: list[float]
+    nonconvex_constraint_loss: list[float]
+    out_of_bounds: list[int]
+    iter_time: list[float]
+    total_time: float
+    start_time: float
+    last_update_time: float
+    minimizer: Minimizer
+
+    def __init__(self, minimizer: Minimizer):
+        self.problem = minimizer.problem
+        self.params = []
+        self.params_raw = []
+        self.coupling = []
+        self.velocit_limits = []
+        self.objective = []
+        self.nonconvex_constraint_loss = []
+        self.out_of_bounds = []
+        self.iter_time = []
+        self.total_time = 0.0
+        self.start_time = time.time()
+        self.last_update_time = time.time()
+        self.out_of_bounds = []
+        self.minimizer = minimizer
+
+    def print_last_progress(self):
+        total = 2 * self.problem.total_mesh_points
+        iter_num = len(self.objective)
+        oob = self.out_of_bounds[-1]
+        objective = self.objective[-1]
+        nonconvex_loss = self.minimizer.constraint_loss()
+        iter_time = self.iter_time[-1]
+
+        print(f"Iteration: {iter_num}")
+        print(f"{oob} of {total} velocities are out-of-bounds")
+        print(f"Non-convex constraint loss: {nonconvex_loss:.2e}")
+        print(f"Objective: {objective:.5e}")
+        print(f"Iteration took {iter_time:.2f}s")
+        print()
+
+    def store_current(self):
+        assert self.minimizer.params.value is not None
+        self.params.append(self.minimizer.params.value)
+        assert self.minimizer.params_raw.value is not None
+        self.params_raw.append(self.minimizer.params_raw.value)
+        self.coupling.append(
+            {
+                idx: self.minimizer.coupling[idx].copy_numpy()
+                for idx in self.problem.segment_mesh_indices
+            }
+        )
+        self.velocit_limits.append(self.minimizer.velocity_limits)
+        assert self.minimizer.cp_problem.objective.value is not None
+        self.objective.append(cast(float, self.minimizer.cp_problem.objective.value))
+
+        current_time = time.time()
+        self.iter_time.append(current_time - self.last_update_time)
+        self.total_time += current_time - self.last_update_time
+        self.last_update_time = current_time
+
+        self.out_of_bounds.append(self.minimizer.out_of_bounds()[0])
+        self.nonconvex_constraint_loss.append(self.minimizer.constraint_loss())
+
+
+def minimize(
+    problem: CeleriProblem,
+    *,
+    velocity_upper: float,
+    velocity_lower: float,
+    max_iter: int = 20,
+    smooth_kinematic: bool = True,
+    solve_kwargs: dict | None = None,
+    reduction_factor: float = 0.5,
+    verbose: bool = False,
+) -> MinimizerTrace:
+    """
+    Iteratively solve a constrained optimization problem for fault slip rates.
+
+    Performs multiple iterations of solving the convex problem, tightening bounds
+    after each iteration until all velocities satisfy constraints or max iterations reached.
+
+    Args:
+        problem: The Celeri problem definition containing mesh and operator data
+        velocity_upper: Maximum allowed velocity value
+        velocity_lower: Minimum allowed velocity value
+        max_iter: Maximum number of optimization iterations
+        smooth_kinematic: Whether to use smoothed kinematic velocities
+        solve_kwargs: Additional keyword arguments passed to the solver
+        reduction_factor: Factor to reduce bounds by in each iteration (0-1)
+        verbose: Whether to print progress information
+
+    Returns:
+        A trace object containing the optimization history
+    """
+    limits = {}
+    for idx in problem.segment_mesh_indices:
+        length = problem.meshes[idx]["n_tde"]
+        limits[idx] = VelocityLimit.from_scalar(length, velocity_lower, velocity_upper)
+
+    minimizer = build_cvxpy_problem(
+        problem, velocity_limits=limits, smooth_kinematic=smooth_kinematic
+    )
+    trace = MinimizerTrace(minimizer)
+
+    default_solve_kwargs = {
+        "solver": "CLARABEL",
+        "ignore_dpp": True,
+        "warm_start": False,
+    }
+
+    if solve_kwargs is not None:
+        default_solve_kwargs.update(solve_kwargs)
+
+    for num_iter in range(max_iter):
+        minimizer.cp_problem.solve(**default_solve_kwargs)
+        trace.store_current()
+        if verbose:
+            trace.print_last_progress()
+
+        num_oob, total = minimizer.out_of_bounds()
+        if num_oob == 0:
+            break
+
+        _tighten_kinematic_bounds(
+            minimizer,
+            velocity_upper=velocity_upper,
+            velocity_lower=velocity_lower,
+            factor=reduction_factor,
+            tighten_all=True,
+        )
+
+    return trace
