@@ -248,31 +248,24 @@ def get_command(command_file_name):
 def get_new_folder_name():
     """Generate a new folder name based on existing numeric folder names.
 
-    This function scans the current directory for folders with numeric names,
+    This function scans the '../runs' directory for folders with numeric names,
     identifies the highest number, and returns a new folder name that is one
     greater than the highest number, formatted as a zero-padded 10-digit string.
 
     Returns:
         str: A new folder name as a zero-padded 10-digit string.
 
-    Raises:
-        ValueError: If no numeric folder names are found in the current directory.
-
     Example:
-        If the current directory contains folders named "0000000001", "0000000002",
+        If the '../runs' directory contains folders named "0000000001", "0000000002",
         and "0000000003", the function will return "0000000004".
     """
     # Get all folder names
-    folder_names = list(Path("./../runs").glob("*/"))
+    folder_paths = sorted(Path("./../runs").glob("*/"))
 
-    # Remove trailing slashes
-    folder_names = [folder_name.rstrip(os.sep) for folder_name in folder_names]
-
-    # Remove anything before numerical folder name
-    folder_names = [folder_name[-10:] for folder_name in folder_names]
+    folder_names = [path.name for path in folder_paths]
 
     # Check to see if the folder name is a native run number
-    folder_names_runs = list()
+    folder_names_runs = []
     for folder_name in folder_names:
         try:
             folder_names_runs.append(int(folder_name))
@@ -8077,44 +8070,47 @@ def align_velocities(df_1, df_2, distance_threshold):
 
 
 def get_newest_run_folder(rewind=0):
-    """Generate a new folder name based on existing numeric folder names.
+    """Get the newest run folder name based on existing numeric folder names.
 
-    This function scans the current directory for folders with numeric names,
-    identifies the highest number, and returns a new folder name that is one
-    greater than the highest number, formatted as a zero-padded 10-digit string.
+    This function scans the '../runs' directory for folders with numeric names,
+    and identifies the highest number.
+
+    If the rewind argument is provided, the function will return the folder name
+    that is the specified number of folders back.
 
     Returns:
-        str: A new folder name as a zero-padded 10-digit string.
+        str: A folder name as a zero-padded 10-digit string.
 
     Raises:
         ValueError: If no numeric folder names are found in the current directory.
 
     Example:
-        If the current directory contains folders named "0000000001", "0000000002",
-        and "0000000003", the function will return "0000000004".
+        If the '../runs' directory contains folders named "0000000001", "0000000002",
+        and "0000000003", the function will return "0000000003".
     """
     # Get all folder names
-    folder_names = list(Path("./../runs").glob("*/"))
-
-    # Remove trailing slashes
-    folder_names = [folder_name.rstrip(os.sep) for folder_name in folder_names]
-
-    # Remove anything before numerical folder name
-    folder_names = [folder_name[-10:] for folder_name in folder_names]
+    folder_paths = list(Path("./../runs").glob("*/"))
+    folder_names = [path.name for path in folder_paths]
 
     # Check to see if the folder name is a native run number
-    folder_names_runs = list()
+    folder_names_runs = []
     for folder_name in folder_names:
         try:
             folder_names_runs.append(int(folder_name))
         except ValueError:
             pass
 
-    # Get new folder name
-    newest_folder_number = np.max(folder_names_runs) - rewind
-    newest_folder_name = f"./../runs/{newest_folder_number:010d}"
-
-    return newest_folder_name
+    # Get folder name
+    if len(folder_names_runs) <= rewind:
+        if rewind == 0:
+            raise ValueError("No run folders found")
+        else:
+            raise ValueError(
+                f"Only {len(folder_names)} run folders found, but rewind = {rewind}"
+            )
+    folder_number = sorted(folder_names_runs)[-1 - rewind]
+    folder_name = f"{folder_number:010d}"
+    return folder_name
 
 
 def read_run(folder_name):
