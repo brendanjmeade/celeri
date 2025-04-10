@@ -1,7 +1,6 @@
 import argparse
 import copy
 import json
-import os
 import pickle
 import shutil
 import timeit
@@ -5913,6 +5912,8 @@ def write_output(
             # Write command dictionary
             grp = hdf.create_group("command")
             for key, value in command.items():
+                if isinstance(value, Path):
+                    value = str(value)
                 if isinstance(value, str):
                     # Handle strings specially
                     grp.create_dataset(
@@ -6068,12 +6069,19 @@ def write_output(
         "args_" + Path(command.file_name).name
     )
     with args_command_output_file_name.open("w") as f:
-        json.dump(command, f, indent=4)
+        json.dump(command, f, indent=4, cls=PathJSONEncoder)
 
     # Write all major variables to .pkl file in output folder
     if bool(command.pickle_save):
         with (command.output_path / "output.pkl").open("wb") as f:
             pickle.dump([command, estimation, station, segment, block, meshes], f)
+
+
+class PathJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Path):
+            return str(obj)
+        return super().default(obj)
 
 
 def write_output_supplemental(
@@ -6111,7 +6119,7 @@ def write_output_supplemental(
 
     # Write command line arguments to output folder
     with (command.output_path / f"{command.run_name}_args.json").open("w") as f:
-        json.dump(args, f, indent=2)
+        json.dump(args, f, indent=2, cls=PathJSONEncoder)
 
     # Write all major variables to .pkl file in output folder
     if bool(command.pickle_save):
