@@ -1,12 +1,12 @@
 import argparse
 import copy
-import glob
 import json
 import os
 import pickle
 import shutil
 import timeit
 import warnings
+from pathlib import Path
 
 import addict
 import cutde.halfspace as cutde_halfspace
@@ -228,7 +228,7 @@ def get_command(command_file_name):
     Returns:
         command (Dict): Dictionary with content of command file
     """
-    with open(command_file_name) as f:
+    with Path(command_file_name).open() as f:
         command = json.load(f)
     command = addict.Dict(command)  # Convert to dot notation dictionary
     command.file_name = command_file_name
@@ -236,7 +236,7 @@ def get_command(command_file_name):
     # Add run_name and output_path
     # command.run_name = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
     command.run_name = get_new_folder_name()
-    command.output_path = os.path.join(command.base_runs_folder, command.run_name)
+    command.output_path = Path(command.base_runs_folder) / command.run_name
     # command.file_name = command_file_name
 
     # Sort command keys alphabetically for readability
@@ -263,7 +263,7 @@ def get_new_folder_name():
         and "0000000003", the function will return "0000000004".
     """
     # Get all folder names
-    folder_names = glob.glob("./../runs/*/")
+    folder_names = list(Path("./../runs").glob("*/"))
 
     # Remove trailing slashes
     folder_names = [folder_name.rstrip(os.sep) for folder_name in folder_names]
@@ -452,7 +452,7 @@ def read_data(command: dict):
     # Read mesh data - List of dictionary version
     meshes = []
     if command.mesh_parameters_file_name != "":
-        with open(command.mesh_parameters_file_name) as f:
+        with Path(command.mesh_parameters_file_name).open() as f:
             mesh_param = json.load(f)
             logger.success(f"Read: {command.mesh_parameters_file_name}")
 
@@ -2003,7 +2003,7 @@ def get_elastic_operators(
         station (pd.DataFrame): All station data
         command (Dict): All command data
     """
-    if bool(command.reuse_elastic) and os.path.exists(command.reuse_elastic_file):
+    if bool(command.reuse_elastic) and Path(command.reuse_elastic_file).exists():
         logger.info("Using precomputed elastic operators")
         hdf5_file = h5py.File(command.reuse_elastic_file, "r")
 
@@ -2017,7 +2017,7 @@ def get_elastic_operators(
         hdf5_file.close()
 
     else:
-        if not os.path.exists(command.reuse_elastic_file):
+        if not Path(command.reuse_elastic_file).exists():
             logger.warning("Precomputed elastic operator file not found")
         logger.info("Computing elastic operators")
 
@@ -2040,8 +2040,8 @@ def get_elastic_operators(
         # Save elastic to velocity matrices
         if bool(command.save_elastic):
             # Check to see if "data/operators" folder exists and if not create it
-            if not os.path.exists(command.operators_folder):
-                os.mkdir(command.operators_folder)
+            if not Path(command.operators_folder).exists():
+                Path(command.operators_folder).mkdir()
 
             logger.info(
                 "Saving elastic to velocity matrices to :" + command.save_elastic_file
@@ -2077,7 +2077,7 @@ def get_elastic_operators_okada(
         station (pd.DataFrame): All station data
         command (Dict): All command data
     """
-    if bool(command.reuse_elastic) and os.path.exists(command.reuse_elastic_file):
+    if bool(command.reuse_elastic) and Path(command.reuse_elastic_file).exists():
         logger.info("Using precomputed elastic operators")
         hdf5_file = h5py.File(command.reuse_elastic_file, "r")
 
@@ -2087,7 +2087,7 @@ def get_elastic_operators_okada(
         hdf5_file.close()
 
     else:
-        if not os.path.exists(command.reuse_elastic_file):
+        if not Path(command.reuse_elastic_file).exists():
             logger.warning("Precomputed elastic operator file not found")
         logger.info("Computing elastic operators")
 
@@ -2099,8 +2099,8 @@ def get_elastic_operators_okada(
         # Save elastic to velocity matrices
         if bool(command.save_elastic):
             # Check to see if "data/operators" folder exists and if not create it
-            if not os.path.exists(command.operators_folder):
-                os.mkdir(command.operators_folder)
+            if not Path(command.operators_folder).exists():
+                Path(command.operators_folder).mkdir()
 
             logger.info(
                 "Saving elastic to velocity matrices to :" + command.save_elastic_file
@@ -4241,7 +4241,7 @@ def get_elastic_operator_single_mesh(
         station (pd.DataFrame): All station data
         command (Dict): All command data
     """
-    if bool(command.reuse_elastic) and os.path.exists(command.reuse_elastic_file):
+    if bool(command.reuse_elastic) and Path(command.reuse_elastic_file).exists():
         logger.info("Using precomputed elastic operators")
         hdf5_file = h5py.File(command.reuse_elastic_file, "r")
         tde_to_velocities = np.array(
@@ -4250,7 +4250,7 @@ def get_elastic_operator_single_mesh(
         hdf5_file.close()
 
     else:
-        if not os.path.exists(command.reuse_elastic_file):
+        if not Path(command.reuse_elastic_file).exists():
             logger.warning("Precomputed elastic operator file not found")
         logger.info("Computing elastic operators")
         logger.info(
@@ -4266,15 +4266,15 @@ def get_elastic_operator_single_mesh(
     # Save tde to velocity matrix for current mesh
     if bool(command.save_elastic):
         # Check to see if "data/operators" folder exists and if not create it
-        if not os.path.exists(command.operators_folder):
-            os.mkdir(command.operators_folder)
+        if not Path(command.operators_folder).exists():
+            Path(command.operators_folder).mkdir()
 
         logger.info(
             "Saving elastic to velocity matrices to :" + command.save_elastic_file
         )
 
         # Check if file exists.  If it does append.
-        if os.path.exists(command.save_elastic_file):
+        if Path(command.save_elastic_file).exists():
             hdf5_file = h5py.File(command.save_elastic_file, "a")
             current_mesh_label = "tde_to_velocities_" + str(mesh_index)
             if current_mesh_label in hdf5_file:
@@ -5779,11 +5779,11 @@ def build_and_solve_qp_kl(command, assembly, operators, data):
 @pytest.mark.skip(reason="Writing output to disk")
 def create_output_folder(command: dict):
     # Check to see if "runs" folder exists and if not create it
-    if not os.path.exists(command.base_runs_folder):
-        os.mkdir(command.base_runs_folder)
+    if not Path(command.base_runs_folder).exists():
+        Path(command.base_runs_folder).mkdir()
 
     # Make output folder for current run
-    os.mkdir(command.output_path)
+    Path(command.output_path).mkdir()
 
 
 @pytest.mark.skip(reason="Writing output files")
@@ -5816,7 +5816,7 @@ def write_output(
     )
     station["model_east_vel_mogi"] = estimation.east_vel_mogi
     station["model_north_vel_mogi"] = estimation.north_vel_mogi
-    station_output_file_name = command.output_path + "/" + "model_station.csv"
+    station_output_file_name = command.output_path / "model_station.csv"
     station.to_csv(station_output_file_name, index=False, float_format="%0.4f")
 
     # Add estimated slip rates to segment dataframe and write .csv
@@ -5826,7 +5826,7 @@ def write_output(
     segment["model_strike_slip_rate_uncertainty"] = estimation.strike_slip_rate_sigma
     segment["model_dip_slip_rate_uncertainty"] = estimation.strike_slip_rate_sigma
     segment["model_tensile_slip_rate_uncertainty"] = estimation.strike_slip_rate_sigma
-    segment_output_file_name = command.output_path + "/" + "model_segment.csv"
+    segment_output_file_name = command.output_path / "model_segment.csv"
     segment.to_csv(segment_output_file_name, index=False, float_format="%0.4f")
 
     # TODO: Add rotation rates and block strain rate block dataframe and write .csv
@@ -5867,7 +5867,7 @@ def write_output(
         mesh_outputs["dip_slip_rate"] = estimation.tde_dip_slip_rates
 
         # Write to CSV
-        mesh_output_file_name = command.output_path + "/" + "model_meshes.csv"
+        mesh_output_file_name = command.output_path / "model_meshes.csv"
         mesh_outputs.to_csv(mesh_output_file_name, index=False)
 
         # Write a lot to a single hdf file
@@ -5907,9 +5907,7 @@ def write_output(
                 # Create the new dataset
                 hdf.create_dataset(dataset_name, data=dataset)
 
-        hdf_output_file_name = (
-            command.output_path + "/" + f"model_{command.run_name}.hdf5"
-        )
+        hdf_output_file_name = command.output_path / f"model_{command.run_name}.hdf5"
         with h5py.File(hdf_output_file_name, "w") as hdf:
             # Meta data
             hdf.create_dataset(
@@ -5936,7 +5934,7 @@ def write_output(
             # Write meshes
             for i in range(len(meshes)):
                 grp = hdf.create_group(f"meshes/mesh_{i:05}")
-                mesh_name = os.path.splitext(os.path.basename(meshes[i].file_name))[0]
+                mesh_name = Path(meshes[i].file_name).stem
                 grp.create_dataset(
                     "mesh_name",
                     data=mesh_name.encode("utf-8"),
@@ -6073,15 +6071,15 @@ def write_output(
             # hdf.attrs["index"] = station_no_name.index.to_numpy()
 
     # Write the command dict to an a json file
-    args_command_output_file_name = (
-        command.output_path + "/args_" + os.path.basename(command.file_name)
+    args_command_output_file_name = command.output_path / (
+        "args_" + Path(command.file_name).name
     )
-    with open(args_command_output_file_name, "w") as f:
+    with args_command_output_file_name.open("w") as f:
         json.dump(command, f, indent=4)
 
     # Write all major variables to .pkl file in output folder
     if bool(command.pickle_save):
-        with open(os.path.join(command.output_path, "output" + ".pkl"), "wb") as f:
+        with (command.output_path / "output.pkl").open("wb") as f:
             pickle.dump([command, estimation, station, segment, block, meshes], f)
 
 
@@ -6101,10 +6099,7 @@ def write_output_supplemental(
         try:
             shutil.copyfile(
                 command[file_name],
-                os.path.join(
-                    command.output_path,
-                    os.path.basename(os.path.normpath(command[file_name])),
-                ),
+                command.output_path / Path(command[file_name]).name,
             )
         except:
             logger.warning(f"No {file_name} to copy to output folder")
@@ -6116,25 +6111,18 @@ def write_output_supplemental(
             try:
                 shutil.copyfile(
                     msh_file_name,
-                    os.path.join(
-                        command.output_path,
-                        os.path.basename(os.path.normpath(msh_file_name)),
-                    ),
+                    command.output_path / Path(msh_file_name).name,
                 )
             except:
                 logger.warning(f"No {msh_file_name} to copy to output folder")
 
     # Write command line arguments to output folder
-    with open(
-        os.path.join(command.output_path, command.run_name + "_args.json"), "w"
-    ) as f:
+    with (command.output_path / f"{command.run_name}_args.json").open("w") as f:
         json.dump(args, f, indent=2)
 
     # Write all major variables to .pkl file in output folder
     if bool(command.pickle_save):
-        with open(
-            os.path.join(command.output_path, command.run_name + ".pkl"), "wb"
-        ) as f:
+        with (command.output_path / f"{command.run_name}.pkl").open("wb") as f:
             pickle.dump([command, index, data, operators, estimation, assembly], f)
 
 
@@ -6415,10 +6403,10 @@ def plot_input_summary(
 
     plt.suptitle("inputs")
     plt.show(block=False)
-    plt.savefig(command.output_path + "/" + "plot_input_summary.png", dpi=300)
-    plt.savefig(command.output_path + "/" + "plot_input_summary.pdf")
+    plt.savefig(command.output_path / "plot_input_summary.png", dpi=300)
+    plt.savefig(command.output_path / "plot_input_summary.pdf")
     logger.success(
-        "Wrote figures" + command.output_path + "/" + "plot_input_summary.(pdf, png)"
+        "Wrote figures" + str(command.output_path / "plot_input_summary.(pdf, png)")
     )
 
 
@@ -6755,13 +6743,11 @@ def plot_estimation_summary(
     )
 
     plt.show(block=False)
-    plt.savefig(command.output_path + "/" + "plot_estimation_summary.png", dpi=300)
-    plt.savefig(command.output_path + "/" + "plot_estimation_summary.pdf")
+    plt.savefig(command.output_path / "plot_estimation_summary.png", dpi=300)
+    plt.savefig(command.output_path / "plot_estimation_summary.pdf")
     logger.success(
         "Wrote figures"
-        + command.output_path
-        + "/"
-        + "plot_estimation_summary.(pdf, png)"
+        + str(command.output_path / "plot_estimation_summary.(pdf, png)")
     )
 
 
@@ -7708,7 +7694,7 @@ def get_logger(command):
     #     colorize=True,
     # )
     # logger.add(command.run_name + ".log")
-    logger.add(command.output_path + "/" + command.run_name + ".log")
+    logger.add(command.output_path / (command.run_name + ".log"))
     logger.info(f"Read: {command.file_name}")
     logger.info("RUN_NAME: " + command.run_name)
     logger.info(f"Write log file: {command.output_path}/{command.run_name}.log")
@@ -8108,7 +8094,7 @@ def get_newest_run_folder(rewind=0):
         and "0000000003", the function will return "0000000004".
     """
     # Get all folder names
-    folder_names = glob.glob("./../runs/*/")
+    folder_names = list(Path("./../runs").glob("*/"))
 
     # Remove trailing slashes
     folder_names = [folder_name.rstrip(os.sep) for folder_name in folder_names]
@@ -8157,7 +8143,7 @@ def read_run(folder_name):
     ...     "example_folder"
     ... )
     """
-    pickle_file = open(f"{folder_name}/output.pkl", "rb")
+    pickle_file = (folder_name / "output.pkl").open("rb")
     pickle_data = pickle.load(pickle_file)
     command = pickle_data[0]
     estimation = pickle_data[1]

@@ -21,7 +21,7 @@ def write_geo_file(
     n_bottom_coordinates = bottom_coordinates.shape[0]
 
     # Write the .geo file that gmsh will run
-    fid = open(geo_file_name, "w")
+    fid = Path(geo_file_name).open("w")
 
     for i in range(n_top_coordinates):
         fid.write(
