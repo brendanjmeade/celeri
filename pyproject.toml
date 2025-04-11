@@ -141,8 +141,19 @@ ignore = [
     "D104",  # Missing docstring in public package
     "D105",  # Missing docstring in magic method
     "D107",  # Missing docstring in __init__
+    "D205",  # Missing blank line after summary
+    "D400",  # ends-in-period
+    "D401",  # First line of docstring should be in imperative mood
+    "D404",  # First word of the docstring should not be "This"
     "D413",  # Missing blank line after last section
     "D415",  # ends-in-punctuation (redundant with D400 ends-in-period)
+    "D417",  # Missing argument descriptions in the docstring
+    "E501",  # line-too-long
+    "PTH",   # pathlib
+    "E722",  # do not use bare except
+    "RUF100",  # unused noqa
+    "BLE001",  # bare except
+    "PERF203", # try-except-in-loop
     # The following list is recommended to disable these when using ruff's formatter.
     # (Not all of the following are actually enabled.)
     "W191",  # tab-indentation
