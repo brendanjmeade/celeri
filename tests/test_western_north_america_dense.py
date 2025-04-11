@@ -1,7 +1,7 @@
 import addict
-import numpy as np
 
 import celeri
+
 
 def test_western_north_america_dense():
     # Western North America example
@@ -31,8 +31,8 @@ def test_western_north_america_dense():
     operators.rotation_to_velocities = celeri.get_rotation_to_velocities_partials(
         station, len(block)
     )
-    operators.global_float_block_rotation = celeri.get_global_float_block_rotation_partials(
-        station
+    operators.global_float_block_rotation = (
+        celeri.get_global_float_block_rotation_partials(station)
     )
     assembly, operators.block_motion_constraints = celeri.get_block_motion_constraints(
         assembly, block, command
@@ -52,30 +52,40 @@ def test_western_north_america_dense():
     )
     celeri.get_tde_slip_rate_constraints(meshes, operators)
 
-
     # Estimate block model parameters (dense)
     index, estimation = celeri.assemble_and_solve_dense(
-        command, assembly, operators, station, block, meshes, mogi,
+        command,
+        assembly,
+        operators,
+        station,
+        block,
+        meshes,
+        mogi,
     )
     celeri.post_process_estimation(estimation, operators, station, index)
 
     # Set digits of accuracy
     # NOTE: Locally we get machine precision repeatability.  On Github workflows
     # we only get 2-3 digits of repeatability.
-    ATOL = 1e-2
 
     # NOTE: None of these tests pass these days because so much has changed
 
     # NOTE: Consieer removing this test.
 
     # # Load known solution
-    # test_western_north_america_arrays = np.load("./tests/test_western_north_america_arrays.npz")
+    # test_western_north_america_arrays = np.load(
+    #     "./tests/test_western_north_america_arrays.npz"
+    # )
 
     # assert np.allclose(
-    #     estimation.slip_rates, test_western_north_america_arrays["estimation_slip_rates"], atol=ATOL
+    #     estimation.slip_rates,
+    #     test_western_north_america_arrays["estimation_slip_rates"],
+    #     atol=ATOL,
     # )
     # assert np.allclose(
-    #     estimation.tde_rates, test_western_north_america_arrays["estimation_tde_rates"], atol=ATOL
+    #     estimation.tde_rates,
+    #     test_western_north_america_arrays["estimation_tde_rates"],
+    #     atol=ATOL,
     # )
     # assert np.allclose(
     #     estimation.east_vel_residual,
