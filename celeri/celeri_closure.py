@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import List
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -7,12 +6,12 @@ import scipy.spatial
 from spherical_geometry.great_circle_arc import intersection
 from spherical_geometry.polygon import SingleSphericalPolygon
 
-from .celeri_util import sph2cart
+from celeri.celeri_util import sph2cart
 
 
 def angle_between_vectors(v1, v2, v3):
     """Compute the angle between the vector (v2, v3) and (v1, v2)
-    The angle is constrained to lie in [-np.pi, np.pi]
+    The angle is constrained to lie in [-np.pi, np.pi].
 
     No turn will result in an angle of 0.
     A left turn will produce a positive angle.
@@ -263,7 +262,7 @@ class Polygon:
         self.area_steradians = self._sg_polygon.area()
 
     def contains_point(self, lon, lat):
-        """Returns whether each point specified by (lon, lat) is within the
+        r"""Returns whether each point specified by (lon, lat) is within the
         spherical polygon defined by polygon_idx.
 
         The intermediate calculation uses a great circle intersection test.
@@ -377,7 +376,7 @@ class BlockClosureResult:
     vertex_idx_to_edge_idx: np.ndarray = None
 
     # The polygon blocks!
-    polygons: List[Polygon] = None
+    polygons: list[Polygon] = None
 
     def n_edges(self):
         return self.edge_idx_to_vertex_idx.shape[0]

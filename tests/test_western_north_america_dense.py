@@ -67,7 +67,6 @@ def test_western_north_america_dense():
     # Set digits of accuracy
     # NOTE: Locally we get machine precision repeatability.  On Github workflows
     # we only get 2-3 digits of repeatability.
-    ATOL = 1e-2
 
     # NOTE: None of these tests pass these days because so much has changed
 

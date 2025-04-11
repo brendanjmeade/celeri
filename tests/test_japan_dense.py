@@ -73,10 +73,9 @@ def test_japan_dense():
     # since these tests were relevant.
 
     # TODO: Remove test?
-    ATOL = 1e-2
 
     # Load known solution
-    test_japan_arrays = np.load("./tests/test_japan_arrays.npz")
+    np.load("./tests/test_japan_arrays.npz")
 
     # assert np.allclose(
     #     estimation.slip_rates, test_japan_arrays["estimation_slip_rates"], atol=ATOL

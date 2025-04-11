@@ -1,4 +1,4 @@
-from .celeri import (
+from celeri.celeri import (
     align_velocities,
     assemble_and_solve_dense,
     assign_block_labels,

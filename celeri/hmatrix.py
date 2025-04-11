@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -20,7 +20,7 @@ class TreeNode:
 class Tree:
     """The tree construction re-orders the original inputs so that the points
     within each TreeNode are contained in a contiguous block of indices.
-    `ordered_idxs` is the mapping from the original indices to the
+    `ordered_idxs` is the mapping from the original indices to the.
     """
 
     ordered_idxs: np.ndarray
@@ -194,8 +194,7 @@ def plot_tree_level(node, depth, **kwargs):
 
 
 def plot_tree(tree):
-    """Plots circles representing all the nodes in the tree. Each level is given a separate subplot.
-    """
+    """Plots circles representing all the nodes in the tree. Each level is given a separate subplot."""
     plt.figure(figsize=(9, 9))
     for depth in range(9):
         plt.subplot(3, 3, 1 + depth)
@@ -236,7 +235,7 @@ def build_temp_surface(surf, s, e):
 
 
 """
-This is an HMatrix implementation focused on getting going quickly. 
+This is an HMatrix implementation focused on getting going quickly.
 
 First, terminology!!
 In the HMatrix context, the term "block" refers to a contiguous rectangular
@@ -250,7 +249,7 @@ Normally, HMatrices combine two core ideas:
 1. **Low rank approximation** of matrix blocks to reduce memory usage and
 computation.
 2. **Adaptive cross approximation** (ACA) as a method to construct those low rank
-blocks without constructing the entire original matrix block first. 
+blocks without constructing the entire original matrix block first.
 
 This implementation currently does not use ACA to construct the matrix
 blocks. This is simple expediency.
@@ -270,18 +269,18 @@ class HMatrix:
     src_tree: Tree
 
     # The pairs of tree nodes that should not be approximated.
-    direct_pairs: List[Tuple[TreeNode, TreeNode]]
+    direct_pairs: list[tuple[TreeNode, TreeNode]]
     # The pairs of tree nodes that should be approximated.
-    approx_pairs: List[Tuple[TreeNode, TreeNode]]
+    approx_pairs: list[tuple[TreeNode, TreeNode]]
 
     # The actual matrix entries corresponding to each direct matrix block.
-    direct_blocks: List[np.ndarray]
+    direct_blocks: list[np.ndarray]
     # The approximate matrix blocks. This are tuples (U, V) containing the
     # factorized matrix representation.
-    approx_blocks: List[Tuple[np.ndarray, np.ndarray]]
+    approx_blocks: list[tuple[np.ndarray, np.ndarray]]
 
     # The shape of the matrix.
-    shape: List[int]
+    shape: list[int]
 
     def report_compression_ratio(self):
         """Returns a fraction that indicates how much less memory is used than the
@@ -300,8 +299,7 @@ class HMatrix:
         return (h_entries + direct_entries) / simple_entries
 
     def dot(self, x):
-        """Perform a matrix-vector product with the vector `x`
-        """
+        """Perform a matrix-vector product with the vector `x`."""
         n_obs = self.shape[0] // 2
         y_tree = np.zeros((n_obs, 2))
 
