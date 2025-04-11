@@ -25,7 +25,7 @@ jobs:
         os: ["ubuntu-latest"]
         pixi-environment: ["py39", "default"]
         tests-to-run: ["japan", "other"]
-    name: Test (${{ matrix.pixi-environment }}, ${{ matrix.os }})
+    name: Test (${{ matrix.pixi-environment }}, ${{ matrix.tests-to-run }})
     runs-on:  ${{ matrix.os }}
     defaults:
       run:
