@@ -28,6 +28,7 @@ pip install --no-use-pep517 -e .
 
 Once you are in a pixi shell or have activated the conda environment, start your favorite notebook viewer (`jupyter lab` or `vscode`) and open and run `celeri.ipynb`.
 
+If you wish to submit a PR then please run `pre-commit install` to install the [pre-commit](https://pre-commit.com/) hooks.
 
 ### Folder structure and file locations for applications
 A large number of input files can be involved in a model run.  We assume that a project is arranged using the following folder structure:
