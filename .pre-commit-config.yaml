@@ -1,0 +1,38 @@
+# This is for the "pre-commit" tool, which enforces checks before local commits are
+# allowed. <https://pre-commit.com/>
+
+repos:
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v5.0.0
+  hooks:
+  # Protect specific branches from direct commits.
+  - id: no-commit-to-branch
+    args: [--branch=main]
+
+  # Trim trailing whitespace.
+  - id: trailing-whitespace
+
+  # Prevent giant files from being committed.
+  - id: check-added-large-files
+
+  # Check for files that contain merge conflict strings.
+  - id: check-merge-conflict
+
+  # Check for debugger imports and py37+ breakpoint() calls in python source.
+  - id: debug-statements
+
+  # Make sure files end in a newline and only a newline.
+  - id: end-of-file-fixer
+
+  # Replace or check files with mixed line endings.
+  - id: mixed-line-ending
+    args: [--fix=no]
+
+- repo: https://github.com/astral-sh/ruff-pre-commit
+  rev: v0.11.5
+  hooks:
+  # Lint
+  - id: ruff
+    args: [--fix, --unsafe-fixes, --exit-non-zero-on-fix]
+  # Format
+  - id: ruff-format
