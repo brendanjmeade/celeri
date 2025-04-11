@@ -53,7 +53,7 @@ exclude = [
   "/data",
   "/meshing",
   "/notebooks",
-] 
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["celeri"]
