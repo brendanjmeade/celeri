@@ -1,10 +1,8 @@
 import warnings
-import numpy as np
 
-import okada_wrapper
 import cutde.halfspace as cutde_halfspace
-
-import celeri
+import numpy as np
+import okada_wrapper
 
 
 def test_okada_equals_cutde():

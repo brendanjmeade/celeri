@@ -1,18 +1,17 @@
 from dataclasses import dataclass
 from typing import List
 
+import matplotlib.pyplot as plt
 import numpy as np
 import scipy.spatial
-import matplotlib.pyplot as plt
-from spherical_geometry.polygon import SingleSphericalPolygon
 from spherical_geometry.great_circle_arc import intersection
+from spherical_geometry.polygon import SingleSphericalPolygon
 
 from .celeri_util import sph2cart
 
 
 def angle_between_vectors(v1, v2, v3):
-    """
-    Compute the angle between the vector (v2, v3) and (v1, v2)
+    """Compute the angle between the vector (v2, v3) and (v1, v2)
     The angle is constrained to lie in [-np.pi, np.pi]
 
     No turn will result in an angle of 0.
@@ -23,7 +22,6 @@ def angle_between_vectors(v1, v2, v3):
     and will handle the meridian. If you have units in another coordinate system,
     this function will cause problems.
     """
-
     # *Meridian handling*
     # The furthest longitudinal distance between any two points is 180 degrees,
     # so if the distance is greater than that, then we subtract 360 degrees.
@@ -54,8 +52,7 @@ def angle_between_vectors(v1, v2, v3):
 
 @dataclass()
 class BoundingBox:
-    """
-    A bounding box on a sphere can be defined by the minimum and maximum latitude
+    """A bounding box on a sphere can be defined by the minimum and maximum latitude
     and longitude.
 
     *Inverse longitude*:
@@ -104,8 +101,7 @@ class BoundingBox:
 
 
 def find_longitude_interval(lon):
-    """
-    Given a list of polygon longitude values, we want to identify the maximum
+    """Given a list of polygon longitude values, we want to identify the maximum
     and minimum longitude for that polygon. On its face, that seems like a
     simple (min, max), but the meridian means that the problem is not quite
     that simple. First, we need to split all the intervals across the meridian.
@@ -121,7 +117,6 @@ def find_longitude_interval(lon):
        return the inverse longitude interval of (Y, X) and specify the inverse
        = True return value.
     """
-
     # Step 1) Split intervals.
     intervals = []
     for i in range(lon.shape[0] - 1):
@@ -268,8 +263,7 @@ class Polygon:
         self.area_steradians = self._sg_polygon.area()
 
     def contains_point(self, lon, lat):
-        """
-        Returns whether each point specified by (lon, lat) is within the
+        """Returns whether each point specified by (lon, lat) is within the
         spherical polygon defined by polygon_idx.
 
         The intermediate calculation uses a great circle intersection test.
@@ -316,7 +310,6 @@ class Polygon:
 
         http://www.mathworks.com/matlabcentral/newsreader/view_thread/276271
         """
-
         # TODO: Currently, the bounding box test is turned off!
         # TODO: Currently, the bounding box test is turned off!
         # TODO: Currently, the bounding box test is turned off!
@@ -433,14 +426,12 @@ class BlockClosureResult:
 
 
 def run_block_closure(np_segments):
-    """
-    Ben Thompson's implementation of the half edge approach to the
+    """Ben Thompson's implementation of the half edge approach to the
     block labeling problem and east/west assignment.
 
     np_segments is expected to be a (N, 2, 2) shaped array specifying the
     two (lon, lat) endpoints for each of N segments.
     """
-
     # STEP 1) Build a graph! De-duplicate vertices and build an array relating edge
     #         indices to vertex indices and vice-versa.
     closure = decompose_segments_into_graph(np_segments)

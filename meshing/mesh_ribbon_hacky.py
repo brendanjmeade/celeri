@@ -1,11 +1,9 @@
-import matplotlib.pyplot as plt
-import numpy as np
 import os
-import meshio
-import pandas as pd
-import IPython
 from pathlib import Path
-from scipy.spatial.distance import cdist
+
+import meshio
+import numpy as np
+import pandas as pd
 
 
 def write_geo_file(

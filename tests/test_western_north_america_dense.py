@@ -1,5 +1,4 @@
 import addict
-import numpy as np
 
 import celeri
 

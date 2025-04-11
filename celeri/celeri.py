@@ -1,52 +1,45 @@
-import addict
 import argparse
 import copy
-import cvxopt
-import datetime
 import glob
-import h5py
 import json
+import os
+import pickle
+import shutil
+import timeit
+import warnings
+from typing import Dict, List, Tuple
+
+import addict
+import cutde.halfspace as cutde_halfspace
+import cvxopt
+import h5py
+import matplotlib.cm as cm
+import matplotlib.collections
+import matplotlib.lines as mlines
+import matplotlib.patches as mpatches
+import matplotlib.path
+import matplotlib.pyplot as plt
 import meshio
-import scipy
+import numpy as np
+import okada_wrapper
+import pandas as pd
 import pyproj
 import pytest
-import os
-import matplotlib.pyplot as plt
-import matplotlib.collections
-import matplotlib.path
-import warnings
-import shutil
-import sys
-import pickle
-import timeit
-import IPython
-import numpy as np
-import pandas as pd
-import okada_wrapper
-import cutde.halfspace as cutde_halfspace
+import scipy
 import scipy.io as sio
-
-import matplotlib.patches as mpatches
-import matplotlib.lines as mlines
-import matplotlib.cm as cm
-
-from matplotlib.colors import Normalize
-
-from ismember import ismember
-from loguru import logger
-from tqdm import tqdm
-
-from typing import List, Dict, Tuple
-from scipy.sparse import csr_matrix
-from scipy.spatial.distance import cdist
 import scipy.sparse
 import scipy.sparse.linalg
+from ismember import ismember
+from loguru import logger
+from matplotlib.colors import Normalize
+from scipy.sparse import csr_matrix
+from scipy.spatial.distance import cdist
+from tqdm import tqdm
 
-
-from . import celeri_closure
-from .celeri_util import sph2cart, cart2sph
 from celeri.hmatrix import build_hmatrix_from_mesh_tdes
 
+from . import celeri_closure
+from .celeri_util import cart2sph, sph2cart
 
 ###############################################################################################################################
 #                                                                                                                             #
@@ -237,7 +230,7 @@ def get_command(command_file_name):
     Returns:
         command (Dict): Dictionary with content of command file
     """
-    with open(command_file_name, "r") as f:
+    with open(command_file_name) as f:
         command = json.load(f)
     command = addict.Dict(command)  # Convert to dot notation dictionary
     command.file_name = command_file_name
@@ -255,8 +248,7 @@ def get_command(command_file_name):
 
 
 def get_new_folder_name():
-    """
-    Generate a new folder name based on existing numeric folder names.
+    """Generate a new folder name based on existing numeric folder names.
 
     This function scans the current directory for folders with numeric names,
     identifies the highest number, and returns a new folder name that is one
@@ -286,7 +278,7 @@ def get_new_folder_name():
     for folder_name in folder_names:
         try:
             folder_names_runs.append(int(folder_name))
-        except ValueError as ex:
+        except ValueError:
             pass
 
     # Get new folder name
@@ -528,7 +520,7 @@ def read_data(command: Dict):
                 "block_label",
             ]
         )
-        logger.info(f"No station_file_name")
+        logger.info("No station_file_name")
     else:
         station = pd.read_csv(command.station_file_name)
         station = station.loc[:, ~station.columns.str.match("Unnamed")]
@@ -547,7 +539,7 @@ def read_data(command: Dict):
                 "volume_change_sig",
             ]
         )
-        logger.info(f"No mogi_file_name")
+        logger.info("No mogi_file_name")
     else:
         mogi = pd.read_csv(command.mogi_file_name)
         mogi = mogi.loc[:, ~mogi.columns.str.match("Unnamed")]
@@ -569,7 +561,7 @@ def read_data(command: Dict):
                 "reference_point_y",
             ]
         )
-        logger.info(f"No sar_file_name")
+        logger.info("No sar_file_name")
     else:
         sar = pd.read_csv(command.sar_file_name)
         sar = sar.loc[:, ~sar.columns.str.match("Unnamed")]
@@ -635,8 +627,7 @@ def process_station(station, command):
 
 
 def process_sar(sar, command):
-    """
-    Preprocessing of SAR data.
+    """Preprocessing of SAR data.
     """
     if sar.empty:
         sar["depth"] = np.zeros_like(sar.lon)
@@ -659,8 +650,7 @@ def process_sar(sar, command):
 
 
 def merge_geodetic_data(assembly, station, sar):
-    """
-    Merge GPS and InSAR data to a single assembly object
+    """Merge GPS and InSAR data to a single assembly object
     """
     assembly.data.n_stations = len(station)
     assembly.data.n_sar = len(sar)
@@ -692,10 +682,8 @@ def merge_geodetic_data(assembly, station, sar):
 
 
 def process_segment(segment, command, meshes):
+    """Add derived fields to segment dataframe
     """
-    Add derived fields to segment dataframe
-    """
-
     if bool(command.snap_segments):
         segment = snap_segments(segment, meshes)
 
@@ -747,8 +735,7 @@ def process_segment(segment, command, meshes):
 
 
 def order_endpoints_sphere(segment):
-    """
-    Endpoint ordering function, placing west point first.
+    """Endpoint ordering function, placing west point first.
     This converts the endpoint coordinates from spherical to Cartesian,
     then takes the cross product to test for ordering (i.e., a positive z
     component of cross(point1, point2) means that point1 is the western
@@ -771,8 +758,7 @@ def order_endpoints_sphere(segment):
 
 
 def locking_depth_manager(segment, command):
-    """
-    This function assigns the locking depths given in the command file to any
+    """This function assigns the locking depths given in the command file to any
     segment that has the same locking depth flag.  Segments with flag =
     0, 1 are untouched.
     """
@@ -796,8 +782,7 @@ def locking_depth_manager(segment, command):
 
 
 def zero_mesh_segment_locking_depth(segment, meshes):
-    """
-    This function sets the locking depths of any segments that trace
+    """This function sets the locking depths of any segments that trace
     a mesh to zero, so that they have no rectangular elastic strain
     contribution, as the elastic strain is accounted for by the mesh.
 
@@ -862,8 +847,7 @@ def segment_centroids(segment):
 
 
 def snap_segments(segment, meshes):
-    """
-    Replace segments tracing meshes with the actual top edges of those meshes
+    """Replace segments tracing meshes with the actual top edges of those meshes
     """
     # For each mesh, find associated segments
     cut_segment_idx = []
@@ -955,8 +939,7 @@ def snap_segments(segment, meshes):
 
 
 def assign_block_labels(segment, station, block, mogi, sar):
-    """
-    Ben Thompson's implementation of the half edge approach to the
+    """Ben Thompson's implementation of the half edge approach to the
     block labeling problem and east/west assignment.
     """
     # segment = split_segments_crossing_meridian(segment)
@@ -1027,8 +1010,7 @@ def assign_block_labels(segment, station, block, mogi, sar):
 
 
 def station_row_keep(assembly):
-    """
-    Determines which station rows should be retained based on up velocities
+    """Determines which station rows should be retained based on up velocities
     TODO: I do not understand this!!!
     TODO: The logic in the first conditional seems to indicate that if there are
     no vertical velocities as a part of the data then they should be eliminated.
@@ -1045,8 +1027,7 @@ def station_row_keep(assembly):
 
 
 def get_block_centroid(segment, block_idx):
-    """
-    Calculate centroid of a block based on boundary polygon
+    """Calculate centroid of a block based on boundary polygon
     We take all block vertices (including duplicates) and estimate
     the centroid by taking the average of longitude and latitude
     weighted by the length of the segment that each vertex is
@@ -1074,8 +1055,7 @@ def get_block_centroid(segment, block_idx):
 
 
 def get_shared_sides(vertices):
-    """
-    Determine the indices of the triangular elements sharing
+    """Determine the indices of the triangular elements sharing
     one side with a particular element.
     Inputs:
     vertices: n x 3 array containing the 3 vertex indices of the n elements,
@@ -1123,8 +1103,7 @@ def get_shared_sides(vertices):
 
 
 def get_tri_shared_sides_distances(share, x_centroid, y_centroid, z_centroid):
-    """
-    Calculates the distances between the centroids of adjacent triangular
+    """Calculates the distances between the centroids of adjacent triangular
     elements, for use in smoothing algorithms.
 
     Inputs:
@@ -1158,7 +1137,6 @@ def get_ordered_edge_nodes(meshes: List):
     Args:
         meshes (List): list of mesh dictionaries
     """
-
     for i in range(len(meshes)):
         # Make side arrays containing vertex indices of sides
         vertices = meshes[i].verts
@@ -1174,7 +1152,7 @@ def get_ordered_edge_nodes(meshes: List):
         last_row = 0
         for j in range(1, len(edge_nodes)):
             idx = np.where(
-                (edge_nodes == meshes[i].ordered_edge_nodes[j - 1, 1])
+                edge_nodes == meshes[i].ordered_edge_nodes[j - 1, 1]
             )  # Edge node indices the same as previous row, second column
             next_idx = np.where(
                 idx[0][:] != last_row
@@ -1903,8 +1881,7 @@ def get_processed_data_structures(command):
 
 
 def get_rotation_to_velocities_partials(station, n_blocks):
-    """
-    Calculate block rotation partials operator for stations in dataframe
+    """Calculate block rotation partials operator for stations in dataframe
     station.
     """
     # n_blocks = (
@@ -1959,8 +1936,7 @@ def get_rotation_to_velocities_partials(station, n_blocks):
 
 
 def get_rotation_displacements(lon_obs, lat_obs, omega_x, omega_y, omega_z):
-    """
-    # TODO: Consider renaming to: get_rotation_velocities
+    """# TODO: Consider renaming to: get_rotation_velocities
     Get displacments at at longitude and latitude coordinates given rotation
     vector components (omega_x, omega_y, omega_z)
     """
@@ -2023,8 +1999,7 @@ def get_elastic_operators(
     station: pd.DataFrame,
     command: Dict,
 ):
-    """
-    Calculate (or load previously calculated) elastic operators from
+    """Calculate (or load previously calculated) elastic operators from
     both fully locked segments and TDE parameterizes surfaces
 
     Args:
@@ -2097,8 +2072,7 @@ def get_elastic_operators_okada(
     station: pd.DataFrame,
     command: Dict,
 ):
-    """
-    NOTE: This is for the case with no TDEs.  May be redundant.  Consider
+    """NOTE: This is for the case with no TDEs.  May be redundant.  Consider
 
     Calculate (or load previously calculated) elastic operators from
     both fully locked segments and TDE parameterizes surfaces
@@ -2147,8 +2121,7 @@ def get_elastic_operators_okada(
 
 
 def get_segment_station_operator_okada(segment, station, command):
-    """
-    Calculates the elastic displacement partial derivatives based on the Okada
+    """Calculates the elastic displacement partial derivatives based on the Okada
     formulation, using the source and receiver geometries defined in
     dicitonaries segment and stations. Before calculating the partials for
     each segment, a local oblique Mercator project is done.
@@ -2288,8 +2261,7 @@ def get_okada_displacements(
     station_lon,
     station_lat,
 ):
-    """
-    Caculate elastic displacements in a homogeneous elastic half-space.
+    """Caculate elastic displacements in a homogeneous elastic half-space.
     Inputs are in geographic coordinates and then projected into a local
     xy-plane using a oblique Mercator projection that is tangent and parallel
     to the trace of the fault segment.  The elastic calculation is the
@@ -2395,8 +2367,7 @@ def get_okada_displacements(
 
 
 def get_rotation_to_slip_rate_partials(segment, block):
-    """
-    Calculate partial derivatives relating relative block motion to fault slip rates
+    """Calculate partial derivatives relating relative block motion to fault slip rates
     """
     n_segments = len(segment)
     n_blocks = len(block)
@@ -2525,8 +2496,7 @@ def get_rotation_to_slip_rate_partials(segment, block):
 
 
 def get_tde_to_velocities(meshes, station, command):
-    """
-    Calculates the elastic displacement partial derivatives based on the
+    """Calculates the elastic displacement partial derivatives based on the
     T. Ben Thompson cutde of the Nikhool and Walters (2015) equations
     for the displacements resulting from slip on a triangular
     dislocation in a homogeneous elastic half space.
@@ -2618,8 +2588,7 @@ def get_tde_to_velocities(meshes, station, command):
 
 
 def get_tde_to_velocities_single_mesh(meshes, station, command, mesh_idx):
-    """
-    Calculates the elastic displacement partial derivatives based on the
+    """Calculates the elastic displacement partial derivatives based on the
     T. Ben Thompson cutde of the Nikhool and Walters (2015) equations
     for the displacements resulting from slip on a triangular
     dislocation in a homogeneous elastic half space.
@@ -2646,7 +2615,7 @@ def get_tde_to_velocities_single_mesh(meshes, station, command, mesh_idx):
             # Loop through each segment and calculate displacements for each slip component
             for i in tqdm(
                 range(n_tris),
-                desc=f"Calculating cutde partials for triangles",
+                desc="Calculating cutde partials for triangles",
                 colour="green",
             ):
                 (
@@ -2724,8 +2693,7 @@ def get_tri_displacements(
     dip_slip,
     tensile_slip,
 ):
-    """
-    Calculate surface displacments due to slip on a triangular dislocation
+    """Calculate surface displacments due to slip on a triangular dislocation
     element in a half space.  Includes projection from longitude and
     latitude to locally tangent planar coordinate system.
     """
@@ -2775,8 +2743,7 @@ def get_tri_displacements_single_mesh(
     tensile_slip,
     mesh_idx,
 ):
-    """
-    Calculate surface displacments due to slip on a triangular dislocation
+    """Calculate surface displacments due to slip on a triangular dislocation
     element in a half space.  Includes projection from longitude and
     latitude to locally tangent planar coordinate system.
     """
@@ -2821,8 +2788,7 @@ def get_tri_displacements_single_mesh(
 
 
 def get_tri_smoothing_matrix(share, tri_shared_sides_distances):
-    """
-    Produces a smoothing matrix based on the scale-dependent
+    """Produces a smoothing matrix based on the scale-dependent
     umbrella operator (e.g., Desbrun et al., 1999; Resor, 2004).
 
     Inputs:
@@ -2834,7 +2800,6 @@ def get_tri_smoothing_matrix(share, tri_shared_sides_distances):
     Outputs:
     smoothing matrix: 3n x 3n smoothing matrix
     """
-
     # Allocate sparse matrix for contructing smoothing matrix
     n_shared_tris = share.shape[0]
     smoothing_matrix = scipy.sparse.lil_matrix((3 * n_shared_tris, 3 * n_shared_tris))
@@ -2879,8 +2844,7 @@ def get_tri_smoothing_matrix(share, tri_shared_sides_distances):
 
 
 def get_all_mesh_smoothing_matrices(meshes: List, operators: Dict):
-    """
-    Build smoothing matrices for each of the triangular meshes
+    """Build smoothing matrices for each of the triangular meshes
     stored in meshes
     """
     for i in range(len(meshes)):
@@ -2898,8 +2862,7 @@ def get_all_mesh_smoothing_matrices(meshes: List, operators: Dict):
 
 
 def get_all_mesh_smoothing_matrices_simple(meshes: List, operators: Dict):
-    """
-    Build smoothing matrices for each of the triangular meshes
+    """Build smoothing matrices for each of the triangular meshes
     stored in meshes
     These are the simple not distance weighted meshes
     """
@@ -2912,8 +2875,7 @@ def get_all_mesh_smoothing_matrices_simple(meshes: List, operators: Dict):
 
 
 def get_tri_smoothing_matrix_simple(share, n_dim):
-    """
-    Produces a smoothing matrix based without scale-dependent
+    """Produces a smoothing matrix based without scale-dependent
     weighting.
 
     Inputs:
@@ -2923,7 +2885,6 @@ def get_tri_smoothing_matrix_simple(share, n_dim):
     Outputs:
     smoothing matrix: n_dim * n x n_dim * n smoothing matrix
     """
-
     # Allocate sparse matrix for contructing smoothing matrix
     n_shared_tri = share.shape[0]
     smoothing_matrix = scipy.sparse.lil_matrix(
@@ -3042,8 +3003,7 @@ def get_tde_slip_rate_constraints(meshes: List, operators: Dict):
 
 
 def get_tde_coupling_constraints(meshes, segment, block, operators):
-    """
-    Get partials relating block motion to TDE slip rates for coupling constraints
+    """Get partials relating block motion to TDE slip rates for coupling constraints
     """
     # for mesh_idx in range(len(meshes)):
     # Loop only over meshes that are tied to fault segments.  This *should*
@@ -3065,8 +3025,7 @@ def get_tde_coupling_constraints(meshes, segment, block, operators):
 
 
 def get_rotation_to_tri_slip_rate_partials(meshes, mesh_idx, segment, block):
-    """
-    Calculate partial derivatives relating relative block motion to TDE slip rates
+    """Calculate partial derivatives relating relative block motion to TDE slip rates
     for a single mesh. Called within a loop from get_tde_coupling_constraints()
     """
     n_blocks = len(block)
@@ -3249,8 +3208,7 @@ def get_rotation_to_tri_slip_rate_partials(meshes, mesh_idx, segment, block):
 
 
 def get_block_motion_constraints(assembly: Dict, block: pd.DataFrame, command: Dict):
-    """
-    Applying a priori block motion constraints
+    """Applying a priori block motion constraints
     """
     block_constraint_partials = get_block_motion_constraint_partials(block)
     assembly.index.block_constraints_idx = np.where(block.rotation_flag == 1)[0]
@@ -3298,8 +3256,7 @@ def get_block_motion_constraints(assembly: Dict, block: pd.DataFrame, command: D
 
 
 def get_block_motion_constraint_partials(block):
-    """
-    Partials for a priori block motion constraints.
+    """Partials for a priori block motion constraints.
     Essentially a set of eye(3) matrices
     """
     # apriori_block_idx = np.where(block.apriori_flag.to_numpy() == 1)[0]
@@ -3327,9 +3284,9 @@ def get_slip_rate_constraints(assembly, segment, block, command):
                     "Strike-slip rate constraint on "
                     + segment.name[i].strip()
                     + ": rate = "
-                    + "{:.2f}".format(segment.ss_rate[i])
+                    + f"{segment.ss_rate[i]:.2f}"
                     + " (mm/yr), 1-sigma uncertainty = +/-"
-                    + "{:.2f}".format(segment.ss_rate_sig[i])
+                    + f"{segment.ss_rate_sig[i]:.2f}"
                     + " (mm/yr)"
                 )
             if segment.ds_rate_flag[i] == 1:
@@ -3337,9 +3294,9 @@ def get_slip_rate_constraints(assembly, segment, block, command):
                     "Dip-slip rate constraint on "
                     + segment.name[i].strip()
                     + ": rate = "
-                    + "{:.2f}".format(segment.ds_rate[i])
+                    + f"{segment.ds_rate[i]:.2f}"
                     + " (mm/yr), 1-sigma uncertainty = +/-"
-                    + "{:.2f}".format(segment.ds_rate_sig[i])
+                    + f"{segment.ds_rate_sig[i]:.2f}"
                     + " (mm/yr)"
                 )
             if segment.ts_rate_flag[i] == 1:
@@ -3347,9 +3304,9 @@ def get_slip_rate_constraints(assembly, segment, block, command):
                     "Tensile-slip rate constraint on "
                     + segment.name[i].strip()
                     + ": rate = "
-                    + "{:.2f}".format(segment.ts_rate[i])
+                    + f"{segment.ts_rate[i]:.2f}"
                     + " (mm/yr), 1-sigma uncertainty = +/-"
-                    + "{:.2f}".format(segment.ts_rate_sig[i])
+                    + f"{segment.ts_rate_sig[i]:.2f}"
                     + " (mm/yr)"
                 )
     else:
@@ -3396,11 +3353,11 @@ def get_slip_rake_constraints(assembly, segment, block, command):
                     "Rake constraint on "
                     + segment.name[i].strip()
                     + ": rake = "
-                    + "{:.2f}".format(segment.rake[i])
+                    + f"{segment.rake[i]:.2f}"
                     + ", constraint strike = "
-                    + "{:.2f}".format(segment.rake_strike[i])
+                    + f"{segment.rake_strike[i]:.2f}"
                     + ", 1-sigma uncertainty = +/-"
-                    + "{:.2f}".format(segment.rake_sig[i])
+                    + f"{segment.rake_sig[i]:.2f}"
                 )
     else:
         logger.info("No slip rake constraints")
@@ -3444,8 +3401,7 @@ def get_slip_rake_constraints(assembly, segment, block, command):
 
 
 def get_mogi_to_velocities_partials(mogi, station, command):
-    """
-    Mogi volume change to station displacement operator
+    """Mogi volume change to station displacement operator
     """
     if mogi.empty:
         mogi_operator = np.zeros((3 * len(station), 0))
@@ -3473,8 +3429,7 @@ def get_mogi_to_velocities_partials(mogi, station, command):
 
 
 def mogi_forward(mogi_lon, mogi_lat, mogi_depth, poissons_ratio, obs_lon, obs_lat):
-    """
-    Calculate displacements from a single Mogi source using
+    """Calculate displacements from a single Mogi source using
     equation 7.14 from "Earthquake and Volcano Deformation" by Paul Segall
     """
     u_east = np.zeros_like(obs_lon)
@@ -3515,8 +3470,7 @@ def get_strain_rate_displacements(
     strain_rate_lat_lat,
     strain_rate_lon_lat,
 ):
-    """
-    Calculate displacements due to three strain rate components.
+    """Calculate displacements due to three strain rate components.
     Equations are from Savage (2001) and expressed concisely in McCaffrey (2005)
     In McCaffrey (2005) these are the two unnumbered equations at the bottom
     of page 2
@@ -3541,8 +3495,7 @@ def get_strain_rate_displacements(
 
 
 def get_block_strain_rate_to_velocities_partials(block, station, segment):
-    """
-    Calculate strain partial derivatives assuming a strain centroid at the center of each block
+    """Calculate strain partial derivatives assuming a strain centroid at the center of each block
     """
     strain_rate_block_idx = np.where(block.strain_rate_flag.to_numpy() > 0)[0]
     # Allocate space. Zero width, if no blocks should have strain estimated, helps with indexing
@@ -3620,8 +3573,7 @@ def get_block_strain_rate_to_velocities_partials(block, station, segment):
 
 
 def get_global_float_block_rotation_partials(station):
-    """
-    Return a linear operator for the rotations of all stations assuming they
+    """Return a linear operator for the rotations of all stations assuming they
     are the on the same block (i.e., the globe). The purpose of this is to
     allow all of the stations to "float" in the inverse problem reducing the
     dependence on reference frame specification. This is done by making a
@@ -4106,9 +4058,9 @@ def get_slip_rate_bounds(segment, block):
                     "Hard QP strike-slip rate bounds on "
                     + segment.name[i].strip()
                     + ": rate (lower bound) = "
-                    + "{:.2f}".format(segment.ss_rate_bound_min[i])
+                    + f"{segment.ss_rate_bound_min[i]:.2f}"
                     + " (mm/yr), rate (upper bound) = "
-                    + "{:.2f}".format(segment.ss_rate_bound_max[i])
+                    + f"{segment.ss_rate_bound_max[i]:.2f}"
                     + " (mm/yr)"
                 )
 
@@ -4122,9 +4074,9 @@ def get_slip_rate_bounds(segment, block):
                     "Hard QP dip-slip rate bounds on "
                     + segment.name[i].strip()
                     + ": rate (lower bound) = "
-                    + "{:.2f}".format(segment.ds_rate_bound_min[i])
+                    + f"{segment.ds_rate_bound_min[i]:.2f}"
                     + " (mm/yr), rate (upper bound) = "
-                    + "{:.2f}".format(segment.ds_rate_bound_max[i])
+                    + f"{segment.ds_rate_bound_max[i]:.2f}"
                     + " (mm/yr)"
                 )
 
@@ -4138,9 +4090,9 @@ def get_slip_rate_bounds(segment, block):
                     "Hard QP tensile-slip rate bounds on "
                     + segment.name[i].strip()
                     + ": rate (lower bound) = "
-                    + "{:.2f}".format(segment.ts_rate_bound_min[i])
+                    + f"{segment.ts_rate_bound_min[i]:.2f}"
                     + " (mm/yr), rate (upper bound) = "
-                    + "{:.2f}".format(segment.ts_rate_bound_max[i])
+                    + f"{segment.ts_rate_bound_max[i]:.2f}"
                     + " (mm/yr)"
                 )
 
@@ -4290,8 +4242,7 @@ def get_qp_slip_rate_inequality_operator_and_data_vector(index, segment, block):
 def get_elastic_operator_single_mesh(
     meshes: List, station: pd.DataFrame, command: Dict, mesh_index: np.int_
 ):
-    """
-    Calculate (or load previously calculated) elastic operators from
+    """Calculate (or load previously calculated) elastic operators from
     both fully locked segments and TDE parameterizes surfaces
 
     Args:
@@ -4651,7 +4602,6 @@ def post_process_estimation_eigen(estimation_eigen, operators, station, index):
         station (pd.DataFrame): GPS station data
         idx (Dict): Indices and counts of data and array sizes
     """
-
     # Isolate eigenvalues (weights for eigenmodes)
     estimation_eigen.eigenvalues = estimation_eigen.state_vector[
         index.start_col_eigen[0] : index.end_col_eigen[-1]
@@ -4811,8 +4761,7 @@ def post_process_estimation_eigen(estimation_eigen, operators, station, index):
 def euler_pole_covariance_to_rotation_vector_covariance(
     omega_x, omega_y, omega_z, euler_pole_covariance_all
 ):
-    """
-    This function takes the model parameter covariance matrix
+    """This function takes the model parameter covariance matrix
     in terms of the Euler pole and rotation rate and linearly
     propagates them to rotation vector space.
     """
@@ -4884,8 +4833,7 @@ def lsqlin_qp(
     x0=None,
     opts=None,
 ):
-    """
-    Solve linear constrained l2-regularized least squares. Can
+    """Solve linear constrained l2-regularized least squares. Can
     handle both dense and sparse matrices. Call modeled after Matlab's
     lsqlin. It is actually wrapper around CVXOPT QP solver.
 
@@ -5075,7 +5023,6 @@ def matvec(v, h_matrix_solve_parameters):
     Returns:
         out (nd.array): Predicted data vector
     """
-
     # Unpack parameters
     (
         index,
@@ -5147,7 +5094,6 @@ def rmatvec(u, h_matrix_solve_parameters):
     Returns:
         out (nd.array): Predicted data vector
     """
-
     # Unpack parameters
     (
         index,
@@ -5408,7 +5354,6 @@ def post_process_estimation_hmatrix(
         col_norms (np.array): Column preconditining vector
         h_matrix_solve_parameters (Tuple): Package of sparse and hmatrix operators
     """
-
     estimation_hmatrix.predictions = matvec(
         estimation_hmatrix.state_vector * col_norms, h_matrix_solve_parameters
     ) / np.sqrt(estimation_hmatrix.weighting_vector)
@@ -5961,7 +5906,7 @@ def write_output(
                     if current_path not in hdf:
                         try:
                             hdf.create_group(current_path)
-                        except ValueError as e:
+                        except ValueError:
                             raise
 
                 # Now handle the final dataset
@@ -6009,8 +5954,8 @@ def write_output(
                 # grp.create_dataset("n_time_steps", data=1)
 
                 # Write mesh geometry
-                grp.create_dataset(f"coordinates", data=meshes[i].points)
-                grp.create_dataset(f"verts", data=meshes[i].verts)
+                grp.create_dataset("coordinates", data=meshes[i].points)
+                grp.create_dataset("verts", data=meshes[i].verts)
 
                 # Write mesh scalars (we'll add more later)
                 print(f"/meshes/mesh_{i:05}/dip_slip/{0:012}")
@@ -6374,7 +6319,7 @@ def plot_input_summary(
             plt.text(
                 block.interior_lon[i],
                 block.interior_lat[i],
-                f"interior\nstrain allowed",
+                "interior\nstrain allowed",
                 color="red",
                 clip_on=True,
                 horizontalalignment="center",
@@ -7084,15 +7029,14 @@ def plot_rotation_components(closure, station):
 
 
 def get_default_plotting_dict(command, estimation, station):
-    """
-    Parameters:
-    -----------
+    """Parameters
+    ----------
     estimation : dictionary
     station : dataframe
     command : dictionary
 
-    Returns:
-    --------
+    Returns
+    -------
     p : dictionary
 
     The returned dictionary includes the following keys and their default values:
@@ -7132,7 +7076,6 @@ def get_default_plotting_dict(command, estimation, station):
         - SEGMENT_LINE_COLOR_INNER: "w" - Inner line color for segments.
 
     """
-
     slip_rate_scale = 0.5 * np.max(
         (
             np.abs(estimation.strike_slip_rates),
@@ -7218,14 +7161,14 @@ def get_default_plotting_dict(command, estimation, station):
 
 
 def plot_common_elements(p, segment, lon_range, lat_range):
-    """
-    Plots common map elements such as segments and axis settings.
+    """Plots common map elements such as segments and axis settings.
 
     This function plots map segments as lines and sets the longitude and latitude
     ranges and ticks for the plot. It also adjusts the aspect ratio and sets labels
     and tick parameters.
 
-    Parameters:
+    Parameters
+    ----------
     p (dictionary): Plotting parameters
     segment (DataFrame): A DataFrame containing segment information with columns
                          'lon1', 'lon2', 'lat1', and 'lat2' representing the
@@ -7268,14 +7211,14 @@ def plot_common_elements(p, segment, lon_range, lat_range):
 
 
 def plot_vel_arrows_elements(p, lon, lat, east_velocity, north_velocity, arrow_scale):
-    """
-    Plots velocity vectors as arrows on a map along with other map elements.
+    """Plots velocity vectors as arrows on a map along with other map elements.
 
     This function plots velocity vectors given eastward and northward components
     of velocity, scaling the arrows appropriately. It also draws land boundaries,
     a white background rectangle for the key, and an arrow legend.
 
-    Parameters:
+    Parameters
+    ----------
     p (dictionary): Plotting parameters
     lon (ndarray): Array of longitudes.
     lat (ndarray): Array latitudes.
@@ -7303,7 +7246,6 @@ def plot_vel_arrows_elements(p, lon, lat, east_velocity, north_velocity, arrow_s
     >>> arrow_scale = 1.0
     >>> plot_vel_arrows_elements(east_velocity, north_velocity, arrow_scale)
     """
-
     # Draw velocity vectors
     velocity_magnitude = np.sqrt(east_velocity**2.0 + north_velocity**2.0)
     norm = Normalize()
@@ -7364,14 +7306,14 @@ def plot_vel_arrows_elements(p, lon, lat, east_velocity, north_velocity, arrow_s
 def plot_vels(
     p, segment, lon, lat, east_vel, north_vel, arrow_scale, title_string="velocities"
 ):
-    """
-    Plots a map of velocity vectors with common map elements.
+    """Plots a map of velocity vectors with common map elements.
 
     This function creates a plot with a specified title, plotting segments and
     velocity vectors on a map. The plot includes common map elements such as
     axis settings and segment lines.
 
-    Parameters:
+    Parameters
+    ----------
     p (addict.Dict): A dictionary containing plotting parameters.
     segment (DataFrame): A DataFrame containing segment information with columns
                          'lon1', 'lon2', 'lat1', and 'lat2' representing the
@@ -7394,16 +7336,15 @@ def plot_vels(
 
 
 def plot_residuals(p, segment, station):
-    """
-    Plots the residuals of east and north velocity estimates as scatter plots with
+    """Plots the residuals of east and north velocity estimates as scatter plots with
     mean absolute error (MAE) and mean squared error (MSE) for a given station.
 
     The function creates two plots:
     1. A scatter plot of the station locations colored by MAE.
     2. A scatter plot of the station locations colored by MSE.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     p : object
         An object containing plot configurations such as figure size, longitude range,
         and latitude range.
@@ -7413,11 +7354,10 @@ def plot_residuals(p, segment, station):
         A pandas DataFrame containing the station data with columns 'lon' and 'lat' for
         longitude and latitude respectively.
 
-    Returns:
-    --------
+    Returns
+    -------
     None
     """
-
     mae = np.abs(station.model_east_vel_residual.values) + np.abs(
         station.model_north_vel_residual.values
     )
@@ -7458,8 +7398,7 @@ def plot_residuals(p, segment, station):
 
 
 def plot_segment_rates(p, segment, estimation, rate_type, rate_scale=1):
-    """
-    Plots the slip rates (strike-slip, dip-slip, tensile-slip, or a combination of dip and tensile slip)
+    """Plots the slip rates (strike-slip, dip-slip, tensile-slip, or a combination of dip and tensile slip)
     for given segments on a map.
 
     The function creates a plot with segments color-coded and line width scaled based on the slip rates.
@@ -7469,8 +7408,8 @@ def plot_segment_rates(p, segment, estimation, rate_type, rate_scale=1):
 
     A legend is added to distinguish the negative and positive rates.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     p : object
         An object containing plot configurations such as figure size, fonts, colors, and map boundaries.
     segment : DataFrame
@@ -7485,8 +7424,8 @@ def plot_segment_rates(p, segment, estimation, rate_type, rate_scale=1):
     rate_scale : float, optional
         A scaling factor for the slip rate line widths, default is 1.
 
-    Returns:
-    --------
+    Returns
+    -------
     None
     """
     plt.figure(figsize=p.FIGSIZE_VECTORS)
@@ -7614,16 +7553,15 @@ def plot_segment_rates(p, segment, estimation, rate_type, rate_scale=1):
 
 
 def plot_fault_geometry(p, segment, meshes):
-    """
-    Plots the fault geometry (segments and triangular dislocation element meshes) on a map.
+    """Plots the fault geometry (segments and triangular dislocation element meshes) on a map.
 
     The function creates a plot with segments color-coded and line width scaled based on the slip rates.
     The colors represent:
     - Black : Standard segments
     - Red : Segments replaced by triangular dislocation element meshes
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     p : object
         An object containing plot configurations such as figure size, fonts, colors, and map boundaries.
     segment : DataFrame
@@ -7631,8 +7569,8 @@ def plot_fault_geometry(p, segment, meshes):
         the start and end coordinates of each segment.
     meshes : Dict
 
-    Returns:
-    --------
+    Returns
+    -------
     None
     """
     plt.figure(figsize=p.FIGSIZE_VECTORS)
@@ -7789,8 +7727,7 @@ def wrap2360(lon):
 
 
 def make_default_segment(length):
-    """
-    Create a default segment Dict of specified length
+    """Create a default segment Dict of specified length
     """
     default_segment = pd.DataFrame(
         columns=[
@@ -7847,15 +7784,13 @@ def make_default_segment(length):
 
 
 def polygon_area(x, y):
-    """
-    From: https://newbedev.com/calculate-area-of-polygon-given-x-y-coordinates
+    """From: https://newbedev.com/calculate-area-of-polygon-given-x-y-coordinates
     """
     return 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
 
 
 def great_circle_latitude_find(lon1, lat1, lon2, lat2, lon):
-    """
-    Determines latitude as a function of longitude along a great circle.
+    """Determines latitude as a function of longitude along a great circle.
     LAT = gclatfind(LON1, LAT1, LON2, LAT2, LON) finds the latitudes of points of
     specified LON that lie along the great circle defined by endpoints LON1, LAT1
     and LON2, LAT2. Angles should be passed as degrees.
@@ -7873,8 +7808,7 @@ def great_circle_latitude_find(lon1, lat1, lon2, lat2, lon):
 
 
 def get_cross_partials(vector):
-    """
-    Returns a linear operator R that when multiplied by
+    """Returns a linear operator R that when multiplied by
     vector a gives the cross product a cross b
     """
     return np.array(
@@ -7887,8 +7821,8 @@ def get_cross_partials(vector):
 
 
 def cartesian_vector_to_spherical_vector(vel_x, vel_y, vel_z, lon, lat):
-    """
-    This function transforms vectors from Cartesian to spherical components.
+    """This function transforms vectors from Cartesian to spherical components.
+
     Arguments:
         vel_x: array of x components of velocity
         vel_y: array of y components of velocity
@@ -7922,8 +7856,7 @@ def cartesian_vector_to_spherical_vector(vel_x, vel_y, vel_z, lon, lat):
 
 
 def get_segment_oblique_projection(lon1, lat1, lon2, lat2, skew=True):
-    """
-    Use pyproj oblique mercator: https://proj.org/operations/projections/omerc.html
+    """Use pyproj oblique mercator: https://proj.org/operations/projections/omerc.html
 
     According to: https://proj.org/operations/projections/omerc.html
     This is this already rotated by the fault strike but the rotation can be undone with +no_rot
@@ -7972,8 +7905,7 @@ def get_segment_oblique_projection(lon1, lat1, lon2, lat2, skew=True):
 
 
 def latitude_to_colatitude(lat):
-    """
-    Convert from latitude to colatitude
+    """Convert from latitude to colatitude
     NOTE: Not sure why I need to treat the scalar case differently but I do.
     """
     if lat.size == 1:  # Deal with the scalar case
@@ -7989,8 +7921,7 @@ def latitude_to_colatitude(lat):
 
 
 def get_transverse_projection(lon0, lat0):
-    """
-    Use pyproj oblique mercator: https://proj.org/operations/projections/tmerc.html
+    """Use pyproj oblique mercator: https://proj.org/operations/projections/tmerc.html
     """
     if lon0 > 180.0:
         lon0 = lon0 - 360
@@ -8011,7 +7942,8 @@ def get_transverse_projection(lon0, lat0):
 def get_keep_index_12(length_of_array: int):
     """Calculate an indexing array that given and array:
     [1, 2, 3, 4, 5, 6, 7, 8, 9]
-    returns
+
+    Returns:
     [1, 2, 4, 5, 7, 8]
     This is useful for selecting only indices associated with
     horizontal motions
@@ -8029,7 +7961,8 @@ def get_keep_index_12(length_of_array: int):
 def interleave2(array_1, array_2):
     """Interleaves two arrays, with alternating entries.
     Given array_1 = [0, 2, 4, 6] and array_2 = [1, 3, 5, 7]
-    returns
+
+    Returns:
     [0, 1, 2, 3, 4, 5, 6, 7]
     This is useful for assembling velocity/slip components into a combined array.
 
@@ -8048,7 +7981,8 @@ def interleave2(array_1, array_2):
 def interleave3(array_1, array_2, array_3):
     """Interleaves three arrays, with alternating entries.
     Given array_1 = [0, 3, 6, 9], array_2 = [1, 4, 7, 10], and array_3 = [2, 5, 8, 11]
-    returns
+
+    Returns:
     [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
     This is useful for assembling velocity/slip components into a combined array.
 
@@ -8071,7 +8005,8 @@ def get_2component_index(indices: np.array):
     """Returns indices into 2-component array, where each entry of input array
     corresponds to two entries in the 2-component array
     Given indices = [0, 2, 10, 6]
-    returns
+
+    Returns:
     [0, 1, 4, 5, 20, 21, 12, 13]
     This is useful for referencing velocity/slip components corresponding to a set
     of stations/faults.
@@ -8090,7 +8025,8 @@ def get_3component_index(indices: np.array):
     """Returns indices into 3-component array, where each entry of input array
     corresponds to three entries in the 3-component array
     Given indices = [0, 2, 10, 6]
-    returns
+
+    Returns:
     [0, 1, 2, 6, 7, 8, 27, 28, 29, 15, 16, 17]
     This is useful for referencing velocity/slip components corresponding to a set
     of stations/faults.
@@ -8109,10 +8045,10 @@ def get_3component_index(indices: np.array):
 
 def align_velocities(df_1, df_2, distance_threshold):
     # Add block_label to dataframes if it's not there
-    if not "block_label" in df_1.columns:
+    if "block_label" not in df_1.columns:
         df_1["block_label"] = 0
 
-    if not "block_label" in df_2.columns:
+    if "block_label" not in df_2.columns:
         df_2["block_label"] = 0
 
     # Find approximate distances between all station pairs between data sets
@@ -8164,8 +8100,7 @@ def align_velocities(df_1, df_2, distance_threshold):
 
 
 def get_newest_run_folder(rewind=0):
-    """
-    Generate a new folder name based on existing numeric folder names.
+    """Generate a new folder name based on existing numeric folder names.
 
     This function scans the current directory for folders with numeric names,
     identifies the highest number, and returns a new folder name that is one
@@ -8195,7 +8130,7 @@ def get_newest_run_folder(rewind=0):
     for folder_name in folder_names:
         try:
             folder_names_runs.append(int(folder_name))
-        except ValueError as ex:
+        except ValueError:
             pass
 
     # Get new folder name
@@ -8206,17 +8141,18 @@ def get_newest_run_folder(rewind=0):
 
 
 def read_run(folder_name):
-    """
-    Reads and loads data from a specified folder containing a pickled file.
+    """Reads and loads data from a specified folder containing a pickled file.
 
     This function opens a pickled file located in the directory `./../runs/{folder_name}/`,
     where `{folder_name}` is provided as an argument. The pickled file is expected to contain
     a list of six elements, which are extracted and returned as separate variables.
 
-    Parameters:
+    Parameters
+    ----------
     folder_name (str): The name of the folder containing the pickled file.
 
-    Returns:
+    Returns
+    -------
     tuple: A tuple containing the following elements in order:
         - command: command dictionary.
         - estimation: estimation command dictionary.
@@ -8243,8 +8179,7 @@ def read_run(folder_name):
 
 
 def diagnose_matrix(mat):
-    """
-    Visualizes and diagnoses a matrix for rank deficiency.
+    """Visualizes and diagnoses a matrix for rank deficiency.
 
     This function generates visualizations of the input matrix and scans for
     the first rank deficient column. It creates two plots: one showing the
@@ -8253,7 +8188,8 @@ def diagnose_matrix(mat):
     columns of the matrix to identify the first column where the rank is
     deficient.
 
-    Parameters:
+    Parameters
+    ----------
     mat (numpy.ndarray): The matrix to be diagnosed.
 
     Example:

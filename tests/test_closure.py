@@ -1,9 +1,8 @@
-import numpy as np
-import os
 
-from celeri.celeri_closure import run_block_closure, get_segment_labels, Polygon
+import numpy as np
 
 import celeri
+from celeri.celeri_closure import Polygon, get_segment_labels, run_block_closure
 
 
 def test_closure():
@@ -96,13 +95,11 @@ def test_exterior_block():
 
 
 def test_global_closure():
-    """
-    This check to make sure that the closure algorithm returns a known
+    """This check to make sure that the closure algorithm returns a known
     (and hopefully correct!) answer for the global closure problem.
     Right now all this does is check for the correct number of blocks and
     against one set of polygon edge indices
     """
-
     command_file_name = "./tests/test_closure_command.json"
     command = celeri.get_command(command_file_name)
     # logger = celeri.get_logger(command)

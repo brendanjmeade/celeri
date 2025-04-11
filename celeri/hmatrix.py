@@ -1,6 +1,5 @@
 from dataclasses import dataclass
-from re import T
-from typing import Optional, Tuple, List
+from typing import List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -19,8 +18,7 @@ class TreeNode:
 
 @dataclass()
 class Tree:
-    """
-    The tree construction re-orders the original inputs so that the points
+    """The tree construction re-orders the original inputs so that the points
     within each TreeNode are contained in a contiguous block of indices.
     `ordered_idxs` is the mapping from the original indices to the
     """
@@ -32,8 +30,7 @@ class Tree:
 
 
 def build_tree(pts, radii, min_pts_per_box=10):
-    """
-    Construct a sphere tree where each internal node of the tree represents a
+    """Construct a sphere tree where each internal node of the tree represents a
     sphere containing all its child entities. The tree construction process
     receives three parameters:
 
@@ -46,7 +43,6 @@ def build_tree(pts, radii, min_pts_per_box=10):
     min_pts_per_box: this determines when we'll stop splitting. If a box has more
                      than min_pts_per_box elements, we keep splitting.
     """
-
     # We'll start with the element indices in the order that they were given to this function.
     # build_tree_node will re-order these indices at each step to enforce the rule that
     # left child indices must be less than right child indices.
@@ -151,8 +147,7 @@ def _traverse(obs_node, src_node, min_separation, direct_list, approx_list):
 
 
 def traverse(obs_node, src_node, min_separation=1.5):
-    """
-    This function constructs two lists of node pairs by performing a dual tree
+    """This function constructs two lists of node pairs by performing a dual tree
     traversal. This is useful for constructing an HMatrix. The first return
     value, `direct_list` contains those pairs of nodes representing blocks of a
     matrix that should not be approximated. The second return value,
@@ -171,8 +166,7 @@ def traverse(obs_node, src_node, min_separation=1.5):
 
 
 def _check_tree(pts, radii, tree, node):
-    """
-    This function traverses a tree and checks to make sure that all the entities
+    """This function traverses a tree and checks to make sure that all the entities
     in each tree node and fully contained with the spherical bounds of that tree
     node.
     """
@@ -200,8 +194,7 @@ def plot_tree_level(node, depth, **kwargs):
 
 
 def plot_tree(tree):
-    """
-    Plots circles representing all the nodes in the tree. Each level is given a separate subplot.
+    """Plots circles representing all the nodes in the tree. Each level is given a separate subplot.
     """
     plt.figure(figsize=(9, 9))
     for depth in range(9):
@@ -291,8 +284,7 @@ class HMatrix:
     shape: List[int]
 
     def report_compression_ratio(self):
-        """
-        Returns a fraction that indicates how much less memory is used than the
+        """Returns a fraction that indicates how much less memory is used than the
         corresponding original dense matrix.
         """
         simple_entries = np.prod(self.shape)
@@ -308,8 +300,7 @@ class HMatrix:
         return (h_entries + direct_entries) / simple_entries
 
     def dot(self, x):
-        """
-        Perform a matrix-vector product with the vector `x`
+        """Perform a matrix-vector product with the vector `x`
         """
         n_obs = self.shape[0] // 2
         y_tree = np.zeros((n_obs, 2))
@@ -530,8 +521,7 @@ def build_hmatrix(
 def build_hmatrix_from_mesh_tdes(
     mesh, station, M, tol, min_separation=1.5, min_pts_per_box=20
 ):
-    """
-    This function translates the TDE mesh to station matrix problem into a
+    """This function translates the TDE mesh to station matrix problem into a
     problem using more typical H-matrix inputs.
 
     That is, we convert from:
