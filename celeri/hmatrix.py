@@ -20,7 +20,8 @@ class TreeNode:
 class Tree:
     """The tree construction re-orders the original inputs so that the points
     within each TreeNode are contained in a contiguous block of indices.
-    `ordered_idxs` is the mapping from the original indices to the.
+    `ordered_idxs` is the mapping from the original indices to the re-ordered
+    indices.
     """
 
     ordered_idxs: np.ndarray
