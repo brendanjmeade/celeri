@@ -1,11 +1,11 @@
-import matplotlib.pyplot as plt
-import numpy as np
-import os
-import meshio
-import pandas as pd
-import IPython
 import copy
+import os
 from pathlib import Path
+
+import matplotlib.pyplot as plt
+import meshio
+import numpy as np
+import pandas as pd
 from scipy.spatial.distance import cdist
 
 
@@ -68,7 +68,7 @@ def write_geo_file(
 def resample_trace(lons, lats, locking_depth, resample_length):
     longitude_diff = np.diff(lons)
     latitude_diff = np.diff(lats)
-    approximate_segment_lengths = np.sqrt(longitude_diff ** 2.0 + latitude_diff ** 2.0)
+    approximate_segment_lengths = np.sqrt(longitude_diff**2.0 + latitude_diff**2.0)
 
     resampled_lons = []
     resampled_lats = []
@@ -166,8 +166,7 @@ def get_hanging_segments(df):
 
 
 def order_endpoints(segment):
-    """
-    Endpoint ordering function, placing west point first.
+    """Endpoint ordering function, placing west point first.
 
     Could go back to cross product-based ordering if we call process_segment
     """
