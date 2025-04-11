@@ -1371,5 +1371,3 @@ cbar = plt.colorbar(ch, cax=cax, ticks=[0, 1], label="coupling")
 # plt.savefig("nankai_kinematic_elastic_coupling.png", dpi=500)
 
 plt.show()
-
-
