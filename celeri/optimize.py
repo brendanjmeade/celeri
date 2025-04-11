@@ -182,21 +182,21 @@ class VelocityLimitItem:
         ):
             n_dim = len(self.kinematic_lower)
             # dims = (mesh_point, constraint, (kinematic, estimated))
-            self.constraints_matrix_kinematic = cp.Parameter(shape=(n_dim, 4))
-            self.constraints_matrix_estimated = cp.Parameter(shape=(n_dim, 4))
-            self.constraints_vector = cp.Parameter(shape=(n_dim, 4))
+            self.constraints_matrix_kinematic = cp.Parameter(shape=(n_dim, 2))
+            self.constraints_matrix_estimated = cp.Parameter(shape=(n_dim, 2))
+            self.constraints_vector = cp.Parameter(shape=(n_dim, 2))
 
         kinematic = np.zeros(self.constraints_matrix_kinematic.shape)
         estimated = np.zeros(self.constraints_matrix_estimated.shape)
         const = np.zeros(self.constraints_vector.shape)
 
         # kinematic <= kinematic_lower
-        kinematic[:, 0] = np.where(self.kinematic_lower == 0.0, 0.0, -1)
-        const[:, 0] = np.where(self.kinematic_lower == 0.0, 0.0, -self.kinematic_lower)
+        # kinematic[:, 2] = np.where(self.kinematic_lower == 0.0, 0.0, -1)
+        # const[:, 2] = np.where(self.kinematic_lower == 0.0, 0.0, -self.kinematic_lower)
 
         # kinematic >= kinematic_upper
-        kinematic[:, 1] = np.where(self.kinematic_upper == 0.0, 0.0, 1)
-        const[:, 1] = np.where(self.kinematic_upper == 0.0, 0.0, self.kinematic_upper)
+        # kinematic[:, 3] = np.where(self.kinematic_upper == 0.0, 0.0, 1)
+        # const[:, 3] = np.where(self.kinematic_upper == 0.0, 0.0, self.kinematic_upper)
 
         # Define boundary points in (kinematic, estimated) space
 
@@ -241,9 +241,9 @@ class VelocityLimitItem:
             lower_right_kinematic,
             lower_right_estimated,
         )
-        kinematic[:, 2] = coef_x
-        estimated[:, 2] = coef_y
-        const[:, 2] = bound_const
+        kinematic[:, 0] = coef_x
+        estimated[:, 0] = coef_y
+        const[:, 0] = bound_const
 
         coef_x, coef_y, bound_const = bounded_through_points(
             upper_right_kinematic,
@@ -251,9 +251,9 @@ class VelocityLimitItem:
             upper_left_kinematic,
             upper_left_estimated,
         )
-        kinematic[:, 3] = coef_x
-        estimated[:, 3] = coef_y
-        const[:, 3] = bound_const
+        kinematic[:, 1] = coef_x
+        estimated[:, 1] = coef_y
+        const[:, 1] = bound_const
 
         # Rescale matrices so that the largest coefficient for each inequality is 1
         for i in range(kinematic.shape[1]):
@@ -272,17 +272,44 @@ class VelocityLimitItem:
         self.constraints_matrix_estimated.value = estimated
         self.constraints_vector.value = const
 
-    def build_constraints(self, kinematic, estimated) -> cp.Constraint:
-        self.update_constraints()
-        assert self.constraints_vector is not None
-        assert self.constraints_matrix_kinematic is not None
-        assert self.constraints_matrix_estimated is not None
+    def build_constraints(
+        self, kinematic, estimated, *, mixed_integer=False
+    ) -> list[cp.Constraint]:
+        if not mixed_integer:
+            self.update_constraints()
+            assert self.constraints_vector is not None
+            assert self.constraints_matrix_kinematic is not None
+            assert self.constraints_matrix_estimated is not None
 
-        return (
-            cp.multiply(self.constraints_matrix_kinematic, kinematic[:, None])
-            + cp.multiply(self.constraints_matrix_estimated, estimated[:, None])
-            <= self.constraints_vector
-        )
+            return [
+                cp.multiply(self.constraints_matrix_kinematic, kinematic[:, None])
+                + cp.multiply(self.constraints_matrix_estimated, estimated[:, None])
+                <= self.constraints_vector
+            ]
+        else:
+            z = cp.Variable(
+                shape=kinematic.shape,
+                name="z",
+                boolean=True,
+            )
+            eps = 1e-4
+
+            kin_lb = self.kinematic_lower
+            kin_ub = self.kinematic_upper
+
+            M = np.maximum(kin_ub, -kin_lb) + eps
+
+            return [
+                kinematic <= kin_ub,
+                kinematic >= kin_lb,
+                estimated <= kin_ub,
+                estimated >= kin_lb,
+                # check these
+                kinematic <= M * z,
+                kinematic >= -M * (1 - z),
+                kinematic - estimated <= M * z,
+                kinematic - estimated >= -M * (1 - z),
+            ]
 
     def plot_constraint(self, index=0, figsize=(8, 6)):
         """
@@ -414,6 +441,8 @@ class Minimizer:
     cp_problem: cp.Problem
     params_raw: cp.Expression
     params: cp.Expression
+    params_scale: np.ndarray
+    constraint_scale: np.ndarray
     coupling: dict[int, Coupling]
     velocity_limits: dict[int, VelocityLimit] | None
     smooth_kinematic: bool = True
@@ -518,6 +547,10 @@ def build_cvxpy_problem(
     smooth_kinematic: bool = True,
     slip_rate_reduction: float | None = None,
     velocity_as_variable: bool = False,
+    expand_objective: bool = False,
+    rescale_parameters: bool = True,
+    rescale_constraints: bool = True,
+    mixed_integer: bool = False,
 ) -> Minimizer:
     qp_inequality_constraints_matrix, qp_inequality_constraints_data_vector = (
         get_qp_all_inequality_operator_and_data_vector(
@@ -552,7 +585,10 @@ def build_cvxpy_problem(
     # dims(C) = (observation, parameter)
     # dims(P) = (parameter, parameter)
 
-    scale = np.abs(C).max(0)
+    if rescale_parameters:
+        scale = np.abs(C).max(0)
+    else:
+        scale = np.ones(C.shape[1])
 
     C_hat = C / scale
     P_hat = C_hat.T @ C_hat
@@ -574,7 +610,7 @@ def build_cvxpy_problem(
     params = params_raw / scale
 
     coupling = {}
-    constraints = []
+    constraints: list[cp.Constraint] = []
 
     def adapt_operator(array: np.ndarray):
         return sparse.csr_array(array)
@@ -677,17 +713,29 @@ def build_cvxpy_problem(
                     item.kinematic_smooth if smooth_kinematic else item.kinematic
                 )
                 limits = getattr(velocity_limits[mesh_idx], name)
-                constraints.append(limits.build_constraints(kinematic, item.estimated))
+                constraints.extend(
+                    limits.build_constraints(
+                        kinematic, item.estimated, mixed_integer=mixed_integer
+                    )
+                )
 
     A_hat = np.array(A / scale)
-    A_scale = np.linalg.norm(A_hat, axis=1)
+
+    if rescale_constraints:
+        A_scale = np.linalg.norm(A_hat, axis=1)
+    else:
+        A_scale = np.ones(A_hat.shape[0])
     A_hat_ = A_hat / A_scale[:, None]
     b_hat = b / A_scale
 
-    # TODO add the constant term to the objectivo to make it easier to interpret
-    objective = cp.Minimize(
-        cp.quad_form(params_raw, 0.5 * P_hat, True) - (d.T @ C) @ params
-    )
+    if expand_objective:
+        objective = cp.Minimize(
+            cp.quad_form(params_raw, 0.5 * P_hat, True)
+            - (d.T @ C) @ params
+            + 0.5 * d.T @ d
+        )
+    else:
+        objective = cp.Minimize(cp.sum_squares(C @ params - d))
     constraint = adapt_operator(A_hat_) @ params_raw <= b_hat
 
     constraints.append(constraint)
@@ -699,6 +747,8 @@ def build_cvxpy_problem(
         cp_problem=cp_problem,
         params_raw=params_raw,
         params=params,
+        params_scale=scale,
+        constraint_scale=A_scale,
         coupling=coupling,
         velocity_limits=velocity_limits,
         smooth_kinematic=smooth_kinematic,
