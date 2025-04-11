@@ -38,6 +38,7 @@ spherical-geometry = "*"
 tqdm = "*"
 
 [feature.dev.dependencies]
+pre-commit = "*"
 ruff = "*"
 
 [pypi-dependencies]
