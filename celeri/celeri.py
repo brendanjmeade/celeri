@@ -3241,10 +3241,10 @@ def get_rotation_to_tri_slip_rate_partials(meshes, mesh_idx, segment, block):
         # Insert this element's partials into operator
         tri_slip_rate_partials[
             row_idx : row_idx + 3, column_idx_east : column_idx_east + 3
-        ] = (ew_switch * slip_rate_matrix)
+        ] = ew_switch * slip_rate_matrix
         tri_slip_rate_partials[
             row_idx : row_idx + 3, column_idx_west : column_idx_west + 3
-        ] = (-ew_switch * slip_rate_matrix)
+        ] = -ew_switch * slip_rate_matrix
     return tri_slip_rate_partials
 
 
@@ -3607,9 +3607,9 @@ def get_block_strain_rate_to_velocities_partials(block, station, segment):
             block_strain_rate_operator[3 * station_idx, 3 * i + 1] = -vel_east_lat_lat
             block_strain_rate_operator[3 * station_idx, 3 * i + 2] = vel_east_lon_lat
             block_strain_rate_operator[3 * station_idx + 1, 3 * i] = vel_north_lon_lon
-            block_strain_rate_operator[3 * station_idx + 1, 3 * i + 1] = (
-                -vel_north_lat_lat
-            )
+            block_strain_rate_operator[
+                3 * station_idx + 1, 3 * i + 1
+            ] = -vel_north_lat_lat
             block_strain_rate_operator[3 * station_idx + 1, 3 * i + 2] = (
                 vel_north_lon_lat
             )
@@ -4113,9 +4113,9 @@ def get_slip_rate_bounds(segment, block):
                 )
 
                 # Fail if min bound not less than max bound
-                assert (
-                    segment.ss_rate_bound_min[i] < segment.ss_rate_bound_max[i]
-                ), "Bounds min max error"
+                assert segment.ss_rate_bound_min[i] < segment.ss_rate_bound_max[i], (
+                    "Bounds min max error"
+                )
 
             if segment.ds_rate_bound_flag[i] == 1:
                 logger.info(
@@ -4129,9 +4129,9 @@ def get_slip_rate_bounds(segment, block):
                 )
 
                 # Fail if min bound not less than max bound
-                assert (
-                    segment.ds_rate_bound_min[i] < segment.ds_rate_bound_max[i]
-                ), "Bounds min max error"
+                assert segment.ds_rate_bound_min[i] < segment.ds_rate_bound_max[i], (
+                    "Bounds min max error"
+                )
 
             if segment.ts_rate_bound_flag[i] == 1:
                 logger.info(
@@ -4145,9 +4145,9 @@ def get_slip_rate_bounds(segment, block):
                 )
 
                 # Fail if min bound not less than max bound
-                assert (
-                    segment.ts_rate_bound_min[i] < segment.ts_rate_bound_max[i]
-                ), "Bounds min max error"
+                assert segment.ts_rate_bound_min[i] < segment.ts_rate_bound_max[i], (
+                    "Bounds min max error"
+                )
 
     else:
         logger.info("No hard slip rate bounds")
@@ -4202,8 +4202,7 @@ def get_qp_tde_inequality_operator_and_data_vector(index, meshes, operators):
         qp_constraint_data_vector[
             index.qp_constraint_tde_rate_start_row_eigen[
                 i
-            ] : index.qp_constraint_tde_rate_start_row_eigen[i]
-            + 2 * index.n_tde[i]
+            ] : index.qp_constraint_tde_rate_start_row_eigen[i] + 2 * index.n_tde[i]
         ] = -lower_bound_current_mesh
 
         # Insert TDE upper bounds into QP constraint data vector
@@ -4216,8 +4215,7 @@ def get_qp_tde_inequality_operator_and_data_vector(index, meshes, operators):
         qp_constraint_matrix[
             index.qp_constraint_tde_rate_start_row_eigen[
                 i
-            ] : index.qp_constraint_tde_rate_start_row_eigen[i]
-            + 2 * index.n_tde[i],
+            ] : index.qp_constraint_tde_rate_start_row_eigen[i] + 2 * index.n_tde[i],
             index.start_col_eigen[i] : index.end_col_eigen[i],
         ] = -operators.eigenvectors_to_tde_slip[i]
 
@@ -4582,8 +4580,7 @@ def post_process_estimation(
 
     # Extract estimated block strain rates
     estimation.block_strain_rates = estimation.state_vector[
-        3 * index.n_blocks
-        + 2 * index.n_tde_total : 3 * index.n_blocks
+        3 * index.n_blocks + 2 * index.n_tde_total : 3 * index.n_blocks
         + 2 * index.n_tde_total
         + index.n_block_strain_components
     ]
@@ -4697,7 +4694,9 @@ def post_process_estimation_eigen(estimation_eigen, operators, station, index):
     # Isolate strike- and dip-slip rates
     estimation_eigen.tde_strike_slip_rates = estimation_eigen.tde_rates[0::2]
     estimation_eigen.tde_dip_slip_rates = estimation_eigen.tde_rates[1::2]
-    estimation_eigen.tde_tensile_slip_rates = np.zeros_like(estimation_eigen.tde_dip_slip_rates)
+    estimation_eigen.tde_tensile_slip_rates = np.zeros_like(
+        estimation_eigen.tde_dip_slip_rates
+    )
 
     # Create a pseudo state vector that is the length of a TDE state vector
     estimation_eigen.pseudo_tde_state_vector = np.zeros(
@@ -4715,12 +4714,24 @@ def post_process_estimation_eigen(estimation_eigen, operators, station, index):
     # Calculate and insert kinematic and coupling triangle rates
     # TODO: This is a placeholder for the real calculation of TDE kinematic
     # and coupling rates
-    estimation_eigen.tde_strike_slip_rates_kinematic = np.zeros_like(estimation_eigen.tde_strike_slip_rates)
-    estimation_eigen.tde_dip_slip_rates_kinematic = np.zeros_like(estimation_eigen.tde_dip_slip_rates)
-    estimation_eigen.tde_tensile_slip_rates_kinematic = np.zeros_like(estimation_eigen.tde_tensile_slip_rates)
-    estimation_eigen.tde_strike_slip_rates_coupling = np.zeros_like(estimation_eigen.tde_strike_slip_rates)
-    estimation_eigen.tde_dip_slip_rates_coupling = np.zeros_like(estimation_eigen.tde_dip_slip_rates)
-    estimation_eigen.tde_tensile_slip_rates_coupling = np.zeros_like(estimation_eigen.tde_tensile_slip_rates)
+    estimation_eigen.tde_strike_slip_rates_kinematic = np.zeros_like(
+        estimation_eigen.tde_strike_slip_rates
+    )
+    estimation_eigen.tde_dip_slip_rates_kinematic = np.zeros_like(
+        estimation_eigen.tde_dip_slip_rates
+    )
+    estimation_eigen.tde_tensile_slip_rates_kinematic = np.zeros_like(
+        estimation_eigen.tde_tensile_slip_rates
+    )
+    estimation_eigen.tde_strike_slip_rates_coupling = np.zeros_like(
+        estimation_eigen.tde_strike_slip_rates
+    )
+    estimation_eigen.tde_dip_slip_rates_coupling = np.zeros_like(
+        estimation_eigen.tde_dip_slip_rates
+    )
+    estimation_eigen.tde_tensile_slip_rates_coupling = np.zeros_like(
+        estimation_eigen.tde_tensile_slip_rates
+    )
 
     # Extract segment slip rates from state vector
     estimation_eigen.slip_rates = (
@@ -5086,14 +5097,14 @@ def matvec(v, h_matrix_solve_parameters):
     block_rotations = v_scaled[index.start_block_col : index.end_block_col]
 
     # Okada
-    out[
-        index.start_station_row : index.end_station_row
-    ] += sparse_block_motion_okada_faults.dot(block_rotations)
+    out[index.start_station_row : index.end_station_row] += (
+        sparse_block_motion_okada_faults.dot(block_rotations)
+    )
 
     # Block motion constraints
-    out[
-        index.start_block_constraints_row : index.end_block_constraints_row
-    ] += sparse_block_motion_constraints.dot(block_rotations)
+    out[index.start_block_constraints_row : index.end_block_constraints_row] += (
+        sparse_block_motion_constraints.dot(block_rotations)
+    )
 
     # Slip rate constraints
     out[
@@ -5109,14 +5120,14 @@ def matvec(v, h_matrix_solve_parameters):
         out[index.start_station_row : index.end_station_row] += H[i].dot(tde_velocities)
 
         # TDE smoothing
-        out[
-            index.start_tde_smoothing_row[i] : index.end_tde_smoothing_row[i]
-        ] += operators.smoothing_matrix[i].dot(tde_velocities)
+        out[index.start_tde_smoothing_row[i] : index.end_tde_smoothing_row[i]] += (
+            operators.smoothing_matrix[i].dot(tde_velocities)
+        )
 
         # TDE slip rate constraints
-        out[
-            index.start_tde_constraint_row[i] : index.end_tde_constraint_row[i]
-        ] += operators.tde_slip_rate_constraints[i].dot(tde_velocities)
+        out[index.start_tde_constraint_row[i] : index.end_tde_constraint_row[i]] += (
+            operators.tde_slip_rate_constraints[i].dot(tde_velocities)
+        )
 
     # Weight!
     return out * np.sqrt(weighting_vector)
@@ -5941,7 +5952,9 @@ def write_output(
                         current_path = part
 
                     # If this path exists and is a Dataset, delete it
-                    if current_path in hdf and isinstance(hdf[current_path], h5py.Dataset):
+                    if current_path in hdf and isinstance(
+                        hdf[current_path], h5py.Dataset
+                    ):
                         del hdf[current_path]
 
                     # Create group if it doesn't exist
@@ -5958,11 +5971,16 @@ def write_output(
                 # Create the new dataset
                 hdf.create_dataset(dataset_name, data=dataset)
 
-
-        hdf_output_file_name = command.output_path + "/" + f"model_{command.run_name}.hdf5"
+        hdf_output_file_name = (
+            command.output_path + "/" + f"model_{command.run_name}.hdf5"
+        )
         with h5py.File(hdf_output_file_name, "w") as hdf:
             # Meta data
-            hdf.create_dataset("run_name", data=command.run_name.encode("utf-8"), dtype=h5py.string_dtype(encoding="utf-8"))
+            hdf.create_dataset(
+                "run_name",
+                data=command.run_name.encode("utf-8"),
+                dtype=h5py.string_dtype(encoding="utf-8"),
+            )
             hdf.create_dataset("earth_radius", data=6371.0)
 
             # Write command dictionary
@@ -5970,24 +5988,29 @@ def write_output(
             for key, value in command.items():
                 if isinstance(value, str):
                     # Handle strings specially
-                    grp.create_dataset(key, data=value.encode("utf-8"), 
-                                    dtype=h5py.string_dtype(encoding="utf-8"))
+                    grp.create_dataset(
+                        key,
+                        data=value.encode("utf-8"),
+                        dtype=h5py.string_dtype(encoding="utf-8"),
+                    )
                 else:
                     # Handle numeric values
                     grp.create_dataset(key, data=value)
-
 
             # Write meshes
             for i in range(len(meshes)):
                 grp = hdf.create_group(f"meshes/mesh_{i:05}")
                 mesh_name = os.path.splitext(os.path.basename(meshes[i].file_name))[0]
-                grp.create_dataset("mesh_name", data=mesh_name.encode("utf-8"), dtype=h5py.string_dtype(encoding="utf-8"))
+                grp.create_dataset(
+                    "mesh_name",
+                    data=mesh_name.encode("utf-8"),
+                    dtype=h5py.string_dtype(encoding="utf-8"),
+                )
                 # grp.create_dataset("n_time_steps", data=1)
-                
+
                 # Write mesh geometry
                 grp.create_dataset(f"coordinates", data=meshes[i].points)
                 grp.create_dataset(f"verts", data=meshes[i].verts)
-
 
                 # Write mesh scalars (we'll add more later)
                 print(f"/meshes/mesh_{i:05}/dip_slip/{0:012}")
@@ -6017,51 +6040,75 @@ def write_output(
                 # Kinematic slip rates
                 grp.create_dataset(
                     f"/meshes/mesh_{i:05}/strike_slip_kinematic/{0:012}",
-                    data=estimation.tde_strike_slip_rates_kinematic[mesh_start_idx:mesh_end_idx],
+                    data=estimation.tde_strike_slip_rates_kinematic[
+                        mesh_start_idx:mesh_end_idx
+                    ],
                 )
                 grp.create_dataset(
                     f"/meshes/mesh_{i:05}/dip_slip_kinematic/{0:012}",
-                    data=estimation.tde_dip_slip_rates_kinematic[mesh_start_idx:mesh_end_idx],
+                    data=estimation.tde_dip_slip_rates_kinematic[
+                        mesh_start_idx:mesh_end_idx
+                    ],
                 )
                 grp.create_dataset(
                     f"/meshes/mesh_{i:05}/tensile_slip_kinematic/{0:012}",
                     data=np.zeros_like(
-                        estimation.tde_dip_slip_rates_kinematic[mesh_start_idx:mesh_end_idx]
+                        estimation.tde_dip_slip_rates_kinematic[
+                            mesh_start_idx:mesh_end_idx
+                        ]
                     ),
                 )
 
                 # Coupling rates
                 grp.create_dataset(
                     f"/meshes/mesh_{i:05}/strike_slip_coupling/{0:012}",
-                    data=estimation.tde_strike_slip_rates_coupling[mesh_start_idx:mesh_end_idx],
+                    data=estimation.tde_strike_slip_rates_coupling[
+                        mesh_start_idx:mesh_end_idx
+                    ],
                 )
                 grp.create_dataset(
                     f"/meshes/mesh_{i:05}/dip_slip_coupling/{0:012}",
-                    data=estimation.tde_dip_slip_rates_coupling[mesh_start_idx:mesh_end_idx],
+                    data=estimation.tde_dip_slip_rates_coupling[
+                        mesh_start_idx:mesh_end_idx
+                    ],
                 )
                 grp.create_dataset(
                     f"/meshes/mesh_{i:05}/tensile_slip_coupling/{0:012}",
                     data=np.zeros_like(
-                        estimation.tde_dip_slip_rates_coupling[mesh_start_idx:mesh_end_idx]
+                        estimation.tde_dip_slip_rates_coupling[
+                            mesh_start_idx:mesh_end_idx
+                        ]
                     ),
                 )
 
             # Try saving segment rate data in parsli style
-            hdf.create_dataset(f"/segments/strike_slip/{0:012}", data=estimation.strike_slip_rates)
-            hdf.create_dataset(f"/segments/dip_slip/{0:012}", data=estimation.dip_slip_rates)
-            hdf.create_dataset(f"/segments/tensile_slip/{0:012}", data=estimation.tensile_slip_rates)
+            hdf.create_dataset(
+                f"/segments/strike_slip/{0:012}", data=estimation.strike_slip_rates
+            )
+            hdf.create_dataset(
+                f"/segments/dip_slip/{0:012}", data=estimation.dip_slip_rates
+            )
+            hdf.create_dataset(
+                f"/segments/tensile_slip/{0:012}", data=estimation.tensile_slip_rates
+            )
 
             # Save segment information
             segment_no_name = segment.drop("name", axis=1)
             # Store the segment data
             hdf.create_dataset("segment", data=segment_no_name.to_numpy())
             # Store the segment column as a separate dataset
-            string_dtype = h5py.string_dtype(encoding="utf-8")  # Variable-length UTF-8 strings
+            string_dtype = h5py.string_dtype(
+                encoding="utf-8"
+            )  # Variable-length UTF-8 strings
             hdf.create_dataset(
-                "segment_names", data=segment["name"].to_numpy(dtype=object), dtype=string_dtype
+                "segment_names",
+                data=segment["name"].to_numpy(dtype=object),
+                dtype=string_dtype,
             )
             # Store the column names as attributes
-            hdf.attrs["columns"] = np.array(segment_no_name.columns, dtype=h5py.string_dtype())
+            hdf.attrs["columns"] = np.array(
+                segment_no_name.columns, dtype=h5py.string_dtype()
+            )
             # Store the index as an attribute
             hdf.attrs["index"] = segment_no_name.index.to_numpy()
 
@@ -6070,12 +6117,18 @@ def write_output(
             # Store the station data
             hdf.create_dataset("station", data=station_no_name.to_numpy())
             # Store the segment column as a separate dataset
-            string_dtype = h5py.string_dtype(encoding="utf-8")  # Variable-length UTF-8 strings
+            string_dtype = h5py.string_dtype(
+                encoding="utf-8"
+            )  # Variable-length UTF-8 strings
             hdf.create_dataset(
-                "station_names", data=station["name"].to_numpy(dtype=object), dtype=string_dtype
+                "station_names",
+                data=station["name"].to_numpy(dtype=object),
+                dtype=string_dtype,
             )
             # Store the column names as attributes
-            hdf.attrs["columns"] = np.array(station_no_name.columns, dtype=h5py.string_dtype())
+            hdf.attrs["columns"] = np.array(
+                station_no_name.columns, dtype=h5py.string_dtype()
+            )
             # Store the index as an attribute
             hdf.attrs["index"] = station_no_name.index.to_numpy()
 
@@ -8173,7 +8226,9 @@ def read_run(folder_name):
         - meshes: meshes list.
 
     Example:
-    >>> command, estimation, station, segment, block, meshes = read_run('example_folder')
+    >>> command, estimation, station, segment, block, meshes = read_run(
+    ...     "example_folder"
+    ... )
     """
     pickle_file = open(f"{folder_name}/output.pkl", "rb")
     pickle_data = pickle.load(pickle_file)

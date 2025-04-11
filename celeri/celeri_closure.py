@@ -252,7 +252,9 @@ class Polygon:
                 else:
                     # Stop after we've found an acceptable interior point.
                     if i == vs.shape[0] - 2:
-                        raise ValueError("Failed to find a valid interior point for this polygon.")
+                        raise ValueError(
+                            "Failed to find a valid interior point for this polygon."
+                        )
                     break
 
         x, y, z = sph2cart(interior_pt[0], interior_pt[1], 1.0)
@@ -516,7 +518,6 @@ def decompose_segments_into_graph(np_segments):
 
 
 def traverse_polygons(closure, right_half_edge):
-
     # Which polygon lies to the right of the half edge.
     right_polygon = np.full(closure.n_edges() * 2, -1, dtype=int)
 

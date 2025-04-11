@@ -68,7 +68,7 @@ def write_geo_file(
 def resample_trace(lons, lats, locking_depth, resample_length):
     longitude_diff = np.diff(lons)
     latitude_diff = np.diff(lats)
-    approximate_segment_lengths = np.sqrt(longitude_diff ** 2.0 + latitude_diff ** 2.0)
+    approximate_segment_lengths = np.sqrt(longitude_diff**2.0 + latitude_diff**2.0)
 
     resampled_lons = []
     resampled_lats = []

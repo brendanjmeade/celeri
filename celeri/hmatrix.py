@@ -298,7 +298,7 @@ class HMatrix:
         simple_entries = np.prod(self.shape)
 
         h_entries = 0
-        for (U, V) in self.approx_blocks:
+        for U, V in self.approx_blocks:
             h_entries += U.size + V.size
 
         direct_entries = 0

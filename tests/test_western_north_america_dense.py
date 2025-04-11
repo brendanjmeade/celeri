@@ -3,6 +3,7 @@ import numpy as np
 
 import celeri
 
+
 def test_western_north_america_dense():
     # Western North America example
     command_file_name = "./tests/test_western_north_america_command.json"
@@ -31,8 +32,8 @@ def test_western_north_america_dense():
     operators.rotation_to_velocities = celeri.get_rotation_to_velocities_partials(
         station, len(block)
     )
-    operators.global_float_block_rotation = celeri.get_global_float_block_rotation_partials(
-        station
+    operators.global_float_block_rotation = (
+        celeri.get_global_float_block_rotation_partials(station)
     )
     assembly, operators.block_motion_constraints = celeri.get_block_motion_constraints(
         assembly, block, command
@@ -52,10 +53,15 @@ def test_western_north_america_dense():
     )
     celeri.get_tde_slip_rate_constraints(meshes, operators)
 
-
     # Estimate block model parameters (dense)
     index, estimation = celeri.assemble_and_solve_dense(
-        command, assembly, operators, station, block, meshes, mogi,
+        command,
+        assembly,
+        operators,
+        station,
+        block,
+        meshes,
+        mogi,
     )
     celeri.post_process_estimation(estimation, operators, station, index)
 

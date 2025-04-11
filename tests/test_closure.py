@@ -51,42 +51,47 @@ def test_interior_point_edge_crossing():
     # resulting interior pt should be ~(5, -1.5) which will intersect with the
     # opposite side of the rectangle and should be rejected. The next interior
     # pt tested will be ~(9.75, 0.5) which should be fine.
-    vs = np.array([
-        [0, 1],
-        [10, 1],
-        [10, 0],
-        [0,0],
-    ])
+    vs = np.array(
+        [
+            [0, 1],
+            [10, 1],
+            [10, 0],
+            [0, 0],
+        ]
+    )
     p = Polygon(None, np.arange(4), vs)
     np.testing.assert_allclose(p.interior, (9.75, 0.5))
 
-    vs = np.array([
-        [0, 10],
-        [10, 10],
-        [10, 0],
-        [0,0],
-    ])
+    vs = np.array(
+        [
+            [0, 10],
+            [10, 10],
+            [10, 0],
+            [0, 0],
+        ]
+    )
     p = Polygon(None, np.arange(4), vs)
     np.testing.assert_allclose(p.interior, (5, 7.5))
 
 
 def test_exterior_block():
     # ordering has the outside on the right
-    vs = np.array([
-        [0, 1],
-        [0,0],
-        [10, 0],
-        [10, 1],
-    ])
+    vs = np.array(
+        [
+            [0, 1],
+            [0, 0],
+            [10, 0],
+            [10, 1],
+        ]
+    )
     p = Polygon(None, np.arange(4), vs)
 
     # check that the block contains more than half the globe
-    assert(p.area_steradians > 2 * np.pi)
+    assert p.area_steradians > 2 * np.pi
 
     # check interior point tests.
     np.testing.assert_equal(
-        p.contains_point(np.array([5.0, -5.0]), np.array([0.5, 0.5])),
-        [False, True]
+        p.contains_point(np.array([5.0, -5.0]), np.array([0.5, 0.5])), [False, True]
     )
 
 
@@ -119,4 +124,3 @@ def test_global_closure():
         all_edge_idxs_stored = np.load(f)
 
     assert np.allclose(all_edge_idxs, all_edge_idxs_stored)
-
