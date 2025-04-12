@@ -1,0 +1,17 @@
+# This file lists revisions that should be ignored when blaming a file.
+# It should include all substantial machine-generated reformatting commits.
+
+# Run ruff format .
+7a5dcf3cebee4562de1e21b966d22309bd54121d
+
+# Run ruff check . --fix
+e7aa84d4ae04240b79a6b5e03f5553972e7175f1
+
+# Run ruff check . --fix --unsafe-fixes
+44b830645391bf2adc9ce70cad1516e909dd467a
+
+# Remove trailing whitespaces
+12a931b3033e2be759dc18cbfadea90309007b9a
+
+# Terminate text files with EOL character
+e5993b798dbcca5c8d3c27cadc04b65ef6cfee78

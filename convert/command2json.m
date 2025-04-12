@@ -7,12 +7,12 @@ command = ReadCommand(command_file_name);
 
 command.file_name = command.fileName;
 command.reuse_elastic = command.reuseElastic;
-command.reuse_elastic_file = command.reuseElasticFile; 
+command.reuse_elastic_file = command.reuseElasticFile;
 command.save_kernels = command.saveKernels;
 command.material_lambda = 3e10;
 command.material_mu = 3e10;
 command.unit_sigmas = command.unitSigmas;
-command.locking_depth_flag2 = command.ldTog2; 
+command.locking_depth_flag2 = command.ldTog2;
 command.locking_depth_flag3 = command.ldTog3;
 command.locking_depth_flag4 = command.ldTog4;
 command.locking_depth_flag5 = command.ldTog5;
@@ -126,5 +126,5 @@ command = rmfield(command, "slipFileNames");
 
 % Encode as JSON and save to file
 json_file_name = append(strrep(command_file_name, ".", "_"), ".json");
-fprintf(fopen(json_file_name, "w"), jsonencode(command)); 
+fprintf(fopen(json_file_name, "w"), jsonencode(command));
 fprintf(1, "Wrote %s \n", json_file_name);
