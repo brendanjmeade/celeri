@@ -1,9 +1,7 @@
 import numpy as np
-import os
-
-from celeri.celeri_closure import run_block_closure, get_segment_labels, Polygon
 
 import celeri
+from celeri.celeri_closure import Polygon, get_segment_labels, run_block_closure
 
 
 def test_closure():
@@ -51,53 +49,58 @@ def test_interior_point_edge_crossing():
     # resulting interior pt should be ~(5, -1.5) which will intersect with the
     # opposite side of the rectangle and should be rejected. The next interior
     # pt tested will be ~(9.75, 0.5) which should be fine.
-    vs = np.array([
-        [0, 1],
-        [10, 1],
-        [10, 0],
-        [0,0],
-    ])
+    vs = np.array(
+        [
+            [0, 1],
+            [10, 1],
+            [10, 0],
+            [0, 0],
+        ]
+    )
     p = Polygon(None, np.arange(4), vs)
     np.testing.assert_allclose(p.interior, (9.75, 0.5))
 
-    vs = np.array([
-        [0, 10],
-        [10, 10],
-        [10, 0],
-        [0,0],
-    ])
+    vs = np.array(
+        [
+            [0, 10],
+            [10, 10],
+            [10, 0],
+            [0, 0],
+        ]
+    )
     p = Polygon(None, np.arange(4), vs)
     np.testing.assert_allclose(p.interior, (5, 7.5))
 
 
 def test_exterior_block():
     # ordering has the outside on the right
-    vs = np.array([
-        [0, 1],
-        [0,0],
-        [10, 0],
-        [10, 1],
-    ])
+    vs = np.array(
+        [
+            [0, 1],
+            [0, 0],
+            [10, 0],
+            [10, 1],
+        ]
+    )
     p = Polygon(None, np.arange(4), vs)
 
     # check that the block contains more than half the globe
-    assert(p.area_steradians > 2 * np.pi)
+    assert p.area_steradians > 2 * np.pi
 
     # check interior point tests.
     np.testing.assert_equal(
-        p.contains_point(np.array([5.0, -5.0]), np.array([0.5, 0.5])),
-        [False, True]
+        p.contains_point(np.array([5.0, -5.0]), np.array([0.5, 0.5])), [False, True]
     )
 
 
 def test_global_closure():
-    """
-    This check to make sure that the closure algorithm returns a known
+    """Check for an answer to the global closure problem.
+
+    Make sure that the closure algorithm returns a known
     (and hopefully correct!) answer for the global closure problem.
     Right now all this does is check for the correct number of blocks and
-    against one set of polygon edge indices
+    against one set of polygon edge indices.
     """
-
     command_file_name = "./tests/test_closure_command.json"
     command = celeri.get_command(command_file_name)
     # logger = celeri.get_logger(command)
@@ -119,4 +122,3 @@ def test_global_closure():
         all_edge_idxs_stored = np.load(f)
 
     assert np.allclose(all_edge_idxs, all_edge_idxs_stored)
-

@@ -1,10 +1,8 @@
 import warnings
-import numpy as np
 
-import okada_wrapper
 import cutde.halfspace as cutde_halfspace
-
-import celeri
+import numpy as np
+import okada_wrapper
 
 
 def test_okada_equals_cutde():
@@ -54,17 +52,23 @@ def test_okada_equals_cutde():
                 z_obs[i],
             ],  # (meters) observation point
             segment_locking_depth,  # (meters) depth of the fault origin
-            segment_dip,  # (degrees) the dip-angle of the rectangular dislocation surface
+            # (degrees) the dip-angle of the rectangular dislocation surface:
+            segment_dip,
             [
+                # (meters) the along-strike range of the surface
+                # (al1,al2 in the original)
                 -segment_length / 2,
                 segment_length / 2,
-            ],  # (meters) the along-strike range of the surface (al1,al2 in the original)
+            ],
             [
+                # (meters) along-dip range of the surface
+                # (aw1, aw2 in the original)
                 0,
                 segment_up_dip_width,
-            ],  # (meters) along-dip range of the surface (aw1, aw2 in the original)
+            ],
+            # (meters) strike-slip, dip-slip, tensile-slip
             [strike_slip, dip_slip, tensile_slip],
-        )  # (meters) strike-slip, dip-slip, tensile-slip
+        )
         u_x_okada[i] = u[0]
         u_y_okada[i] = u[1]
         u_z_okada[i] = u[2]
@@ -107,18 +111,19 @@ def test_okada_equals_cutde():
     # dimension #3: 3 is the number of components of the slip vector.
     #
     # Then, slip has shape (1, 3)
-    # This is sort of "wrong" in that the first dimension should be the number of triangles.
-    # But, since we're applying the same slip to both triangles, it's okay.
+    # This is sort of "wrong" in that the first dimension should be the number of
+    # triangles. But, since we're applying the same slip to both triangles, it's okay.
     #
     # So, to apply that slip to both triangles, we want to first do a do dot product
-    # between disp_mat and slip[0] which will multiply and sum the last axis of both arrays
+    # between disp_mat and slip[0] which will multiply and sum the last axis of both
+    # arrays
     #
     # Then, we will have a (10000, 3, 2) shape array.
-    # Next, since we want the displacement due to the sum of both arrays, let's sum over that
-    # last axis with two elements.
+    # Next, since we want the displacement due to the sum of both arrays, let's sum over
+    # that last axis with two elements.
     #
-    # The final result "u_cutde" will be a (10000, 3) array with the components of displacement
-    # for every observation point.
+    # The final result "u_cutde" will be a (10000, 3) array with the components of
+    # displacement for every observation point.
     u_cutde = np.sum(disp_mat.dot(slip[0]), axis=2)
 
     np.testing.assert_almost_equal(u_cutde[:, 0], u_x_okada)

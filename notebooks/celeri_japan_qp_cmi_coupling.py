@@ -1,7 +1,7 @@
 # %%
-%load_ext autoreload
-%autoreload 2
-%config InlineBackend.figure_format = "retina"
+# !%load_ext autoreload
+# !%autoreload 2
+# !%config InlineBackend.figure_format = "retina"
 
 # %%
 import addict
@@ -1371,5 +1371,3 @@ cbar = plt.colorbar(ch, cax=cax, ticks=[0, 1], label="coupling")
 # plt.savefig("nankai_kinematic_elastic_coupling.png", dpi=500)
 
 plt.show()
-
-

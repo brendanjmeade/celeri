@@ -37,6 +37,10 @@ scipy = "*"
 spherical-geometry = "*"
 tqdm = "*"
 
+[feature.dev.dependencies]
+pre-commit = "*"
+ruff = "*"
+
 [pypi-dependencies]
 ismember = "*"
 okada-wrapper = "*"
@@ -46,4 +50,5 @@ celeri = {path = ".", editable = true}
 python = "3.9.*"
 
 [environments]
+default = ["dev"]
 py39 = ["py39"]

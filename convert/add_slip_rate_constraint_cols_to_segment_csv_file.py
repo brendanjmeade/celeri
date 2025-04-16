@@ -1,12 +1,13 @@
 import sys
+
 import pandas as pd
 
 
 def add_columns_to_segment_csv(input_file, output_file):
-    """
-    Reads a CSV file, adds several new columns with default values, and writes the modified data to a new CSV file.
+    """Reads a CSV file, adds several new columns with default values, and writes the modified data to a new CSV file.
 
-    Parameters:
+    Parameters
+    ----------
     input_file (str): The path to the input CSV file.
     output_file (str): The path to the output CSV file.
 
@@ -23,10 +24,10 @@ def add_columns_to_segment_csv(input_file, output_file):
 
     If there is an error reading the input file or writing to the output file, an error message is printed.
 
-    Returns:
+    Returns
+    -------
     None
     """
-
     try:
         df = pd.read_csv(input_file)
     except Exception as e:
