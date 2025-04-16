@@ -1,11 +1,14 @@
+from collections import namedtuple
 from dataclasses import dataclass
+from pathlib import Path
 import time
-from typing import Callable, cast, Any
+from typing import Callable, Literal, cast, Any
 import addict
+import cvxopt
 import pandas as pd
 import numpy as np
 import cvxpy as cp
-from scipy import sparse
+from scipy import sparse, spatial
 import matplotlib.pyplot as plt
 
 from celeri import (
@@ -15,6 +18,29 @@ from celeri import (
     get_qp_all_inequality_operator_and_data_vector,
     get_data_vector_eigen,
     get_weighting_vector_eigen,
+)
+from celeri.celeri import (
+    assign_block_labels,
+    create_output_folder,
+    get_all_mesh_smoothing_matrices,
+    get_block_motion_constraints,
+    get_block_strain_rate_to_velocities_partials,
+    get_command,
+    get_eigenvectors_to_tde_slip,
+    get_elastic_operators,
+    get_full_dense_operator_eigen,
+    get_index_eigen,
+    get_mogi_to_velocities_partials,
+    get_rotation_to_slip_rate_partials,
+    get_rotation_to_velocities_partials,
+    get_slip_rate_constraints,
+    get_tde_coupling_constraints,
+    get_tde_slip_rate_constraints,
+    merge_geodetic_data,
+    process_sar,
+    process_segment,
+    process_station,
+    read_data,
 )
 
 
@@ -118,6 +144,116 @@ class CouplingItem:
 
         constraint = estimated**2 - estimated * kinematic
         return np.clip(constraint, 0, np.inf).sum()
+
+
+def _get_gaussian_smoothing_operator(meshes, operators, index):
+    for i in range(index.n_meshes):
+        points = np.vstack((meshes[i].lon_centroid, meshes[i].lat_centroid)).T
+
+        if "iterative_coupling_smoothing_length_scale" in meshes[i]:
+            length_scale = meshes[i].iterative_coupling_smoothing_length_scale
+        else:
+            length_scale = 0.25
+
+        # Compute pairwise Euclidean distance matrix
+        D = spatial.distance_matrix(points, points)
+
+        # Define Gaussian weight function
+        # W = np.clip(np.exp(-(D**2) / (2 * length_scale**2)), 1e-6, np.inf)
+        W = np.exp(-(D**2) / (2 * length_scale**2))
+
+        # Normalize rows so each row sums to 1
+        W /= W.sum(axis=1, keepdims=True)
+
+        operators.linear_guassian_smoothing[i] = W
+    return operators
+
+
+# TODO Move this to a more appropriate location
+def build_problem(command_path: str | Path) -> CeleriProblem:
+    command = get_command(command_path)
+    create_output_folder(command)
+    segment, block, meshes, station, mogi, sar = read_data(command)
+    station = process_station(station, command)
+    segment = process_segment(segment, command, meshes)
+    sar = process_sar(sar, command)
+    closure, block = assign_block_labels(segment, station, block, mogi, sar)
+    assembly = addict.Dict()
+    operators = addict.Dict()
+    operators.meshes = [addict.Dict()] * len(meshes)
+    assembly = merge_geodetic_data(assembly, station, sar)
+
+    # Prepare the operators
+
+    # Get all elastic operators for segments and TDEs
+    get_elastic_operators(operators, meshes, segment, station, command)
+
+    # Get TDE smoothing operators
+    get_all_mesh_smoothing_matrices(meshes, operators)
+
+    # Block rotation to velocity operator
+    operators.rotation_to_velocities = get_rotation_to_velocities_partials(
+        station, len(block)
+    )
+
+    # Soft block motion constraints
+    assembly, operators.block_motion_constraints = get_block_motion_constraints(
+        assembly, block, command
+    )
+
+    # Soft slip rate constraints
+    assembly, operators.slip_rate_constraints = get_slip_rate_constraints(
+        assembly, segment, block, command
+    )
+
+    # Rotation vectors to slip rate operator
+    operators.rotation_to_slip_rate = get_rotation_to_slip_rate_partials(segment, block)
+
+    # Internal block strain rate operator
+    (
+        operators.block_strain_rate_to_velocities,
+        strain_rate_block_index,
+    ) = get_block_strain_rate_to_velocities_partials(block, station, segment)
+
+    # Mogi source operator
+    operators.mogi_to_velocities = get_mogi_to_velocities_partials(
+        mogi, station, command
+    )
+
+    # Soft TDE boundary condition constraints
+    get_tde_slip_rate_constraints(meshes, operators)
+
+    # Get index
+    index = get_index_eigen(assembly, segment, station, block, meshes, mogi)
+
+    # Get data vector for KL problem
+    get_data_vector_eigen(meshes, assembly, index)
+
+    # Get data vector for KL problem
+    get_weighting_vector_eigen(command, station, meshes, index)
+
+    # Get KL modes for each mesh
+    get_eigenvectors_to_tde_slip(operators, meshes)
+
+    # Get full operator including all blocks, KL modes, strain blocks, and mogis
+    operators.eigen = get_full_dense_operator_eigen(operators, meshes, index)
+
+    # Get rotation to TDE kinematic slip rate operator for all meshes tied to segments
+    get_tde_coupling_constraints(meshes, segment, block, operators)
+
+    # Get smoothing operators for post-hoc smoothing of slip
+    operators = _get_gaussian_smoothing_operator(meshes, operators, index)
+
+    return CeleriProblem(
+        index=index,
+        meshes=meshes,
+        operators=operators,
+        segment=segment,
+        block=block,
+        station=station,
+        assembly=assembly,
+        command=command,
+    )
 
 
 @dataclass
@@ -292,7 +428,7 @@ class VelocityLimitItem:
                 name="z",
                 boolean=True,
             )
-            eps = 1e-4
+            eps = 10.0
 
             kin_lb = self.kinematic_lower
             kin_ub = self.kinematic_upper
@@ -305,10 +441,10 @@ class VelocityLimitItem:
                 estimated <= kin_ub,
                 estimated >= kin_lb,
                 # check these
-                kinematic <= M * z,
-                kinematic >= -M * (1 - z),
-                kinematic - estimated <= M * z,
-                kinematic - estimated >= -M * (1 - z),
+                kinematic <= cp.multiply(M, z),
+                kinematic >= -cp.multiply(M, 1 - z),
+                kinematic - estimated <= cp.multiply(M, z),
+                kinematic - estimated >= -cp.multiply(M, 1 - z),
             ]
 
     def plot_constraint(self, index=0, figsize=(8, 6)):
@@ -442,6 +578,7 @@ class Minimizer:
     params_raw: cp.Expression
     params: cp.Expression
     params_scale: np.ndarray
+    objective_norm2: cp.Expression
     constraint_scale: np.ndarray
     coupling: dict[int, Coupling]
     velocity_limits: dict[int, VelocityLimit] | None
@@ -537,17 +674,19 @@ class Minimizer:
         return loss
 
 
+Objective = Literal["expanded_norm2", "sum_of_squares", "norm2", "norm1"]
+
+
 def build_cvxpy_problem(
     problem: CeleriProblem,
     *,
     init_params_raw_value: np.ndarray | None = None,
     init_params_value: np.ndarray | None = None,
     velocity_limits: dict[int, VelocityLimit] | None = None,
-    mccormick: bool = False,
     smooth_kinematic: bool = True,
     slip_rate_reduction: float | None = None,
     velocity_as_variable: bool = False,
-    expand_objective: bool = False,
+    objective: Objective = "expanded_norm2",
     rescale_parameters: bool = True,
     rescale_constraints: bool = True,
     mixed_integer: bool = False,
@@ -577,13 +716,6 @@ def build_cvxpy_problem(
 
     A = qp_inequality_constraints_matrix
     b = qp_inequality_constraints_data_vector
-
-    # TODO check
-    # minimize norm2(C @ p - d)^2, s.t. A @ p <= b
-    # We expand norm2(C @ p - d)^2 = p^T C^T @ C @ p - 2 * d @ C^T @ p + d^T d
-    # define P = C^T C
-    # dims(C) = (observation, parameter)
-    # dims(P) = (parameter, parameter)
 
     if rescale_parameters:
         scale = np.abs(C).max(0)
@@ -728,19 +860,29 @@ def build_cvxpy_problem(
     A_hat_ = A_hat / A_scale[:, None]
     b_hat = b / A_scale
 
-    if expand_objective:
-        objective = cp.Minimize(
-            cp.quad_form(params_raw, 0.5 * P_hat, True)
-            - (d.T @ C) @ params
-            + 0.5 * d.T @ d
-        )
-    else:
-        objective = cp.Minimize(cp.sum_squares(C @ params - d))
+    objective_norm2 = cp.norm2(C_hat @ params_raw - d)
+
+    match objective:
+        case "expanded_norm2":
+            objective_val = (
+                cp.quad_form(params_raw, 0.5 * P_hat, True)
+                - (d.T @ C) @ params
+                + 0.5 * d.T @ d
+            )
+        case "sum_of_squares":
+            objective_val = cp.sum_squares(C_hat @ params_raw - d)
+        case "norm1":
+            objective_val = cp.norm1(C_hat @ params_raw - d)
+        case "norm2":
+            objective_val = objective_norm2
+        case _:
+            raise ValueError(f"Unknown objective type: {objective}")
+
     constraint = adapt_operator(A_hat_) @ params_raw <= b_hat
 
     constraints.append(constraint)
 
-    cp_problem = cp.Problem(objective, constraints)
+    cp_problem = cp.Problem(cp.Minimize(objective_val), constraints)
 
     return Minimizer(
         problem=problem,
@@ -748,6 +890,7 @@ def build_cvxpy_problem(
         params_raw=params_raw,
         params=params,
         params_scale=scale,
+        objective_norm2=objective_norm2,
         constraint_scale=A_scale,
         coupling=coupling,
         velocity_limits=velocity_limits,
@@ -836,6 +979,7 @@ class MinimizerTrace:
     coupling: list[dict[int, Coupling]]
     velocit_limits: list[dict[int, VelocityLimit] | None]
     objective: list[float]
+    objective_norm2: list[float]
     nonconvex_constraint_loss: list[float]
     out_of_bounds: list[int]
     iter_time: list[float]
@@ -851,6 +995,7 @@ class MinimizerTrace:
         self.coupling = []
         self.velocit_limits = []
         self.objective = []
+        self.objective_norm2 = []
         self.nonconvex_constraint_loss = []
         self.out_of_bounds = []
         self.iter_time = []
@@ -864,14 +1009,14 @@ class MinimizerTrace:
         total = 2 * self.problem.total_mesh_points
         iter_num = len(self.objective)
         oob = self.out_of_bounds[-1]
-        objective = self.objective[-1]
+        objective = self.objective_norm2[-1]
         nonconvex_loss = self.minimizer.constraint_loss()
         iter_time = self.iter_time[-1]
 
         print(f"Iteration: {iter_num}")
         print(f"{oob} of {total} velocities are out-of-bounds")
         print(f"Non-convex constraint loss: {nonconvex_loss:.2e}")
-        print(f"Objective: {objective:.5e}")
+        print(f"residual 2-norm: {objective:.5e}")
         print(f"Iteration took {iter_time:.2f}s")
         print()
 
@@ -889,6 +1034,7 @@ class MinimizerTrace:
         self.velocit_limits.append(self.minimizer.velocity_limits)
         assert self.minimizer.cp_problem.objective.value is not None
         self.objective.append(cast(float, self.minimizer.cp_problem.objective.value))
+        self.objective_norm2.append(cast(float, self.minimizer.objective_norm2.value))
 
         current_time = time.time()
         self.iter_time.append(current_time - self.last_update_time)
@@ -897,6 +1043,84 @@ class MinimizerTrace:
 
         self.out_of_bounds.append(self.minimizer.out_of_bounds()[0])
         self.nonconvex_constraint_loss.append(self.minimizer.constraint_loss())
+
+
+def _custom_cvxopt_solve(problem: cp.Problem, **kwargs):
+    """Solve a cvxpy problem with the clarabel reduction but cvxopt solver."""
+    data, chain, inverse_data = problem.get_problem_data(
+        cp.CLARABEL,
+        ignore_dpp=kwargs.get("ignore_dpp", True),
+    )
+
+    # Check that ignore_dpp is the only key
+    if len(kwargs) > 1:
+        raise ValueError("Only 'ignore_dpp' is allowed as a keyword argument.")
+    elif len(kwargs) == 0:
+        pass
+    elif "ignore_dpp" not in kwargs:
+        raise ValueError("Only 'ignore_dpp' is allowed as a keyword argument.")
+
+    P = data["P"].tocsc()
+    c = data["c"]
+    A = data["A"].tocsc()
+    b = data["b"]
+    dims = data["dims"]
+
+    cvxopt_result = cvxopt.solvers.coneqp(
+        cvxopt.matrix(P.todense()),
+        cvxopt.matrix(c),
+        cvxopt.matrix(A[dims.zero : dims.zero + dims.nonneg].todense()),
+        cvxopt.matrix(b[dims.zero : dims.zero + dims.nonneg]),
+        A=cvxopt.matrix(A[: dims.zero].todense()),
+        b=cvxopt.matrix(b[: dims.zero]),
+    )
+
+    Solution = namedtuple(
+        "DefaultSolution",
+        [
+            "x",
+            "s",
+            "z",
+            "status",
+            "obj_val",
+            "obj_val_dual",
+            "solve_time",
+            "iterations",
+            "r_prim",
+            "r_dual",
+        ],
+    )
+
+    if cvxopt_result["status"]:
+        status = "Solved"
+    else:
+        status = "NumericalError"
+
+    sol = Solution(
+        x=np.array(cvxopt_result["x"]).ravel(),
+        s=np.array(cvxopt_result["s"]).ravel(),
+        z=np.array(cvxopt_result["z"]).ravel(),
+        status=status,
+        obj_val=cvxopt_result["primal objective"],
+        obj_val_dual=cvxopt_result["dual objective"],
+        solve_time=None,
+        iterations=cvxopt_result["iterations"],
+        r_prim=cvxopt_result["primal slack"],
+        r_dual=cvxopt_result["dual slack"],
+    )
+
+    problem.unpack_results(sol, chain, inverse_data)
+
+
+def _custom_solve(problem: cp.Problem, solver: str, objective: Objective, **kwargs):
+    if solver == "CUSTOM_CVXOPT":
+        if objective != "expanded_norm2":
+            raise ValueError(
+                "CUSTOM_CVXOPT solver only supports expanded_norm2 objective"
+            )
+        _custom_cvxopt_solve(problem, **kwargs)
+    else:
+        problem.solve(solver=solver, **kwargs)
 
 
 def minimize(
@@ -909,6 +1133,11 @@ def minimize(
     solve_kwargs: dict | None = None,
     reduction_factor: float = 0.5,
     verbose: bool = False,
+    rescale_parameters: bool = True,
+    rescale_constraints: bool = True,
+    objective: Literal[
+        "expanded_norm2", "sum_of_squares", "norm1", "norm2"
+    ] = "expanded_norm2",
 ) -> MinimizerTrace:
     """
     Iteratively solve a constrained optimization problem for fault slip rates.
@@ -935,7 +1164,12 @@ def minimize(
         limits[idx] = VelocityLimit.from_scalar(length, velocity_lower, velocity_upper)
 
     minimizer = build_cvxpy_problem(
-        problem, velocity_limits=limits, smooth_kinematic=smooth_kinematic
+        problem,
+        velocity_limits=limits,
+        smooth_kinematic=smooth_kinematic,
+        rescale_parameters=rescale_parameters,
+        rescale_constraints=rescale_constraints,
+        objective=objective,
     )
     trace = MinimizerTrace(minimizer)
 
@@ -948,8 +1182,15 @@ def minimize(
     if solve_kwargs is not None:
         default_solve_kwargs.update(solve_kwargs)
 
+    solver = default_solve_kwargs.pop("solver")
+
     for num_iter in range(max_iter):
-        minimizer.cp_problem.solve(**default_solve_kwargs)
+        _custom_solve(
+            minimizer.cp_problem,
+            solver=solver,
+            objective=objective,
+            **default_solve_kwargs,
+        )
         trace.store_current()
         if verbose:
             trace.print_last_progress()
@@ -967,3 +1208,87 @@ def minimize(
         )
 
     return trace
+
+
+def benchmark_solve(
+    problem: CeleriProblem,
+    *,
+    with_limits: tuple[float, float] | None,
+    objective: Objective,
+    rescale_parameters: bool,
+    rescale_constraints: bool,
+    solver: str,
+    solve_kwargs: dict | None = None,
+):
+    """Benchmark the performance of solving a CeleriProblem with different configurations.
+
+    Args:
+        problem: The Celeri problem to solve
+        with_limits: Optional tuple of (lower, upper) velocity limits
+        objective: Type of objective function to use
+        rescale_parameters: Whether to rescale parameters
+        rescale_constraints: Whether to rescale constraints
+        solver: Name of the solver to use
+        solver_kwargs: Additional solver-specific parameters
+
+    Returns:
+        Dictionary containing benchmark results including timing, success status,
+        objective values, parameter values, and any error messages.
+    """
+    if with_limits is not None:
+        limits = {}
+        for idx in problem.segment_mesh_indices:
+            length = problem.meshes[idx]["n_tde"]
+            lower, upper = with_limits
+            limits[idx] = VelocityLimit.from_scalar(length, lower, upper)
+    else:
+        limits = None
+
+    minimizer = build_cvxpy_problem(
+        problem,
+        velocity_limits=limits,
+        objective=objective,
+        rescale_parameters=rescale_parameters,
+        rescale_constraints=rescale_constraints,
+        mixed_integer=False,
+    )
+
+    default_solve_kwargs = {
+        "ignore_dpp": True,
+        "warm_start": False,
+    }
+
+    if solve_kwargs is not None:
+        default_solve_kwargs.update(solve_kwargs)
+
+    start = time.time()
+    try:
+        _custom_solve(
+            minimizer.cp_problem,
+            solver=solver,
+            objective=objective,
+            **default_solve_kwargs,
+        )
+    except Exception as e:
+        success = False
+        error = str(e)
+    else:
+        success = True
+        error = None
+    end = time.time()
+
+    return {
+        "time": end - start,
+        "success": success,
+        "objective_value": minimizer.cp_problem.objective.value,
+        "objective_norm2": minimizer.objective_norm2.value,
+        "params": minimizer.params.value,
+        "params_raw": minimizer.params_raw.value,
+        "error": error,
+        "solver": solver,
+        "solver_kwargs": solve_kwargs,
+        "limits": with_limits,
+        "objective": objective,
+        "rescale_parameters": rescale_parameters,
+        "rescale_constraints": rescale_constraints,
+    }
