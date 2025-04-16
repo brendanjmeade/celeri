@@ -1,7 +1,9 @@
 import addict
 import numpy as np
+import pytest
 
 import celeri
+from celeri.celeri import get_segment_station_operator_okada
 
 
 def test_japan_dense():
@@ -93,3 +95,35 @@ def test_japan_dense():
     #     test_japan_arrays["estimation_north_vel_residual"],
     #     atol=ATOL,
     # )
+
+
+def test_japan_okada():
+    try:
+        expected = np.load("./tests/okada_japan_expected.npz")["arr_0"]
+    except FileNotFoundError:
+        pytest.skip("Skipping test_japan_okada because expected file not found")
+    command_file_name = "./tests/test_japan_command.json"
+
+    command = celeri.get_command(command_file_name)
+    # celeri.create_output_folder(command)
+    # logger = celeri.get_logger(command)
+    segment, block, meshes, station, mogi, sar = celeri.read_data(command)
+    station = celeri.process_station(station, command)
+    segment = celeri.process_segment(segment, command, meshes)
+    sar = celeri.process_sar(sar, command)
+    closure, block = celeri.assign_block_labels(segment, station, block, mogi, sar)
+    assembly = addict.Dict()
+    operators = addict.Dict()
+    operators.meshes = [addict.Dict()] * len(meshes)
+    assembly = celeri.merge_geodetic_data(assembly, station, sar)
+
+    # Get all elastic operators for segments and TDEs
+    command.reuse_elastic = 0
+
+    # Calculate Okada partials for all segments
+    slip_rate_to_okada_to_velocities = get_segment_station_operator_okada(
+        segment, station, command
+    )
+    actual = slip_rate_to_okada_to_velocities
+    np.savez("./tests/okada_japan_actual.npz", actual)
+    assert np.allclose(actual, expected, atol=3e-6)
