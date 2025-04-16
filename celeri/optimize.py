@@ -1251,7 +1251,6 @@ def benchmark_solve(
 
     default_solve_kwargs = {
         "ignore_dpp": True,
-        "warm_start": False,
     }
 
     if solve_kwargs is not None:
