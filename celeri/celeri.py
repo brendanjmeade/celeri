@@ -5988,10 +5988,7 @@ def write_output(
                 grp.create_dataset(f"coordinates", data=meshes[i].points)
                 grp.create_dataset(f"verts", data=meshes[i].verts)
 
-
                 # Write mesh scalars (we'll add more later)
-                print(f"/meshes/mesh_{i:05}/dip_slip/{0:012}")
-
                 if i == 0:
                     mesh_start_idx = 0
                     mesh_end_idx = meshes[i].n_tde
@@ -6077,7 +6074,7 @@ def write_output(
             # Store the column names as attributes
             hdf.attrs["columns"] = np.array(station_no_name.columns, dtype=h5py.string_dtype())
             # Store the index as an attribute
-            hdf.attrs["index"] = station_no_name.index.to_numpy()
+            # hdf.attrs["index"] = station_no_name.index.to_numpy()
 
     # Write the command dict to an a json file
     args_command_output_file_name = (
