@@ -1,23 +1,24 @@
+import time
 from collections import namedtuple
 from dataclasses import dataclass
 from pathlib import Path
-import time
-from typing import Callable, Literal, cast, Any
+from typing import Any, Callable, Literal, cast
+
 import addict
 import cvxopt
-import pandas as pd
-import numpy as np
 import cvxpy as cp
-from scipy import sparse, spatial
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from scipy import sparse, spatial
 
 from celeri import (
+    get_data_vector_eigen,
+    get_qp_all_inequality_operator_and_data_vector,
+    get_weighting_vector_eigen,
+    plot_estimation_summary,
     post_process_estimation_eigen,
     write_output,
-    plot_estimation_summary,
-    get_qp_all_inequality_operator_and_data_vector,
-    get_data_vector_eigen,
-    get_weighting_vector_eigen,
 )
 from celeri.celeri import (
     assign_block_labels,
@@ -46,8 +47,7 @@ from celeri.celeri import (
 
 @dataclass
 class CeleriProblem:
-    """
-    Represents a problem configuration for Celeri fault slip rate modeling.
+    """Represents a problem configuration for Celeri fault slip rate modeling.
 
     Stores indices, meshes, operators, and various data components needed
     for solving interseismic coupling and fault slip rate problems.
@@ -74,8 +74,7 @@ class CeleriProblem:
 
 @dataclass
 class CouplingItem:
-    """
-    Coupling between kinematic and estimated slip rates for a fault segment.
+    """Coupling between kinematic and estimated slip rates for a fault segment.
 
     Stores both raw and smoothed kinematic slip rates along with estimated slip rates.
     """
@@ -353,8 +352,7 @@ class VelocityLimitItem:
         upper_right_estimated = np.maximum(0.0, self.kinematic_upper)
 
         def bounded_through_points(x1, y1, x2, y2):
-            """
-            Compute coefficients for a line inequality passing through two points.
+            """Compute coefficients for a line inequality passing through two points.
 
             Creates the linear inequality: coef_x * x + coef_y * y <= const
             which corresponds to: (y2-y1)*(x-x1) - (x2-x1)*(y-y1) <= 0
@@ -448,8 +446,7 @@ class VelocityLimitItem:
             ]
 
     def plot_constraint(self, index=0, figsize=(8, 6)):
-        """
-        Plot the constraint boundaries for a specific mesh point.
+        """Plot the constraint boundaries for a specific mesh point.
 
         Args:
             index: Index of the mesh point to visualize
@@ -1139,8 +1136,7 @@ def minimize(
         "expanded_norm2", "sum_of_squares", "norm1", "norm2"
     ] = "expanded_norm2",
 ) -> MinimizerTrace:
-    """
-    Iteratively solve a constrained optimization problem for fault slip rates.
+    """Iteratively solve a constrained optimization problem for fault slip rates.
 
     Performs multiple iterations of solving the convex problem, tightening bounds
     after each iteration until all velocities satisfy constraints or max iterations reached.
@@ -1184,7 +1180,7 @@ def minimize(
 
     solver = default_solve_kwargs.pop("solver")
 
-    for num_iter in range(max_iter):
+    for _num_iter in range(max_iter):
         _custom_solve(
             minimizer.cp_problem,
             solver=solver,
