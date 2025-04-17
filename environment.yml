@@ -29,6 +29,7 @@ dependencies:
   - loguru
   - pygmt
   - gmsh
+  - polars
   - pip
   - pip:
       - okada_wrapper
