@@ -5956,6 +5956,12 @@ def write_output(
                     mesh_start_idx = mesh_end_idx
                     mesh_end_idx = mesh_start_idx + meshes[i].n_tde
 
+                # Write that there is a single timestep for parsli visualzation compatability
+                grp.create_dataset(
+                    f"/meshes/mesh_{i:05}/n_time_steps",
+                    data=1,
+                )
+
                 grp.create_dataset(
                     f"/meshes/mesh_{i:05}/strike_slip/{0:012}",
                     data=estimation.tde_strike_slip_rates[mesh_start_idx:mesh_end_idx],
