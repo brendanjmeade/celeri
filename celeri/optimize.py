@@ -671,7 +671,14 @@ class Minimizer:
         return loss
 
 
-Objective = Literal["expanded_norm2", "sum_of_squares", "norm2", "norm1"]
+Objective = Literal[
+    "expanded_norm2",
+    "sum_of_squares",
+    "qr_sum_of_squares",
+    "svd_sum_of_squares",
+    "norm2",
+    "norm1",
+]
 
 
 def build_cvxpy_problem(
@@ -683,7 +690,7 @@ def build_cvxpy_problem(
     smooth_kinematic: bool = True,
     slip_rate_reduction: float | None = None,
     velocity_as_variable: bool = False,
-    objective: Objective = "expanded_norm2",
+    objective: Objective = "qr_sum_of_squares",
     rescale_parameters: bool = True,
     rescale_constraints: bool = True,
     mixed_integer: bool = False,
@@ -887,7 +894,7 @@ def build_cvxpy_problem(
             u, s, vh = linalg.svd(C_hat, full_matrices=False)
             # r = C_hat @ params_raw - d = u @ s @ vh @ params_raw - d
 
-            t = 1.0
+            t = 0.5
             # y := diag(s) ** (-t) u^T r = diag(s)**(1 - t) @ vh @ params_raw - diag(s) ** (-t) u^T d
             y = cp.Variable(name="y", shape=s.shape[0])
             constraints.append(
@@ -1128,8 +1135,12 @@ def _custom_cvxopt_solve(problem: cp.Problem, **kwargs):
 
     sol = Solution(
         x=np.array(cvxopt_result["x"]).ravel(),
-        s=np.array(cvxopt_result["s"]).ravel(),
-        z=np.array(cvxopt_result["z"]).ravel(),
+        s=np.concatenate(
+            [np.array(cvxopt_result["y"]).ravel(), np.array(cvxopt_result["s"]).ravel()]
+        ),
+        z=np.concatenate(
+            [np.array(cvxopt_result["y"]).ravel(), np.array(cvxopt_result["z"]).ravel()]
+        ),
         status=status,
         obj_val=cvxopt_result["primal objective"],
         obj_val_dual=cvxopt_result["dual objective"],
@@ -1144,9 +1155,14 @@ def _custom_cvxopt_solve(problem: cp.Problem, **kwargs):
 
 def _custom_solve(problem: cp.Problem, solver: str, objective: Objective, **kwargs):
     if solver == "CUSTOM_CVXOPT":
-        if objective != "expanded_norm2":
+        if objective not in [
+            "expanded_norm2",
+            "sum_of_squares",
+            "qr_sum_of_squares",
+            "svd_sum_of_squares",
+        ]:
             raise ValueError(
-                "CUSTOM_CVXOPT solver only supports expanded_norm2 objective"
+                f"CUSTOM_CVXOPT solver does not support objective {objective}"
             )
         _custom_cvxopt_solve(problem, **kwargs)
     else:
