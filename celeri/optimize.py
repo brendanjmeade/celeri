@@ -10,7 +10,7 @@ import cvxpy as cp
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from scipy import sparse, spatial
+from scipy import linalg, sparse, spatial
 
 from celeri import (
     get_data_vector_eigen,
@@ -868,6 +868,35 @@ def build_cvxpy_problem(
             )
         case "sum_of_squares":
             objective_val = cp.sum_squares(C_hat @ params_raw - d)
+        case "qr_sum_of_squares":
+            # C_hat[:, p] = q @ r
+            if False:
+                q, r, p = linalg.qr(C_hat, mode="economic", pivoting=True)
+            else:
+                q, r = linalg.qr(C_hat, mode="economic", pivoting=False)
+                p = np.arange(C_hat.shape[1])
+            p_inv = np.argsort(p)
+            np.testing.assert_allclose(q.T @ q, np.eye(len(q.T)), atol=1e-10, rtol=1e-6)
+            # r = C_hat @ params_raw - d = q @ r @ P @ params_raw - d
+            # y := q^T r = r @ P @ params_raw - q^T @ d
+            y = cp.Variable(name="y", shape=q.shape[1])
+            constraints.append(y == r[:, p_inv] @ params_raw - q.T @ d)
+            objective_val = cp.sum_squares(y)
+        case "svd_sum_of_squares":
+            # C_hat = U @ s @ Vh
+            u, s, vh = linalg.svd(C_hat, full_matrices=False)
+            # r = C_hat @ params_raw - d = u @ s @ vh @ params_raw - d
+
+            t = 1.0
+            # y := diag(s) ** (-t) u^T r = diag(s)**(1 - t) @ vh @ params_raw - diag(s) ** (-t) u^T d
+            y = cp.Variable(name="y", shape=s.shape[0])
+            constraints.append(
+                y
+                == np.diag(s ** (1 - t)) @ vh @ params_raw
+                - np.diag(s ** (-t)) @ u.T @ d
+            )
+            # objective_val = cp.sum_squares(cp.multiply(y, s ** (t)))
+            objective_val = cp.quad_form(y, np.diag(s**t) ** 2)
         case "norm1":
             objective_val = cp.norm1(C_hat @ params_raw - d)
         case "norm2":
@@ -1049,6 +1078,10 @@ def _custom_cvxopt_solve(problem: cp.Problem, **kwargs):
         ignore_dpp=kwargs.get("ignore_dpp", True),
     )
 
+    warm_start = kwargs.pop("warm_start", False)
+    if warm_start:
+        raise NotImplementedError("warm_start with custom_cvxopt is not implemented")
+
     # Check that ignore_dpp is the only key
     if len(kwargs) > 1:
         raise ValueError("Only 'ignore_dpp' is allowed as a keyword argument.")
@@ -1213,6 +1246,7 @@ def benchmark_solve(
     objective: Objective,
     rescale_parameters: bool,
     rescale_constraints: bool,
+    velocity_as_variable: bool = False,
     solver: str,
     solve_kwargs: dict | None = None,
 ):
@@ -1247,6 +1281,7 @@ def benchmark_solve(
         rescale_parameters=rescale_parameters,
         rescale_constraints=rescale_constraints,
         mixed_integer=False,
+        velocity_as_variable=velocity_as_variable,
     )
 
     default_solve_kwargs = {
