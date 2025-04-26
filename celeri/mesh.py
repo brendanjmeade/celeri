@@ -25,12 +25,13 @@ class MeshConfig:
     bot_slip_rate_weight: float = 1e0
     side_slip_rate_weight: float = 1e0
     a_priori_slip_filename: str = ""
+    # TODO check if this should be a list
     ss_slip_constraint_idx: list = field(default_factory=list)
-    ss_slip_constraint_rate: list = field(default_factory=list)
+    ss_slip_constraint_rate: float = 0.0
     ss_slip_constraint_sig: list = field(default_factory=list)
     ss_slip_constraint_weight: list = field(default_factory=list)
     ds_slip_constraint_idx: list = field(default_factory=list)
-    ds_slip_constraint_rate: list = field(default_factory=list)
+    ds_slip_constraint_rate: float = 0.0
     ds_slip_constraint_sig: list = field(default_factory=list)
     ds_slip_constraint_weight: list = field(default_factory=list)
     coupling_constraint_idx: list = field(default_factory=list)

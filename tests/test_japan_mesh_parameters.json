@@ -9,7 +9,7 @@
         "bot_slip_rate_constraint": 1,
         "side_slip_rate_constraint": 0,
         "a_priori_slip_filename": "",
-        "ss_slip_constraint_rate": []
+        "ss_slip_constraint_rate": 0.0
     },
     {
         "mesh_filename": "./tests/test_japan_japan.msh",
