@@ -1,6 +1,6 @@
 import time
 from collections import namedtuple
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Literal, cast
 
@@ -20,56 +20,7 @@ from celeri import (
     post_process_estimation_eigen,
     write_output,
 )
-from celeri.celeri import (
-    assign_block_labels,
-    create_output_folder,
-    get_all_mesh_smoothing_matrices,
-    get_block_motion_constraints,
-    get_block_strain_rate_to_velocities_partials,
-    get_command,
-    get_eigenvectors_to_tde_slip,
-    get_elastic_operators,
-    get_full_dense_operator_eigen,
-    get_index_eigen,
-    get_mogi_to_velocities_partials,
-    get_rotation_to_slip_rate_partials,
-    get_rotation_to_velocities_partials,
-    get_slip_rate_constraints,
-    get_tde_coupling_constraints,
-    get_tde_slip_rate_constraints,
-    merge_geodetic_data,
-    process_sar,
-    process_segment,
-    process_station,
-    read_data,
-)
-
-
-@dataclass
-class CeleriProblem:
-    """Represents a problem configuration for Celeri fault slip rate modeling.
-
-    Stores indices, meshes, operators, and various data components needed
-    for solving interseismic coupling and fault slip rate problems.
-    """
-
-    index: dict
-    meshes: addict.Dict
-    operators: addict.Dict
-    segment: pd.DataFrame
-    block: pd.DataFrame
-    station: pd.DataFrame
-    assembly: addict.Dict
-    command: dict[str, Any]
-
-    @property
-    def segment_mesh_indices(self):
-        n_segment_meshes = np.max(self.segment.patch_file_name).astype(int) + 1
-        return list(range(n_segment_meshes))
-
-    @property
-    def total_mesh_points(self):
-        return sum([self.meshes[idx]["n_tde"] for idx in self.segment_mesh_indices])
+from celeri.model import Model
 
 
 @dataclass
@@ -143,116 +94,6 @@ class CouplingItem:
 
         constraint = estimated**2 - estimated * kinematic
         return np.clip(constraint, 0, np.inf).sum()
-
-
-def _get_gaussian_smoothing_operator(meshes, operators, index):
-    for i in range(index.n_meshes):
-        points = np.vstack((meshes[i].lon_centroid, meshes[i].lat_centroid)).T
-
-        if "iterative_coupling_smoothing_length_scale" in meshes[i]:
-            length_scale = meshes[i].iterative_coupling_smoothing_length_scale
-        else:
-            length_scale = 0.25
-
-        # Compute pairwise Euclidean distance matrix
-        D = spatial.distance_matrix(points, points)
-
-        # Define Gaussian weight function
-        # W = np.clip(np.exp(-(D**2) / (2 * length_scale**2)), 1e-6, np.inf)
-        W = np.exp(-(D**2) / (2 * length_scale**2))
-
-        # Normalize rows so each row sums to 1
-        W /= W.sum(axis=1, keepdims=True)
-
-        operators.linear_guassian_smoothing[i] = W
-    return operators
-
-
-# TODO Move this to a more appropriate location
-def build_problem(command_path: str | Path) -> CeleriProblem:
-    command = get_command(command_path)
-    create_output_folder(command)
-    segment, block, meshes, station, mogi, sar = read_data(command)
-    station = process_station(station, command)
-    segment = process_segment(segment, command, meshes)
-    sar = process_sar(sar, command)
-    closure, block = assign_block_labels(segment, station, block, mogi, sar)
-    assembly = addict.Dict()
-    operators = addict.Dict()
-    operators.meshes = [addict.Dict()] * len(meshes)
-    assembly = merge_geodetic_data(assembly, station, sar)
-
-    # Prepare the operators
-
-    # Get all elastic operators for segments and TDEs
-    get_elastic_operators(operators, meshes, segment, station, command)
-
-    # Get TDE smoothing operators
-    get_all_mesh_smoothing_matrices(meshes, operators)
-
-    # Block rotation to velocity operator
-    operators.rotation_to_velocities = get_rotation_to_velocities_partials(
-        station, len(block)
-    )
-
-    # Soft block motion constraints
-    assembly, operators.block_motion_constraints = get_block_motion_constraints(
-        assembly, block, command
-    )
-
-    # Soft slip rate constraints
-    assembly, operators.slip_rate_constraints = get_slip_rate_constraints(
-        assembly, segment, block, command
-    )
-
-    # Rotation vectors to slip rate operator
-    operators.rotation_to_slip_rate = get_rotation_to_slip_rate_partials(segment, block)
-
-    # Internal block strain rate operator
-    (
-        operators.block_strain_rate_to_velocities,
-        strain_rate_block_index,
-    ) = get_block_strain_rate_to_velocities_partials(block, station, segment)
-
-    # Mogi source operator
-    operators.mogi_to_velocities = get_mogi_to_velocities_partials(
-        mogi, station, command
-    )
-
-    # Soft TDE boundary condition constraints
-    get_tde_slip_rate_constraints(meshes, operators)
-
-    # Get index
-    index = get_index_eigen(assembly, segment, station, block, meshes, mogi)
-
-    # Get data vector for KL problem
-    get_data_vector_eigen(meshes, assembly, index)
-
-    # Get data vector for KL problem
-    get_weighting_vector_eigen(command, station, meshes, index)
-
-    # Get KL modes for each mesh
-    get_eigenvectors_to_tde_slip(operators, meshes)
-
-    # Get full operator including all blocks, KL modes, strain blocks, and mogis
-    operators.eigen = get_full_dense_operator_eigen(operators, meshes, index)
-
-    # Get rotation to TDE kinematic slip rate operator for all meshes tied to segments
-    get_tde_coupling_constraints(meshes, segment, block, operators)
-
-    # Get smoothing operators for post-hoc smoothing of slip
-    operators = _get_gaussian_smoothing_operator(meshes, operators, index)
-
-    return CeleriProblem(
-        index=index,
-        meshes=meshes,
-        operators=operators,
-        segment=segment,
-        block=block,
-        station=station,
-        assembly=assembly,
-        command=command,
-    )
 
 
 @dataclass
@@ -570,7 +411,7 @@ class VelocityLimit:
 
 @dataclass
 class Minimizer:
-    problem: CeleriProblem
+    problem: Model
     cp_problem: cp.Problem
     params_raw: cp.Expression
     params: cp.Expression
@@ -682,7 +523,7 @@ Objective = Literal[
 
 
 def build_cvxpy_problem(
-    problem: CeleriProblem,
+    problem: Model,
     *,
     init_params_raw_value: np.ndarray | None = None,
     init_params_value: np.ndarray | None = None,
@@ -1006,7 +847,7 @@ def _tighten_kinematic_bounds(
 
 @dataclass
 class MinimizerTrace:
-    problem: CeleriProblem
+    problem: Model
     params: list[np.ndarray]
     params_raw: list[np.ndarray]
     coupling: list[dict[int, Coupling]]
@@ -1170,7 +1011,7 @@ def _custom_solve(problem: cp.Problem, solver: str, objective: Objective, **kwar
 
 
 def minimize(
-    problem: CeleriProblem,
+    problem: Model,
     *,
     velocity_upper: float,
     velocity_lower: float,
@@ -1256,7 +1097,7 @@ def minimize(
 
 
 def benchmark_solve(
-    problem: CeleriProblem,
+    problem: Model,
     *,
     with_limits: tuple[float, float] | None,
     objective: Objective,

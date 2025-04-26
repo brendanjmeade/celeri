@@ -18,7 +18,6 @@ import matplotlib.lines as mlines
 import matplotlib.patches as mpatches
 import matplotlib.path
 import matplotlib.pyplot as plt
-import meshio
 import numpy as np
 import okada_wrapper
 import pandas as pd
@@ -28,7 +27,6 @@ import scipy
 import scipy.io as sio
 import scipy.sparse
 import scipy.sparse.linalg
-from ismember import ismember
 from loguru import logger
 from matplotlib.colors import Normalize
 from scipy.sparse import csr_matrix
@@ -36,38 +34,18 @@ from scipy.spatial.distance import cdist
 from tqdm import tqdm
 
 from celeri import celeri_closure
-from celeri.celeri_util import cart2sph, sph2cart
+from celeri.celeri_util import sph2cart
+from celeri.config import Config
+from celeri.constants import (
+    DEG_PER_MYR_TO_RAD_PER_YR,
+    EPS,
+    GEOID,
+    KM2M,
+    N_MESH_DIM,
+    RADIUS_EARTH,
+)
 from celeri.hmatrix import build_hmatrix_from_mesh_tdes
-
-###############################################################################################################################  # noqa:E501
-#                                                                                                                             #  # noqa:E501
-#    ,ad8888ba,    ,ad8888ba,    888b      88   ad88888ba  888888888888    db         888b      88  888888888888  ad88888ba   #  # noqa:E501
-#   d8"'    `"8b  d8"'    `"8b   8888b     88  d8"     "8b      88        d88b        8888b     88       88      d8"     "8b  #  # noqa:E501
-#  d8'           d8'        `8b  88 `8b    88  Y8,              88       d8'`8b       88 `8b    88       88      Y8,          #  # noqa:E501
-#  88            88          88  88  `8b   88  `Y8aaaaa,        88      d8'  `8b      88  `8b   88       88      `Y8aaaaa,    #  # noqa:E501
-#  88            88          88  88   `8b  88    `"""""8b,      88     d8YaaaaY8b     88   `8b  88       88        `"""""8b,  #  # noqa:E501
-#  Y8,           Y8,        ,8P  88    `8b 88          `8b      88    d8""""""""8b    88    `8b 88       88              `8b  #  # noqa:E501
-#   Y8a.    .a8P  Y8a.    .a8P   88     `8888  Y8a     a8P      88   d8'        `8b   88     `8888       88      Y8a     a8P  #  # noqa:E501
-#    `"Y8888Y"'    `"Y8888Y"'    88      `888   "Y88888P"       88  d8'          `8b  88      `888       88       "Y88888P"   #  # noqa:E501
-#                                                                                                                             #  # noqa:E501
-#                                                                                                                             #  # noqa:E501
-###############################################################################################################################  # noqa:E501
-
-
-GEOID = pyproj.Geod(ellps="WGS84")
-KM2M = 1.0e3
-M2MM = 1.0e3
-RADIUS_EARTH = np.float64((GEOID.a + GEOID.b) / 2)
-DEG_PER_MYR_TO_RAD_PER_YR = 1 / 1e3
-# The conversion should be 1 / 1e3. Linear units for Cartesian conversions are
-# in meters, but we need to convert them to mm to be consistent with mm/yr
-# geodetic constraints units. Rotation constraints are expressed in deg/Myr,
-# and when applied in celeri we are effectively using m*rad/Myr. To convert
-# to the right rate units, we need 1e-3*m*rad/Myr. This conversion is applied in
-# get_data_vector (JPL 12/31/23)
-N_MESH_DIM = 3
-EPS = np.finfo(float).eps
-
+from celeri.mesh import Mesh, MeshConfig
 
 ###############################################################
 #                                                             #
@@ -218,226 +196,7 @@ def process_args(command: dict, args: dict):
                 logger.info(f"command.{key}: {command[key]}")
 
 
-def get_command(command_file_name):
-    # NOTE: Rename to `read_command`?
-    """Read *command.json file and return contents as a dictionary.
-
-    Args:
-        command_file_name (string): Path to command file
-
-    Returns:
-        command (Dict): Dictionary with content of command file
-    """
-    with open(command_file_name) as f:
-        command = json.load(f)
-    command = addict.Dict(command)  # Convert to dot notation dictionary
-    command.file_name = command_file_name
-
-    # Add run_name and output_path
-    # command.run_name = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-    command.run_name = get_new_folder_name()
-    command.output_path = os.path.join(command.base_runs_folder, command.run_name)
-    # command.file_name = command_file_name
-
-    # Sort command keys alphabetically for readability
-    command = addict.Dict(sorted(command.items()))
-
-    return command
-
-
-def get_new_folder_name():
-    """Generate a new folder name based on existing numeric folder names.
-
-    This function scans the current directory for folders with numeric names,
-    identifies the highest number, and returns a new folder name that is one
-    greater than the highest number, formatted as a zero-padded 10-digit string.
-
-    Returns:
-        str: A new folder name as a zero-padded 10-digit string.
-
-    Raises:
-        ValueError: If no numeric folder names are found in the current directory.
-
-    Example:
-        If the current directory contains folders named "0000000001", "0000000002",
-        and "0000000003", the function will return "0000000004".
-    """
-    # Get all folder names
-    folder_names = glob.glob("./../runs/*/")
-
-    # Remove trailing slashes
-    folder_names = [folder_name.rstrip(os.sep) for folder_name in folder_names]
-
-    # Remove anything before numerical folder name
-    folder_names = [folder_name[-10:] for folder_name in folder_names]
-
-    # Check to see if the folder name is a native run number
-    folder_names_runs = list()
-    for folder_name in folder_names:
-        try:
-            folder_names_runs.append(int(folder_name))
-        except ValueError:
-            pass
-
-    # Get new folder name
-    if len(folder_names_runs) == 0:
-        new_folder_name = "0000000001"
-    else:
-        new_folder_number = np.max(folder_names_runs) + 1
-        new_folder_name = f"{new_folder_number:010d}"
-
-    return new_folder_name
-
-
-def get_default_mesh_parameters():
-    # Empty/default arrays for mesh parameters
-    default_mesh_parameters = {
-        "mesh_filename": "",
-        "smoothing_weight": 1e0,
-        "n_modes_strike_slip": 10,
-        "n_modes_dip_slip": 10,
-        "top_slip_rate_constraint": 0,
-        "bot_slip_rate_constraint": 0,
-        "side_slip_rate_constraint": 0,
-        "top_slip_rate_weight": 1e0,
-        "bot_slip_rate_weight": 1e0,
-        "side_slip_rate_weight": 1e0,
-        "a_priori_slip_filename": "",
-        "ss_slip_constraint_idx": [],
-        "ss_slip_constraint_rate": [],
-        "ss_slip_constraint_sig": [],
-        "ss_slip_constraint_weight": [],
-        "ds_slip_constraint_idx": [],
-        "ds_slip_constraint_rate": [],
-        "ds_slip_constraint_sig": [],
-        "ds_slip_constraint_weight": [],
-        "coupling_constraint_idx": [],
-        "coupling_constraint_frac": [1.0],
-        "coupling_constraint_sigma": [1.0],
-        "coupling_constraint_weight": [1e0],
-        "mesh_tde_bound": [1],
-        "mesh_tde_slip_rate_bound_lower_ss": ["-inf"],
-        "mesh_tde_slip_rate_bound_upper_ss": ["inf"],
-        "mesh_tde_slip_rate_bound_lower_ds": [0],
-        "mesh_tde_slip_rate_bound_upper_ds": [1],
-        "mesh_tde_coupling_bound": [0],
-        "mesh_tde_coupling_bound_lower_ss": ["-inf"],
-        "mesh_tde_coupling_upper_ss": ["inf"],
-        "mesh_tde_coupling_lower_ds": [0],
-        "mesh_tde_coupling_upper_ds": [1],
-        "mesh_tde_modes_bc_weight": 1e0,
-    }
-    return default_mesh_parameters
-
-
-def read_mesh(filename):
-    # Standalone reader for a single .msh file
-    # Outputs to mesh (Dict)
-    mesh = addict.Dict()
-    meshobj = meshio.read(filename)
-    mesh.file_name = filename
-    mesh.points = meshobj.points
-    mesh.verts = meshio.CellBlock("triangle", meshobj.get_cells_type("triangle")).data
-
-    # Expand mesh coordinates
-    mesh.lon1 = mesh.points[mesh.verts[:, 0], 0]
-    mesh.lon2 = mesh.points[mesh.verts[:, 1], 0]
-    mesh.lon3 = mesh.points[mesh.verts[:, 2], 0]
-    mesh.lat1 = mesh.points[mesh.verts[:, 0], 1]
-    mesh.lat2 = mesh.points[mesh.verts[:, 1], 1]
-    mesh.lat3 = mesh.points[mesh.verts[:, 2], 1]
-    mesh.dep1 = mesh.points[mesh.verts[:, 0], 2]
-    mesh.dep2 = mesh.points[mesh.verts[:, 1], 2]
-    mesh.dep3 = mesh.points[mesh.verts[:, 2], 2]
-    mesh.centroids = np.mean(mesh.points[mesh.verts, :], axis=1)
-    # Cartesian coordinates in meters
-    mesh.x1, mesh.y1, mesh.z1 = sph2cart(
-        mesh.lon1,
-        mesh.lat1,
-        RADIUS_EARTH + KM2M * mesh.dep1,
-    )
-    mesh.x2, mesh.y2, mesh.z2 = sph2cart(
-        mesh.lon2,
-        mesh.lat2,
-        RADIUS_EARTH + KM2M * mesh.dep2,
-    )
-    mesh.x3, mesh.y3, mesh.z3 = sph2cart(
-        mesh.lon3,
-        mesh.lat3,
-        RADIUS_EARTH + KM2M * mesh.dep3,
-    )
-
-    # Cartesian triangle centroids
-    mesh.x_centroid = (mesh.x1 + mesh.x2 + mesh.x3) / 3.0
-    mesh.y_centroid = (mesh.y1 + mesh.y2 + mesh.y3) / 3.0
-    mesh.z_centroid = (mesh.z1 + mesh.z2 + mesh.z3) / 3.0
-
-    # Spherical triangle centroids
-    mesh.lon_centroid = (mesh.lon1 + mesh.lon2 + mesh.lon3) / 3.0
-    mesh.lat_centroid = (mesh.lat1 + mesh.lat2 + mesh.lat3) / 3.0
-
-    # Cross products for orientations
-    tri_leg1 = np.transpose(
-        [
-            np.deg2rad(mesh.lon2 - mesh.lon1),
-            np.deg2rad(mesh.lat2 - mesh.lat1),
-            (1 + KM2M * mesh.dep2 / RADIUS_EARTH)
-            - (1 + KM2M * mesh.dep1 / RADIUS_EARTH),
-        ]
-    )
-    tri_leg2 = np.transpose(
-        [
-            np.deg2rad(mesh.lon3 - mesh.lon1),
-            np.deg2rad(mesh.lat3 - mesh.lat1),
-            (1 + KM2M * mesh.dep3 / RADIUS_EARTH)
-            - (1 + KM2M * mesh.dep1 / RADIUS_EARTH),
-        ]
-    )
-    mesh.nv = np.cross(tri_leg1, tri_leg2)
-    azimuth, elevation, r = cart2sph(
-        mesh.nv[:, 0],
-        mesh.nv[:, 1],
-        mesh.nv[:, 2],
-    )
-    mesh.strike = wrap2360(-np.rad2deg(azimuth))
-    mesh.dip = 90 - np.rad2deg(elevation)
-    mesh.dip_flag = mesh.dip != 90
-
-    # Assign all mesh parameters to this mesh
-    # for key, value in mesh_param[i].items():
-    #     mesh[key] = value
-
-    # # Assign empty arrays for any unspecified parameters
-    # mesh_default = get_default_mesh_parameters()
-    # for key, value in mesh_default.items():
-    #     if key not in mesh:
-    #         mesh[key] = value
-
-    mesh.n_tde = mesh.lon1.size
-
-    # Calcuate areas of each triangle in mesh
-    triangle_vertex_array = np.zeros((mesh.n_tde, 3, 3))
-    triangle_vertex_array[:, 0, 0] = mesh.x1
-    triangle_vertex_array[:, 1, 0] = mesh.x2
-    triangle_vertex_array[:, 2, 0] = mesh.x3
-    triangle_vertex_array[:, 0, 1] = mesh.y1
-    triangle_vertex_array[:, 1, 1] = mesh.y2
-    triangle_vertex_array[:, 2, 1] = mesh.y3
-    triangle_vertex_array[:, 0, 2] = mesh.z1
-    triangle_vertex_array[:, 1, 2] = mesh.z2
-    triangle_vertex_array[:, 2, 2] = mesh.z3
-    mesh.areas = triangle_area(triangle_vertex_array)
-
-    # EIGEN: Calculate derived eigenmode parameters
-    # Set n_modes to the greater of strike-slip or dip slip modes
-    # mesh.n_modes = np.max([mesh.n_modes_strike_slip, mesh.n_modes_dip_slip])
-    # mesh.n_modes_total = mesh.n_modes_strike_slip + mesh.n_modes_dip_slip
-
-    logger.success(f"Read: {filename}")
-    return mesh
-
-
-def read_data(command: dict):
+def read_data(command: Config):
     logger.info("Reading data files")
     # Read segment data
     segment = pd.read_csv(command.segment_file_name)
@@ -451,43 +210,8 @@ def read_data(command: dict):
 
     # Read mesh data - List of dictionary version
     meshes = []
-    if command.mesh_parameters_file_name != "":
-        with open(command.mesh_parameters_file_name) as f:
-            mesh_param = json.load(f)
-            logger.success(f"Read: {command.mesh_parameters_file_name}")
-
-        if len(mesh_param) > 0:
-            for i in range(len(mesh_param)):
-                meshes.append(addict.Dict())
-                # Read current mesh using separate read_mesh function
-                this_mesh = read_mesh(mesh_param[i]["mesh_filename"])
-                meshes[i] = this_mesh
-
-                # Assign all mesh parameters to this mesh
-                for key, value in mesh_param[i].items():
-                    meshes[i][key] = value
-
-                # Assign empty arrays for any unspecified parameters
-                mesh_default = get_default_mesh_parameters()
-                for key, value in mesh_default.items():
-                    if key not in meshes[i]:
-                        meshes[i][key] = value
-
-                # EIGEN: Calculate derived eigenmode parameters
-                # Set n_modes to the greater of strike-slip or dip slip modes
-                meshes[i].n_modes = np.max(
-                    [
-                        mesh_param[i]["n_modes_strike_slip"],
-                        mesh_param[i]["n_modes_dip_slip"],
-                    ]
-                )
-                meshes[i].n_modes_total = (
-                    mesh_param[i]["n_modes_strike_slip"]
-                    + mesh_param[i]["n_modes_dip_slip"]
-                )
-            # Get mesh perimeter information for all meshes
-            get_mesh_edge_elements(meshes)
-            get_mesh_perimeter(meshes)
+    mesh_params = MeshConfig.from_file(command.mesh_parameters_file_name)
+    meshes = [Mesh.from_params(mesh_param) for mesh_param in mesh_params]
 
     # Read station data
     if (
@@ -581,32 +305,6 @@ def read_data(command: dict):
 #                                                                                                  #  # noqa:E501
 #                                                                                                  #  # noqa:E501
 ####################################################################################################  # noqa:E501
-def triangle_area(triangles):
-    # The norm of the cross product of two sides is twice the area
-    # https://stackoverflow.com/questions/71346322/numpy-area-of-triangle-and-equation-of-a-plane-on-which-triangle-lies-on
-    return np.linalg.norm(triangle_normal(triangles), axis=1) / 2.0
-
-
-def get_mesh_perimeter(meshes):
-    for i in range(len(meshes)):
-        x_coords = meshes[i].points[:, 0]
-        y_coords = meshes[i].points[:, 1]
-        meshes[i].x_perimeter = x_coords[meshes[i].ordered_edge_nodes[:, 0]]
-        meshes[i].y_perimeter = y_coords[meshes[i].ordered_edge_nodes[:, 0]]
-        meshes[i].x_perimeter = np.append(
-            meshes[i].x_perimeter, x_coords[meshes[i].ordered_edge_nodes[0, 0]]
-        )
-        meshes[i].y_perimeter = np.append(
-            meshes[i].y_perimeter, y_coords[meshes[i].ordered_edge_nodes[0, 0]]
-        )
-
-
-def triangle_normal(triangles):
-    # The cross product of two sides is a normal vector
-    # https://stackoverflow.com/questions/71346322/numpy-area-of-triangle-and-equation-of-a-plane-on-which-triangle-lies-on
-    return np.cross(
-        triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0], axis=1
-    )
 
 
 def process_station(station, command):
@@ -1122,167 +820,6 @@ def get_tri_shared_sides_distances(share, x_centroid, y_centroid, z_centroid):
         )
     tri_shared_sides_distances[np.where(share == -1)] = 0
     return tri_shared_sides_distances
-
-
-def get_ordered_edge_nodes(meshes: list):
-    """Find exterior edges of each mesh and return them in the dictionary
-    for each mesh.
-
-    Args:
-        meshes (List): list of mesh dictionaries
-    """
-    for i in range(len(meshes)):
-        # Make side arrays containing vertex indices of sides
-        vertices = meshes[i].verts
-        side_1 = np.sort(np.vstack((vertices[:, 0], vertices[:, 1])).T, 1)
-        side_2 = np.sort(np.vstack((vertices[:, 1], vertices[:, 2])).T, 1)
-        side_3 = np.sort(np.vstack((vertices[:, 2], vertices[:, 0])).T, 1)
-        all_sides = np.vstack((side_1, side_2, side_3))
-        unique_sides, sides_count = np.unique(all_sides, return_counts=True, axis=0)
-        edge_nodes = unique_sides[np.where(sides_count == 1)]
-
-        meshes[i].ordered_edge_nodes = np.zeros_like(edge_nodes)
-        meshes[i].ordered_edge_nodes[0, :] = edge_nodes[0, :]
-        last_row = 0
-        for j in range(1, len(edge_nodes)):
-            idx = np.where(
-                edge_nodes == meshes[i].ordered_edge_nodes[j - 1, 1]
-            )  # Edge node indices the same as previous row, second column
-            next_idx = np.where(
-                idx[0][:] != last_row
-            )  # One of those indices is the last row itself. Find the other row index
-            next_row = idx[0][next_idx]  # Index of the next ordered row
-            next_col = idx[1][next_idx]  # Index of the next ordered column (1 or 2)
-            if next_col == 1:
-                next_col_ord = [1, 0]  # Flip edge ordering
-            else:
-                next_col_ord = [0, 1]
-            meshes[i].ordered_edge_nodes[j, :] = edge_nodes[next_row, next_col_ord]
-            last_row = (
-                next_row  # Update last_row so that it's excluded in the next iteration
-            )
-
-
-def get_mesh_edge_elements(meshes: list):
-    # Find indices of elements lining top, bottom, and sides of each mesh
-
-    get_ordered_edge_nodes(meshes)
-
-    for i in range(len(meshes)):
-        coords = meshes[i].points
-        vertices = meshes[i].verts
-
-        # Get element centroid depths
-        el_depths = coords[vertices, 2]
-        centroid_depths = np.mean(el_depths, axis=1)
-
-        # Arrays of all element side node pairs
-        side_1 = np.sort(np.vstack((vertices[:, 0], vertices[:, 1])).T, 1)
-        side_2 = np.sort(np.vstack((vertices[:, 1], vertices[:, 2])).T, 1)
-        side_3 = np.sort(np.vstack((vertices[:, 2], vertices[:, 0])).T, 1)
-
-        # Sort edge node array
-        sorted_edge_nodes = np.sort(meshes[i].ordered_edge_nodes, 1)
-
-        # Indices of element sides that are in edge node array
-        side_1_in_edge, side_1_in_edge_idx = ismember(sorted_edge_nodes, side_1, "rows")
-        side_2_in_edge, side_2_in_edge_idx = ismember(sorted_edge_nodes, side_2, "rows")
-        side_3_in_edge, side_3_in_edge_idx = ismember(sorted_edge_nodes, side_3, "rows")
-
-        # Depths of nodes
-        side_1_depths = np.abs(
-            coords[
-                np.column_stack(
-                    (side_1[side_1_in_edge_idx, :], vertices[side_1_in_edge_idx, 2])
-                ),
-                2,
-            ]
-        )
-        side_2_depths = np.abs(
-            coords[
-                np.column_stack(
-                    (side_2[side_2_in_edge_idx, :], vertices[side_2_in_edge_idx, 0])
-                ),
-                2,
-            ]
-        )
-        side_3_depths = np.abs(
-            coords[
-                np.column_stack(
-                    (side_3[side_3_in_edge_idx, :], vertices[side_3_in_edge_idx, 1])
-                ),
-                2,
-            ]
-        )
-        # Top elements are those where the depth difference between the non-edge node
-        # and the mean of the edge nodes is greater than the depth difference between
-        # the edge nodes themselves
-        top1 = (side_1_depths[:, 2] - np.mean(side_1_depths[:, 0:2], 1)) > (
-            np.abs(side_1_depths[:, 0] - side_1_depths[:, 1])
-        )
-        top2 = (side_2_depths[:, 2] - np.mean(side_2_depths[:, 0:2], 1)) > (
-            np.abs(side_2_depths[:, 0] - side_2_depths[:, 1])
-        )
-        top3 = (side_3_depths[:, 2] - np.mean(side_3_depths[:, 0:2], 1)) > (
-            np.abs(side_3_depths[:, 0] - side_3_depths[:, 1])
-        )
-        tops = np.full(len(vertices), False, dtype=bool)
-        tops[side_1_in_edge_idx[top1]] = True
-        tops[side_2_in_edge_idx[top2]] = True
-        tops[side_3_in_edge_idx[top3]] = True
-        # Make sure elements are really shallow
-        # Depending on element shapes, some side elements can satisfy the depth difference criterion
-        depth_count, depth_bins = np.histogram(centroid_depths[tops], bins="doane")
-        depth_bin_min = depth_bins[0:-1]
-        depth_bin_max = depth_bins[1:]
-        np.std(depth_bins)
-        zero_idx = np.where(depth_count == 0)[0]
-        if len(zero_idx) > 0:
-            if (
-                np.abs(depth_bin_max[zero_idx[0]] - depth_bin_min[zero_idx[-1] + 1])
-                > 10
-            ):
-                tops[centroid_depths < depth_bins[zero_idx[0]]] = False
-        # Assign in to meshes dict
-        meshes[i].top_elements = tops
-
-        # Bottom elements are those where the depth difference between the non-edge node
-        # and the mean of the edge nodes is more negative than the depth difference between
-        # the edge nodes themselves
-        bot1 = side_1_depths[:, 2] - np.mean(side_1_depths[:, 0:2], 1) < -np.abs(
-            side_1_depths[:, 0] - side_1_depths[:, 1]
-        )
-        bot2 = side_2_depths[:, 2] - np.mean(side_2_depths[:, 0:2], 1) < -np.abs(
-            side_2_depths[:, 0] - side_2_depths[:, 1]
-        )
-        bot3 = side_3_depths[:, 2] - np.mean(side_3_depths[:, 0:2], 1) < -np.abs(
-            side_3_depths[:, 0] - side_3_depths[:, 1]
-        )
-        bots = np.full(len(vertices), False, dtype=bool)
-        bots[side_1_in_edge_idx[bot1]] = True
-        bots[side_2_in_edge_idx[bot2]] = True
-        bots[side_3_in_edge_idx[bot3]] = True
-        # Make sure elements are really deep
-        # Depending on element shapes, some side elements can satisfy the depth difference criterion
-        depth_count, depth_bins = np.histogram(centroid_depths[bots], bins="doane")
-        depth_bin_min = depth_bins[0:-1]
-        depth_bin_max = depth_bins[1:]
-        np.std(depth_bins)
-        zero_idx = np.where(depth_count == 0)[0]
-        if len(zero_idx) > 0:
-            if abs(depth_bin_min[zero_idx[-1]] - depth_bin_max[zero_idx[0] - 1]) > 10:
-                bots[centroid_depths > depth_bin_min[zero_idx[-1]]] = False
-        # Assign in to meshes dict
-        meshes[i].bot_elements = bots
-
-        # Side elements are a set difference between all edges and tops, bottoms
-        sides = np.full(len(vertices), False, dtype=bool)
-        sides[side_1_in_edge_idx] = True
-        sides[side_2_in_edge_idx] = True
-        sides[side_3_in_edge_idx] = True
-        sides[np.where(tops != 0)] = False
-        sides[np.where(bots != 0)] = False
-        meshes[i].side_elements = sides
 
 
 def get_index(assembly, station, block, meshes, mogi):
@@ -7839,11 +7376,6 @@ def get_logger(command):
     logger.info("RUN_NAME: " + command.run_name)
     logger.info(f"Write log file: {command.output_path}/{command.run_name}.log")
     return logger
-
-
-def wrap2360(lon):
-    lon[np.where(lon < 0.0)] += 360.0
-    return lon
 
 
 def make_default_segment(length):

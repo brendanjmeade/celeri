@@ -12,10 +12,8 @@ from celeri.celeri import (
     get_all_mesh_smoothing_matrices_simple,
     get_block_motion_constraints,
     get_block_strain_rate_to_velocities_partials,
-    get_command,
     get_data_vector,
     get_data_vector_eigen,
-    get_default_mesh_parameters,
     get_default_plotting_dict,
     get_eigenvalues_and_eigenvectors,
     get_eigenvectors_to_tde_slip,
@@ -31,12 +29,9 @@ from celeri.celeri import (
     get_index_eigen,
     get_keep_index_12,
     get_logger,
-    get_mesh_edge_elements,
-    get_mesh_perimeter,
     get_mogi_to_velocities_partials,
     get_newest_run_folder,
     get_okada_displacements,
-    get_ordered_edge_nodes,
     get_processed_data_structures,
     get_qp_all_inequality_operator_and_data_vector,
     get_qp_slip_rate_inequality_operator_and_data_vector,
@@ -88,14 +83,15 @@ from celeri.celeri import (
     process_segment,
     process_station,
     read_data,
-    read_mesh,
     read_run,
     rmatvec,
     rmatvec_wrapper,
-    wrap2360,
     write_output,
     write_output_supplemental,
 )
+from celeri.celeri_util import wrap2360
+from celeri.config import Config, get_config
+from celeri.mesh import Mesh, MeshConfig
 
 try:
     from importlib.metadata import version
@@ -105,6 +101,9 @@ except Exception:
     __version__ = "unknown"
 
 __all__ = [
+    "Config",
+    "Mesh",
+    "MeshConfig",
     "__version__",
     "align_velocities",
     "assemble_and_solve_dense",
@@ -119,10 +118,9 @@ __all__ = [
     "get_all_mesh_smoothing_matrices_simple",
     "get_block_motion_constraints",
     "get_block_strain_rate_to_velocities_partials",
-    "get_command",
+    "get_config",
     "get_data_vector",
     "get_data_vector_eigen",
-    "get_default_mesh_parameters",
     "get_default_plotting_dict",
     "get_eigenvalues_and_eigenvectors",
     "get_eigenvectors_to_tde_slip",
@@ -138,12 +136,9 @@ __all__ = [
     "get_index_eigen",
     "get_keep_index_12",
     "get_logger",
-    "get_mesh_edge_elements",
-    "get_mesh_perimeter",
     "get_mogi_to_velocities_partials",
     "get_newest_run_folder",
     "get_okada_displacements",
-    "get_ordered_edge_nodes",
     "get_processed_data_structures",
     "get_qp_all_inequality_operator_and_data_vector",
     "get_qp_slip_rate_inequality_operator_and_data_vector",
@@ -195,7 +190,6 @@ __all__ = [
     "process_segment",
     "process_station",
     "read_data",
-    "read_mesh",
     "read_run",
     "rmatvec",
     "rmatvec_wrapper",
