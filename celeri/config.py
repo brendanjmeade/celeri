@@ -1,11 +1,126 @@
 import glob
 import json
 import os
+from dataclasses import dataclass, field
+from typing import Optional
 
-import addict
 import numpy as np
 
-type Config = addict.Dict
+
+@dataclass
+class Config:
+    # Required fields (no defaults)
+    base_runs_folder: str
+    block_file_name: str
+    mesh_parameters_file_name: str
+    segment_file_name: str
+
+    station_file_name: str | None = None
+    apriori_block_name: str | None = None
+    mogi_file_name: str | None = None
+    atol: float = 0.0001
+    block_constraint_weight: float = 1e24
+    block_constraint_weight_max: float = 1e20
+    block_constraint_weight_min: float = 1e20
+    block_constraint_weight_steps: int = 1
+    btol: float = 0.0001
+    fault_resolution: int = 500
+    global_elastic_cutoff_distance: int = 2000000
+    global_elastic_cutoff_distance_flag: int = 0
+    h_matrix_min_pts_per_box: int = 20
+    h_matrix_min_separation: float = 1.25
+    h_matrix_tol: float = 1e-06
+    inversion_param01: int = 0
+    inversion_param02: int = 0
+    inversion_param03: int = 0
+    inversion_param04: int = 0
+    inversion_param05: int = 0
+    inversion_type: str = "standard"
+    iterative_solver: str = "lsmr"
+    lat_range: list[float] = field(default_factory=lambda: [30, 45])
+    locking_depth_flag2: int = 25
+    locking_depth_flag3: int = 15
+    locking_depth_flag4: int = 10
+    locking_depth_flag5: int = 5
+    locking_depth_overide_value: int = 15
+    locking_depth_override_flag: int = 0
+    lon_range: list[float] = field(default_factory=lambda: [130, 150])
+    material_lambda: int = 30000000000
+    material_mu: int = 30000000000
+    n_iterations: int = 1
+    operators_folder: str = "../data/operators/"
+    pickle_save: int = 1
+    plot_estimation_summary: int = 1
+    plot_input_summary: int = 1
+    pmag_tri_smooth: int = 0
+    printslipcons: int = 0
+    quiver_scale: int = 100
+    repl: int = 1
+    reuse_elastic: int = 1
+    reuse_elastic_file: str | None = None
+    ridge_param: int = 0
+    sar_file_name: str | None = None
+    sar_ramp: int = 0
+    sar_weight: int = 0
+    save_elastic: int = 0
+    save_elastic_file: str | None = None
+    slip_constraint_weight: int = 100000
+    slip_constraint_weight_max: int = 100000
+    slip_constraint_weight_min: int = 100000
+    slip_constraint_weight_steps: int = 1
+    slip_file_names: str | None = None
+    smooth_type: int = 1
+    snap_segments: int = 0
+    solution_method: str = "backslash"
+    solve_type: str = "hmatrix"
+    station_data_weight: int = 1
+    station_data_weight_max: int = 1
+    station_data_weight_min: int = 1
+    station_data_weight_steps: int = 1
+    strain_method: int = 1
+    tri_con_weight: int = 1000000
+    tri_depth_tolerance: int = 0
+    tri_edge: list[int] = field(default_factory=lambda: [0, 0, 0])
+    tri_full_coupling: int = 0
+    tri_slip_constraint_type: int = 0
+    tri_slip_sign: list[int] = field(default_factory=lambda: [0, 0])
+    tri_smooth: float = 0.1
+    tvr_lambda: int = 1
+    unit_sigmas: int = 0
+
+    # Runtime fields (not in JSON)
+    file_name: Optional[str] = None
+    run_name: Optional[str] = None
+    output_path: Optional[str] = None
+
+    # Only in tsts/global_command.json?
+    patch_file_names: list[str] | None = None
+    poissons_ratio: float | None = None
+
+    @classmethod
+    def from_file(cls, file_path: str) -> "Config":
+        """Read config from a JSON file and return a Config instance.
+
+        Args:
+            file_path: Path to the JSON config file
+
+        Returns:
+            Config: A validated Config instance
+        """
+        with open(file_path) as f:
+            config_data = json.load(f)
+
+        # Create Config instance from file data
+        config = cls(**config_data)
+        config.file_name = file_path
+
+        # Add run_name and output_path
+        # command.run_name = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+        config.run_name = _get_new_folder_name()
+        config.output_path = os.path.join(config.base_runs_folder, config.run_name)
+        # command.file_name = command_file_name
+
+        return config
 
 
 def _get_new_folder_name() -> str:
@@ -53,27 +168,12 @@ def _get_new_folder_name() -> str:
 
 
 def get_config(command_file_name) -> Config:
-    # NOTE: Rename to `read_command`?
-    """Read *command.json file and return contents as a dictionary.
+    """Get the configuration from a JSON file.
 
     Args:
-        command_file_name (string): Path to command file
+        command_file_name (str): Path to the JSON file.
 
     Returns:
-        command (Dict): Dictionary with content of command file
+        Config: A Config object with the loaded configuration.
     """
-    with open(command_file_name) as f:
-        command = json.load(f)
-    command = addict.Dict(command)  # Convert to dot notation dictionary
-    command.file_name = command_file_name
-
-    # Add run_name and output_path
-    # command.run_name = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-    command.run_name = _get_new_folder_name()
-    command.output_path = os.path.join(command.base_runs_folder, command.run_name)
-    # command.file_name = command_file_name
-
-    # Sort command keys alphabetically for readability
-    command = addict.Dict(sorted(command.items()))
-
-    return command
+    return Config.from_file(command_file_name)

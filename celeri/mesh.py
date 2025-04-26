@@ -13,6 +13,7 @@ from celeri.celeri_util import cart2sph, sph2cart, triangle_area, wrap2360
 
 @dataclass
 class MeshConfig:
+    # TODO check types. Sohuld some be bool?
     mesh_filename: str | None = None
     smoothing_weight: float = 1e0
     n_modes_strike_slip: int = 10
@@ -47,6 +48,23 @@ class MeshConfig:
     mesh_tde_coupling_lower_ds: list = field(default_factory=lambda: [0])
     mesh_tde_coupling_upper_ds: list = field(default_factory=lambda: [1])
     mesh_tde_modes_bc_weight: float = 1e0
+    iterative_coupling_smoothing_length_scale: float | None = None
+
+    # TODO veryify defaults
+    qp_mesh_tde_bound: int = 1
+    qp_mesh_tde_slip_rate_lower_bound_ss: float | None = None
+    qp_mesh_tde_slip_rate_upper_bound_ss: float | None = None
+    qp_mesh_tde_slip_rate_lower_bound_ds: float | None = None
+    qp_mesh_tde_slip_rate_upper_bound_ds: float | None = None
+    qp_mesh_tde_bound_coupling: int = 0
+    qp_mesh_tde_slip_rate_lower_bound_ss_coupling: float = 0.0
+    qp_mesh_tde_slip_rate_upper_bound_ss_coupling: float = 1.0
+    qp_mesh_tde_slip_rate_lower_bound_ds_coupling: float = 0.0
+    qp_mesh_tde_slip_rate_upper_bound_ds_coupling: float = 1.0
+    iterative_coupling_linear_slip_rate_reduction_factor: float = 0.025
+    iterative_coupling_kinematic_slip_regularization_scale: float = 1.0
+    n_eigen: int | None = None
+    n_modes: int | None = None
 
     @classmethod
     def from_file(cls, filename: str | Path) -> "list[MeshConfig]":
@@ -77,12 +95,16 @@ class MeshConfig:
             if not isinstance(params, dict):
                 raise ValueError(f"Expected a dictionary for parameters in {filename}")
 
+            # Collect all keys that are not valid attributes
+            invalid_keys = [key for key in params if not hasattr(instance, key)]
+            if invalid_keys:
+                raise ValueError(
+                    f"Invalid keys in parameters: {', '.join(invalid_keys)}"
+                )
+
             # Update instance with values from file
             for key, value in params.items():
-                if hasattr(instance, key):
-                    setattr(instance, key, value)
-                else:
-                    logger.warning(f"Unknown parameter '{key}' in {filename}")
+                setattr(instance, key, value)
 
             instances.append(instance)
 
@@ -304,7 +326,18 @@ class Mesh:
     side_elements: np.ndarray
     x_perimeter: np.ndarray
     y_perimeter: np.ndarray
-    config: MeshConfig = field(default_factory=MeshConfig)
+    config: MeshConfig
+    # Computed in get_all_mesh_smoothing_matrices
+    share: np.ndarray | None = None
+    tri_shared_sides_distances: np.ndarray | None = None
+    n_tde_constraints: int | None = None
+    # computed in get_tde_slip_rate_constraints
+    top_slip_idx: np.ndarray | None = None
+    bot_slip_idx: np.ndarray | None = None
+    side_slip_idx: np.ndarray | None = None
+    coup_idx: np.ndarray | None = None
+    ss_slip_idx: np.ndarray | None = None
+    ds_slip_idx: np.ndarray | None = None
 
     @classmethod
     def from_params(cls, config: MeshConfig):
@@ -406,6 +439,7 @@ class Mesh:
             ]
         )
         mesh["n_modes_total"] = config.n_modes_strike_slip + config.n_modes_dip_slip
+        mesh["config"] = config
 
         _compute_mesh_edge_elements(mesh)
         _compute_mesh_perimeter(mesh)

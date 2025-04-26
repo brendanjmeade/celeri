@@ -92,6 +92,7 @@ from celeri.celeri import (
 from celeri.celeri_util import wrap2360
 from celeri.config import Config, get_config
 from celeri.mesh import Mesh, MeshConfig
+from celeri.model import Model, Operators, build_model
 
 try:
     from importlib.metadata import version
@@ -104,12 +105,15 @@ __all__ = [
     "Config",
     "Mesh",
     "MeshConfig",
+    "Model",
+    "Operators",
     "__version__",
     "align_velocities",
     "assemble_and_solve_dense",
     "assign_block_labels",
     "build_and_solve_dense",
     "build_and_solve_hmatrix",
+    "build_model",
     "create_output_folder",
     "diagnose_matrix",
     "get_2component_index",

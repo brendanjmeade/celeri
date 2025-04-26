@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import argparse
 import copy
 import glob
@@ -7,6 +9,7 @@ import pickle
 import shutil
 import timeit
 import warnings
+from typing import TYPE_CHECKING
 
 import addict
 import cutde.halfspace as cutde_halfspace
@@ -46,6 +49,10 @@ from celeri.constants import (
 )
 from celeri.hmatrix import build_hmatrix_from_mesh_tdes
 from celeri.mesh import Mesh, MeshConfig
+
+if TYPE_CHECKING:
+    from celeri.model import Operators
+
 
 ###############################################################
 #                                                             #
@@ -214,10 +221,7 @@ def read_data(command: Config):
     meshes = [Mesh.from_params(mesh_param) for mesh_param in mesh_params]
 
     # Read station data
-    if (
-        not command.__contains__("station_file_name")
-        or len(command.station_file_name) == 0
-    ):
+    if command.station_file_name is None:
         station = pd.DataFrame(
             columns=[
                 "lon",
@@ -249,7 +253,7 @@ def read_data(command: Config):
         logger.success(f"Read: {command.station_file_name}")
 
     # Read Mogi source data
-    if not command.__contains__("mogi_file_name") or len(command.mogi_file_name) == 0:
+    if command.mogi_file_name is None:
         mogi = pd.DataFrame(
             columns=[
                 "name",
@@ -268,7 +272,7 @@ def read_data(command: Config):
         logger.success(f"Read: {command.mogi_file_name}")
 
     # Read SAR data
-    if not command.__contains__("sar_file_name") or len(command.sar_file_name) == 0:
+    if command.sar_file_name is None:
         sar = pd.DataFrame(
             columns=[
                 "lon",
@@ -871,143 +875,129 @@ def get_index(assembly, station, block, meshes, mogi):
     index.end_tde_col_eigen = np.zeros((len(meshes),), dtype=int)
     index.start_tde_constraint_row_eigen = np.zeros((len(meshes),), dtype=int)
     index.end_tde_constraint_row_eigen = np.zeros((len(meshes),), dtype=int)
+
     for i in range(len(meshes)):
         index.n_tde[i] = meshes[i].n_tde
         index.n_tde_total += index.n_tde[i]
         index.n_tde_constraints[i] = meshes[i].n_tde_constraints
         index.n_tde_constraints_total += index.n_tde_constraints[i]
-        if i == 0:
-            index.start_tde_col[i] = index.end_block_col
-            index.end_tde_col[i] = index.start_tde_col[i] + 2 * index.n_tde[i]
-            index.start_tde_smoothing_row[i] = index.end_slip_rate_constraints_row
-            index.end_tde_smoothing_row[i] = (
-                index.start_tde_smoothing_row[i] + 2 * index.n_tde[i]
-            )
-            index.start_tde_constraint_row[i] = index.end_tde_smoothing_row[i]
-            index.end_tde_constraint_row[i] = (
-                index.start_tde_constraint_row[i] + index.n_tde_constraints[i]
-            )
-            index.start_tde_top_constraint_row[i] = index.end_tde_smoothing_row[i]
-            index.end_tde_top_constraint_row[i] = index.start_tde_top_constraint_row[
-                i
-            ] + len(meshes[i].top_slip_idx)
-            index.start_tde_bot_constraint_row[i] = index.end_tde_top_constraint_row[i]
-            index.end_tde_bot_constraint_row[i] = index.start_tde_bot_constraint_row[
-                i
-            ] + len(meshes[i].bot_slip_idx)
-            index.start_tde_side_constraint_row[i] = index.end_tde_bot_constraint_row[i]
-            index.end_tde_side_constraint_row[i] = index.start_tde_side_constraint_row[
-                i
-            ] + len(meshes[i].side_slip_idx)
-            index.start_tde_coup_constraint_row[i] = index.end_tde_side_constraint_row[
-                i
-            ]
-            index.end_tde_coup_constraint_row[i] = index.start_tde_coup_constraint_row[
-                i
-            ] + len(meshes[i].coup_idx)
-            index.start_tde_ss_slip_constraint_row[i] = (
-                index.end_tde_coup_constraint_row[i]
-            )
-            index.end_tde_ss_slip_constraint_row[i] = (
-                index.start_tde_ss_slip_constraint_row[i] + len(meshes[i].ss_slip_idx)
-            )
-            index.start_tde_ds_slip_constraint_row[i] = (
-                index.end_tde_ss_slip_constraint_row[i]
-            )
-            index.end_tde_ds_slip_constraint_row[i] = (
-                index.start_tde_ds_slip_constraint_row[i] + len(meshes[i].ds_slip_idx)
-            )
-        else:
-            index.start_tde_col[i] = index.end_tde_col[i - 1]
-            index.end_tde_col[i] = index.start_tde_col[i] + 2 * index.n_tde[i]
-            index.start_tde_smoothing_row[i] = index.end_tde_constraint_row[i - 1]
-            index.end_tde_smoothing_row[i] = (
-                index.start_tde_smoothing_row[i] + 2 * index.n_tde[i]
-            )
-            index.start_tde_constraint_row[i] = index.end_tde_smoothing_row[i]
-            index.end_tde_constraint_row[i] = (
-                index.start_tde_constraint_row[i] + index.n_tde_constraints[i]
-            )
-            index.start_tde_top_constraint_row[i] = index.end_tde_smoothing_row[i]
-            index.end_tde_top_constraint_row[i] = index.start_tde_top_constraint_row[
-                i
-            ] + len(meshes[i].top_slip_idx)
-            index.start_tde_bot_constraint_row[i] = index.end_tde_top_constraint_row[i]
-            index.end_tde_bot_constraint_row[i] = index.start_tde_bot_constraint_row[
-                i
-            ] + len(meshes[i].bot_slip_idx)
-            index.start_tde_side_constraint_row[i] = index.end_tde_bot_constraint_row[i]
-            index.end_tde_side_constraint_row[i] = index.start_tde_side_constraint_row[
-                i
-            ] + len(meshes[i].side_slip_idx)
-            index.start_tde_coup_constraint_row[i] = index.end_tde_side_constraint_row[
-                i
-            ]
-            index.end_tde_coup_constraint_row[i] = index.start_tde_coup_constraint_row[
-                i
-            ] + len(meshes[i].coup_idx)
-            index.start_tde_ss_slip_constraint_row[i] = (
-                index.end_tde_coup_constraint_row[i]
-            )
-            index.end_tde_ss_slip_constraint_row[i] = (
-                index.start_tde_ss_slip_constraint_row[i] + len(meshes[i].ss_slip_idx)
-            )
-            index.start_tde_ds_slip_constraint_row[i] = (
-                index.end_tde_ss_slip_constraint_row[i]
-            )
-            index.end_tde_ds_slip_constraint_row[i] = (
-                index.start_tde_ds_slip_constraint_row[i] + len(meshes[i].ds_slip_idx)
-            )
 
-            # # Add eigen specific entries to index
-            # index.start_tde_col_eigen = np.zeros(len(meshes), dtype=int)
-            # index.end_tde_col_eigen = np.zeros(len(meshes), dtype=int)
-            # index.start_tde_constraint_row_eigen = np.zeros(len(meshes), dtype=int)
-            # index.end_tde_constraint_row_eigen = np.zeros(len(meshes), dtype=int)
+        # Set column indices for current mesh
+        index.start_tde_col[i] = (
+            index.end_block_col if i == 0 else index.end_tde_col[i - 1]
+        )
+        index.end_tde_col[i] = index.start_tde_col[i] + 2 * index.n_tde[i]
 
-            # # TODO: Double-check this:
-            # # Eigenvalue indexing should be unchanged by the above specification
-            # # of indices for individual constraint styles, because n_tde_constraints
-            # # is tracked correctly as the total number of constraint rows (2 each for
-            # # coupling constraints, one each for slip component constraints)
-            # if len(meshes) > 0:
-            #     for i in range(len(meshes)):
-            #         if i == 0:
-            #             index.start_tde_col_eigen[i] = 3 * len(block)
-            #             index.end_tde_col_eigen[i] = (
-            #                 index.start_tde_col_eigen[i] + 2 * meshes[i].n_eigen
-            #             )
-            #             if meshes[i].n_tde_constraints > 0:
-            #                 index.start_tde_constraint_row_eigen[i] = (
-            #                     index.end_slip_rate_constraints_row
-            #                 )
-            #                 index.end_tde_constraint_row_eigen[i] = (
-            #                     index.start_tde_constraint_row_eigen[i]
-            #                     + meshes[i].n_tde_constraints
-            #                 )
-            #             else:
-            #                 index.start_tde_constraint_row_eigen[i] = 0
-            #                 index.end_tde_constraint_row_eigen[i] = 0
-            #         else:
-            #             index.start_tde_col_eigen[i] = index.end_tde_col_eigen[i - 1]
-            #             index.end_tde_col_eigen[i] = (
-            #                 index.start_tde_col_eigen[i] + 2 * meshes[i].n_eigen
-            #             )
-            #             if meshes[i].n_tde_constraints > 0:
-            #                 index.start_tde_constraint_row_eigen[i] = (
-            #                     index.end_tde_constraint_row_eigen[i - 1]
-            #                 )
-            #                 index.end_tde_constraint_row_eigen[i] = (
-            #                     index.start_tde_constraint_row_eigen[i]
-            #                     + meshes[i].n_tde_constraints
-            #                 )
-            #             else:
-            #                 index.start_tde_constraint_row_eigen[i] = (
-            #                     index.end_tde_constraint_row_eigen[i - 1]
-            #                 )
-            #                 index.end_tde_constraint_row_eigen[i] = (
-            #                     index.end_tde_constraint_row_eigen[i - 1]
-            #                 )
+        # Set smoothing row indices for current mesh
+        start_row = (
+            index.end_slip_rate_constraints_row
+            if i == 0
+            else index.end_tde_constraint_row[i - 1]
+        )
+        index.start_tde_smoothing_row[i] = start_row
+        index.end_tde_smoothing_row[i] = (
+            index.start_tde_smoothing_row[i] + 2 * index.n_tde[i]
+        )
+
+        # Set constraint row indices for current mesh
+        index.start_tde_constraint_row[i] = index.end_tde_smoothing_row[i]
+        index.end_tde_constraint_row[i] = (
+            index.start_tde_constraint_row[i] + index.n_tde_constraints[i]
+        )
+
+        # Set top constraint row indices and adjust count based on available data
+        index.start_tde_top_constraint_row[i] = index.end_tde_smoothing_row[i]
+        count = len(idx) if (idx := meshes[i].top_slip_idx) is not None else 0
+        index.end_tde_top_constraint_row[i] = (
+            index.start_tde_top_constraint_row[i] + count
+        )
+
+        # Set bottom constraint row indices
+        index.start_tde_bot_constraint_row[i] = index.end_tde_top_constraint_row[i]
+        count = len(idx) if (idx := meshes[i].bot_slip_idx) is not None else 0
+        index.end_tde_bot_constraint_row[i] = (
+            index.start_tde_bot_constraint_row[i] + count
+        )
+
+        # Set side constraint row indices
+        index.start_tde_side_constraint_row[i] = index.end_tde_bot_constraint_row[i]
+        count = len(idx) if (idx := meshes[i].side_slip_idx) is not None else 0
+        index.end_tde_side_constraint_row[i] = (
+            index.start_tde_side_constraint_row[i] + count
+        )
+
+        # Set coupling constraint row indices
+        index.start_tde_coup_constraint_row[i] = index.end_tde_side_constraint_row[i]
+        count = len(idx) if (idx := meshes[i].coup_idx) is not None else 0
+        index.end_tde_coup_constraint_row[i] = (
+            index.start_tde_coup_constraint_row[i] + count
+        )
+
+        # Set strike-slip constraint row indices
+        index.start_tde_ss_slip_constraint_row[i] = index.end_tde_coup_constraint_row[i]
+        count = len(idx) if (idx := meshes[i].ss_slip_idx) is not None else 0
+        index.end_tde_ss_slip_constraint_row[i] = (
+            index.start_tde_ss_slip_constraint_row[i] + count
+        )
+
+        # Set dip-slip constraint row indices
+        index.start_tde_ds_slip_constraint_row[i] = (
+            index.end_tde_ss_slip_constraint_row[i]
+        )
+        count = len(idx) if (idx := meshes[i].ds_slip_idx) is not None else 0
+        index.end_tde_ds_slip_constraint_row[i] = (
+            index.start_tde_ds_slip_constraint_row[i] + count
+        )
+
+        # # Add eigen specific entries to index
+        # index.start_tde_col_eigen = np.zeros(len(meshes), dtype=int)
+        # index.end_tde_col_eigen = np.zeros(len(meshes), dtype=int)
+        # index.start_tde_constraint_row_eigen = np.zeros(len(meshes), dtype=int)
+        # index.end_tde_constraint_row_eigen = np.zeros(len(meshes), dtype=int)
+
+        # # TODO: Double-check this:
+        # # Eigenvalue indexing should be unchanged by the above specification
+        # # of indices for individual constraint styles, because n_tde_constraints
+        # # is tracked correctly as the total number of constraint rows (2 each for
+        # # coupling constraints, one each for slip component constraints)
+        # if len(meshes) > 0:
+        #     for i in range(len(meshes)):
+        #         if i == 0:
+        #             index.start_tde_col_eigen[i] = 3 * len(block)
+        #             index.end_tde_col_eigen[i] = (
+        #                 index.start_tde_col_eigen[i] + 2 * meshes[i].n_eigen
+        #             )
+        #             if meshes[i].n_tde_constraints > 0:
+        #                 index.start_tde_constraint_row_eigen[i] = (
+        #                     index.end_slip_rate_constraints_row
+        #                 )
+        #                 index.end_tde_constraint_row_eigen[i] = (
+        #                     index.start_tde_constraint_row_eigen[i]
+        #                     + meshes[i].n_tde_constraints
+        #                 )
+        #             else:
+        #                 index.start_tde_constraint_row_eigen[i] = 0
+        #                 index.end_tde_constraint_row_eigen[i] = 0
+        #         else:
+        #             index.start_tde_col_eigen[i] = index.end_tde_col_eigen[i - 1]
+        #             index.end_tde_col_eigen[i] = (
+        #                 index.start_tde_col_eigen[i] + 2 * meshes[i].n_eigen
+        #             )
+        #             if meshes[i].n_tde_constraints > 0:
+        #                 index.start_tde_constraint_row_eigen[i] = (
+        #                     index.end_tde_constraint_row_eigen[i - 1]
+        #                 )
+        #                 index.end_tde_constraint_row_eigen[i] = (
+        #                     index.start_tde_constraint_row_eigen[i]
+        #                     + meshes[i].n_tde_constraints
+        #                 )
+        #             else:
+        #                 index.start_tde_constraint_row_eigen[i] = (
+        #                     index.end_tde_constraint_row_eigen[i - 1]
+        #                 )
+        #                 index.end_tde_constraint_row_eigen[i] = (
+        #                     index.end_tde_constraint_row_eigen[i - 1]
+        #                 )
     # Index for block strain
     index.n_block_strain_components = 3 * np.sum(block.strain_rate_flag)
     index.start_block_strain_col = index.end_tde_col[-1]
@@ -1116,105 +1106,90 @@ def get_index_eigen(assembly, segment, station, block, meshes, mogi):
     index.start_tde_ds_slip_constraint_row = np.zeros(index.n_meshes, dtype=int)
     index.end_tde_ds_slip_constraint_row = np.zeros(index.n_meshes, dtype=int)
 
-    for i in range(index.n_meshes):
+    for i in range(len(meshes)):
         index.n_tde[i] = meshes[i].n_tde
         index.n_tde_total += index.n_tde[i]
         index.n_tde_constraints[i] = meshes[i].n_tde_constraints
         index.n_tde_constraints_total += index.n_tde_constraints[i]
-        if i == 0:
-            index.start_tde_col[i] = index.end_block_col
-            index.end_tde_col[i] = index.start_tde_col[i] + 2 * index.n_tde[i]
-            index.start_tde_smoothing_row[i] = index.end_slip_rate_constraints_row
-            index.end_tde_smoothing_row[i] = (
-                index.start_tde_smoothing_row[i] + 2 * index.n_tde[i]
-            )
-            index.start_tde_constraint_row[i] = index.end_tde_smoothing_row[i]
-            index.end_tde_constraint_row[i] = (
-                index.start_tde_constraint_row[i] + index.n_tde_constraints[i]
-            )
-            index.start_tde_top_constraint_row[i] = index.end_tde_smoothing_row[i]
-            index.end_tde_top_constraint_row[i] = index.start_tde_top_constraint_row[
-                i
-            ] + len(meshes[i].top_slip_idx)
-            index.start_tde_bot_constraint_row[i] = index.end_tde_top_constraint_row[i]
-            index.end_tde_bot_constraint_row[i] = index.start_tde_bot_constraint_row[
-                i
-            ] + len(meshes[i].bot_slip_idx)
-            index.start_tde_side_constraint_row[i] = index.end_tde_bot_constraint_row[i]
-            index.end_tde_side_constraint_row[i] = index.start_tde_side_constraint_row[
-                i
-            ] + len(meshes[i].side_slip_idx)
-            index.start_tde_coup_constraint_row[i] = index.end_tde_side_constraint_row[
-                i
-            ]
-            index.end_tde_coup_constraint_row[i] = index.start_tde_coup_constraint_row[
-                i
-            ] + len(meshes[i].coup_idx)
-            index.start_tde_ss_slip_constraint_row[i] = (
-                index.end_tde_coup_constraint_row[i]
-            )
-            index.end_tde_ss_slip_constraint_row[i] = (
-                index.start_tde_ss_slip_constraint_row[i] + len(meshes[i].ss_slip_idx)
-            )
-            index.start_tde_ds_slip_constraint_row[i] = (
-                index.end_tde_ss_slip_constraint_row[i]
-            )
-            index.end_tde_ds_slip_constraint_row[i] = (
-                index.start_tde_ds_slip_constraint_row[i] + len(meshes[i].ds_slip_idx)
-            )
-        else:
-            index.start_tde_col[i] = index.end_tde_col[i - 1]
-            index.end_tde_col[i] = index.start_tde_col[i] + 2 * index.n_tde[i]
-            index.start_tde_smoothing_row[i] = index.end_tde_constraint_row[i - 1]
-            index.end_tde_smoothing_row[i] = (
-                index.start_tde_smoothing_row[i] + 2 * index.n_tde[i]
-            )
-            index.start_tde_constraint_row[i] = index.end_tde_smoothing_row[i]
-            index.end_tde_constraint_row[i] = (
-                index.start_tde_constraint_row[i] + index.n_tde_constraints[i]
-            )
-            index.start_tde_top_constraint_row[i] = index.end_tde_smoothing_row[i]
-            index.end_tde_top_constraint_row[i] = index.start_tde_top_constraint_row[
-                i
-            ] + len(meshes[i].top_slip_idx)
-            index.start_tde_bot_constraint_row[i] = index.end_tde_top_constraint_row[i]
-            index.end_tde_bot_constraint_row[i] = index.start_tde_bot_constraint_row[
-                i
-            ] + len(meshes[i].bot_slip_idx)
-            index.start_tde_side_constraint_row[i] = index.end_tde_bot_constraint_row[i]
-            index.end_tde_side_constraint_row[i] = index.start_tde_side_constraint_row[
-                i
-            ] + len(meshes[i].side_slip_idx)
-            index.start_tde_coup_constraint_row[i] = index.end_tde_side_constraint_row[
-                i
-            ]
-            index.end_tde_coup_constraint_row[i] = index.start_tde_coup_constraint_row[
-                i
-            ] + len(meshes[i].coup_idx)
-            index.start_tde_ss_slip_constraint_row[i] = (
-                index.end_tde_coup_constraint_row[i]
-            )
-            index.end_tde_ss_slip_constraint_row[i] = (
-                index.start_tde_ss_slip_constraint_row[i] + len(meshes[i].ss_slip_idx)
-            )
-            index.start_tde_ds_slip_constraint_row[i] = (
-                index.end_tde_ss_slip_constraint_row[i]
-            )
-            index.end_tde_ds_slip_constraint_row[i] = (
-                index.start_tde_ds_slip_constraint_row[i] + len(meshes[i].ds_slip_idx)
-            )
+
+        # Set column indices for current mesh
+        index.start_tde_col[i] = (
+            index.end_block_col if i == 0 else index.end_tde_col[i - 1]
+        )
+        index.end_tde_col[i] = index.start_tde_col[i] + 2 * index.n_tde[i]
+
+        # Set smoothing row indices for current mesh
+        start_row = (
+            index.end_slip_rate_constraints_row
+            if i == 0
+            else index.end_tde_constraint_row[i - 1]
+        )
+        index.start_tde_smoothing_row[i] = start_row
+        index.end_tde_smoothing_row[i] = (
+            index.start_tde_smoothing_row[i] + 2 * index.n_tde[i]
+        )
+
+        # Set constraint row indices for current mesh
+        index.start_tde_constraint_row[i] = index.end_tde_smoothing_row[i]
+        index.end_tde_constraint_row[i] = (
+            index.start_tde_constraint_row[i] + index.n_tde_constraints[i]
+        )
+
+        # Set top constraint row indices and adjust count based on available data
+        index.start_tde_top_constraint_row[i] = index.end_tde_smoothing_row[i]
+        count = len(idx) if (idx := meshes[i].top_slip_idx) is not None else 0
+        index.end_tde_top_constraint_row[i] = (
+            index.start_tde_top_constraint_row[i] + count
+        )
+
+        # Set bottom constraint row indices
+        index.start_tde_bot_constraint_row[i] = index.end_tde_top_constraint_row[i]
+        count = len(idx) if (idx := meshes[i].bot_slip_idx) is not None else 0
+        index.end_tde_bot_constraint_row[i] = (
+            index.start_tde_bot_constraint_row[i] + count
+        )
+
+        # Set side constraint row indices
+        index.start_tde_side_constraint_row[i] = index.end_tde_bot_constraint_row[i]
+        count = len(idx) if (idx := meshes[i].side_slip_idx) is not None else 0
+        index.end_tde_side_constraint_row[i] = (
+            index.start_tde_side_constraint_row[i] + count
+        )
+
+        # Set coupling constraint row indices
+        index.start_tde_coup_constraint_row[i] = index.end_tde_side_constraint_row[i]
+        count = len(idx) if (idx := meshes[i].coup_idx) is not None else 0
+        index.end_tde_coup_constraint_row[i] = (
+            index.start_tde_coup_constraint_row[i] + count
+        )
+
+        # Set strike-slip constraint row indices
+        index.start_tde_ss_slip_constraint_row[i] = index.end_tde_coup_constraint_row[i]
+        count = len(idx) if (idx := meshes[i].ss_slip_idx) is not None else 0
+        index.end_tde_ss_slip_constraint_row[i] = (
+            index.start_tde_ss_slip_constraint_row[i] + count
+        )
+
+        # Set dip-slip constraint row indices
+        index.start_tde_ds_slip_constraint_row[i] = (
+            index.end_tde_ss_slip_constraint_row[i]
+        )
+        count = len(idx) if (idx := meshes[i].ds_slip_idx) is not None else 0
+        index.end_tde_ds_slip_constraint_row[i] = (
+            index.start_tde_ds_slip_constraint_row[i] + count
+        )
 
     # EIGEN: Get total number of eigenmodes
     index.n_eigen_total = 0
     for i in range(index.n_meshes):
-        index.n_eigen_total += meshes[i].n_modes_strike_slip
-        index.n_eigen_total += meshes[i].n_modes_dip_slip
+        index.n_eigen_total += meshes[i].config.n_modes_strike_slip
+        index.n_eigen_total += meshes[i].config.n_modes_dip_slip
 
     # EIGEN: Count eigenmodes for each mesh
     index.n_modes_mesh = np.zeros(index.n_meshes, dtype=int)
     for i in range(index.n_meshes):
         index.n_modes_mesh[i] = (
-            meshes[i].n_modes_strike_slip + meshes[i].n_modes_dip_slip
+            meshes[i].config.n_modes_strike_slip + meshes[i].config.n_modes_dip_slip
         )
 
     # EIGEN: Column and row indices
@@ -1524,11 +1499,11 @@ def get_rotation_displacements(lon_obs, lat_obs, omega_x, omega_y, omega_z):
 
 
 def get_elastic_operators(
-    operators: dict,
+    operators: Operators,
     meshes: list,
     segment: pd.DataFrame,
     station: pd.DataFrame,
-    command: dict,
+    command: Config,
 ):
     """Calculate (or load previously calculated) elastic operators from
     both fully locked segments and TDE parameterizes surfaces.
@@ -1540,7 +1515,11 @@ def get_elastic_operators(
         station (pd.DataFrame): All station data
         command (Dict): All command data
     """
-    if bool(command.reuse_elastic) and os.path.exists(command.reuse_elastic_file):
+    if (
+        bool(command.reuse_elastic)
+        and command.reuse_elastic_file is not None
+        and os.path.exists(command.reuse_elastic_file)
+    ):
         logger.info("Using precomputed elastic operators")
         hdf5_file = h5py.File(command.reuse_elastic_file, "r")
 
@@ -1554,7 +1533,9 @@ def get_elastic_operators(
         hdf5_file.close()
 
     else:
-        if not os.path.exists(command.reuse_elastic_file):
+        if command.reuse_elastic_file is None or not os.path.exists(
+            command.reuse_elastic_file
+        ):
             logger.warning("Precomputed elastic operator file not found")
         logger.info("Computing elastic operators")
 
@@ -2431,7 +2412,7 @@ def get_tri_smoothing_matrix_simple(share, n_dim):
     return smoothing_matrix
 
 
-def get_tde_slip_rate_constraints(meshes: list, operators: dict):
+def get_tde_slip_rate_constraints(meshes: dict, operators: dict):
     """Construct TDE slip rate constraint matrices for each mesh.
     These are identity matrices, used to set TDE slip rates on
     or coupling fractions on elements lining the edges of the mesh,
@@ -2457,7 +2438,7 @@ def get_tde_slip_rate_constraints(meshes: list, operators: dict):
         end_row = 0
         # Top constraints
         # A value of 1 (free slip) or 2 (full coupling) will satisfy the following condition
-        if meshes[i].top_slip_rate_constraint > 0:
+        if meshes[i].config.top_slip_rate_constraint > 0:
             # Indices of top elements
             top_indices = np.asarray(np.where(meshes[i].top_elements))
             # Indices of top elements' 2 slip components
@@ -2467,7 +2448,7 @@ def get_tde_slip_rate_constraints(meshes: list, operators: dict):
                 np.eye(len(meshes[i].top_slip_idx))
             )
         # Bottom constraints
-        if meshes[i].bot_slip_rate_constraint > 0:
+        if meshes[i].config.bot_slip_rate_constraint > 0:
             # Indices of bottom elements
             bot_indices = np.asarray(np.where(meshes[i].bot_elements))
             # Indices of bottom elements' 2 slip components
@@ -2478,7 +2459,7 @@ def get_tde_slip_rate_constraints(meshes: list, operators: dict):
                 np.eye(len(meshes[i].bot_slip_idx))
             )
         # Side constraints
-        if meshes[i].side_slip_rate_constraint > 0:
+        if meshes[i].config.side_slip_rate_constraint > 0:
             # Indices of side elements
             side_indices = np.asarray(np.where(meshes[i].side_elements))
             # Indices of side elements' 2 slip components
@@ -2489,17 +2470,19 @@ def get_tde_slip_rate_constraints(meshes: list, operators: dict):
                 np.eye(len(meshes[i].side_slip_idx))
             )
         # Other element indices
-        if len(meshes[i].coupling_constraint_idx) > 0:
+        if len(meshes[i].config.coupling_constraint_idx) > 0:
             meshes[i].coup_idx = get_2component_index(
-                np.asarray(meshes[i].coupling_constraint_idx)
+                np.asarray(meshes[i].config.coupling_constraint_idx)
             )
             start_row += end_row
-            end_row += 2 * len(meshes[i].coupling_constraint_idx)
+            end_row += 2 * len(meshes[i].config.coupling_constraint_idx)
             tde_slip_rate_constraints[start_row:end_row, meshes[i].coup_idx] = np.eye(
-                2 * len(meshes[i].coupling_constraint_idx)
+                2 * len(meshes[i].config.coupling_constraint_idx)
             )
-        if len(meshes[i].ss_slip_constraint_idx) > 0:
-            ss_idx = get_2component_index(np.asarray(meshes[i].ss_slip_constraint_idx))
+        if len(meshes[i].config.ss_slip_constraint_idx) > 0:
+            ss_idx = get_2component_index(
+                np.asarray(meshes[i].config.ss_slip_constraint_idx)
+            )
             meshes[i].ss_slip_idx = ss_idx[0::2]
             start_row += end_row
             end_row += len(meshes[i].ss_slip_idx)
@@ -2507,8 +2490,10 @@ def get_tde_slip_rate_constraints(meshes: list, operators: dict):
             tde_slip_rate_constraints[start_row:end_row, meshes[i].ss_slip_idx] = (
                 np.eye(len(meshes[i].ss_slip_idx))
             )
-        if len(meshes[i].ds_slip_constraint_idx) > 0:
-            ds_idx = get_2component_index(np.asarray(meshes[i].ds_slip_constraint_idx))
+        if len(meshes[i].config.ds_slip_constraint_idx) > 0:
+            ds_idx = get_2component_index(
+                np.asarray(meshes[i].config.ds_slip_constraint_idx)
+            )
             meshes[i].ds_slip_idx = ds_idx[1::2]
             start_row += end_row
             end_row += len(meshes[i].ds_slip_idx)
@@ -3264,13 +3249,13 @@ def get_data_vector_eigen(meshes, assembly, index):
             index.start_tde_constraint_row_eigen[
                 i
             ] : index.end_tde_constraint_row_eigen[i] : 2
-        ] = meshes[i].ss_slip_constraint_rate
+        ] = meshes[i].config.ss_slip_constraint_rate
 
         # Place dip-slip TDE BCs
         data_vector[
             index.start_tde_constraint_row_eigen[i]
             + 1 : index.end_tde_constraint_row_eigen[i] : 2
-        ] = meshes[i].ds_slip_constraint_rate
+        ] = meshes[i].config.ds_slip_constraint_rate
 
     return data_vector
 
@@ -3304,7 +3289,7 @@ def get_weighting_vector_eigen(command, station, meshes, index):
             index.start_tde_constraint_row_eigen[
                 i
             ] : index.end_tde_constraint_row_eigen[i]
-        ] = meshes[i].bot_slip_rate_weight * np.ones(index.n_tde_constraints[i])
+        ] = meshes[i].config.bot_slip_rate_weight * np.ones(index.n_tde_constraints[i])
 
     return weighting_vector
 
@@ -3423,7 +3408,7 @@ def get_full_dense_operator(operators, meshes, index):
             index.start_tde_col[i] : index.end_tde_col[i],
         ] = operators.tde_slip_rate_constraints[i]
         # Insert block motion constraints for any coupling-constrained rows
-        if meshes[i].top_slip_rate_constraint == 2:
+        if meshes[i].config.top_slip_rate_constraint == 2:
             operator[
                 index.start_tde_top_constraint_row[
                     i
@@ -3433,7 +3418,7 @@ def get_full_dense_operator(operators, meshes, index):
                 meshes[i].top_slip_idx,
                 index.start_block_col : index.end_block_col,
             ]
-        if meshes[i].bot_slip_rate_constraint == 2:
+        if meshes[i].config.bot_slip_rate_constraint == 2:
             operator[
                 index.start_tde_bot_constraint_row[
                     i
@@ -3443,7 +3428,7 @@ def get_full_dense_operator(operators, meshes, index):
                 meshes[i].bot_slip_idx,
                 :,
             ]
-        if meshes[i].side_slip_rate_constraint == 2:
+        if meshes[i].config.side_slip_rate_constraint == 2:
             operator[
                 index.start_tde_side_constraint_row[
                     i
@@ -3542,7 +3527,7 @@ def get_full_dense_operator_eigen(operators, meshes, index):
     for i in range(index.n_meshes):
         # Create eigenvector to TDE boundary conditions matrix
         operators.eigen_to_tde_bcs[i] = (
-            meshes[i].mesh_tde_modes_bc_weight
+            meshes[i].config.mesh_tde_modes_bc_weight
             * operators.tde_slip_rate_constraints[i]
             @ operators.eigenvectors_to_tde_slip[i]
         )
@@ -3666,14 +3651,18 @@ def get_qp_tde_inequality_operator_and_data_vector(index, meshes, operators):
     for i in range(index.n_meshes):
         # TDE strike- and dip-slip lower bounds
         lower_bound_current_mesh = interleave2(
-            meshes[i].qp_mesh_tde_slip_rate_lower_bound_ss * np.ones(index.n_tde[i]),
-            meshes[i].qp_mesh_tde_slip_rate_lower_bound_ds * np.ones(index.n_tde[i]),
+            meshes[i].config.qp_mesh_tde_slip_rate_lower_bound_ss
+            * np.ones(index.n_tde[i]),
+            meshes[i].config.qp_mesh_tde_slip_rate_lower_bound_ds
+            * np.ones(index.n_tde[i]),
         )
 
         # TDE strike- and dip-slip upper bounds
         upper_bound_current_mesh = interleave2(
-            meshes[i].qp_mesh_tde_slip_rate_upper_bound_ss * np.ones(index.n_tde[i]),
-            meshes[i].qp_mesh_tde_slip_rate_upper_bound_ds * np.ones(index.n_tde[i]),
+            meshes[i].config.qp_mesh_tde_slip_rate_upper_bound_ss
+            * np.ones(index.n_tde[i]),
+            meshes[i].config.qp_mesh_tde_slip_rate_upper_bound_ds
+            * np.ones(index.n_tde[i]),
         )
 
         # Insert TDE lower bounds into QP constraint data vector (note negative sign)
@@ -3942,21 +3931,22 @@ def get_eigenvectors_to_tde_slip(operators, meshes):
         operators.eigenvectors_to_tde_slip[i] = np.zeros(
             (
                 2 * eigenvectors.shape[0],
-                meshes[i].n_modes_strike_slip + meshes[i].n_modes_dip_slip,
+                meshes[i].config.n_modes_strike_slip
+                + meshes[i].config.n_modes_dip_slip,
             )
         )
 
         # Place strike-slip panel
         operators.eigenvectors_to_tde_slip[i][
-            0::2, 0 : meshes[i].n_modes_strike_slip
-        ] = eigenvectors[:, 0 : meshes[i].n_modes_strike_slip]
+            0::2, 0 : meshes[i].config.n_modes_strike_slip
+        ] = eigenvectors[:, 0 : meshes[i].config.n_modes_strike_slip]
 
         # Place dip-slip panel
         operators.eigenvectors_to_tde_slip[i][
             1::2,
-            meshes[i].n_modes_strike_slip : meshes[i].n_modes_strike_slip
-            + meshes[i].n_modes_dip_slip,
-        ] = eigenvectors[:, 0 : meshes[i].n_modes_dip_slip]
+            meshes[i].config.n_modes_strike_slip : meshes[i].config.n_modes_strike_slip
+            + meshes[i].config.n_modes_dip_slip,
+        ] = eigenvectors[:, 0 : meshes[i].config.n_modes_dip_slip]
         logger.success(
             f"Finish: Eigenvectors to TDE slip for mesh: {meshes[i].file_name}"
         )

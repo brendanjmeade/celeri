@@ -1,16 +1,14 @@
 import time
 from collections import namedtuple
-from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any, Callable, Literal, cast
+from dataclasses import dataclass
+from typing import Callable, Literal, cast
 
 import addict
 import cvxopt
 import cvxpy as cp
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
-from scipy import linalg, sparse, spatial
+from scipy import linalg, sparse
 
 from celeri import (
     get_data_vector_eigen,
@@ -573,6 +571,8 @@ def build_cvxpy_problem(
     if init_params_value is not None:
         init_params_raw_value = init_params_value * scale
 
+    assert problem.operators.eigen is not None
+
     if init_params_raw_value is not None:
         params_raw = cp.Variable(
             name="params_raw",
@@ -721,7 +721,8 @@ def build_cvxpy_problem(
             if False:
                 q, r, p = linalg.qr(C_hat, mode="economic", pivoting=True)
             else:
-                q, r = linalg.qr(C_hat, mode="economic", pivoting=False)
+                out = linalg.qr(C_hat, mode="economic", pivoting=False)
+                q, r = cast(tuple[np.ndarray, np.ndarray], out)
                 p = np.arange(C_hat.shape[1])
             p_inv = np.argsort(p)
             np.testing.assert_allclose(q.T @ q, np.eye(len(q.T)), atol=1e-10, rtol=1e-6)
@@ -1046,7 +1047,7 @@ def minimize(
     """
     limits = {}
     for idx in problem.segment_mesh_indices:
-        length = problem.meshes[idx]["n_tde"]
+        length = problem.meshes[idx].n_tde
         limits[idx] = VelocityLimit.from_scalar(length, velocity_lower, velocity_upper)
 
     minimizer = build_cvxpy_problem(
@@ -1125,7 +1126,7 @@ def benchmark_solve(
     if with_limits is not None:
         limits = {}
         for idx in problem.segment_mesh_indices:
-            length = problem.meshes[idx]["n_tde"]
+            length = problem.meshes[idx].n_tde
             lower, upper = with_limits
             limits[idx] = VelocityLimit.from_scalar(length, lower, upper)
     else:

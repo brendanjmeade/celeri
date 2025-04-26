@@ -40,16 +40,22 @@ type ByMesh[T] = dict[int, T]
 @dataclass
 class Operators:
     meshes: list[Any] = field(default_factory=list)
-    rotation_to_velocities: Any | None = None
-    block_motion_constraints: Any | None = None
-    slip_rate_constraints: Any | None = None
-    rotation_to_slip_rate: Any | None = None
-    block_strain_rate_to_velocities: Any | None = None
-    mogi_to_velocities: Any | None = None
-    eigen: Any | None = None
-    eigenvectors_to_tde_slip: dict = field(default_factory=dict)
-    rotation_to_tri_slip_rate: dict = field(default_factory=dict)
-    linear_guassian_smoothing: dict = field(default_factory=dict)
+    rotation_to_velocities: np.ndarray | None = None
+    block_motion_constraints: np.ndarray | None = None
+    slip_rate_constraints: np.ndarray | None = None
+    rotation_to_slip_rate: np.ndarray | None = None
+    block_strain_rate_to_velocities: np.ndarray | None = None
+    mogi_to_velocities: np.ndarray | None = None
+    eigen: np.ndarray | None = None
+    slip_rate_to_skada_to_velocities: np.ndarray | None = None
+    eigenvectors_to_tde_slip: dict[int, np.ndarray] = field(default_factory=dict)
+    rotation_to_tri_slip_rate: dict[int, np.ndarray] = field(default_factory=dict)
+    linear_guassian_smoothing: dict[int, np.ndarray] = field(default_factory=dict)
+    tde_to_velocities: dict[int, np.ndarray] = field(default_factory=dict)
+    smoothing_matrix: dict[int, np.ndarray] = field(default_factory=dict)
+    tde_slip_rate_constraints: dict[int, np.ndarray] = field(default_factory=dict)
+    eigen_to_velocities: dict[int, np.ndarray] = field(default_factory=dict)
+    eigen_to_tde_bcs: dict[int, np.ndarray] = field(default_factory=dict)
 
 
 @dataclass
@@ -67,6 +73,7 @@ class Model:
     block: pd.DataFrame
     station: pd.DataFrame
     assembly: addict.Dict
+    mogi: pd.DataFrame
     command: dict[str, Any]
 
     @property
@@ -83,9 +90,8 @@ def _get_gaussian_smoothing_operator(meshes, operators, index):
     for i in range(index.n_meshes):
         points = np.vstack((meshes[i].lon_centroid, meshes[i].lat_centroid)).T
 
-        if "iterative_coupling_smoothing_length_scale" in meshes[i]:
-            length_scale = meshes[i].iterative_coupling_smoothing_length_scale
-        else:
+        length_scale = meshes[i].config.iterative_coupling_smoothing_length_scale
+        if length_scale is None:
             length_scale = 0.25
 
         # Compute pairwise Euclidean distance matrix
@@ -102,7 +108,7 @@ def _get_gaussian_smoothing_operator(meshes, operators, index):
     return operators
 
 
-def build_problem(command_path: str | Path) -> Model:
+def build_model(command_path: str | Path) -> Model:
     command = get_config(command_path)
     create_output_folder(command)
     segment, block, meshes, station, mogi, sar = read_data(command)
@@ -185,4 +191,5 @@ def build_problem(command_path: str | Path) -> Model:
         station=station,
         assembly=assembly,
         command=command,
+        mogi=mogi,
     )
