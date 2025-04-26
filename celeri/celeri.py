@@ -208,6 +208,16 @@ def read_data(command: Config):
     # Read segment data
     segment = pd.read_csv(command.segment_file_name)
     segment = segment.loc[:, ~segment.columns.str.match("Unnamed")]
+
+    # TODO check
+    for name in ["ss", "ds", "ts"]:
+        if f"{name}_rate_bound_flag" not in segment.columns:
+            segment[f"{name}_rate_bound_flag"] = 0.0
+        if f"{name}_rate_bound_min" not in segment.columns:
+            segment[f"{name}_rate_bound_min"] = -1.0
+        if f"{name}_rate_bound_max" not in segment.columns:
+            segment[f"{name}_rate_bound_max"] = 1.0
+
     logger.success(f"Read: {command.segment_file_name}")
 
     # Read block data
