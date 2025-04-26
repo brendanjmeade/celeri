@@ -3141,13 +3141,13 @@ def get_data_vector(assembly, index, meshes):
             index.start_tde_ss_slip_constraint_row[
                 i
             ] : index.end_tde_ss_slip_constraint_row[i]
-        ] = meshes[i].ss_slip_constraint_rate
+        ] = meshes[i].config.ss_slip_constraint_rate
 
         data_vector[
             index.start_tde_ds_slip_constraint_row[
                 i
             ] : index.end_tde_ds_slip_constraint_row[i]
-        ] = meshes[i].ds_slip_constraint_rate
+        ] = meshes[i].config.ds_slip_constraint_rate
     return data_vector
 
 
@@ -3174,7 +3174,7 @@ def get_weighting_vector(command, station, meshes, index):
         # Insert smoothing weight into weighting vector
         weighting_vector[
             index.start_tde_smoothing_row[i] : index.end_tde_smoothing_row[i]
-        ] = meshes[i].smoothing_weight * np.ones(2 * index.n_tde[i])
+        ] = meshes[i].config.smoothing_weight * np.ones(2 * index.n_tde[i])
         weighting_vector[
             index.start_tde_constraint_row[i] : index.end_tde_constraint_row[i]
         ] = command.tri_con_weight * np.ones(index.n_tde_constraints[i])
@@ -3218,7 +3218,9 @@ def get_weighting_vector_single_mesh_for_col_norms(
 
     weighting_vector[
         2 * index.n_stations : 2 * index.n_stations + 2 * index.n_tde[mesh_index]
-    ] = meshes[mesh_index].smoothing_weight * np.ones(2 * index.n_tde[mesh_index])
+    ] = meshes[mesh_index].config.smoothing_weight * np.ones(
+        2 * index.n_tde[mesh_index]
+    )
 
     weighting_vector[2 * index.n_stations + 2 * index.n_tde[mesh_index] : :] = (
         command.tri_con_weight * np.ones(index.n_tde_constraints[mesh_index])
