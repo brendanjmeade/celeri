@@ -1855,8 +1855,8 @@ def get_okada_displacements(
         _, u, _ = okada_wrapper.dc3dwrapper(
             alpha,  # (lambda + mu) / (lambda + 2 * mu)
             [
-                station_x_rotated[i],
-                station_y_rotated[i],
+                station_x_rotated[i].item(),
+                station_y_rotated[i].item(),
                 0,
             ],  # (meters) observation point
             segment_locking_depth,  # (meters) depth of the fault origin
@@ -1871,9 +1871,7 @@ def get_okada_displacements(
             ],  # (meters) along-dip range of the surface (aw1, aw2 in the original)
             [strike_slip, dip_slip, tensile_slip],
         )  # (meters) strike-slip, dip-slip, tensile-slip
-        u_x[i] = u[0]
-        u_y[i] = u[1]
-        u_up[i] = u[2]
+        u_x[i], u_y, u_up = u
 
     # Un-rotate displacement to account for projected fault strike
     # u_east, u_north = np.hsplit(
