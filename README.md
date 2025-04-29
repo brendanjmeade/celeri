@@ -4,9 +4,11 @@
 `celeri` is a python-based package designed to image earthquake cycle activity including the spatial and time varying fault coupling across geometrically complex fault systems at large scales. It features:
 
 - Friendly [Jupyter notebook examples](https://github.com/brendanjmeade/celeri/blob/main/notebooks/celeri_dense.ipynb)
-- Beautiful web-based model building with [`celeri_ui`](https://brendanjmeade.github.io/celeri_ui/)
+- Web-based model building with [`celeri_ui`](https://brendanjmeade.github.io/celeri_ui/)
+- Graphical comparisions of model results with [`result_manager`](https://github.com/brendanjmeade/result_manager)
+- 3D visualzation of model geometry and results with [`parsli`](https://github.com/brendanjmeade/parsli)
 - Fast and automated block closure on the sphere
-- Small memory footprint (via H-matrix compression)
+- Small memory footprint (via distance weighted eigenmodes)
 - Blazingly fast elastic calculations (via [Ben Thompson's](https://github.com/tbenthompson) [C-based triangular dislocation calculations](https://github.com/tbenthompson/cutde))
 - Easy IO with standard file types (.csv, .json, .hdf5)
 - Rapid model diffs with [`celeri_report.py`](https://github.com/brendanjmeade/celeri/blob/main/notebooks/celeri_report.py)
