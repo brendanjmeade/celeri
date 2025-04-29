@@ -1,6 +1,4 @@
-
-
-# Next generation earthquake cycle imaging
+# Quasi-static imaging of earthquake cycle kinematics
 `celeri` is a python-based package designed to image earthquake cycle activity including the spatial and time varying fault coupling across geometrically complex fault systems at large scales. It features:
 
 - Friendly [Jupyter notebook examples](https://github.com/brendanjmeade/celeri/blob/main/notebooks/celeri_dense.ipynb)
@@ -13,7 +11,7 @@
 - Easy IO with standard file types (.csv, .json, .hdf5)
 - Rapid model diffs with [`celeri_report.py`](https://github.com/brendanjmeade/celeri/blob/main/notebooks/celeri_report.py)
 
-
+---
 # Getting started
 To set up a development conda environment, install [pixi](https://pixi.sh/) and run the following command in the `celeri` folder.
 ```bash
@@ -28,10 +26,22 @@ conda activate celeri
 pip install --no-use-pep517 -e .
 ```
 
-Once you are in a pixi shell or have activated the conda environment, start your favorite notebook viewer (`jupyter lab` or `vscode`) and open and run `celeri.ipynb`.
+From here you can launch model runs with `celeri_solve`.
+
+To run notebooks from VSCode:
+1. cd to the `celeri` folder.
+2. Use  `code .` to start VSCode form the command line.
+3. Navigate to the notebook you'd like to run.
+4. Click on the python environment selector near the upper right hand corner of the VSCode window.
+5. Select the "default" shell.
+6. Run notebook.
+
+
+---
 
 If you wish to submit a PR then please run `pre-commit install` to install the [pre-commit](https://pre-commit.com/) hooks.
 
+---
 ### Folder structure and file locations for applications
 A large number of input files can be involved in a model run.  We assume that a project is arranged using the following folder structure:
 ```
