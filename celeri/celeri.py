@@ -4466,7 +4466,7 @@ def rotation_vectors_to_euler_poles(
     euler_lon = np.where(euler_lon < 0, euler_lon + 360, euler_lon)
 
     # Convert the rotation rate from rad/yr to degrees per million years
-    SCALE_TO_DEG_PER_MILLION_YEARS = 1e6
+    SCALE_TO_DEG_PER_MILLION_YEARS = 1e6  # TODO: Check this
     euler_rate = SCALE_TO_DEG_PER_MILLION_YEARS * np.rad2deg(euler_rate)
 
     return euler_lon, euler_lat, euler_rate
@@ -4516,7 +4516,8 @@ def rotation_vector_err_to_euler_pole_err(omega_x, omega_y, omega_z, omega_cov):
     euler_lat_err = np.rad2deg(euler_lat_err)
 
     # Convert the rotation rate from rad/yr to degrees per million years
-    euler_rate_err = 1e6 * np.rad2deg(euler_rate_err)
+    SCALE_TO_DEG_PER_MILLION_YEARS = 1e6 # TODO: Check this
+    euler_rate_err = SCALE_TO_DEG_PER_MILLION_YEARS * np.rad2deg(euler_rate_err)
 
     return euler_lon_err, euler_lat_err, euler_rate_err
 
@@ -4661,13 +4662,13 @@ def post_process_estimation(
     rotation_vector_x = rotation_vector[0::3]
     rotation_vector_y = rotation_vector[1::3]
     rotation_vector_z = rotation_vector[2::3]
-    estimation.euler_lons, estimation.euler_lats, estimation.euler_rates = rotation_vectors_to_euler_poles(
+    estimation.euler_lon, estimation.euler_lat, estimation.euler_rate = rotation_vectors_to_euler_poles(
         rotation_vector_x, rotation_vector_y, rotation_vector_z
     )
 
     # Calculate Euler pole uncertainties
     omega_cov = np.zeros((3 * len(rotation_vector_x), 3 * len(rotation_vector_x)))
-    estimation.euler_lon_err, estimation.euler_lon_err, estimation.euler_lon_err = rotation_vector_err_to_euler_pole_err(rotation_vector_x, rotation_vector_y, rotation_vector_z, omega_cov)
+    estimation.euler_lon_err, estimation.euler_lat_err, estimation.euler_rate_err = rotation_vector_err_to_euler_pole_err(rotation_vector_x, rotation_vector_y, rotation_vector_z, omega_cov)
 
 
     # Calculate Mogi source velocities
@@ -4840,7 +4841,7 @@ def post_process_estimation_eigen(estimation_eigen, operators, station, index):
 
     # Calculate Euler pole uncertainties
     omega_cov = np.zeros((3 * len(rotation_vector_x), 3 * len(rotation_vector_x)))
-    estimation_eigen.euler_lon_err, estimation_eigen.euler_lon_err, estimation_eigen.euler_lon_err = rotation_vector_err_to_euler_pole_err(rotation_vector_x, rotation_vector_y, rotation_vector_z, omega_cov)
+    estimation_eigen.euler_lon_err, estimation_eigen.euler_lat_err, estimation_eigen.euler_rate_err = rotation_vector_err_to_euler_pole_err(rotation_vector_x, rotation_vector_y, rotation_vector_z, omega_cov)
 
     # Extract Mogi parameters
     estimation_eigen.mogi_volume_change_rates = estimation_eigen.state_vector[
@@ -5918,9 +5919,8 @@ def write_output(
     meshes: dict,
     mogi=None,
 ):
+
     # Add model velocities to station dataframe and write .csv
-    if mogi is None:
-        mogi = []
     station["model_east_vel"] = estimation.east_vel
     station["model_north_vel"] = estimation.north_vel
     station["model_east_vel_residual"] = estimation.east_vel_residual
@@ -5952,16 +5952,20 @@ def write_output(
     segment.to_csv(segment_output_file_name, index=False, float_format="%0.4f")
 
     # TODO: Add rotation rates and block strain rate block dataframe and write .csv
-    # block["euler_lon"] =
-    # block["euler_lon_sig"] =
-    # block["euler_lat"] =
-    # block["euler_lat_sig"] =
-    # block["rotation_rate"]=
-    # block["rotation_rate_sig"]=
-    # block["rotation_flag"]=
-    # block["apriori_flag"]=
+    block["euler_lon"] = estimation.euler_lon
+    block["euler_lon_err"] = estimation.euler_lon_err
+    block["euler_lat"] = estimation.euler_lat
+    block["euler_lat_err"] = estimation.euler_lat_err
+    block["euler_rate"] = estimation.euler_rate
+    block["euler_rate_err"] = estimation.euler_rate_err
+    block_output_file_name = command.output_path + "/" + "model_block.csv"
+    block.to_csv(block_output_file_name, index=False, float_format="%0.4f")
+
 
     # Add volume change rates to Mogi source dataframe
+    # Create an empy mogi dictionary if there isn't already one
+    if mogi is None:
+        mogi = []
     # mogi["volume_change"] = estimation.mogi_volume_change_rates
     # mogi["volume_change_sig"] = estimation.mogi_volume_change_rates
 
