@@ -4425,6 +4425,102 @@ def get_eigenvectors_to_tde_slip(operators, meshes):
         )
 
 
+
+def rotation_vectors_to_euler_poles(
+    rotation_vector_x, rotation_vector_y, rotation_vector_z
+):
+
+    def xyz_to_lon_lat(x, y, z):
+        # TODO: Should I use proj and proper ellipsoid here?
+        lon = np.arctan2(y, x)
+        lat = np.arcsin(z)
+        return lon, lat
+
+    n_poles = len(rotation_vector_x)
+
+    # Initialize arrays
+    euler_lon = np.zeros(n_poles)
+    euler_lat = np.zeros(n_poles)
+    euler_rate = np.zeros(n_poles)
+
+    # Loop over each pole
+    for i in range(n_poles):
+        euler_rate[i] = np.sqrt(
+            rotation_vector_x[i] ** 2.0
+            + rotation_vector_y[i] ** 2.0
+            + rotation_vector_z[i] ** 2.0
+        )
+        unit_vec = (
+            np.array([rotation_vector_x[i], rotation_vector_y[i], rotation_vector_z[i]])
+            / euler_rate[i]
+        )
+        tlon, tlat = xyz_to_lon_lat(unit_vec[0], unit_vec[1], unit_vec[2])
+        euler_lon[i] = tlon
+        euler_lat[i] = tlat
+
+    # Convert longitude and latitude from radians to degrees
+    euler_lon = np.rad2deg(euler_lon)
+    euler_lat = np.rad2deg(euler_lat)
+
+    # Make sure we have west longitude
+    euler_lon = np.where(euler_lon < 0, euler_lon + 360, euler_lon)
+
+    # Convert the rotation rate from rad/yr to degrees per million years
+    SCALE_TO_DEG_PER_MILLION_YEARS = 1e3  # TODO: Check this
+    euler_rate = SCALE_TO_DEG_PER_MILLION_YEARS * np.rad2deg(euler_rate)
+
+    return euler_lon, euler_lat, euler_rate
+
+
+def rotation_vector_err_to_euler_pole_err(omega_x, omega_y, omega_z, omega_cov):
+    # Linearized propagatin of rotation vector uncertainties to Euler pole uncertainties
+
+    # Declare variables
+    n_poles = len(omega_x)
+    A = np.zeros((3 * n_poles, 3 * n_poles))
+
+    # Loop over each set of estimates
+    for i in range(n_poles):
+        idx = 3 * i
+        x = omega_x[i]
+        y = omega_y[i]
+        z = omega_z[i]
+
+        # Calculate the partial derivatives
+        dlat_dx = -z / (x**2 + y**2)**(3/2) / (1 + z**2 / (x**2 + y**2)) * x
+        dlat_dy = -z / (x**2 + y**2)**(3/2) / (1 + z**2 / (x**2 + y**2)) * y
+        dlat_dz = 1 / (x**2 + y**2)**(1/2) / (1 + z**2 / (x**2 + y**2))
+        dlon_dx = -y / x**2 / (1 + (y / x)**2)
+        dlon_dy = 1 / x / (1 + (y / x)**2)
+        dlon_dz = 0
+        dmag_dx = x / np.sqrt(x**2 + y**2 + z**2)
+        dmag_dy = y / np.sqrt(x**2 + y**2 + z**2)
+        dmag_dz = z / np.sqrt(x**2 + y**2 + z**2)
+
+        # Organize them into a matrix
+        A_small = np.array([[dlat_dx, dlat_dy, dlat_dz] , [dlon_dx, dlon_dy, dlon_dz], [dmag_dx, dmag_dy, dmag_dz]])
+        # Put the small set of partials into the big set
+        A[idx : idx+3, idx : idx+3] = A_small
+
+    # Propagate the uncertainties and the new covariance matrix
+    euler_cov = A @ omega_cov @ A.T
+
+    # Organize data for the return
+    diag_vec = np.diag(euler_cov)
+    euler_lat_err = np.sqrt(diag_vec[0::3])
+    euler_lon_err = np.sqrt(diag_vec[1::3])
+    euler_rate_err = np.sqrt(diag_vec[2::3])
+
+    # Convert longitude and latitude from radians to degrees
+    euler_lon_err = np.rad2deg(euler_lon_err)
+    euler_lat_err = np.rad2deg(euler_lat_err)
+
+    # Convert the rotation rate from rad/yr to degrees per million years
+    SCALE_TO_DEG_PER_MILLION_YEARS = 1e3 # TODO: Check this
+    euler_rate_err = SCALE_TO_DEG_PER_MILLION_YEARS * np.rad2deg(euler_rate_err)
+
+    return euler_lon_err, euler_lat_err, euler_rate_err
+
 ######################################################################
 #                                                                    #
 #                                                                    #
@@ -4553,13 +4649,27 @@ def post_process_estimation(
     estimation.east_vel_elastic_segment = estimation.vel_elastic_segment[0::2]
     estimation.north_vel_elastic_segment = estimation.vel_elastic_segment[1::2]
 
-    # TODO: Calculate block strain rate velocities
+    # Calculate block strain rate velocities
     estimation.vel_block_strain_rate = (
         operators.block_strain_rate_to_velocities[index.station_row_keep_index, :]
         @ estimation.block_strain_rates
     )
     estimation.east_vel_block_strain_rate = estimation.vel_block_strain_rate[0::2]
     estimation.north_vel_block_strain_rate = estimation.vel_block_strain_rate[1::2]
+
+    # Calculate Euler pole longitudes, latitutudes and rotation rates
+    rotation_vector = estimation.state_vector[0 : 3 * index.n_blocks]
+    rotation_vector_x = rotation_vector[0::3]
+    rotation_vector_y = rotation_vector[1::3]
+    rotation_vector_z = rotation_vector[2::3]
+    estimation.euler_lon, estimation.euler_lat, estimation.euler_rate = rotation_vectors_to_euler_poles(
+        rotation_vector_x, rotation_vector_y, rotation_vector_z
+    )
+
+    # Calculate Euler pole uncertainties
+    omega_cov = np.zeros((3 * len(rotation_vector_x), 3 * len(rotation_vector_x)))
+    estimation.euler_lon_err, estimation.euler_lat_err, estimation.euler_rate_err = rotation_vector_err_to_euler_pole_err(rotation_vector_x, rotation_vector_y, rotation_vector_z, omega_cov)
+
 
     # Calculate Mogi source velocities
     estimation.vel_mogi = (
@@ -4719,6 +4829,19 @@ def post_process_estimation_eigen(estimation_eigen, operators, station, index):
     estimation_eigen.north_vel_block_strain_rate = (
         estimation_eigen.vel_block_strain_rate[1::2]
     )
+
+    # Calculate Euler pole longitudes, latitutudes and rotation rates
+    rotation_vector = estimation_eigen.state_vector[0 : 3 * index.n_blocks]
+    rotation_vector_x = rotation_vector[0::3]
+    rotation_vector_y = rotation_vector[1::3]
+    rotation_vector_z = rotation_vector[2::3]
+    estimation_eigen.euler_lon, estimation_eigen.euler_lat, estimation_eigen.euler_rate = rotation_vectors_to_euler_poles(
+        rotation_vector_x, rotation_vector_y, rotation_vector_z
+    )
+
+    # Calculate Euler pole uncertainties
+    omega_cov = np.zeros((3 * len(rotation_vector_x), 3 * len(rotation_vector_x)))
+    estimation_eigen.euler_lon_err, estimation_eigen.euler_lat_err, estimation_eigen.euler_rate_err = rotation_vector_err_to_euler_pole_err(rotation_vector_x, rotation_vector_y, rotation_vector_z, omega_cov)
 
     # Extract Mogi parameters
     estimation_eigen.mogi_volume_change_rates = estimation_eigen.state_vector[
@@ -5796,9 +5919,8 @@ def write_output(
     meshes: dict,
     mogi=None,
 ):
+
     # Add model velocities to station dataframe and write .csv
-    if mogi is None:
-        mogi = []
     station["model_east_vel"] = estimation.east_vel
     station["model_north_vel"] = estimation.north_vel
     station["model_east_vel_residual"] = estimation.east_vel_residual
@@ -5830,16 +5952,20 @@ def write_output(
     segment.to_csv(segment_output_file_name, index=False, float_format="%0.4f")
 
     # TODO: Add rotation rates and block strain rate block dataframe and write .csv
-    # block["euler_lon"] =
-    # block["euler_lon_sig"] =
-    # block["euler_lat"] =
-    # block["euler_lat_sig"] =
-    # block["rotation_rate"]=
-    # block["rotation_rate_sig"]=
-    # block["rotation_flag"]=
-    # block["apriori_flag"]=
+    block["euler_lon"] = estimation.euler_lon
+    block["euler_lon_err"] = estimation.euler_lon_err
+    block["euler_lat"] = estimation.euler_lat
+    block["euler_lat_err"] = estimation.euler_lat_err
+    block["euler_rate"] = estimation.euler_rate
+    block["euler_rate_err"] = estimation.euler_rate_err
+    block_output_file_name = command.output_path + "/" + "model_block.csv"
+    block.to_csv(block_output_file_name, index=False, float_format="%0.4f")
+
 
     # Add volume change rates to Mogi source dataframe
+    # Create an empy mogi dictionary if there isn't already one
+    if mogi is None:
+        mogi = []
     # mogi["volume_change"] = estimation.mogi_volume_change_rates
     # mogi["volume_change_sig"] = estimation.mogi_volume_change_rates
 
