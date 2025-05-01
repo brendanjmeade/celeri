@@ -4466,7 +4466,7 @@ def rotation_vectors_to_euler_poles(
     euler_lon = np.where(euler_lon < 0, euler_lon + 360, euler_lon)
 
     # Convert the rotation rate from rad/yr to degrees per million years
-    SCALE_TO_DEG_PER_MILLION_YEARS = 1e6  # TODO: Check this
+    SCALE_TO_DEG_PER_MILLION_YEARS = 1e3  # TODO: Check this
     euler_rate = SCALE_TO_DEG_PER_MILLION_YEARS * np.rad2deg(euler_rate)
 
     return euler_lon, euler_lat, euler_rate
@@ -4516,7 +4516,7 @@ def rotation_vector_err_to_euler_pole_err(omega_x, omega_y, omega_z, omega_cov):
     euler_lat_err = np.rad2deg(euler_lat_err)
 
     # Convert the rotation rate from rad/yr to degrees per million years
-    SCALE_TO_DEG_PER_MILLION_YEARS = 1e6 # TODO: Check this
+    SCALE_TO_DEG_PER_MILLION_YEARS = 1e3 # TODO: Check this
     euler_rate_err = SCALE_TO_DEG_PER_MILLION_YEARS * np.rad2deg(euler_rate_err)
 
     return euler_lon_err, euler_lat_err, euler_rate_err
