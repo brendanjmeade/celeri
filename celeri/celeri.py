@@ -4614,6 +4614,31 @@ def post_process_estimation(
     estimation.dip_slip_rates = estimation.slip_rates[1::3]
     estimation.tensile_slip_rates = estimation.slip_rates[2::3]
 
+    # Calculate and insert kinematic and coupling triangle rates
+    # TODO: This is a placeholder for the real calculation of TDE kinematic
+    # and coupling rates
+    estimation.tde_tensile_slip_rates = np.zeros_like(
+        estimation.tde_strike_slip_rates
+    )
+    estimation.tde_strike_slip_rates_kinematic = np.zeros_like(
+        estimation.tde_strike_slip_rates
+    )
+    estimation.tde_dip_slip_rates_kinematic = np.zeros_like(
+        estimation.tde_dip_slip_rates
+    )
+    estimation.tde_tensile_slip_rates_kinematic = np.zeros_like(
+        estimation.tde_tensile_slip_rates
+    )
+    estimation.tde_strike_slip_rates_coupling = np.zeros_like(
+        estimation.tde_strike_slip_rates
+    )
+    estimation.tde_dip_slip_rates_coupling = np.zeros_like(
+        estimation.tde_dip_slip_rates
+    )
+    estimation.tde_tensile_slip_rates_coupling = np.zeros_like(
+        estimation.tde_tensile_slip_rates
+    )
+
     # Extract estimated block strain rates
     estimation.block_strain_rates = estimation.state_vector[
         3 * index.n_blocks + 2 * index.n_tde_total : 3 * index.n_blocks
@@ -4667,9 +4692,8 @@ def post_process_estimation(
     )
 
     # Calculate Euler pole uncertainties
-    omega_cov = np.zeros((3 * len(rotation_vector_x), 3 * len(rotation_vector_x)))
-    estimation.euler_lon_err, estimation.euler_lat_err, estimation.euler_rate_err = rotation_vector_err_to_euler_pole_err(rotation_vector_x, rotation_vector_y, rotation_vector_z, omega_cov)
-
+    rotation_vector_covariance_matrix = estimation.state_covariance_matrix[0:3 * index.n_blocks, 0:3 * index.n_blocks]
+    estimation.euler_lon_err, estimation.euler_lat_err, estimation.euler_rate_err = rotation_vector_err_to_euler_pole_err(rotation_vector_x, rotation_vector_y, rotation_vector_z, rotation_vector_covariance_matrix)
 
     # Calculate Mogi source velocities
     estimation.vel_mogi = (
