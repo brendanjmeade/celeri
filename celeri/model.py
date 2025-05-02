@@ -91,6 +91,8 @@ def _get_gaussian_smoothing_operator(meshes, operators, index):
         points = np.vstack((meshes[i].lon_centroid, meshes[i].lat_centroid)).T
 
         length_scale = meshes[i].config.iterative_coupling_smoothing_length_scale
+
+        # TODO this default should be in the config
         if length_scale is None:
             length_scale = 0.25
 
@@ -98,8 +100,9 @@ def _get_gaussian_smoothing_operator(meshes, operators, index):
         D = spatial.distance_matrix(points, points)
 
         # Define Gaussian weight function
-        W = np.clip(np.exp(-(D**2) / (2 * length_scale**2)), 1e-6, np.inf)
-        # W = np.exp(-(D**2) / (2 * length_scale**2))
+        W = np.exp(-(D**2) / (2 * length_scale**2))
+        # TODO make this configurable
+        W[W < 1e-8] = 0.0
 
         # Normalize rows so each row sums to 1
         W /= W.sum(axis=1, keepdims=True)
