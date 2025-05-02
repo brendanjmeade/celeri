@@ -9,6 +9,7 @@ import pickle
 import shutil
 import timeit
 import warnings
+from dataclasses import asdict
 from typing import TYPE_CHECKING
 
 import addict
@@ -5584,7 +5585,9 @@ def write_output(
 
             # Write command dictionary
             grp = hdf.create_group("command")
-            for key, value in command.items():
+            for key, value in asdict(command).items():
+                if value is None:
+                    continue
                 if isinstance(value, str):
                     # Handle strings specially
                     grp.create_dataset(
@@ -5740,7 +5743,7 @@ def write_output(
         command.output_path + "/args_" + os.path.basename(command.file_name)
     )
     with open(args_command_output_file_name, "w") as f:
-        json.dump(command, f, indent=4)
+        json.dump(asdict(command), f, indent=4)
 
     # Write all major variables to .pkl file in output folder
     if bool(command.pickle_save):
