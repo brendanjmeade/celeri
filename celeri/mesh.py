@@ -10,6 +10,8 @@ from loguru import logger
 from celeri import constants
 from celeri.celeri_util import cart2sph, sph2cart, triangle_area, wrap2360
 
+type ByMesh[T] = dict[int, T]
+
 
 @dataclass
 class MeshConfig:
