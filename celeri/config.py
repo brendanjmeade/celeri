@@ -88,6 +88,9 @@ class Config:
     tvr_lambda: int = 1
     unit_sigmas: int = 0
 
+    coupling_bounds_total_percentage_satisfied_target: float | None = None
+    coupling_bounds_max_iter: float | None = None
+
     # Runtime fields (not in JSON)
     file_name: Optional[str] = None
     run_name: Optional[str] = None
