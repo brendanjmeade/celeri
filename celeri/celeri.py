@@ -4614,6 +4614,31 @@ def post_process_estimation(
     estimation.dip_slip_rates = estimation.slip_rates[1::3]
     estimation.tensile_slip_rates = estimation.slip_rates[2::3]
 
+    # Calculate and insert kinematic and coupling triangle rates
+    # TODO: This is a placeholder for the real calculation of TDE kinematic
+    # and coupling rates
+    estimation.tde_tensile_slip_rates = np.zeros_like(
+        estimation.tde_strike_slip_rates
+    )
+    estimation.tde_strike_slip_rates_kinematic = np.zeros_like(
+        estimation.tde_strike_slip_rates
+    )
+    estimation.tde_dip_slip_rates_kinematic = np.zeros_like(
+        estimation.tde_dip_slip_rates
+    )
+    estimation.tde_tensile_slip_rates_kinematic = np.zeros_like(
+        estimation.tde_tensile_slip_rates
+    )
+    estimation.tde_strike_slip_rates_coupling = np.zeros_like(
+        estimation.tde_strike_slip_rates
+    )
+    estimation.tde_dip_slip_rates_coupling = np.zeros_like(
+        estimation.tde_dip_slip_rates
+    )
+    estimation.tde_tensile_slip_rates_coupling = np.zeros_like(
+        estimation.tde_tensile_slip_rates
+    )
+
     # Extract estimated block strain rates
     estimation.block_strain_rates = estimation.state_vector[
         3 * index.n_blocks + 2 * index.n_tde_total : 3 * index.n_blocks
@@ -4662,14 +4687,13 @@ def post_process_estimation(
     rotation_vector_x = rotation_vector[0::3]
     rotation_vector_y = rotation_vector[1::3]
     rotation_vector_z = rotation_vector[2::3]
-    estimation.euler_lon, estimation.euler_lat, estimation.euler_rate = rotation_vectors_to_euler_poles(
+    estimation.euler_lon_clp, estimation.euler_lat_clp, estimation.euler_rate_clp = rotation_vectors_to_euler_poles(
         rotation_vector_x, rotation_vector_y, rotation_vector_z
     )
 
     # Calculate Euler pole uncertainties
-    omega_cov = np.zeros((3 * len(rotation_vector_x), 3 * len(rotation_vector_x)))
-    estimation.euler_lon_err, estimation.euler_lat_err, estimation.euler_rate_err = rotation_vector_err_to_euler_pole_err(rotation_vector_x, rotation_vector_y, rotation_vector_z, omega_cov)
-
+    rotation_vector_covariance_matrix = estimation.state_covariance_matrix[0:3 * index.n_blocks, 0:3 * index.n_blocks]
+    estimation.euler_lon_err_clp, estimation.euler_lat_err_clp, estimation.euler_rate_err_clp = rotation_vector_err_to_euler_pole_err(rotation_vector_x, rotation_vector_y, rotation_vector_z, rotation_vector_covariance_matrix)
 
     # Calculate Mogi source velocities
     estimation.vel_mogi = (
@@ -4835,13 +4859,13 @@ def post_process_estimation_eigen(estimation_eigen, operators, station, index):
     rotation_vector_x = rotation_vector[0::3]
     rotation_vector_y = rotation_vector[1::3]
     rotation_vector_z = rotation_vector[2::3]
-    estimation_eigen.euler_lon, estimation_eigen.euler_lat, estimation_eigen.euler_rate = rotation_vectors_to_euler_poles(
+    estimation_eigen.euler_lon_clp, estimation_eigen.euler_lat_clp, estimation_eigen.euler_rate_clp = rotation_vectors_to_euler_poles(
         rotation_vector_x, rotation_vector_y, rotation_vector_z
     )
 
     # Calculate Euler pole uncertainties
     omega_cov = np.zeros((3 * len(rotation_vector_x), 3 * len(rotation_vector_x)))
-    estimation_eigen.euler_lon_err, estimation_eigen.euler_lat_err, estimation_eigen.euler_rate_err = rotation_vector_err_to_euler_pole_err(rotation_vector_x, rotation_vector_y, rotation_vector_z, omega_cov)
+    estimation_eigen.euler_lon_err_clp, estimation_eigen.euler_lat_err_clp, estimation_eigen.euler_rate_err_clp = rotation_vector_err_to_euler_pole_err(rotation_vector_x, rotation_vector_y, rotation_vector_z, omega_cov)
 
     # Extract Mogi parameters
     estimation_eigen.mogi_volume_change_rates = estimation_eigen.state_vector[
@@ -5952,15 +5976,14 @@ def write_output(
     segment.to_csv(segment_output_file_name, index=False, float_format="%0.4f")
 
     # TODO: Add rotation rates and block strain rate block dataframe and write .csv
-    block["euler_lon"] = estimation.euler_lon
-    block["euler_lon_err"] = estimation.euler_lon_err
-    block["euler_lat"] = estimation.euler_lat
-    block["euler_lat_err"] = estimation.euler_lat_err
-    block["euler_rate"] = estimation.euler_rate
-    block["euler_rate_err"] = estimation.euler_rate_err
+    block["euler_lon_clp"] = estimation.euler_lon_clp
+    block["euler_lon_err_clp"] = estimation.euler_lon_err_clp
+    block["euler_lat_clp"] = estimation.euler_lat_clp
+    block["euler_lat_err_clp"] = estimation.euler_lat_err_clp
+    block["euler_rate_clp"] = estimation.euler_rate_clp
+    block["euler_rate_err_clp"] = estimation.euler_rate_err_clp
     block_output_file_name = command.output_path + "/" + "model_block.csv"
     block.to_csv(block_output_file_name, index=False, float_format="%0.4f")
-
 
     # Add volume change rates to Mogi source dataframe
     # Create an empy mogi dictionary if there isn't already one
