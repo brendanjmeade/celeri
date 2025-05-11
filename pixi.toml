@@ -38,6 +38,7 @@ tqdm = ">=4.67.1"
 polars = ">=1.27.1"
 ipykernel = ">=6.29.5"
 seaborn = ">=0.13.2"
+papermill = ">=2.6.0,<3"
 
 [feature.dev.dependencies]
 pre-commit = "*"
