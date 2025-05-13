@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Callable, Literal, cast
 
 import addict
+from celeri.operators import Operators, build_operators
 import cvxopt
 import cvxpy as cp
 import matplotlib.pyplot as plt
@@ -409,7 +410,8 @@ class VelocityLimit:
 
 @dataclass
 class Minimizer:
-    problem: Model
+    model: Model
+    operators: Operators
     cp_problem: cp.Problem
     params_raw: cp.Expression
     params: cp.Expression
@@ -421,17 +423,17 @@ class Minimizer:
     smooth_kinematic: bool = True
 
     def plot_coupling(self):
-        n_plots = len(self.problem.segment_mesh_indices)
+        n_plots = len(self.model.segment_mesh_indices)
         fig, axes = plt.subplots(n_plots, 4, figsize=(20, 12), sharex=True, sharey=True)
 
-        for idx in self.problem.segment_mesh_indices:
+        for idx in self.model.segment_mesh_indices:
             if idx == 0:
                 axes[idx, 0].set_title("strike slip")
                 axes[idx, 1].set_title("smoothed strike slip")
                 axes[idx, 2].set_title("dip slip")
                 axes[idx, 3].set_title("smoothed dip slip")
 
-            if idx == self.problem.segment_mesh_indices[-1]:
+            if idx == self.model.segment_mesh_indices[-1]:
                 for i in range(4):
                     axes[idx, i].set_xlabel("kinetic")
             axes[idx, 0].set_ylabel("estimated")
@@ -464,27 +466,27 @@ class Minimizer:
     def plot_estimation_summary(self, command):
         estimation_qp = addict.Dict()
         estimation_qp.state_vector = self.params.value
-        estimation_qp.operator = self.problem.operators.eigen
+        estimation_qp.operator = self.operators.eigen
         post_process_estimation_eigen(
             estimation_qp,
-            self.problem.operators,
-            self.problem.station,
-            self.problem.index,
+            self.operators,
+            self.model.station,
+            self.operators.index,
         )
         write_output(
             command,
             estimation_qp,
-            self.problem.station,
-            self.problem.segment,
-            self.problem.block,
-            self.problem.meshes,
+            self.model.station,
+            self.model.segment,
+            self.model.block,
+            self.model.meshes,
         )
 
         plot_estimation_summary(
             command,
-            self.problem.segment,
-            self.problem.station,
-            self.problem.meshes,
+            self.model.segment,
+            self.model.station,
+            self.model.meshes,
             estimation_qp,
             lon_range=command.lon_range,
             lat_range=command.lat_range,
@@ -493,7 +495,7 @@ class Minimizer:
 
     def out_of_bounds(self, *, tol: float = 1e-8) -> tuple[int, int]:
         oob, total = 0, 0
-        for idx in self.problem.segment_mesh_indices:
+        for idx in self.model.segment_mesh_indices:
             oob_mesh, total_mesh = self.coupling[idx].out_of_bounds(
                 smooth_kinematic=self.smooth_kinematic, tol=tol
             )
@@ -503,7 +505,7 @@ class Minimizer:
 
     def constraint_loss(self) -> float:
         loss = 0.0
-        for idx in self.problem.segment_mesh_indices:
+        for idx in self.model.segment_mesh_indices:
             loss += self.coupling[idx].constraint_loss(
                 smooth_kinematic=self.smooth_kinematic
             )
@@ -521,7 +523,7 @@ Objective = Literal[
 
 
 def build_cvxpy_problem(
-    problem: Model,
+    model: Model,
     *,
     init_params_raw_value: np.ndarray | None = None,
     init_params_value: np.ndarray | None = None,
@@ -533,32 +535,24 @@ def build_cvxpy_problem(
     rescale_parameters: bool = True,
     rescale_constraints: bool = True,
     mixed_integer: bool = False,
+    default_constraints: bool = True,
+    operators: Operators | None = None,
 ) -> Minimizer:
-    qp_inequality_constraints_matrix, qp_inequality_constraints_data_vector = (
-        get_qp_all_inequality_operator_and_data_vector(
-            problem.index,
-            problem.meshes,
-            problem.operators,
-            problem.segment,
-            problem.block,
-        )
-    )
+    if operators is None:
+        operators = build_operators(model)
 
     # Get data vector for KL problem
     data_vector_eigen = get_data_vector_eigen(
-        problem.meshes, problem.assembly, problem.index
+        model.meshes, operators.assembly, operators.index
     )
 
     # Get data vector for KL problem
     weighting_vector_eigen = get_weighting_vector_eigen(
-        problem.command, problem.station, problem.meshes, problem.index
+        model.command, model.station, model.meshes, operators.index
     )
 
-    C = problem.operators.eigen * np.sqrt(weighting_vector_eigen[:, None])
+    C = operators.eigen * np.sqrt(weighting_vector_eigen[:, None])
     d = data_vector_eigen * np.sqrt(weighting_vector_eigen)
-
-    A = qp_inequality_constraints_matrix
-    b = qp_inequality_constraints_data_vector
 
     if rescale_parameters:
         scale = np.abs(C).max(0)
@@ -571,17 +565,17 @@ def build_cvxpy_problem(
     if init_params_value is not None:
         init_params_raw_value = init_params_value * scale
 
-    assert problem.operators.eigen is not None
+    assert operators.eigen is not None
 
     if init_params_raw_value is not None:
         params_raw = cp.Variable(
             name="params_raw",
-            shape=problem.operators.eigen.shape[1],
+            shape=operators.eigen.shape[1],
             value=init_params_raw_value,
         )
     else:
         params_raw = cp.Variable(
-            name="params_raw", shape=problem.operators.eigen.shape[1]
+            name="params_raw", shape=operators.eigen.shape[1]
         )
 
     params = params_raw / scale
@@ -592,30 +586,30 @@ def build_cvxpy_problem(
     def adapt_operator(array: np.ndarray):
         return sparse.csr_array(array)
 
-    for mesh_idx in problem.segment_mesh_indices:
+    for mesh_idx in model.segment_mesh_indices:
         # Matrix vector components of kinematic velocities
-        param_slice = slice(0, 3 * len(problem.block))
+        param_slice = slice(0, 3 * len(model.block))
         kinematic_params = params_raw[param_slice]
         kinematic_operator = (
-            problem.operators.rotation_to_tri_slip_rate[mesh_idx]
+            operators.rotation_to_tri_slip_rate[mesh_idx]
             / scale[None, param_slice]
         )
 
         kinematic_operator = adapt_operator(kinematic_operator)
 
         # Matrix vector components of estimated velocities
-        start = problem.index["start_col_eigen"][mesh_idx]
-        end = problem.index["end_col_eigen"][mesh_idx]
+        start = operators.index["start_col_eigen"][mesh_idx]
+        end = operators.index["end_col_eigen"][mesh_idx]
         param_slice = slice(start, end)
         estimated_params = params_raw[param_slice]
         estimated_operator = (
-            problem.operators.eigenvectors_to_tde_slip[mesh_idx]
+            operators.eigenvectors_to_tde_slip[mesh_idx]
             / scale[None, param_slice]
         )
 
         estimated_operator = adapt_operator(estimated_operator)
 
-        smoothing_operator = problem.operators.linear_guassian_smoothing[mesh_idx]
+        smoothing_operator = operators.linear_guassian_smoothing[mesh_idx]
 
         smoothing_operator = adapt_operator(smoothing_operator)
 
@@ -696,15 +690,6 @@ def build_cvxpy_problem(
                     )
                 )
 
-    A_hat = np.array(A / scale)
-
-    if rescale_constraints:
-        A_scale = np.linalg.norm(A_hat, axis=1)
-    else:
-        A_scale = np.ones(A_hat.shape[0])
-    A_hat_ = A_hat / A_scale[:, None]
-    b_hat = b / A_scale
-
     objective_norm2 = cp.norm2(C_hat @ params_raw - d)
 
     match objective:
@@ -753,14 +738,33 @@ def build_cvxpy_problem(
         case _:
             raise ValueError(f"Unknown objective type: {objective}")
 
-    constraint = adapt_operator(A_hat_) @ params_raw <= b_hat
+    if default_constraints:
+        A, b = get_qp_all_inequality_operator_and_data_vector(
+            operators.index,
+            model.meshes,
+            operators,
+            model.segment,
+            model.block,
+        )
+        A_hat = np.array(A / scale)
 
-    constraints.append(constraint)
+        if rescale_constraints:
+            A_scale = np.linalg.norm(A_hat, axis=1)
+        else:
+            A_scale = np.ones(A_hat.shape[0])
+        A_hat_ = A_hat / A_scale[:, None]
+        b_hat = b / A_scale
+
+        constraint = adapt_operator(A_hat_) @ params_raw <= b_hat
+        constraints.append(constraint)
+    else:
+        A_scale = np.ones(0)
 
     cp_problem = cp.Problem(cp.Minimize(objective_val), constraints)
 
     return Minimizer(
-        problem=problem,
+        model=model,
+        operators=operators,
         cp_problem=cp_problem,
         params_raw=params_raw,
         params=params,
@@ -840,7 +844,7 @@ def _tighten_kinematic_bounds(
         raise ValueError("Velocity limits have not been set")
 
     velocity_limits = {}
-    for idx in minimizer.problem.segment_mesh_indices:
+    for idx in minimizer.model.segment_mesh_indices:
         velocity_limits[idx] = limits[idx].apply_with_coupling(
             tighten_item, minimizer.coupling[idx]
         )
@@ -849,6 +853,7 @@ def _tighten_kinematic_bounds(
 @dataclass
 class MinimizerTrace:
     problem: Model
+    operators: Operators
     params: list[np.ndarray]
     params_raw: list[np.ndarray]
     coupling: list[dict[int, Coupling]]
@@ -864,7 +869,7 @@ class MinimizerTrace:
     minimizer: Minimizer
 
     def __init__(self, minimizer: Minimizer):
-        self.problem = minimizer.problem
+        self.problem = minimizer.model
         self.params = []
         self.params_raw = []
         self.coupling = []
@@ -1012,7 +1017,7 @@ def _custom_solve(problem: cp.Problem, solver: str, objective: Objective, **kwar
 
 
 def minimize(
-    problem: Model,
+    model: Model,
     *,
     velocity_upper: float,
     velocity_lower: float,
@@ -1023,9 +1028,11 @@ def minimize(
     verbose: bool = False,
     rescale_parameters: bool = True,
     rescale_constraints: bool = True,
+    default_constraints: bool = True,
     objective: Literal[
         "expanded_norm2", "sum_of_squares", "norm1", "norm2"
     ] = "expanded_norm2",
+    operators: Operators | None = None,
 ) -> MinimizerTrace:
     """Iteratively solve a constrained optimization problem for fault slip rates.
 
@@ -1046,17 +1053,19 @@ def minimize(
         A trace object containing the optimization history
     """
     limits = {}
-    for idx in problem.segment_mesh_indices:
-        length = problem.meshes[idx].n_tde
+    for idx in model.segment_mesh_indices:
+        length = model.meshes[idx].n_tde
         limits[idx] = VelocityLimit.from_scalar(length, velocity_lower, velocity_upper)
 
     minimizer = build_cvxpy_problem(
-        problem,
+        model,
         velocity_limits=limits,
         smooth_kinematic=smooth_kinematic,
         rescale_parameters=rescale_parameters,
         rescale_constraints=rescale_constraints,
         objective=objective,
+        default_constraints=default_constraints,
+        operators=operators,
     )
     trace = MinimizerTrace(minimizer)
 
@@ -1098,7 +1107,7 @@ def minimize(
 
 
 def benchmark_solve(
-    problem: Model,
+    model: Model,
     *,
     with_limits: tuple[float, float] | None,
     objective: Objective,
@@ -1107,6 +1116,7 @@ def benchmark_solve(
     velocity_as_variable: bool = False,
     solver: str,
     solve_kwargs: dict | None = None,
+    operators: Operators | None = None,
 ):
     """Benchmark the performance of solving a CeleriProblem with different configurations.
 
@@ -1125,21 +1135,22 @@ def benchmark_solve(
     """
     if with_limits is not None:
         limits = {}
-        for idx in problem.segment_mesh_indices:
-            length = problem.meshes[idx].n_tde
+        for idx in model.segment_mesh_indices:
+            length = model.meshes[idx].n_tde
             lower, upper = with_limits
             limits[idx] = VelocityLimit.from_scalar(length, lower, upper)
     else:
         limits = None
 
     minimizer = build_cvxpy_problem(
-        problem,
+        model,
         velocity_limits=limits,
         objective=objective,
         rescale_parameters=rescale_parameters,
         rescale_constraints=rescale_constraints,
         mixed_integer=False,
         velocity_as_variable=velocity_as_variable,
+        operators=operators,
     )
 
     default_solve_kwargs = {

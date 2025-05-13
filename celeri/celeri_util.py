@@ -516,3 +516,65 @@ def diagnose_matrix(mat):
         if rank < col:
             print(f"RANK DEFICIENT: {col=}, {rank=}")
             break
+
+
+def euler_pole_covariance_to_rotation_vector_covariance(
+    omega_x, omega_y, omega_z, euler_pole_covariance_all
+):
+    """This function takes the model parameter covariance matrix
+    in terms of the Euler pole and rotation rate and linearly
+    propagates them to rotation vector space.
+    """
+    omega_x_sig = np.zeros_like(omega_x)
+    omega_y_sig = np.zeros_like(omega_y)
+    omega_z_sig = np.zeros_like(omega_z)
+    for i in range(len(omega_x)):
+        x = omega_x[i]
+        y = omega_y[i]
+        z = omega_z[i]
+        euler_pole_covariance_current = euler_pole_covariance_all[
+            3 * i : 3 * (i + 1), 3 * i : 3 * (i + 1)
+        ]
+
+        """
+        There may be cases where x, y and z are all zero.  This leads to /0 errors.  To avoid this  %%
+        we check for these cases and Let A = b * I where b is a small constant (10^-4) and I is     %%
+        the identity matrix
+        """
+        if (x == 0) and (y == 0):
+            euler_to_cartsian_operator = 1e-4 * np.eye(
+                3
+            )  # Set a default small value for rotation vector uncertainty
+        else:
+            # Calculate the partial derivatives
+            dlat_dx = -z / (x**2 + y**2) ** (3 / 2) / (1 + z**2 / (x**2 + y**2)) * x
+            dlat_dy = -z / (x**2 + y**2) ** (3 / 2) / (1 + z**2 / (x**2 + y**2)) * y
+            dlat_dz = 1 / (x**2 + y**2) ** (1 / 2) / (1 + z**2 / (x**2 + y**2))
+            dlon_dx = -y / x**2 / (1 + (y / x) ** 2)
+            dlon_dy = 1 / x / (1 + (y / x) ** 2)
+            dlon_dz = 0
+            dmag_dx = x / np.sqrt(x**2 + y**2 + z**2)
+            dmag_dy = y / np.sqrt(x**2 + y**2 + z**2)
+            dmag_dz = z / np.sqrt(x**2 + y**2 + z**2)
+            euler_to_cartsian_operator = np.array(
+                [
+                    [dlat_dx, dlat_dy, dlat_dz],
+                    [dlon_dx, dlon_dy, dlon_dz],
+                    [dmag_dx, dmag_dy, dmag_dz],
+                ]
+            )
+
+        # Propagate the Euler pole covariance matrix to a rotation rate
+        # covariance matrix
+        rotation_vector_covariance = (
+            np.linalg.inv(euler_to_cartsian_operator)
+            * euler_pole_covariance_current
+            * np.linalg.inv(euler_to_cartsian_operator).T
+        )
+
+        # Organized data for the return
+        main_diagonal_values = np.diag(rotation_vector_covariance)
+        omega_x_sig[i] = np.sqrt(main_diagonal_values[0])
+        omega_y_sig[i] = np.sqrt(main_diagonal_values[1])
+        omega_z_sig[i] = np.sqrt(main_diagonal_values[2])
+    return omega_x_sig, omega_y_sig, omega_z_sig

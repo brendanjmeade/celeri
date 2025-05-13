@@ -12,10 +12,7 @@ from loguru import logger
 from scipy.spatial.distance import cdist
 
 from celeri import celeri_closure
-from celeri.celeri import (
-    polygon_area,
-)
-from celeri.celeri_util import sph2cart
+from celeri.celeri_util import polygon_area, sph2cart
 from celeri.config import Config, get_config
 from celeri.constants import GEOID, RADIUS_EARTH
 from celeri.mesh import ByMesh, Mesh, MeshConfig

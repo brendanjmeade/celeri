@@ -10,7 +10,7 @@ import numpy as np
 import okada_wrapper
 import pandas as pd
 import scipy
-import tqdm
+from tqdm import tqdm
 from loguru import logger
 from scipy import spatial
 from scipy.sparse import csr_matrix
@@ -18,6 +18,7 @@ from scipy.spatial.distance import cdist
 
 from celeri.celeri_util import (
     cartesian_vector_to_spherical_vector,
+    euler_pole_covariance_to_rotation_vector_covariance,
     get_2component_index,
     get_cross_partials,
     get_keep_index_12,
@@ -36,6 +37,7 @@ from celeri.constants import (
     N_MESH_DIM,
     RADIUS_EARTH,
 )
+from celeri.mesh import ByMesh, Mesh
 from celeri.model import (
     Model,
     get_block_centroid,
@@ -43,7 +45,6 @@ from celeri.model import (
     get_tri_shared_sides_distances,
     merge_geodetic_data,
 )
-from celeri.solve import euler_pole_covariance_to_rotation_vector_covariance
 
 
 # TODO maybe this should only contain commonly used operators,
@@ -76,9 +77,10 @@ class Operators:
     eigen_to_tde_bcs: dict[int, np.ndarray] = field(default_factory=dict)
 
 
-def compute_operators(model: Model):
+def build_operators(model: Model):
     assembly = addict.Dict()
     operators = Operators()
+    operators.assembly = assembly
 
     operators.meshes = [addict.Dict() for _ in range(len(model.meshes))]
     assembly = merge_geodetic_data(assembly, model.station, model.sar)
@@ -137,6 +139,7 @@ def compute_operators(model: Model):
     index = get_index_eigen(
         assembly, model.segment, model.station, model.block, model.meshes, model.mogi
     )
+    operators.index = index
 
     # Get data vector for KL problem
     get_data_vector_eigen(model.meshes, assembly, index)
@@ -297,7 +300,7 @@ def get_rotation_displacements(lon_obs, lat_obs, omega_x, omega_y, omega_z):
 
 def get_elastic_operators(
     operators: Operators,
-    meshes: list,
+    meshes: ByMesh[Mesh],
     segment: pd.DataFrame,
     station: pd.DataFrame,
     command: Config,
