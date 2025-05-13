@@ -5,7 +5,8 @@
         "top_slip_rate_constraint": 0,
         "bot_slip_rate_constraint": 1,
         "side_slip_rate_constraint": 1,
-        "n_eigen": 100,
+        "n_modes_strike_slip": 50,
+        "n_modes_dip_slip": 50,
         "a_priori_slip_filename": ""
     }
 ]
