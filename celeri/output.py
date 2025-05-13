@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 import json
 import os
 import pickle
 import shutil
+import typing
 from dataclasses import asdict
 
-import addict
 import h5py
 import numpy as np
 import pandas as pd
@@ -13,12 +15,15 @@ from loguru import logger
 
 from celeri.config import Config
 
+if typing.TYPE_CHECKING:
+    from celeri.solve import Estimator
+
 
 # TODO: Why is there a pytest mark here?
 @pytest.mark.skip(reason="Writing output files")
 def write_output(
     command: Config,
-    estimation: addict.Dict,
+    estimation: Estimator,
     station: pd.DataFrame,
     segment: pd.DataFrame,
     block: pd.DataFrame,

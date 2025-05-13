@@ -1,15 +1,22 @@
 import addict
 import matplotlib
-import matplotlib.pyplot as plt
-from matplotlib.colors import Normalize
 import matplotlib.lines as mlines
 import matplotlib.patches as mpatches
-from matplotlib import cm
-from celeri.operators import get_okada_displacements, get_rotation_displacements, get_strain_rate_displacements
-import pandas as pd
+import matplotlib.pyplot as plt
 import numpy as np
-from loguru import logger
+import pandas as pd
 import scipy.io
+from loguru import logger
+from matplotlib import cm
+from matplotlib.colors import Normalize
+
+from celeri.config import Config
+from celeri.constants import EPS
+from celeri.operators import (
+    get_okada_displacements,
+    get_rotation_displacements,
+    get_strain_rate_displacements,
+)
 
 
 def plot_block_labels(segment, block, station, closure):
@@ -281,7 +288,7 @@ def plot_input_summary(
 
 
 def plot_estimation_summary(
-    command: dict,
+    command: Config,
     segment: pd.DataFrame,
     station: pd.DataFrame,
     meshes: list,

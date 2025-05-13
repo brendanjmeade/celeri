@@ -9,30 +9,33 @@ import cvxopt
 import numpy as np
 import pandas as pd
 import scipy
-from _pytest.config import Config
 from loguru import logger
 from scipy.sparse import csr_matrix
 
 from celeri.celeri_util import get_keep_index_12
+from celeri.config import Config
+from celeri.model import Model
 from celeri.operators import (
+    Index,
     Operators,
-    get_all_mesh_smoothing_matrices,
-    get_block_motion_constraints,
+    _get_index,
+    _store_all_mesh_smoothing_matrices,
+    _store_block_motion_constraints,
+    _store_elastic_operators,
+    _store_elastic_operators_okada,
+    _store_tde_slip_rate_constraints,
+    build_operators,
     get_block_strain_rate_to_velocities_partials,
     get_data_vector,
-    get_elastic_operators,
-    get_elastic_operators_okada,
     get_full_dense_operator,
     get_full_dense_operator_block_only,
     get_global_float_block_rotation_partials,
     get_h_matrices_for_tde_meshes,
-    get_index,
     get_index_no_meshes,
     get_mogi_to_velocities_partials,
     get_rotation_to_slip_rate_partials,
     get_rotation_to_velocities_partials,
     get_slip_rate_constraints,
-    get_tde_slip_rate_constraints,
     get_weighting_vector,
     get_weighting_vector_no_meshes,
     rotation_vector_err_to_euler_pole_err,
@@ -41,20 +44,23 @@ from celeri.operators import (
 from celeri.output import write_output
 from celeri.plot import plot_estimation_summary
 
+type Estimator = addict.Dict
 
-def assemble_and_solve_dense(
-    command, assembly, operators, station, block, meshes, mogi
-):
-    index = get_index(assembly, station, block, meshes, mogi)
+
+def assemble_and_solve_dense(model: Model) -> tuple[Operators, Estimator]:
+    # TODO This should be able to ask for specific subsets of operators?
+    operators = build_operators(model, eigen=False)
+
     estimation = addict.Dict()
-    estimation.data_vector = get_data_vector(assembly, index, meshes)
-    estimation.weighting_vector = get_weighting_vector(command, station, meshes, index)
-    estimation.operator = get_full_dense_operator(operators, meshes, index)
+    estimation.data_vector = get_data_vector(model, operators.assembly, operators.index)
+    estimation.weighting_vector = get_weighting_vector(model, operators.index)
+    estimation.operator = get_full_dense_operator(model, operators)
 
     # DEBUG HERE:
     # IPython.embed(banner1="")
 
     # Solve the overdetermined linear system using only a weighting vector rather than matrix
+    # TODO: Do this with a decompositon
     estimation.state_covariance_matrix = np.linalg.inv(
         estimation.operator.T * estimation.weighting_vector @ estimation.operator
     )
@@ -64,14 +70,14 @@ def assemble_and_solve_dense(
         * estimation.weighting_vector
         @ estimation.data_vector
     )
-    return index, estimation
+    return operators, estimation
 
 
 def post_process_estimation(
     estimation: addict.Dict,
     operators: Operators,
     station: pd.DataFrame,
-    index: addict.Dict,
+    index: Index,
 ):
     """Calculate derived values derived from the block model linear estimate (e.g., velocities, undertainties).
 
@@ -81,6 +87,9 @@ def post_process_estimation(
         station (pd.DataFrame): GPS station data
         idx (Dict): Indices and counts of data and array sizes
     """
+    # TODO We should probably be able to handle this case
+    assert index.tde is not None
+
     # Convert rotation vectors to Euler poles
 
     estimation.predictions = estimation.operator @ estimation.state_vector
@@ -136,7 +145,7 @@ def post_process_estimation(
         + index.n_block_strain_components : +3 * index.n_blocks
         + 2 * index.n_tde_total
         + index.n_block_strain_components
-        + index.n_mogi
+        + index.n_mogis
     ]
 
     # Calculate rotation only velocities
@@ -199,13 +208,17 @@ def post_process_estimation(
         tde_keep_col_index = get_keep_index_12(operators.tde_to_velocities[i].shape[1])
         estimation.vel_tde += (
             operators.tde_to_velocities[i][tde_keep_row_index, :][:, tde_keep_col_index]
-            @ estimation.state_vector[index.start_tde_col[i] : index.end_tde_col[i]]
+            @ estimation.state_vector[
+                index.tde.start_tde_col[i] : index.tde.end_tde_col[i]
+            ]
         )
     estimation.east_vel_tde = estimation.vel_tde[0::2]
     estimation.north_vel_tde = estimation.vel_tde[1::2]
 
 
-def post_process_estimation_eigen(estimation_eigen, operators, station, index):
+def post_process_estimation_eigen(
+    model: Model, estimation_eigen: Estimator, operators: Operators
+):
     """Calculate derived values derived from the block model linear estimate (e.g., velocities, undertainties).
 
     Args:
@@ -214,9 +227,13 @@ def post_process_estimation_eigen(estimation_eigen, operators, station, index):
         station (pd.DataFrame): GPS station data
         idx (Dict): Indices and counts of data and array sizes
     """
+    index = operators.index
+    assert index.tde is not None
+    assert index.eigen is not None
+
     # Isolate eigenvalues (weights for eigenmodes)
     estimation_eigen.eigenvalues = estimation_eigen.state_vector[
-        index.start_col_eigen[0] : index.end_col_eigen[-1]
+        index.eigen.start_col_eigen[0] : index.eigen.end_col_eigen[-1]
     ]
 
     estimation_eigen.predictions = (
@@ -235,21 +252,25 @@ def post_process_estimation_eigen(estimation_eigen, operators, station, index):
     estimation_eigen.tensile_slip_rate_sigma = np.zeros(index.n_segments)
 
     # Calculate mean squared residual velocity
-    estimation_eigen.east_vel_residual = estimation_eigen.east_vel - station.east_vel
-    estimation_eigen.north_vel_residual = estimation_eigen.north_vel - station.north_vel
+    estimation_eigen.east_vel_residual = (
+        estimation_eigen.east_vel - model.station.east_vel
+    )
+    estimation_eigen.north_vel_residual = (
+        estimation_eigen.north_vel - model.station.north_vel
+    )
 
     # Extract TDE slip rates from state vector
     estimation_eigen.tde_rates = np.zeros(2 * index.n_tde_total)
     for i in range(index.n_meshes):
         # Temporary indices for easier reading
-        start_idx = index.start_tde_col[i] - 3 * index.n_blocks
-        end_idx = index.end_tde_col[i] - 3 * index.n_blocks
+        start_idx = index.tde.start_tde_col[i] - 3 * index.n_blocks
+        end_idx = index.tde.end_tde_col[i] - 3 * index.n_blocks
 
         # Calcuate estimated TDE rates for the current mesh
         estimation_eigen.tde_rates[start_idx:end_idx] = (
             operators.eigenvectors_to_tde_slip[i]
             @ estimation_eigen.state_vector[
-                index.start_col_eigen[i] : index.end_col_eigen[i]
+                index.eigen.start_col_eigen[i] : index.eigen.end_col_eigen[i]
             ]
         )
 
@@ -270,7 +291,7 @@ def post_process_estimation_eigen(estimation_eigen, operators, station, index):
 
     # Insert estimated TDE rates into pseudo state vector
     estimation_eigen.pseudo_tde_state_vector[
-        index.start_tde_col[0] : index.end_tde_col[-1]
+        index.tde.start_tde_col[0] : index.tde.end_tde_col[-1]
     ] = estimation_eigen.tde_rates
 
     # Calculate and insert kinematic and coupling triangle rates
@@ -328,7 +349,7 @@ def post_process_estimation_eigen(estimation_eigen, operators, station, index):
 
     # Extract estimated block strain rates
     estimation_eigen.block_strain_rates = estimation_eigen.state_vector[
-        index.start_block_strain_col_eigen : index.end_block_strain_col_eigen
+        index.eigen.start_block_strain_col_eigen : index.eigen.end_block_strain_col_eigen
     ]
 
     # Calculate block strain rate velocities
@@ -368,7 +389,7 @@ def post_process_estimation_eigen(estimation_eigen, operators, station, index):
 
     # Extract Mogi parameters
     estimation_eigen.mogi_volume_change_rates = estimation_eigen.state_vector[
-        index.start_mogi_col_eigen : index.end_mogi_col_eigen
+        index.eigen.start_mogi_col_eigen : index.eigen.end_mogi_col_eigen
     ]
 
     # Calculate Mogi source velocities
@@ -385,7 +406,7 @@ def post_process_estimation_eigen(estimation_eigen, operators, station, index):
         estimation_eigen.vel_tde += (
             -operators.eigen_to_velocities[i]
             @ estimation_eigen.state_vector[
-                index.start_col_eigen[i] : index.end_col_eigen[i]
+                index.eigen.start_col_eigen[i] : index.eigen.end_col_eigen[i]
             ]
         )
 
@@ -744,14 +765,15 @@ def rmatvec(u, h_matrix_solve_parameters):
 
 
 def build_and_solve_hmatrix(command, assembly, operators, data):
+    # TODO: Fix this after dataclass refactor
     # TODO This is almost the same as the initialization of Operator...
     logger.info("build_and_solve_hmatrix")
 
     # Calculate Okada partials for all segments
-    get_elastic_operators_okada(operators, data.segment, data.station, command)
+    _store_elastic_operators_okada(operators, data.segment, data.station, command)
 
     # Get TDE smoothing operators
-    get_all_mesh_smoothing_matrices(data.meshes, operators)
+    _store_all_mesh_smoothing_matrices(data.meshes, operators)
 
     # Get non elastic operators
     operators.rotation_to_velocities = get_rotation_to_velocities_partials(
@@ -760,7 +782,7 @@ def build_and_solve_hmatrix(command, assembly, operators, data):
     operators.global_float_block_rotation = get_global_float_block_rotation_partials(
         data.station
     )
-    assembly, operators.block_motion_constraints = get_block_motion_constraints(
+    assembly, operators.block_motion_constraints = _store_block_motion_constraints(
         assembly, data.block, command
     )
     assembly, operators.slip_rate_constraints = get_slip_rate_constraints(
@@ -781,9 +803,9 @@ def build_and_solve_hmatrix(command, assembly, operators, data):
     operators.rotation_to_slip_rate_to_okada_to_velocities = (
         operators.slip_rate_to_okada_to_velocities @ operators.rotation_to_slip_rate
     )
-    get_tde_slip_rate_constraints(data.meshes, operators)
+    _store_tde_slip_rate_constraints(data.meshes, operators)
 
-    index = get_index(assembly, data.station, data.block, data.meshes)
+    index = _get_index(assembly, data.station, data.block, data.meshes)
 
     # Data and data weighting vector
     weighting_vector = get_weighting_vector(command, data.station, data.meshes, index)
@@ -1032,14 +1054,16 @@ def post_process_estimation_hmatrix(
 
 def build_and_solve_dense(command, assembly, operators, data):
     # NOTE: Used in celeri_solve.py
-    # Again, very similar to Operator initialization
+    # TODO: Again, very similar to Operator initialization
     logger.info("build_and_solve_dense")
 
     # Get all elastic operators for segments and TDEs
-    get_elastic_operators(operators, data.meshes, data.segment, data.station, command)
+    _store_elastic_operators(
+        operators, data.meshes, data.segment, data.station, command
+    )
 
     # Get TDE smoothing operators
-    get_all_mesh_smoothing_matrices(data.meshes, operators)
+    _store_all_mesh_smoothing_matrices(data.meshes, operators)
 
     # Get non-elastic operators
     operators.rotation_to_velocities = get_rotation_to_velocities_partials(
@@ -1048,7 +1072,7 @@ def build_and_solve_dense(command, assembly, operators, data):
     operators.global_float_block_rotation = get_global_float_block_rotation_partials(
         data.station
     )
-    assembly, operators.block_motion_constraints = get_block_motion_constraints(
+    assembly, operators.block_motion_constraints = _store_block_motion_constraints(
         assembly, data.block, command
     )
     assembly, operators.slip_rate_constraints = get_slip_rate_constraints(
@@ -1066,7 +1090,7 @@ def build_and_solve_dense(command, assembly, operators, data):
     operators.mogi_to_velocities = get_mogi_to_velocities_partials(
         data.mogi, data.station, command
     )
-    get_tde_slip_rate_constraints(data.meshes, operators)
+    _store_tde_slip_rate_constraints(data.meshes, operators)
 
     # Direct solve dense linear system
     logger.info("Start: Dense assemble and solve")
@@ -1106,7 +1130,9 @@ def build_and_solve_dense_no_meshes(command, assembly, operators, data):
     logger.info("build_and_solve_dense_no_meshes")
 
     # Get all elastic operators for segments and TDEs
-    get_elastic_operators(operators, data.meshes, data.segment, data.station, command)
+    _store_elastic_operators(
+        operators, data.meshes, data.segment, data.station, command
+    )
 
     operators.rotation_to_velocities = get_rotation_to_velocities_partials(
         data.station, data.block.shape[0]
@@ -1114,7 +1140,7 @@ def build_and_solve_dense_no_meshes(command, assembly, operators, data):
     operators.global_float_block_rotation = get_global_float_block_rotation_partials(
         data.station
     )
-    assembly, operators.block_motion_constraints = get_block_motion_constraints(
+    assembly, operators.block_motion_constraints = _store_block_motion_constraints(
         assembly, data.block, command
     )
     assembly, operators.slip_rate_constraints = get_slip_rate_constraints(

@@ -2,7 +2,6 @@ import copy
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 import addict
 import numpy as np
@@ -31,7 +30,7 @@ class Model:
     block: pd.DataFrame
     station: pd.DataFrame
     mogi: pd.DataFrame
-    command: dict[str, Any]
+    command: Config
     closure: celeri_closure.BlockClosureResult
     sar: pd.DataFrame
 
@@ -154,7 +153,7 @@ def read_data(command: Config):
 
 # TODO: Why is there a pytest mark here?
 @pytest.mark.skip(reason="Writing output to disk")
-def create_output_folder(command: dict):
+def create_output_folder(command: Config):
     # Check to see if "runs" folder exists and if not create it
     if not os.path.exists(command.base_runs_folder):
         os.mkdir(command.base_runs_folder)
@@ -163,8 +162,11 @@ def create_output_folder(command: dict):
     os.mkdir(command.output_path)
 
 
-def build_model(command_path: str | Path) -> Model:
-    command = get_config(command_path)
+def build_model(command_path: str | Path | Config) -> Model:
+    if isinstance(command_path, Config):
+        command = command_path
+    else:
+        command = get_config(command_path)
     create_output_folder(command)
     segment, block, meshes, station, mogi, sar = read_data(command)
     station = process_station(station, command)
@@ -718,6 +720,8 @@ def get_processed_data_structures(command):
     data.closure, data.block = assign_block_labels(
         data.segment, data.station, data.block, data.mogi, data.sar
     )
+    # TODO(Adrian) This reuses the same dict for all meshes!!
+    # Probably not what's intended?
     operators.meshes = [addict.Dict()] * len(data.meshes)
     assembly = merge_geodetic_data(
         assembly, data.station, data.sar

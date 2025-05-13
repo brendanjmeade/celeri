@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from typing import Callable, Literal, cast
 
 import addict
-from celeri.operators import Operators, build_operators
 import cvxopt
 import cvxpy as cp
 import matplotlib.pyplot as plt
@@ -20,6 +19,7 @@ from celeri import (
     write_output,
 )
 from celeri.model import Model
+from celeri.operators import Operators, build_operators
 
 
 @dataclass
@@ -463,18 +463,17 @@ class Minimizer:
                 raise ValueError("Problem has not been fit")
             axes[idx, 3].scatter(a, b, c=b**2 - a * b < 0, marker=".", vmin=0, vmax=1)
 
-    def plot_estimation_summary(self, command):
+    def plot_estimation_summary(self):
         estimation_qp = addict.Dict()
         estimation_qp.state_vector = self.params.value
         estimation_qp.operator = self.operators.eigen
         post_process_estimation_eigen(
+            self.model,
             estimation_qp,
             self.operators,
-            self.model.station,
-            self.operators.index,
         )
         write_output(
-            command,
+            self.model.command,
             estimation_qp,
             self.model.station,
             self.model.segment,
@@ -483,14 +482,14 @@ class Minimizer:
         )
 
         plot_estimation_summary(
-            command,
+            self.model.command,
             self.model.segment,
             self.model.station,
             self.model.meshes,
             estimation_qp,
-            lon_range=command.lon_range,
-            lat_range=command.lat_range,
-            quiver_scale=command.quiver_scale,
+            lon_range=self.model.command.lon_range,
+            lat_range=self.model.command.lat_range,
+            quiver_scale=self.model.command.quiver_scale,
         )
 
     def out_of_bounds(self, *, tol: float = 1e-8) -> tuple[int, int]:
@@ -543,12 +542,15 @@ def build_cvxpy_problem(
 
     # Get data vector for KL problem
     data_vector_eigen = get_data_vector_eigen(
-        model.meshes, operators.assembly, operators.index
+        model,
+        operators.assembly,
+        operators.index,
     )
 
     # Get data vector for KL problem
     weighting_vector_eigen = get_weighting_vector_eigen(
-        model.command, model.station, model.meshes, operators.index
+        model,
+        operators.index,
     )
 
     C = operators.eigen * np.sqrt(weighting_vector_eigen[:, None])
@@ -574,9 +576,7 @@ def build_cvxpy_problem(
             value=init_params_raw_value,
         )
     else:
-        params_raw = cp.Variable(
-            name="params_raw", shape=operators.eigen.shape[1]
-        )
+        params_raw = cp.Variable(name="params_raw", shape=operators.eigen.shape[1])
 
     params = params_raw / scale
 
@@ -591,20 +591,19 @@ def build_cvxpy_problem(
         param_slice = slice(0, 3 * len(model.block))
         kinematic_params = params_raw[param_slice]
         kinematic_operator = (
-            operators.rotation_to_tri_slip_rate[mesh_idx]
-            / scale[None, param_slice]
+            operators.rotation_to_tri_slip_rate[mesh_idx] / scale[None, param_slice]
         )
 
         kinematic_operator = adapt_operator(kinematic_operator)
 
         # Matrix vector components of estimated velocities
-        start = operators.index["start_col_eigen"][mesh_idx]
-        end = operators.index["end_col_eigen"][mesh_idx]
+        assert operators.index.eigen is not None
+        start = operators.index.eigen.start_col_eigen[mesh_idx]
+        end = operators.index.eigen.end_col_eigen[mesh_idx]
         param_slice = slice(start, end)
         estimated_params = params_raw[param_slice]
         estimated_operator = (
-            operators.eigenvectors_to_tde_slip[mesh_idx]
-            / scale[None, param_slice]
+            operators.eigenvectors_to_tde_slip[mesh_idx] / scale[None, param_slice]
         )
 
         estimated_operator = adapt_operator(estimated_operator)
@@ -740,11 +739,7 @@ def build_cvxpy_problem(
 
     if default_constraints:
         A, b = get_qp_all_inequality_operator_and_data_vector(
-            operators.index,
-            model.meshes,
-            operators,
-            model.segment,
-            model.block,
+            model, operators, operators.index
         )
         A_hat = np.array(A / scale)
 
