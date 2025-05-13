@@ -95,6 +95,7 @@ from celeri.celeri import (
     wrap2360,
     write_output,
     write_output_supplemental,
+    station_row_keep,
 )
 
 try:
@@ -202,4 +203,5 @@ __all__ = [
     "wrap2360",
     "write_output",
     "write_output_supplemental",
+    "station_row_keep",
 ]
