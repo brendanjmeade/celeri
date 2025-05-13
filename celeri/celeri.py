@@ -6228,9 +6228,9 @@ def write_output(
         json.dump(command, f, indent=4)
 
     # Write all major variables to .pkl file in output folder
-    if bool(command.pickle_save):
-        with open(os.path.join(command.output_path, "output" + ".pkl"), "wb") as f:
-            pickle.dump([command, estimation, station, segment, block, meshes], f)
+    # if bool(command.pickle_save):
+    with open(os.path.join(command.output_path, "output" + ".pkl"), "wb") as f:
+        pickle.dump([command, estimation, station, segment, block, meshes], f)
 
 
 def write_output_supplemental(
