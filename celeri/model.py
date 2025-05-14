@@ -3,7 +3,6 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-import addict
 import numpy as np
 import pandas as pd
 import pytest
@@ -14,7 +13,7 @@ from celeri import celeri_closure
 from celeri.celeri_util import polygon_area, sph2cart
 from celeri.config import Config, get_config
 from celeri.constants import GEOID, RADIUS_EARTH
-from celeri.mesh import ByMesh, Mesh, MeshConfig
+from celeri.mesh import Mesh, MeshConfig
 
 
 @dataclass
@@ -25,7 +24,7 @@ class Model:
     for solving interseismic coupling and fault slip rate problems.
     """
 
-    meshes: ByMesh[Mesh]
+    meshes: list[Mesh]
     segment: pd.DataFrame
     block: pd.DataFrame
     station: pd.DataFrame
@@ -78,8 +77,8 @@ def read_data(command: Config):
 
     # Read station data
     if command.station_file_name is None:
-        station = pd.DataFrame(
-            columns=[
+        columns = pd.Index(
+            [
                 "lon",
                 "lat",
                 "corr",
@@ -102,6 +101,7 @@ def read_data(command: Config):
                 "block_label",
             ]
         )
+        station = pd.DataFrame(columns=columns)
         logger.info("No station_file_name")
     else:
         station = pd.read_csv(command.station_file_name)
@@ -110,8 +110,8 @@ def read_data(command: Config):
 
     # Read Mogi source data
     if command.mogi_file_name is None:
-        mogi = pd.DataFrame(
-            columns=[
+        columns = pd.Index(
+            [
                 "name",
                 "lon",
                 "lat",
@@ -121,6 +121,7 @@ def read_data(command: Config):
                 "volume_change_sig",
             ]
         )
+        mogi = pd.DataFrame(columns=columns)
         logger.info("No mogi_file_name")
     else:
         mogi = pd.read_csv(command.mogi_file_name)
@@ -129,8 +130,8 @@ def read_data(command: Config):
 
     # Read SAR data
     if command.sar_file_name is None:
-        sar = pd.DataFrame(
-            columns=[
+        columns = pd.Index(
+            [
                 "lon",
                 "lat",
                 "depth",
@@ -143,6 +144,7 @@ def read_data(command: Config):
                 "reference_point_y",
             ]
         )
+        sar = pd.DataFrame(columns=columns)
         logger.info("No sar_file_name")
     else:
         sar = pd.read_csv(command.sar_file_name)
@@ -696,6 +698,10 @@ def get_tri_shared_sides_distances(share, x_centroid, y_centroid, z_centroid):
 
 def get_processed_data_structures(command):
     # NOTE: Used in celeri_solve.py
+    # TODO(Adrian): This function should be replaced by
+    # Model.from_config(command)
+    import addict
+
     data = addict.Dict()
     assembly = addict.Dict()
     operators = addict.Dict()
@@ -713,9 +719,6 @@ def get_processed_data_structures(command):
     data.closure, data.block = assign_block_labels(
         data.segment, data.station, data.block, data.mogi, data.sar
     )
-    # TODO(Adrian) This reuses the same dict for all meshes!!
-    # Probably not what's intended?
-    operators.meshes = [addict.Dict()] * len(data.meshes)
     assembly = merge_geodetic_data(
         assembly, data.station, data.sar
     )  # TODO: Not sure this works correctly
@@ -741,8 +744,8 @@ def get_processed_data_structures(command):
 
 def make_default_segment(length):
     """Create a default segment Dict of specified length."""
-    default_segment = pd.DataFrame(
-        columns=[
+    columns = pd.Index(
+        [
             "name",
             "lon1",
             "lat1",
@@ -783,6 +786,8 @@ def make_default_segment(length):
             "patch_slip_flag",
         ]
     )
+    default_segment = pd.DataFrame(columns=columns)
+
     # Set everything to zeros, then we'll fill in a few specific values
     length_vec = range(length)
     for key in default_segment.keys():
