@@ -205,13 +205,6 @@ def process_sar(sar, command):
     """Preprocessing of SAR data."""
     if sar.empty:
         sar["depth"] = np.zeros_like(sar.lon)
-
-        # Set the uncertainties to reflect the weights specified in the command file
-        # In constructing the data weight vector, the value is 1./Sar.dataSig.^2, so
-        # the adjustment made here is sar.dataSig / np.sqrt(command.sarWgt)
-        sar.line_of_sight_change_sig = sar.line_of_sight_change_sig / np.sqrt(
-            command.sar_weight
-        )
         sar["x"], sar["y"], sar["z"] = sph2cart(sar.lon, sar.lat, RADIUS_EARTH)
         sar["block_label"] = -1 * np.ones_like(sar.x)
     else:
