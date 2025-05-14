@@ -23,7 +23,7 @@ jobs:
       fail-fast: false
       matrix:
         os: ["ubuntu-latest"]
-        pixi-environment: ["py39", "default"]
+        pixi-environment: ["py310", "default"]
         tests-to-run: ["japan", "other"]
     name: Test (${{ matrix.pixi-environment }}, ${{ matrix.tests-to-run }})
     runs-on:  ${{ matrix.os }}
