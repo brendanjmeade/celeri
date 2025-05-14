@@ -169,7 +169,7 @@ def _get_new_folder_name() -> str:
     return new_folder_name
 
 
-def get_config(command_file_name) -> Config:
+def get_config(config_file_name) -> Config:
     """Get the configuration from a JSON file.
 
     Args:
@@ -178,4 +178,4 @@ def get_config(command_file_name) -> Config:
     Returns:
         Config: A Config object with the loaded configuration.
     """
-    return Config.from_file(command_file_name)
+    return Config.from_file(config_file_name)
