@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import scipy
 from loguru import logger
+from scipy import linalg
 from scipy.sparse import csr_matrix
 
 from celeri.celeri_util import get_keep_index_12
@@ -35,7 +36,6 @@ from celeri.operators import (
     _store_tde_slip_rate_constraints,
     build_operators,
     get_block_strain_rate_to_velocities_partials,
-    get_full_dense_operator,
     get_global_float_block_rotation_partials,
     get_h_matrices_for_tde_meshes,
     get_mogi_to_velocities_partials,
@@ -446,31 +446,24 @@ def build_estimation(
     )
 
 
-def assemble_and_solve_dense(model: Model) -> tuple[Operators, Estimation]:
-    # TODO This should be able to ask for specific subsets of operators?
-    operators = build_operators(model, eigen=False)
+def assemble_and_solve_dense(
+    model: Model, *, eigen: bool = False, tde: bool = True
+) -> tuple[Operators, Estimation]:
+    operators = build_operators(model, eigen=eigen, tde=tde)
 
-    estimation = addict.Dict()
-    estimation.data_vector = _get_data_vector(
-        model, operators.assembly, operators.index
-    )
-    estimation.weighting_vector = _get_weighting_vector(model, operators.index)
-    estimation.operator = get_full_dense_operator(model, operators)
-
-    # DEBUG HERE:
-    # IPython.embed(banner1="")
+    data_vector = operators.data_vector
+    weighting_vector = operators.weighting_vector
+    operator = operators.full_dense_operator
 
     # Solve the overdetermined linear system using only a weighting vector rather than matrix
-    # TODO: Do this with a decompositon
-    estimation.state_covariance_matrix = np.linalg.inv(
-        estimation.operator.T * estimation.weighting_vector @ estimation.operator
+    inv_state_covariance_matrix = operator.T * weighting_vector @ operator
+    state_vector = linalg.solve(
+        inv_state_covariance_matrix,
+        operator.T * weighting_vector @ data_vector,
+        assume_a="pos",
     )
-    estimation.state_vector = (
-        estimation.state_covariance_matrix
-        @ estimation.operator.T
-        * estimation.weighting_vector
-        @ estimation.data_vector
-    )
+
+    estimation = build_estimation(model, operators, state_vector)
     return operators, estimation
 
 
