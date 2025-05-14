@@ -8,8 +8,12 @@
         "top_slip_rate_constraint": 0,
         "bot_slip_rate_constraint": 1,
         "side_slip_rate_constraint": 0,
-        "a_priori_slip_filename": "",
-        "ss_slip_constraint_rate": 0.0
+        "a_priori_slip_filename": null,
+        "ss_slip_constraint_rate": 0.0,
+        "qp_mesh_tde_slip_rate_lower_bound_ss": -90,
+        "qp_mesh_tde_slip_rate_upper_bound_ss": 90,
+        "qp_mesh_tde_slip_rate_lower_bound_ds": -90,
+        "qp_mesh_tde_slip_rate_upper_bound_ds": 90
     },
     {
         "mesh_filename": "./tests/test_japan_japan.msh",
@@ -20,7 +24,11 @@
         "top_slip_rate_constraint": 0,
         "bot_slip_rate_constraint": 1,
         "side_slip_rate_constraint": 0,
-        "a_priori_slip_filename": ""
+        "a_priori_slip_filename": null,
+        "qp_mesh_tde_slip_rate_lower_bound_ss": -90,
+        "qp_mesh_tde_slip_rate_upper_bound_ss": 90,
+        "qp_mesh_tde_slip_rate_lower_bound_ds": -90,
+        "qp_mesh_tde_slip_rate_upper_bound_ds": 90
     },
     {
         "mesh_filename": "./tests/test_japan_sagami.msh",
@@ -31,6 +39,10 @@
         "top_slip_rate_constraint": 0,
         "bot_slip_rate_constraint": 1,
         "side_slip_rate_constraint": 1,
-        "a_priori_slip_filename": ""
+        "a_priori_slip_filename": null,
+        "qp_mesh_tde_slip_rate_lower_bound_ss": -90,
+        "qp_mesh_tde_slip_rate_upper_bound_ss": 90,
+        "qp_mesh_tde_slip_rate_lower_bound_ds": -90,
+        "qp_mesh_tde_slip_rate_upper_bound_ds": 90
     }
 ]

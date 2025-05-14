@@ -1024,9 +1024,7 @@ def minimize(
     rescale_parameters: bool = True,
     rescale_constraints: bool = True,
     default_constraints: bool = True,
-    objective: Literal[
-        "expanded_norm2", "sum_of_squares", "norm1", "norm2"
-    ] = "expanded_norm2",
+    objective: Objective = "qr_sum_of_squares",
     operators: Operators | None = None,
 ) -> MinimizerTrace:
     """Iteratively solve a constrained optimization problem for fault slip rates.
