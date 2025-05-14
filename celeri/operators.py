@@ -880,7 +880,7 @@ def get_okada_displacements(
             ],  # (meters) along-dip range of the surface (aw1, aw2 in the original)
             [strike_slip, dip_slip, tensile_slip],
         )  # (meters) strike-slip, dip-slip, tensile-slip
-        u_x[i], u_y, u_up = u
+        u_x[i], u_y[i], u_up[i] = u
 
     # Un-rotate displacement to account for projected fault strike
     # u_east, u_north = np.hsplit(
