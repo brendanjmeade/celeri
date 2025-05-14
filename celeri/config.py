@@ -29,14 +29,14 @@ class Config:
     h_matrix_min_separation: float = 1.25
     h_matrix_tol: float = 1e-06
     iterative_solver: str = "lsmr"
-    lat_range: list[float] = field(default_factory=lambda: [30, 45])
+    lat_range: tuple[float, float] = (30, 45)
     locking_depth_flag2: int = 25
     locking_depth_flag3: int = 15
     locking_depth_flag4: int = 10
     locking_depth_flag5: int = 5
     locking_depth_overide_value: int = 15
     locking_depth_override_flag: int = 0
-    lon_range: list[float] = field(default_factory=lambda: [130, 150])
+    lon_range: tuple[float, float] = (130, 150)
     material_lambda: int = 30000000000
     material_mu: int = 30000000000
     n_iterations: int = 1

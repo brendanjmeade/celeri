@@ -1,9 +1,13 @@
+from __future__ import annotations
+
+import typing
 import addict
 import matplotlib
 import matplotlib.lines as mlines
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
+from celeri.model import Model
 import pandas as pd
 import scipy.io
 from loguru import logger
@@ -17,6 +21,9 @@ from celeri.operators import (
     get_rotation_displacements,
     get_strain_rate_displacements,
 )
+
+if typing.TYPE_CHECKING:
+    from celeri.solve import Estimation
 
 
 def plot_block_labels(segment, block, station, closure):
@@ -68,31 +75,31 @@ def plot_block_labels(segment, block, station, closure):
 
 
 def plot_input_summary(
-    command: dict,
-    segment: pd.DataFrame,
-    station: pd.DataFrame,
-    block: pd.DataFrame,
-    meshes: list,
-    mogi: pd.DataFrame,
-    sar: pd.DataFrame,
-    lon_range: tuple,
-    lat_range: tuple,
-    quiver_scale: float,
+    model: Model,
+    lon_range: tuple | None = None,
+    lat_range: tuple | None = None,
+    quiver_scale: float = 1e2,
 ):
     """Plot overview figures showing observed and modeled velocities as well
     as velocity decomposition and estimates slip rates.
 
     Args:
-        segment (pd.DataFrame): Fault segments
-        station (pd.DataFrame): GPS observations
-        block (pd.DataFrame): Block interior points and priors
-        meshes (List): Mesh geometries and properties
-        mogi (pd.DataFrame): Mogi sources
-        sar (pd.DataFrame): SAR observations
+        model: Model object containing all the data
         lon_range (Tuple): Latitude range (min, max)
         lat_range (Tuple): Latitude range (min, max)
         quiver_scale (float): Scaling for velocity arrows
     """
+
+    if lon_range is None:
+        lon_range = model.command.lon_range
+    if lat_range is None:
+        lat_range = model.command.lat_range
+
+    segment = model.segment
+    block = model.block
+    station = model.station
+    mogi = model.mogi
+    meshes = model.meshes
 
     def common_plot_elements(segment: pd.DataFrame, lon_range: tuple, lat_range: tuple):
         """Elements common to all subplots.
@@ -257,14 +264,18 @@ def plot_input_summary(
     common_plot_elements(segment, lon_range, lat_range)
     for i in range(len(meshes)):
         is_constrained_tde = np.zeros(meshes[i].n_tde)
-        is_constrained_tde[meshes[i].top_elements] = meshes[i].top_slip_rate_constraint
-        is_constrained_tde[meshes[i].bot_elements] = meshes[i].bot_slip_rate_constraint
+        is_constrained_tde[meshes[i].top_elements] = meshes[
+            i
+        ].config.top_slip_rate_constraint
+        is_constrained_tde[meshes[i].bot_elements] = meshes[
+            i
+        ].config.bot_slip_rate_constraint
         is_constrained_tde[meshes[i].side_elements] = meshes[
             i
-        ].side_slip_rate_constraint
-        is_constrained_tde[meshes[i].ss_slip_constraint_idx] = 3
-        is_constrained_tde[meshes[i].ds_slip_constraint_idx] = 3
-        is_constrained_tde[meshes[i].coupling_constraint_idx] = 2
+        ].config.side_slip_rate_constraint
+        is_constrained_tde[meshes[i].config.ss_slip_constraint_idx] = 3
+        is_constrained_tde[meshes[i].config.ds_slip_constraint_idx] = 3
+        is_constrained_tde[meshes[i].config.coupling_constraint_idx] = 2
         x_coords = meshes[i].points[:, 0]
         y_coords = meshes[i].points[:, 1]
         vertex_array = np.asarray(meshes[i].verts)
@@ -280,35 +291,43 @@ def plot_input_summary(
 
     plt.suptitle("inputs")
     plt.show(block=False)
-    plt.savefig(command.output_path + "/" + "plot_input_summary.png", dpi=300)
-    plt.savefig(command.output_path + "/" + "plot_input_summary.pdf")
-    logger.success(
-        "Wrote figures" + command.output_path + "/" + "plot_input_summary.(pdf, png)"
-    )
+
+    if model.command.output_path is not None:
+        plt.savefig(model.command.output_path + "/" + "plot_input_summary.png", dpi=300)
+        plt.savefig(model.command.output_path + "/" + "plot_input_summary.pdf")
+        logger.success(
+            f"Wrote figures {model.command.output_path}/plot_input_summary.(pdf, png)"
+        )
+    else:
+        logger.info("No output_path specified, figures not saved to disk")
 
 
 def plot_estimation_summary(
-    command: Config,
-    segment: pd.DataFrame,
-    station: pd.DataFrame,
-    meshes: list,
-    estimation: dict,
-    lon_range: tuple,
-    lat_range: tuple,
-    quiver_scale: float,
+    model: Model,
+    estimation: Estimation,
+    lon_range: tuple | None = None,
+    lat_range: tuple | None = None,
+    quiver_scale: float = 1e2,
 ):
     """Plot overview figures showing observed and modeled velocities as well
     as velocity decomposition and estimates slip rates.
 
     Args:
-        segment (pd.DataFrame): Fault segments
-        station (pd.DataFrame): GPS observations
-        meshes (List): List of mesh dictionaries
+        model: Model object containing all the data
         estimation (Dict): All estimated values
         lon_range (Tuple): Latitude range (min, max)
         lat_range (Tuple): Latitude range (min, max)
         quiver_scale (float): Scaling for velocity arrows
     """
+
+    if lon_range is None:
+        lon_range = model.command.lon_range
+    if lat_range is None:
+        lat_range = model.command.lat_range
+
+    segment = model.segment
+    station = model.station
+    meshes = model.meshes
 
     def common_plot_elements(segment: pd.DataFrame, lon_range: tuple, lat_range: tuple):
         """Elements common to all subplots
@@ -412,7 +431,7 @@ def plot_estimation_summary(
         color="magenta",
     )
 
-    if command.solve_type != "dense_no_meshes":
+    if model.command.solve_type != "dense_no_meshes":
         if len(meshes) > 0:
             subplot_index += 1
             plt.subplot(
@@ -514,7 +533,7 @@ def plot_estimation_summary(
                 fontsize=7,
             )
 
-    if command.solve_type != "dense_no_meshes":
+    if model.command.solve_type != "dense_no_meshes":
         if len(meshes) > 0:
             subplot_index += 1
             plt.subplot(
@@ -620,11 +639,13 @@ def plot_estimation_summary(
     )
 
     plt.show(block=False)
-    plt.savefig(command.output_path + "/" + "plot_estimation_summary.png", dpi=300)
-    plt.savefig(command.output_path + "/" + "plot_estimation_summary.pdf")
+    plt.savefig(
+        model.command.output_path + "/" + "plot_estimation_summary.png", dpi=300
+    )
+    plt.savefig(model.command.output_path + "/" + "plot_estimation_summary.pdf")
     logger.success(
         "Wrote figures"
-        + command.output_path
+        + model.command.output_path
         + "/"
         + "plot_estimation_summary.(pdf, png)"
     )

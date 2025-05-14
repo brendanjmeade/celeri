@@ -16,14 +16,14 @@ from loguru import logger
 from celeri.config import Config
 
 if typing.TYPE_CHECKING:
-    from celeri.solve import Estimator
+    from celeri.solve import Estimation
 
 
 # TODO: Why is there a pytest mark here?
 @pytest.mark.skip(reason="Writing output files")
 def write_output(
     command: Config,
-    estimation: Estimator,
+    estimation: Estimation,
     station: pd.DataFrame,
     segment: pd.DataFrame,
     block: pd.DataFrame,

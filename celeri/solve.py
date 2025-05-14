@@ -44,10 +44,10 @@ from celeri.operators import (
 from celeri.output import write_output
 from celeri.plot import plot_estimation_summary
 
-type Estimator = addict.Dict
+type Estimation = addict.Dict
 
 
-def assemble_and_solve_dense(model: Model) -> tuple[Operators, Estimator]:
+def assemble_and_solve_dense(model: Model) -> tuple[Operators, Estimation]:
     # TODO This should be able to ask for specific subsets of operators?
     operators = build_operators(model, eigen=False)
 
@@ -241,7 +241,7 @@ def post_process_estimation(
 
 
 def post_process_estimation_eigen(
-    model: Model, estimation_eigen: Estimator, operators: Operators
+    model: Model, estimation_eigen: Estimation, operators: Operators
 ):
     """Calculate derived values derived from the block model linear estimate (e.g., velocities, undertainties).
 
