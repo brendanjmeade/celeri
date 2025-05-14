@@ -228,6 +228,7 @@ class Operators:
     eigen_to_velocities: dict[int, np.ndarray]
     eigen_to_tde_bcs: dict[int, np.ndarray]
     rotation_to_slip_rate_to_okada_to_velocities: np.ndarray
+    global_float_block_rotation: np.ndarray
 
 
 # TODO maybe this should only contain commonly used operators,
@@ -254,6 +255,7 @@ class _OperatorBuilder:
     eigen_to_velocities: dict[int, np.ndarray] = field(default_factory=dict)
     eigen_to_tde_bcs: dict[int, np.ndarray] = field(default_factory=dict)
     rotation_to_slip_rate_to_okada_to_velocities: np.ndarray | None = None
+    global_float_block_rotation: np.ndarray | None = None
 
     def finalize(self) -> Operators:
         assert self.index is not None
@@ -273,6 +275,7 @@ class _OperatorBuilder:
         assert self.tde_slip_rate_constraints is not None
         assert self.eigen_to_velocities is not None
         assert self.eigen_to_tde_bcs is not None
+        assert self.global_float_block_rotation is not None
 
         # TODO properly handle those
         # assert self.eigen is not None
@@ -298,6 +301,7 @@ class _OperatorBuilder:
             eigen_to_velocities=self.eigen_to_velocities,
             eigen_to_tde_bcs=self.eigen_to_tde_bcs,
             rotation_to_slip_rate_to_okada_to_velocities=self.rotation_to_slip_rate_to_okada_to_velocities,
+            global_float_block_rotation=self.global_float_block_rotation,
         )
 
 
@@ -317,6 +321,11 @@ def build_operators(model: Model, *, eigen: bool = True) -> Operators:
     # Block rotation to velocity operator
     operators.rotation_to_velocities = get_rotation_to_velocities_partials(
         model.station, len(model.block)
+    )
+
+    # TODO(Adrian): This is only used sometimes?
+    operators.global_float_block_rotation = get_global_float_block_rotation_partials(
+        model.station
     )
 
     # Soft block motion constraints
