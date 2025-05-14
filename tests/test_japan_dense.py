@@ -7,22 +7,14 @@ def test_japan_dense():
     # Western North America example
     command_file_name = "./tests/test_japan_command.json"
 
-    config = celeri.get_config(command_file_name)
+    celeri.get_config(command_file_name)
     model = celeri.build_model(command_file_name)
 
-    celeri.get_tde_slip_rate_constraints(model.meshes, model.operators)
-
     # Estimate block model parameters (dense)
-    index, estimation = celeri.assemble_and_solve_dense(
-        config,
-        model.assembly,
-        model.operators,
-        model.station,
-        model.block,
-        model.meshes,
-        model.mogi,
+    operators, estimation = celeri.assemble_and_solve_dense(model)
+    celeri.post_process_estimation(
+        estimation, operators, model.station, operators.index
     )
-    celeri.post_process_estimation(estimation, model.operators, model.station, index)
 
     # Set digits of accuracy
     # NOTE: Locally we get machine precision repeatability.  On Github workflows
