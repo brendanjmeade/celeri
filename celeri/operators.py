@@ -157,6 +157,7 @@ class Index:
 
     @property
     def n_operator_cols(self) -> int:
+        # TODO(adrian): should there be the mogi/strain block terms here?
         base = 3 * self.n_blocks + 3 * self.n_strain_blocks + self.n_mogis
         if self.tde is not None:
             base += 2 * self.tde.n_tde_total
@@ -210,7 +211,6 @@ class Assembly:
 class Operators:
     index: Index
     assembly: Assembly
-    meshes: list[addict.Dict]
     rotation_to_velocities: np.ndarray
     block_motion_constraints: np.ndarray
     slip_rate_constraints: np.ndarray
@@ -237,7 +237,6 @@ class Operators:
 class _OperatorBuilder:
     index: addict.Dict | None = None
     assembly: Assembly | None = None
-    meshes: list[addict.Dict] = field(default_factory=list)
     rotation_to_velocities: np.ndarray | None = None
     block_motion_constraints: np.ndarray | None = None
     slip_rate_constraints: np.ndarray | None = None
@@ -282,7 +281,6 @@ class _OperatorBuilder:
         return Operators(
             index=self.index,
             assembly=self.assembly,
-            meshes=self.meshes,
             rotation_to_velocities=self.rotation_to_velocities,
             block_motion_constraints=self.block_motion_constraints,
             slip_rate_constraints=self.slip_rate_constraints,
@@ -308,9 +306,6 @@ def build_operators(model: Model, *, eigen: bool = True) -> Operators:
     operators = _OperatorBuilder()
     operators.assembly = assembly
 
-    operators.meshes = [addict.Dict() for _ in model.meshes]
-
-    # TODO what is operators.meshes?
     assembly = merge_geodetic_data(assembly, model.station, model.sar)
 
     # Get all elastic operators for segments and TDEs
@@ -325,7 +320,6 @@ def build_operators(model: Model, *, eigen: bool = True) -> Operators:
     )
 
     # Soft block motion constraints
-    # TODO: Why would this return an assembly?
     operators.block_motion_constraints = _store_block_motion_constraints(
         model, assembly
     )
