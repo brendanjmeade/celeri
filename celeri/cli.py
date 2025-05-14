@@ -1,10 +1,12 @@
 import argparse
+from dataclasses import fields
 
-import addict
 from loguru import logger
 
+from celeri.config import Config
 
-def parse_args():
+
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "command_file_name", type=str, help="Name of *_command.json file"
@@ -122,16 +124,17 @@ def parse_args():
         help="Interative solver type (lsqr | lsmr)",
     )
 
-    args = addict.Dict(vars(parser.parse_args()))
-    return args
+    return parser.parse_args()
 
 
-def process_args(command: dict, args: dict):
-    for key in command:
+def process_args(command: Config, args: argparse.Namespace):
+    for field in fields(command):
+        key = field.name
         if key in args:
-            if args[key] is not None:
-                logger.warning(f"ORIGINAL: command.{key}: {command[key]}")
-                command[key] = args[key]
-                logger.warning(f"REPLACED: command.{key}: {command[key]}")
+            command_val = getattr(args, key)
+            if command_val is not None:
+                logger.warning(f"ORIGINAL: command.{key}: {command_val}")
+                setattr(command, key, getattr(args, key))
+                logger.warning(f"REPLACED: command.{key}: {command_val}")
             else:
-                logger.info(f"command.{key}: {command[key]}")
+                logger.info(f"command.{key}: {command_val}")

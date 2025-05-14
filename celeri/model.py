@@ -13,7 +13,7 @@ from celeri import celeri_closure
 from celeri.celeri_util import polygon_area, sph2cart
 from celeri.config import Config, get_config
 from celeri.constants import GEOID, RADIUS_EARTH
-from celeri.mesh import Mesh, MeshConfig
+from celeri.mesh import Mesh
 
 
 @dataclass
@@ -54,7 +54,6 @@ def read_data(command: Config):
     segment = pd.read_csv(command.segment_file_name)
     segment = segment.loc[:, ~segment.columns.str.match("Unnamed")]
 
-    # TODO check
     for name in ["ss", "ds", "ts"]:
         if f"{name}_rate_bound_flag" not in segment.columns:
             segment[f"{name}_rate_bound_flag"] = 0.0
@@ -72,8 +71,7 @@ def read_data(command: Config):
 
     # Read mesh data - List of dictionary version
     meshes = []
-    mesh_params = MeshConfig.from_file(command.mesh_parameters_file_name)
-    meshes = [Mesh.from_params(mesh_param) for mesh_param in mesh_params]
+    meshes = [Mesh.from_params(mesh_param) for mesh_param in command.mesh_params]
 
     # Read station data
     if command.station_file_name is None:
@@ -153,7 +151,7 @@ def read_data(command: Config):
     return segment, block, meshes, station, mogi, sar
 
 
-# TODO: Why is there a pytest mark here?
+# TODO(Brendan): Why is there a pytest mark here?
 @pytest.mark.skip(reason="Writing output to disk")
 def create_output_folder(command: Config):
     # Check to see if "runs" folder exists and if not create it
@@ -164,13 +162,36 @@ def create_output_folder(command: Config):
     os.mkdir(command.output_path)
 
 
-def build_model(command_path: str | Path | Config) -> Model:
+def build_model(
+    command_path: str | Path | Config,
+    *,
+    override_segment: pd.DataFrame | None = None,
+    override_block: pd.DataFrame | None = None,
+    override_meshes: list[Mesh] | None = None,
+    override_station: pd.DataFrame | None = None,
+    override_mogi: pd.DataFrame | None = None,
+    override_sar: pd.DataFrame | None = None,
+) -> Model:
     if isinstance(command_path, Config):
         command = command_path
     else:
         command = get_config(command_path)
     create_output_folder(command)
     segment, block, meshes, station, mogi, sar = read_data(command)
+
+    if override_segment is not None:
+        segment = override_segment
+    if override_block is not None:
+        block = override_block
+    if override_meshes is not None:
+        meshes = override_meshes
+    if override_station is not None:
+        station = override_station
+    if override_mogi is not None:
+        mogi = override_mogi
+    if override_sar is not None:
+        sar = override_sar
+
     station = process_station(station, command)
     segment = process_segment(segment, command, meshes)
     sar = process_sar(sar, command)

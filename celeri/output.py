@@ -19,7 +19,7 @@ if typing.TYPE_CHECKING:
     from celeri.solve import Estimation
 
 
-# TODO: Why is there a pytest mark here?
+# TODO(Brendan): Why is there a pytest mark here?
 @pytest.mark.skip(reason="Writing output files")
 def write_output(
     command: Config,
@@ -55,9 +55,21 @@ def write_output(
     segment["model_strike_slip_rate"] = estimation.strike_slip_rates
     segment["model_dip_slip_rate"] = estimation.dip_slip_rates
     segment["model_tensile_slip_rate"] = estimation.tensile_slip_rates
-    segment["model_strike_slip_rate_uncertainty"] = estimation.strike_slip_rate_sigma
-    segment["model_dip_slip_rate_uncertainty"] = estimation.strike_slip_rate_sigma
-    segment["model_tensile_slip_rate_uncertainty"] = estimation.strike_slip_rate_sigma
+    segment["model_strike_slip_rate_uncertainty"] = (
+        np.nan
+        if estimation.strike_slip_rate_sigma is None
+        else estimation.strike_slip_rate_sigma
+    )
+    segment["model_dip_slip_rate_uncertainty"] = (
+        np.nan
+        if estimation.dip_slip_rate_sigma is None
+        else estimation.dip_slip_rate_sigma
+    )
+    segment["model_tensile_slip_rate_uncertainty"] = (
+        np.nan
+        if estimation.tensile_slip_rate_sigma is None
+        else estimation.tensile_slip_rate_sigma
+    )
     segment_output_file_name = command.output_path + "/" + "model_segment.csv"
     segment.to_csv(segment_output_file_name, index=False, float_format="%0.4f")
 
@@ -156,7 +168,9 @@ def write_output(
 
             # Write command dictionary
             grp = hdf.create_group("command")
-            for key, value in asdict(command).items():
+            data = asdict(command)
+            mesh_params = data.pop("mesh_params")
+            for key, value in data.items():
                 if value is None:
                     continue
                 if isinstance(value, str):
@@ -169,6 +183,20 @@ def write_output(
                 else:
                     # Handle numeric values
                     grp.create_dataset(key, data=value)
+            # Write mesh parameters
+            for mesh_idx, data in enumerate(mesh_params):
+                mesh_grp = grp.create_group(f"mesh_params/mesh_{mesh_idx:05}")
+                for key, value in data.items():
+                    if value is None:
+                        continue
+                    if isinstance(value, str):
+                        mesh_grp.create_dataset(
+                            key,
+                            data=value.encode("utf-8"),
+                            dtype=h5py.string_dtype(encoding="utf-8"),
+                        )
+                    else:
+                        mesh_grp.create_dataset(key, data=value)
 
             # Write meshes
             for i in range(len(meshes)):

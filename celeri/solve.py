@@ -447,7 +447,11 @@ def build_estimation(
 
 
 def assemble_and_solve_dense(
-    model: Model, *, eigen: bool = False, tde: bool = True
+    model: Model,
+    *,
+    eigen: bool = False,
+    tde: bool = True,
+    invert: bool = False,
 ) -> tuple[Operators, Estimation]:
     operators = build_operators(model, eigen=eigen, tde=tde)
 
@@ -457,13 +461,19 @@ def assemble_and_solve_dense(
 
     # Solve the overdetermined linear system using only a weighting vector rather than matrix
     inv_state_covariance_matrix = operator.T * weighting_vector @ operator
-    state_vector = linalg.solve(
-        inv_state_covariance_matrix,
-        operator.T * weighting_vector @ data_vector,
-        assume_a="pos",
-    )
+    if not invert:
+        state_vector = linalg.solve(
+            inv_state_covariance_matrix,
+            operator.T * weighting_vector @ data_vector,
+            assume_a="pos",
+        )
+    else:
+        state_vector = linalg.inv(inv_state_covariance_matrix) @ (
+            operator.T * weighting_vector @ data_vector
+        )
 
     estimation = build_estimation(model, operators, state_vector)
+    estimation.state_covariance_matrix = linalg.inv(inv_state_covariance_matrix)
     return operators, estimation
 
 

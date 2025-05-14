@@ -1,3 +1,5 @@
+from argparse import Namespace
+
 import IPython
 from loguru import logger
 
@@ -5,11 +7,11 @@ import celeri
 
 
 @logger.catch
-def main(args: dict):
+def main(args: Namespace):
     # Read in command file and start logging
-    command = celeri.get_command(args.command_file_name)
-    celeri.create_output_folder(command)
-    celeri.get_logger(command)
+    model = celeri.build_model(args.command_file_name)
+    command = model.command
+    logger = celeri.get_logger(command)
     celeri.process_args(command, args)
 
     # Read in and process data files

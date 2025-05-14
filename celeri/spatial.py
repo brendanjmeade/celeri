@@ -279,8 +279,10 @@ def get_okada_displacements(
     original Okada 1992 Fortran code acceccesed through T. Ben Thompson's
     okada_wrapper: https://github.com/tbenthompson/okada_wrapper.
     """
-    segment_locking_depth *= KM2M
-    segment_burial_depth *= KM2M
+    # TODO(Brendan): Previous version might have changed the value inplace?
+    # If segment_locking_depth is a reference to a pandas Series.
+    segment_locking_depth = segment_locking_depth * KM2M
+    segment_burial_depth = segment_burial_depth * KM2M
 
     # Make sure depths are expressed as positive
     segment_locking_depth = np.abs(segment_locking_depth)

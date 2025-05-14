@@ -15,7 +15,7 @@ type ByMesh[T] = dict[int, T]
 
 @dataclass
 class MeshConfig:
-    # TODO check types. Sohuld some be bool?
+    # TODO(Brendan) check types. Sohuld some be bool?
     mesh_filename: str | None = None
     smoothing_weight: float = 1e0
     n_modes_strike_slip: int = 10
@@ -27,7 +27,7 @@ class MeshConfig:
     bot_slip_rate_weight: float = 1e0
     side_slip_rate_weight: float = 1e0
     a_priori_slip_filename: str = ""
-    # TODO check if this should be a list
+    # TODO(Brendan) check if this should be a list
     ss_slip_constraint_idx: list = field(default_factory=list)
     ss_slip_constraint_rate: float = 0.0
     ss_slip_constraint_sig: list = field(default_factory=list)
@@ -53,7 +53,7 @@ class MeshConfig:
     mesh_tde_modes_bc_weight: float = 1e0
     iterative_coupling_smoothing_length_scale: float | None = None
 
-    # TODO veryify defaults
+    # TODO(Brendan) verify defaults
     qp_mesh_tde_bound: int = 1
     qp_mesh_tde_slip_rate_lower_bound_ss: float | None = None
     qp_mesh_tde_slip_rate_upper_bound_ss: float | None = None
@@ -173,7 +173,6 @@ def _compute_mesh_edge_elements(mesh: dict):
     sorted_edge_nodes = np.sort(mesh["ordered_edge_nodes"], 1)
 
     # Helper function to find matching rows
-    # TODO(Adrian) Check performance of this ismember replacement
     def find_matching_rows(array1, array2):
         array1_set = {tuple(row) for row in array1}
         matches = [i for i, row in enumerate(array2) if tuple(row) in array1_set]

@@ -461,6 +461,7 @@ def read_run(folder_name):
     ...     "example_folder"
     ... )
     """
+    # TODO(Adrian): Adapt to model data class
     pickle_file = open(f"{folder_name}/output.pkl", "rb")
     pickle_data = pickle.load(pickle_file)
     command = pickle_data[0]

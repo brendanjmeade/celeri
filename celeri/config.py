@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from celeri.mesh import MeshConfig
+
 
 @dataclass
 class Config:
@@ -15,6 +17,8 @@ class Config:
     block_file_name: str
     mesh_parameters_file_name: str
     segment_file_name: str
+
+    mesh_params: list[MeshConfig]
 
     # Runtime fields (not in JSON)
     file_name: str
@@ -109,6 +113,8 @@ class Config:
         config_data["file_name"] = file_path
         config_data["run_name"] = _get_new_folder_name()
 
+        mesh_params = MeshConfig.from_file(config_data["mesh_parameters_file_name"])
+        config_data["mesh_params"] = mesh_params
         if "base_runs_folder" not in config_data:
             raise ValueError("base_runs_folder is required in the config file.")
 

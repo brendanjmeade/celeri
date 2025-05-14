@@ -155,7 +155,9 @@ class Index:
 
     @property
     def n_operator_cols(self) -> int:
-        # TODO(adrian): should there be the mogi/strain block terms here?
+        # TODO(Brendan): should there be the mogi/strain block terms here?
+        # They were missing in one of the originial functions. I think in
+        # most nodebooks those are zero.
         base = 3 * self.n_blocks + 3 * self.n_strain_blocks + self.n_mogis
         if self.tde is not None:
             base += 2 * self.tde.n_tde_total
@@ -225,7 +227,6 @@ class EigenOperators:
     linear_gaussian_smoothing: ByMesh[np.ndarray]
 
 
-# TODO: Split into several subclasses?
 @dataclass
 class Operators:
     model: Model
@@ -242,7 +243,6 @@ class Operators:
     rotation_to_slip_rate_to_okada_to_velocities: np.ndarray
     # TODO: Switch to csr_array?
     smoothing_matrix: dict[int, csr_matrix]
-    # TODO(Adrian): Not sure what this is
     global_float_block_rotation: np.ndarray
     tde: TdeOperators | None
     eigen: EigenOperators | None
@@ -262,7 +262,6 @@ class Operators:
     @property
     def data_vector(self) -> np.ndarray:
         if self.tde is None:
-            # TODO(Adrian): Is this the correct method for non-tde?
             return _get_data_vector(self.model, self.assembly, self.index)
         if self.eigen is not None:
             return _get_data_vector_eigen(self.model, self.assembly, self.index)
@@ -277,9 +276,6 @@ class Operators:
         return _get_weighting_vector(self.model, self.index)
 
 
-# TODO maybe this should only contain commonly used operators,
-# different solve methods could inherit from it to add additional
-# operators.
 @dataclass
 class _OperatorBuilder:
     model: Model
@@ -391,7 +387,6 @@ def build_operators(model: Model, *, eigen: bool = True, tde: bool = True) -> Op
         model.station, len(model.block)
     )
 
-    # TODO(Adrian): This is only used sometimes?
     operators.global_float_block_rotation = get_global_float_block_rotation_partials(
         model.station
     )
@@ -470,7 +465,9 @@ def build_operators(model: Model, *, eigen: bool = True, tde: bool = True) -> Op
     _store_gaussian_smoothing_operator(model.meshes, operators, index)
     if eigen:
         return operators.finalize_eigen()
-    return operators.finalize_tde()
+    if tde:
+        return operators.finalize_tde()
+    return operators.finalize_basic()
 
 
 def _store_gaussian_smoothing_operator(
@@ -2276,7 +2273,7 @@ def _get_index(model: Model, assembly: Assembly) -> Index:
     index.start_mogi_col = index.end_block_strain_col
     index.end_mogi_col = index.start_mogi_col + index.n_mogis
 
-    # TODO: There was this line in the original code:
+    # TODO(Brendan): There was this line in the original code:
     # index.n_operator_cols = 3 * index.n_blocks + 2 * index.n_tde_total
     # But that doesn't look right? Isn't that missing the n_strain_blocks and n_mogis?
     # The get_index_eigen function included those.
