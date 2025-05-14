@@ -12,9 +12,9 @@ def test_japan_dense():
 
     # Estimate block model parameters (dense)
     operators, estimation = celeri.assemble_and_solve_dense(model)
-    celeri.post_process_estimation(
-        estimation, operators, model.station, operators.index
-    )
+
+    estimation.tde_rates  # noqa: B018
+    estimation.east_vel_residual  # noqa: B018
 
     # Set digits of accuracy
     # NOTE: Locally we get machine precision repeatability.  On Github workflows
