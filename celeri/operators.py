@@ -2852,53 +2852,54 @@ def get_elastic_operator_single_mesh(
     """
     command = model.command
     meshes = model.meshes
+    mesh_name = meshes[mesh_idx].file_name
+    dataset_name = f"tde_to_velocities_{mesh_idx}"
 
-    if bool(command.reuse_elastic) and os.path.exists(command.reuse_elastic_file):
-        logger.info("Using precomputed elastic operators")
-        hdf5_file = h5py.File(command.reuse_elastic_file, "r")
-        tde_to_velocities = np.array(
-            hdf5_file.get("tde_to_velocities_" + str(mesh_idx))
-        )
-        hdf5_file.close()
-
-    else:
-        if not os.path.exists(command.reuse_elastic_file):
-            logger.warning("Precomputed elastic operator file not found")
-        logger.info("Computing elastic operators")
-        logger.info(
-            f"Start: TDE slip to velocity calculation for mesh: {meshes[mesh_idx].file_name}"
-        )
-        tde_to_velocities = get_tde_to_velocities_single_mesh(
-            meshes, model.station, command, mesh_idx=mesh_idx
-        )
-        logger.success(
-            f"Finish: TDE slip to velocity calculation for mesh: {meshes[mesh_idx].file_name}"
-        )
-
-    # Save tde to velocity matrix for current mesh
-    if bool(command.save_elastic):
-        # Check to see if "data/operators" folder exists and if not create it
-        if not os.path.exists(command.operators_folder):
-            os.mkdir(command.operators_folder)
-
-        logger.info(
-            "Saving elastic to velocity matrices to :" + command.save_elastic_file
-        )
-
-        # Check if file exists.  If it does append.
-        if os.path.exists(command.save_elastic_file):
-            hdf5_file = h5py.File(command.save_elastic_file, "a")
-            current_mesh_label = "tde_to_velocities_" + str(mesh_idx)
-            if current_mesh_label in hdf5_file:
-                hdf5_file[current_mesh_label][...] = tde_to_velocities
-            else:
-                hdf5_file.create_dataset(current_mesh_label, data=tde_to_velocities)
-        else:
-            hdf5_file = h5py.File(command.save_elastic_file, "w")
-            hdf5_file.create_dataset(
-                "tde_to_velocities_" + str(mesh_idx), data=tde_to_velocities
+    # Try to load precomputed operators if requested
+    if command.reuse_elastic:
+        if command.reuse_elastic_file is None:
+            raise ValueError(
+                "reuse_elastic_file must be set when reuse_elastic is True"
             )
-        hdf5_file.close()
+
+        try:
+            with h5py.File(command.reuse_elastic_file, "r") as hdf5_file:
+                if dataset_name in hdf5_file:
+                    logger.info("Using precomputed elastic operators")
+                    return hdf5_file[dataset_name][:]
+                else:
+                    logger.warning(
+                        f"Dataset {dataset_name} not found in {command.reuse_elastic_file}. "
+                        "Will compute elastic operators instead."
+                    )
+        except OSError:
+            logger.warning(
+                f"Could not open file {command.reuse_elastic_file}. "
+                "Will compute elastic operators instead."
+            )
+
+    # Compute elastic operators
+    logger.info("Computing elastic operators")
+    logger.info(f"Start: TDE slip to velocity calculation for mesh: {mesh_name}")
+    tde_to_velocities = get_tde_to_velocities_single_mesh(
+        meshes, model.station, command, mesh_idx=mesh_idx
+    )
+    logger.success(f"Finish: TDE slip to velocity calculation for mesh: {mesh_name}")
+
+    # Save operators if requested
+    if command.save_elastic and command.save_elastic_file is not None:
+        if not os.path.exists(command.operators_folder):
+            os.makedirs(command.operators_folder, exist_ok=True)
+
+        logger.info(
+            f"Saving elastic to velocity matrices to: {command.save_elastic_file}"
+        )
+
+        with h5py.File(command.save_elastic_file, "a") as hdf5_file:
+            if dataset_name in hdf5_file:
+                del hdf5_file[dataset_name]  # Remove existing dataset
+            hdf5_file.create_dataset(dataset_name, data=tde_to_velocities)
+
     return tde_to_velocities
 
 
