@@ -243,7 +243,7 @@ else:
         )
 
 # %% [markdown]
-# ## Updating mesh parameters and command 
+# ## Updating mesh parameters and command
 
 # %%
 # Establish default mesh parameters
@@ -312,5 +312,3 @@ p = celeri.get_default_plotting_dict(command, estimation, station)
 command = celeri.get_command(new_command_file_name)
 segment, block, meshes, station, mogi, sar = celeri.read_data(command)
 celeri.plot_fault_geometry(p, segment, meshes)
-
-

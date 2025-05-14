@@ -1,8 +1,7 @@
-import IPython
-import pygmt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
+import pygmt
+
 import celeri
 
 # Read in data from an output folder

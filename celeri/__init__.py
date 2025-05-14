@@ -208,8 +208,8 @@ __all__ = [
     "read_run",
     "rmatvec",
     "rmatvec_wrapper",
+    "station_row_keep",
     "wrap2360",
     "write_output",
     "write_output_supplemental",
-    "station_row_keep",
 ]

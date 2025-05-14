@@ -1,18 +1,16 @@
-from loguru import logger
-from typing import Dict
-import numpy as np
-import pandas as pd
-import addict
 import argparse
-import pyproj
-import celeri
-import meshio
 import json
-import sys
 import os
 
+import addict
+import meshio
+import numpy as np
+import pandas as pd
+import pyproj
+from loguru import logger
 from scipy.spatial.distance import cdist
 
+import celeri
 
 # Global constants
 GEOID = pyproj.Geod(ellps="WGS84")
@@ -40,9 +38,7 @@ def cart2sph(x, y, z):
 
 
 def snap_segments(segment, meshes):
-    """
-    Replace segments tracing meshes with the actual top edges of those meshes
-    """
+    """Replace segments tracing meshes with the actual top edges of those meshes"""
     # For each mesh, find associated segments
     cut_segment_idx = []
     all_edge_segment = make_default_segment(0)
@@ -133,9 +129,7 @@ def snap_segments(segment, meshes):
 
 
 def make_default_segment(length):
-    """
-    Create a default segment Dict of specified length
-    """
+    """Create a default segment Dict of specified length"""
     default_segment = pd.DataFrame(
         columns=[
             "name",
@@ -180,7 +174,7 @@ def make_default_segment(length):
     )
     # Set everything to zeros, then we'll fill in a few specific values
     length_vec = range(length)
-    for key, value in default_segment.items():
+    for key in default_segment.keys():
         default_segment[key] = np.zeros_like(length_vec)
     default_segment.locking_depth = +15
     default_segment.dip = +90
@@ -190,7 +184,7 @@ def make_default_segment(length):
 
 
 @logger.catch
-def main(args: Dict):
+def main(args: dict):
     # Read segment data
     segment = pd.read_csv(args.segment_file_name)
     segment = segment.loc[:, ~segment.columns.str.match("Unnamed")]

@@ -1,11 +1,11 @@
-from loguru import logger
-from typing import Dict
 import IPython
+from loguru import logger
+
 import celeri
 
 
 @logger.catch
-def main(args: Dict):
+def main(args: dict):
     # Read in command file and start logging
     command = celeri.get_command(args.command_file_name)
     celeri.create_output_folder(command)
