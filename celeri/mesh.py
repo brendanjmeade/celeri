@@ -1,6 +1,7 @@
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import cast
 
 import meshio
 import numpy as np
@@ -330,17 +331,25 @@ class Mesh:
     x_perimeter: np.ndarray
     y_perimeter: np.ndarray
     config: MeshConfig
-    # Computed in get_all_mesh_smoothing_matrices
+
+    # TOOD(Adrian): Can we move those function into this module
+    # and make them non-optional?
+
+    # Computed in operators._store_all_mesh_smoothing_matrices
     share: np.ndarray | None = None
     tri_shared_sides_distances: np.ndarray | None = None
     n_tde_constraints: int | None = None
-    # computed in get_tde_slip_rate_constraints
+    # computed in operators._store_tde_slip_rate_constraints
     top_slip_idx: np.ndarray | None = None
     bot_slip_idx: np.ndarray | None = None
     side_slip_idx: np.ndarray | None = None
     coup_idx: np.ndarray | None = None
     ss_slip_idx: np.ndarray | None = None
     ds_slip_idx: np.ndarray | None = None
+    # computed in operators.get_rotation_to_tri_slip_rate_partials
+    closest_segment_idx: np.ndarray | None = None
+    east_labels: np.ndarray | None = None
+    west_labels: np.ndarray | None = None
 
     @classmethod
     def from_params(cls, config: MeshConfig):
@@ -349,21 +358,22 @@ class Mesh:
         filename = config.mesh_filename
         meshobj = meshio.read(filename)
         mesh["file_name"] = filename
-        mesh["points"] = meshobj.points
-        mesh["verts"] = meshio.CellBlock(
-            "triangle", meshobj.get_cells_type("triangle")
-        ).data
+        points = cast(np.ndarray, meshobj.points)
+        mesh["points"] = points
+        verts = meshio.CellBlock("triangle", meshobj.get_cells_type("triangle")).data
+        verts = cast(np.ndarray, verts)
+        mesh["verts"] = verts
 
         # Expand mesh coordinates
-        mesh["lon1"] = mesh["points"][mesh["verts"][:, 0], 0]
-        mesh["lon2"] = mesh["points"][mesh["verts"][:, 1], 0]
-        mesh["lon3"] = mesh["points"][mesh["verts"][:, 2], 0]
-        mesh["lat1"] = mesh["points"][mesh["verts"][:, 0], 1]
-        mesh["lat2"] = mesh["points"][mesh["verts"][:, 1], 1]
-        mesh["lat3"] = mesh["points"][mesh["verts"][:, 2], 1]
-        mesh["dep1"] = mesh["points"][mesh["verts"][:, 0], 2]
-        mesh["dep2"] = mesh["points"][mesh["verts"][:, 1], 2]
-        mesh["dep3"] = mesh["points"][mesh["verts"][:, 2], 2]
+        mesh["lon1"] = points[verts[:, 0], 0]
+        mesh["lon2"] = points[verts[:, 1], 0]
+        mesh["lon3"] = points[verts[:, 2], 0]
+        mesh["lat1"] = points[verts[:, 0], 1]
+        mesh["lat2"] = points[verts[:, 1], 1]
+        mesh["lat3"] = points[verts[:, 2], 1]
+        mesh["dep1"] = points[verts[:, 0], 2]
+        mesh["dep2"] = points[verts[:, 1], 2]
+        mesh["dep3"] = points[verts[:, 2], 2]
         mesh["centroids"] = np.mean(mesh["points"][mesh["verts"], :], axis=1)
         # Cartesian coordinates in meters
         mesh["x1"], mesh["y1"], mesh["z1"] = sph2cart(
