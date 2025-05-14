@@ -4670,7 +4670,6 @@ def post_process_estimation(
     omega_cov = np.zeros((3 * len(rotation_vector_x), 3 * len(rotation_vector_x)))
     estimation.euler_lon_err, estimation.euler_lat_err, estimation.euler_rate_err = rotation_vector_err_to_euler_pole_err(rotation_vector_x, rotation_vector_y, rotation_vector_z, omega_cov)
 
-
     # Calculate Mogi source velocities
     estimation.vel_mogi = (
         operators.mogi_to_velocities[index.station_row_keep_index, :]
@@ -4691,6 +4690,29 @@ def post_process_estimation(
     estimation.east_vel_tde = estimation.vel_tde[0::2]
     estimation.north_vel_tde = estimation.vel_tde[1::2]
 
+    # Calculate and insert kinematic and coupling triangle rates
+    # TODO: This is a placeholder for the real calculation of TDE kinematic
+    # and coupling rates
+    estimation.tde_tensile_slip_rates = np.zeros_like(estimation.tde_strike_slip_rates)
+
+    estimation.tde_strike_slip_rates_kinematic = np.zeros_like(
+        estimation.tde_strike_slip_rates
+    )
+    estimation.tde_dip_slip_rates_kinematic = np.zeros_like(
+        estimation.tde_dip_slip_rates
+    )
+    estimation.tde_tensile_slip_rates_kinematic = np.zeros_like(
+        estimation.tde_tensile_slip_rates
+    )
+    estimation.tde_strike_slip_rates_coupling = np.zeros_like(
+        estimation.tde_strike_slip_rates
+    )
+    estimation.tde_dip_slip_rates_coupling = np.zeros_like(
+        estimation.tde_dip_slip_rates
+    )
+    estimation.tde_tensile_slip_rates_coupling = np.zeros_like(
+        estimation.tde_tensile_slip_rates
+    )
 
 def post_process_estimation_eigen(estimation_eigen, operators, station, index):
     """Calculate derived values derived from the block model linear estimate (e.g., velocities, undertainties).
@@ -6206,9 +6228,9 @@ def write_output(
         json.dump(command, f, indent=4)
 
     # Write all major variables to .pkl file in output folder
-    if bool(command.pickle_save):
-        with open(os.path.join(command.output_path, "output" + ".pkl"), "wb") as f:
-            pickle.dump([command, estimation, station, segment, block, meshes], f)
+    # if bool(command.pickle_save):
+    with open(os.path.join(command.output_path, "output" + ".pkl"), "wb") as f:
+        pickle.dump([command, estimation, station, segment, block, meshes], f)
 
 
 def write_output_supplemental(
