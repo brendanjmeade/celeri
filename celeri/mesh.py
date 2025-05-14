@@ -5,7 +5,6 @@ from typing import cast
 
 import meshio
 import numpy as np
-from ismember import ismember
 from loguru import logger
 
 from celeri import constants
@@ -173,10 +172,17 @@ def _compute_mesh_edge_elements(mesh: dict):
     # Sort edge node array
     sorted_edge_nodes = np.sort(mesh["ordered_edge_nodes"], 1)
 
+    # Helper function to find matching rows
+    # TODO(Adrian) Check performance of this ismember replacement
+    def find_matching_rows(array1, array2):
+        array1_set = {tuple(row) for row in array1}
+        matches = [i for i, row in enumerate(array2) if tuple(row) in array1_set]
+        return np.array(matches, dtype=int)
+
     # Indices of element sides that are in edge node array
-    side_1_in_edge, side_1_in_edge_idx = ismember(sorted_edge_nodes, side_1, "rows")
-    side_2_in_edge, side_2_in_edge_idx = ismember(sorted_edge_nodes, side_2, "rows")
-    side_3_in_edge, side_3_in_edge_idx = ismember(sorted_edge_nodes, side_3, "rows")
+    side_1_in_edge_idx = find_matching_rows(sorted_edge_nodes, side_1)
+    side_2_in_edge_idx = find_matching_rows(sorted_edge_nodes, side_2)
+    side_3_in_edge_idx = find_matching_rows(sorted_edge_nodes, side_3)
 
     # Depths of nodes
     side_1_depths = np.abs(
