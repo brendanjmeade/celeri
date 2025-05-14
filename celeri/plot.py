@@ -1,24 +1,24 @@
 from __future__ import annotations
 
 import typing
+
 import addict
 import matplotlib
+import matplotlib.collections
 import matplotlib.lines as mlines
 import matplotlib.patches as mpatches
-import matplotlib.pyplot as plt
-import matplotlib.collections
 import matplotlib.path
+import matplotlib.pyplot as plt
 import numpy as np
-from celeri.model import Model
 import pandas as pd
 import scipy.io
 from loguru import logger
 from matplotlib import cm
 from matplotlib.colors import Normalize
 
-from celeri.config import Config
 from celeri.constants import EPS
-from celeri.operators import (
+from celeri.model import Model
+from celeri.spatial import (
     get_okada_displacements,
     get_rotation_displacements,
     get_strain_rate_displacements,
@@ -91,7 +91,6 @@ def plot_input_summary(
         lat_range (Tuple): Latitude range (min, max)
         quiver_scale (float): Scaling for velocity arrows
     """
-
     if lon_range is None:
         lon_range = model.command.lon_range
     if lat_range is None:
@@ -309,7 +308,7 @@ def plot_estimation_summary(
     estimation: Estimation,
     lon_range: tuple | None = None,
     lat_range: tuple | None = None,
-    quiver_scale: float = 1e2,
+    quiver_scale: float | None = None,
 ):
     """Plot overview figures showing observed and modeled velocities as well
     as velocity decomposition and estimates slip rates.
@@ -321,11 +320,12 @@ def plot_estimation_summary(
         lat_range (Tuple): Latitude range (min, max)
         quiver_scale (float): Scaling for velocity arrows
     """
-
     if lon_range is None:
         lon_range = model.command.lon_range
     if lat_range is None:
         lat_range = model.command.lat_range
+    if quiver_scale is None:
+        quiver_scale = model.command.quiver_scale
 
     segment = model.segment
     station = model.station
@@ -451,89 +451,63 @@ def plot_estimation_summary(
                 color="black",
             )
 
-    subplot_index += 1
-    plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
-    plt.title("segment strike-slip \n (negative right-lateral)")
-    common_plot_elements(segment, lon_range, lat_range)
-    for i in range(len(segment)):
-        if estimation.strike_slip_rate_sigma[i] < max_sigma_cutoff:
-            plt.text(
-                segment.mid_lon_plate_carree[i],
-                segment.mid_lat_plate_carree[i],
-                f"{estimation.strike_slip_rates[i]:.1f}({estimation.strike_slip_rate_sigma[i]:.1f})",
-                color="red",
-                clip_on=True,
-                horizontalalignment="center",
-                verticalalignment="center",
-                fontsize=7,
-            )
-        else:
-            plt.text(
-                segment.mid_lon_plate_carree[i],
-                segment.mid_lat_plate_carree[i],
-                f"{estimation.strike_slip_rates[i]:.1f}(*)",
-                color="red",
-                clip_on=True,
-                horizontalalignment="center",
-                verticalalignment="center",
-                fontsize=7,
-            )
+    def plot_slip_rates(title, slip_rates, slip_rate_sigmas, color):
+        plt.subplot(
+            n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1
+        )
+        plt.title(title)
+        common_plot_elements(segment, lon_range, lat_range)
+        for i in range(len(segment)):
+            if slip_rate_sigmas is not None:
+                sigma = slip_rate_sigmas[i]
+            else:
+                sigma = 0.0
+            if sigma < max_sigma_cutoff:
+                plt.text(
+                    segment.mid_lon_plate_carree[i],
+                    segment.mid_lat_plate_carree[i],
+                    f"{slip_rates[i]:.1f}({sigma:.1f})",
+                    color=color,
+                    clip_on=True,
+                    horizontalalignment="center",
+                    verticalalignment="center",
+                    fontsize=7,
+                )
+            else:
+                plt.text(
+                    segment.mid_lon_plate_carree[i],
+                    segment.mid_lat_plate_carree[i],
+                    f"{slip_rates[i]:.1f}(*)",
+                    color=color,
+                    clip_on=True,
+                    horizontalalignment="center",
+                    verticalalignment="center",
+                    fontsize=7,
+                )
 
     subplot_index += 1
-    plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
-    plt.title("segment dip-slip \n (positive convergences)")
-    common_plot_elements(segment, lon_range, lat_range)
-    for i in range(len(segment)):
-        if estimation.dip_slip_rate_sigma[i] < max_sigma_cutoff:
-            plt.text(
-                segment.mid_lon_plate_carree[i],
-                segment.mid_lat_plate_carree[i],
-                f"{estimation.dip_slip_rates[i]:.1f}({estimation.dip_slip_rate_sigma[i]:.1f})",
-                color="blue",
-                clip_on=True,
-                horizontalalignment="center",
-                verticalalignment="center",
-                fontsize=7,
-            )
-        else:
-            plt.text(
-                segment.mid_lon_plate_carree[i],
-                segment.mid_lat_plate_carree[i],
-                f"{estimation.dip_slip_rates[i]:.1f}(*)",
-                color="blue",
-                clip_on=True,
-                horizontalalignment="center",
-                verticalalignment="center",
-                fontsize=7,
-            )
+    plot_slip_rates(
+        "segment strike-slip \n (negative right-lateral)",
+        estimation.strike_slip_rates,
+        estimation.strike_slip_rate_sigma,
+        "red",
+    )
 
     subplot_index += 1
-    plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
-    plt.title("segment tensile-slip \n (negative convergences)")
-    common_plot_elements(segment, lon_range, lat_range)
-    for i in range(len(segment)):
-        if estimation.tensile_slip_rate_sigma[i] < max_sigma_cutoff:
-            plt.text(
-                segment.mid_lon_plate_carree[i],
-                segment.mid_lat_plate_carree[i],
-                f"{estimation.tensile_slip_rates[i]:.1f}({estimation.tensile_slip_rate_sigma[i]:.1f})",
-                color="green",
-                clip_on=True,
-                horizontalalignment="center",
-                verticalalignment="center",
-                fontsize=7,
-            )
-        else:
-            plt.text(
-                segment.mid_lon_plate_carree[i],
-                segment.mid_lat_plate_carree[i],
-                f"{estimation.tensile_slip_rates[i]:.1f}(*)",
-                color="green",
-                clip_on=True,
-                horizontalalignment="center",
-                verticalalignment="center",
-                fontsize=7,
-            )
+    plot_slip_rates(
+        "segment dip-slip \n (positive convergences)",
+        estimation.dip_slip_rates,
+        estimation.dip_slip_rate_sigma,
+        "blue",
+    )
+
+    subplot_index += 1
+    plot_slip_rates(
+        "segment tensile-slip \n (negative convergences)",
+        estimation.tensile_slip_rates,
+        estimation.tensile_slip_rate_sigma,
+        "green",
+    )
 
     if model.command.solve_type != "dense_no_meshes":
         if len(meshes) > 0:
@@ -545,7 +519,8 @@ def plot_estimation_summary(
             common_plot_elements(segment, lon_range, lat_range)
             # plot_meshes(meshes, estimation.tde_strike_slip_rates, plt.gca())
             fill_value = estimation.tde_strike_slip_rates
-            fill_value_range = [np.min(fill_value), np.max(fill_value)]
+            assert fill_value is not None
+            fill_value_range = (float(np.min(fill_value)), float(np.max(fill_value)))
             ax = plt.gca()
             for i in range(len(meshes)):
                 x_coords = meshes[i].points[:, 0]
@@ -587,7 +562,8 @@ def plot_estimation_summary(
             common_plot_elements(segment, lon_range, lat_range)
             # plot_meshes(meshes, estimation.tde_dip_slip_rates, plt.gca())
             fill_value = estimation.tde_dip_slip_rates
-            fill_value_range = [np.min(fill_value), np.max(fill_value)]
+            assert fill_value is not None
+            fill_value_range = (float(np.min(fill_value)), float(np.max(fill_value)))
             ax = plt.gca()
             for i in range(len(meshes)):
                 x_coords = meshes[i].points[:, 0]
@@ -750,6 +726,7 @@ def plot_segment_displacements(
 
 
 def plot_strain_rate_components_for_block(closure, segment, station, block_idx):
+    # TODO These get_strain_rate_displacements calls don't have the correct arguments?
     plt.figure(figsize=(10, 3))
     plt.subplot(1, 3, 1)
     vel_east, vel_north, vel_up = get_strain_rate_displacements(
@@ -1004,7 +981,7 @@ def get_default_plotting_dict(command, estimation, station):
     p.KEY_EDGECOLOR = "k"
     p.ARROW_MAGNITUDE_MIN = 0.0
     p.ARROW_MAGNITUDE_MAX = 0.35 * vel_scale
-    p.ARROW_COLORMAP = cm.plasma
+    p.ARROW_COLORMAP = cm.plasma  # type: ignore
     p.ARROW_SCALE = vel_scale
     p.ARROW_WIDTH = 0.0025
     p.ARROW_LINEWIDTH = 0.5
@@ -1328,6 +1305,10 @@ def plot_segment_rates(p, segment, estimation, rate_type, rate_scale=1):
         plt.title("dip+tensile-slip rates", fontsize=p.FONTSIZE)
         label_text_negative = "convergence"
         label_text_positive = "extension"
+    else:
+        raise ValueError(
+            f"Invalid rate_type: {rate_type}. Must be one of 'ss', 'ds', 'ts', or 'dsts'."
+        )
 
     plot_common_elements(p, segment, p.LON_RANGE, p.LAT_RANGE)
 
@@ -1431,7 +1412,7 @@ def plot_segment_rates(p, segment, estimation, rate_type, rate_scale=1):
         fontsize=p.FONTSIZE,
         framealpha=1.0,
         edgecolor="k",
-    ).get_frame().set_boxstyle("Square")
+    ).get_frame().set_boxstyle("Square")  # type: ignore
 
 
 def plot_fault_geometry(p, segment, meshes):
