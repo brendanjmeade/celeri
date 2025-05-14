@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import addict
+from celeri.mesh import ByMesh
 import cutde.halfspace as cutde_halfspace
 import h5py
 import numpy as np
@@ -96,11 +97,7 @@ class EigenIndex:
     qp_constraint_slip_rate_start_row_eigen: np.ndarray
     qp_constraint_slip_rate_end_row_eigen: np.ndarray
 
-    start_block_strain_col_eigen: int
-    end_block_strain_col_eigen: int
-    start_mogi_col_eigen: int
-    end_mogi_col_eigen: int
-
+    # TODO(Brendan) Why no start_row_eigen?
     end_row_eigen: np.ndarray
 
     @property
@@ -206,9 +203,31 @@ class Assembly:
     index: Any
 
 
+# TODO(Adrian): Maybe it would be better to use only one of
+# FullTdeOperators or EigenTdeOperators?
+# TODO(Adrian): Maybe some of the operators should be properties?
+# We could add a reference to the model to Operators and then
+# compute the operators on the fly when needed.
+
+
+@dataclass
+class TdeOperators:
+    tde_to_velocities: ByMesh[np.ndarray]
+    tde_slip_rate_constraints: ByMesh[np.ndarray]
+
+
+@dataclass
+class EigenOperators:
+    eigenvectors_to_tde_slip: ByMesh[np.ndarray]
+    eigen_to_velocities: ByMesh[np.ndarray]
+    eigen_to_tde_bcs: ByMesh[np.ndarray]
+    linear_gaussian_smoothing: ByMesh[np.ndarray]
+
+
 # TODO: Split into several subclasses?
 @dataclass
 class Operators:
+    model: Model
     index: Index
     assembly: Assembly
     rotation_to_velocities: np.ndarray
@@ -217,18 +236,29 @@ class Operators:
     rotation_to_slip_rate: np.ndarray
     block_strain_rate_to_velocities: np.ndarray
     mogi_to_velocities: np.ndarray
-    eigen: np.ndarray
     slip_rate_to_okada_to_velocities: np.ndarray
-    eigenvectors_to_tde_slip: dict[int, np.ndarray]
     rotation_to_tri_slip_rate: dict[int, np.ndarray]
-    linear_guassian_smoothing: dict[int, np.ndarray]
-    tde_to_velocities: dict[int, np.ndarray]
-    smoothing_matrix: dict[int, np.ndarray]
-    tde_slip_rate_constraints: dict[int, np.ndarray]
-    eigen_to_velocities: dict[int, np.ndarray]
-    eigen_to_tde_bcs: dict[int, np.ndarray]
     rotation_to_slip_rate_to_okada_to_velocities: np.ndarray
+    # TODO: Switch to csr_array?
+    smoothing_matrix: dict[int, csr_matrix]
+    # TODO(Adrian): Not sure what this is
     global_float_block_rotation: np.ndarray
+    tde: TdeOperators | None
+    eigen: EigenOperators | None
+
+    # TODO: Maybe we can make it possible to always access
+    # operators without tde or eigen, even if the operators
+    # are set up for tde or eigen? We should make sure though
+    # that the index is then correct for those use cases.
+    @property
+    def full_dense_operator(self) -> np.ndarray:
+        if self.tde is None:
+            return get_full_dense_operator_block_only(self)
+        if isinstance(self.tde, EigenOperators):
+            return get_full_dense_operator_eigen(self)
+        if self.tde is not None:
+            return get_full_dense_operator(self)
+        return get_full_dense_operator_block_only(self)
 
 
 # TODO maybe this should only contain commonly used operators,
@@ -236,7 +266,8 @@ class Operators:
 # operators.
 @dataclass
 class _OperatorBuilder:
-    index: addict.Dict | None = None
+    model: Model
+    index: Index | None = None
     assembly: Assembly | None = None
     rotation_to_velocities: np.ndarray | None = None
     block_motion_constraints: np.ndarray | None = None
@@ -248,16 +279,16 @@ class _OperatorBuilder:
     slip_rate_to_okada_to_velocities: np.ndarray | None = None
     eigenvectors_to_tde_slip: dict[int, np.ndarray] = field(default_factory=dict)
     rotation_to_tri_slip_rate: dict[int, np.ndarray] = field(default_factory=dict)
-    linear_guassian_smoothing: dict[int, np.ndarray] = field(default_factory=dict)
+    linear_gaussian_smoothing: dict[int, np.ndarray] = field(default_factory=dict)
     tde_to_velocities: dict[int, np.ndarray] = field(default_factory=dict)
-    smoothing_matrix: dict[int, np.ndarray] = field(default_factory=dict)
+    smoothing_matrix: dict[int, csr_matrix] = field(default_factory=dict)
     tde_slip_rate_constraints: dict[int, np.ndarray] = field(default_factory=dict)
     eigen_to_velocities: dict[int, np.ndarray] = field(default_factory=dict)
     eigen_to_tde_bcs: dict[int, np.ndarray] = field(default_factory=dict)
     rotation_to_slip_rate_to_okada_to_velocities: np.ndarray | None = None
     global_float_block_rotation: np.ndarray | None = None
 
-    def finalize(self) -> Operators:
+    def finalize_basic(self) -> Operators:
         assert self.index is not None
         assert self.assembly is not None
         assert self.rotation_to_velocities is not None
@@ -267,21 +298,14 @@ class _OperatorBuilder:
         assert self.block_strain_rate_to_velocities is not None
         assert self.mogi_to_velocities is not None
         assert self.slip_rate_to_okada_to_velocities is not None
-        assert self.eigenvectors_to_tde_slip is not None
         assert self.rotation_to_tri_slip_rate is not None
-        assert self.linear_guassian_smoothing is not None
-        assert self.tde_to_velocities is not None
         assert self.smoothing_matrix is not None
         assert self.tde_slip_rate_constraints is not None
-        assert self.eigen_to_velocities is not None
-        assert self.eigen_to_tde_bcs is not None
         assert self.global_float_block_rotation is not None
-
-        # TODO properly handle those
-        # assert self.eigen is not None
-        # assert self.rotation_to_slip_rate_to_okada_to_velocities is not None
+        assert self.rotation_to_slip_rate_to_okada_to_velocities is not None
 
         return Operators(
+            model=self.model,
             index=self.index,
             assembly=self.assembly,
             rotation_to_velocities=self.rotation_to_velocities,
@@ -290,24 +314,54 @@ class _OperatorBuilder:
             rotation_to_slip_rate=self.rotation_to_slip_rate,
             block_strain_rate_to_velocities=self.block_strain_rate_to_velocities,
             mogi_to_velocities=self.mogi_to_velocities,
-            eigen=self.eigen,
             slip_rate_to_okada_to_velocities=self.slip_rate_to_okada_to_velocities,
-            eigenvectors_to_tde_slip=self.eigenvectors_to_tde_slip,
             rotation_to_tri_slip_rate=self.rotation_to_tri_slip_rate,
-            linear_guassian_smoothing=self.linear_guassian_smoothing,
-            tde_to_velocities=self.tde_to_velocities,
             smoothing_matrix=self.smoothing_matrix,
-            tde_slip_rate_constraints=self.tde_slip_rate_constraints,
-            eigen_to_velocities=self.eigen_to_velocities,
-            eigen_to_tde_bcs=self.eigen_to_tde_bcs,
-            rotation_to_slip_rate_to_okada_to_velocities=self.rotation_to_slip_rate_to_okada_to_velocities,
             global_float_block_rotation=self.global_float_block_rotation,
+            rotation_to_slip_rate_to_okada_to_velocities=self.rotation_to_slip_rate_to_okada_to_velocities,
+            eigen=None,
+            tde=None,
         )
 
+    def finalize_tde(self) -> Operators:
+        operators = self.finalize_basic()
 
-def build_operators(model: Model, *, eigen: bool = True) -> Operators:
+        assert self.tde_to_velocities is not None
+        assert self.tde_slip_rate_constraints is not None
+
+        tde = TdeOperators(
+            tde_to_velocities=self.tde_to_velocities,
+            tde_slip_rate_constraints=self.tde_slip_rate_constraints,
+        )
+
+        operators.tde = tde
+        return operators
+
+    def finalize_eigen(self) -> Operators:
+        operators = self.finalize_tde()
+
+        assert self.linear_gaussian_smoothing is not None
+        assert self.eigen_to_velocities is not None
+        assert self.eigen_to_tde_bcs is not None
+        assert self.eigenvectors_to_tde_slip is not None
+        assert self.eigen is not None
+
+        eigen = EigenOperators(
+            eigenvectors_to_tde_slip=self.eigenvectors_to_tde_slip,
+            linear_gaussian_smoothing=self.linear_gaussian_smoothing,
+            eigen_to_velocities=self.eigen_to_velocities,
+            eigen_to_tde_bcs=self.eigen_to_tde_bcs,
+        )
+
+        operators.eigen = eigen
+        return operators
+
+
+def build_operators(model: Model, *, eigen: bool = True, tde: bool = True) -> Operators:
+    if eigen and not tde:
+        raise ValueError("eigen openrators require tde")
     assembly = Assembly(data=addict.Dict(), sigma=addict.Dict(), index=addict.Dict())
-    operators = _OperatorBuilder()
+    operators = _OperatorBuilder(model)
     operators.assembly = assembly
 
     assembly = merge_geodetic_data(assembly, model.station, model.sar)
@@ -361,9 +415,6 @@ def build_operators(model: Model, *, eigen: bool = True) -> Operators:
 
         # Get KL modes for each mesh
         _store_eigenvectors_to_tde_slip(model, operators)
-
-        # Get full operator including all blocks, KL modes, strain blocks, and mogis
-        operators.eigen = get_full_dense_operator_eigen(model, operators, index)
     else:
         index = _get_index(model, assembly)
         operators.index = index
@@ -373,9 +424,35 @@ def build_operators(model: Model, *, eigen: bool = True) -> Operators:
     # Get rotation to TDE kinematic slip rate operator for all meshes tied to segments
     _store_tde_coupling_constraints(model, operators)
 
+    # Insert block rotations and elastic velocities from fully locked segments
+    operators.rotation_to_slip_rate_to_okada_to_velocities = (
+        operators.slip_rate_to_okada_to_velocities @ operators.rotation_to_slip_rate
+    )
+
+    if eigen:
+        # EIGEN Eigenvector to velocity matrix
+        for i in range(index.n_meshes):
+            # Eliminate vertical elastic velocities
+            tde_keep_row_index = get_keep_index_12(
+                operators.tde_to_velocities[i].shape[0]
+            )
+            tde_keep_col_index = get_keep_index_12(
+                operators.tde_to_velocities[i].shape[1]
+            )
+
+            # Create eigenvector to velocities operator
+            operators.eigen_to_velocities[i] = (
+                -operators.tde_to_velocities[i][tde_keep_row_index, :][
+                    :, tde_keep_col_index
+                ]
+                @ operators.eigenvectors_to_tde_slip[i]
+            )
+
     # Get smoothing operators for post-hoc smoothing of slip
     operators = _get_gaussian_smoothing_operator(model.meshes, operators, index)
-    return operators.finalize()
+    if eigen:
+        return operators.finalize_eigen()
+    return operators.finalize_tde()
 
 
 def _get_gaussian_smoothing_operator(meshes, operators, index):
@@ -1368,7 +1445,7 @@ def get_tri_smoothing_matrix(share, tri_shared_sides_distances) -> np.ndarray:
                 k = 3 * i + np.array([0, 1, 2])
                 m = 3 * share[i, j] + np.array([0, 1, 2])
                 smoothing_matrix[k, m] = off_diagonal_terms[i, j]
-    return smoothing_matrix
+    return smoothing_matrix.tocsr()
 
 
 def _store_all_mesh_smoothing_matrices(model: Model, operators: _OperatorBuilder):
@@ -1406,7 +1483,7 @@ def _store_all_mesh_smoothing_matrices_simple(
         )
 
 
-def get_tri_smoothing_matrix_simple(share, n_dim) -> np.ndarray:
+def get_tri_smoothing_matrix_simple(share, n_dim) -> csr_matrix:
     """Produces a smoothing matrix based without scale-dependent
     weighting.
 
@@ -1430,7 +1507,7 @@ def get_tri_smoothing_matrix_simple(share, n_dim) -> np.ndarray:
                 k = n_dim * i + np.arange(n_dim)
                 m = n_dim * share[i, j] + np.arange(n_dim)
                 smoothing_matrix[k, m] = -1
-    return smoothing_matrix
+    return smoothing_matrix.tocsr()
 
 
 def _store_tde_slip_rate_constraints(model: Model, operators: _OperatorBuilder):
@@ -1458,70 +1535,58 @@ def _store_tde_slip_rate_constraints(model: Model, operators: _OperatorBuilder):
         # Counting index
         start_row = 0
         end_row = 0
-        # Top constraints
-        # A value of 1 (free slip) or 2 (full coupling) will satisfy the following condition
-        if meshes[i].config.top_slip_rate_constraint > 0:
-            # Indices of top elements
-            top_indices = np.asarray(np.where(meshes[i].top_elements))
-            # Indices of top elements' 2 slip components
-            meshes[i].top_slip_idx = get_2component_index(top_indices)
-            end_row = len(meshes[i].top_slip_idx)
-            tde_slip_rate_constraints[start_row:end_row, meshes[i].top_slip_idx] = (
-                np.eye(len(meshes[i].top_slip_idx))
-            )
-        # Bottom constraints
-        if meshes[i].config.bot_slip_rate_constraint > 0:
-            # Indices of bottom elements
-            bot_indices = np.asarray(np.where(meshes[i].bot_elements))
-            # Indices of bottom elements' 2 slip components
-            meshes[i].bot_slip_idx = get_2component_index(bot_indices)
-            start_row = end_row
-            end_row = start_row + len(meshes[i].bot_slip_idx)
-            tde_slip_rate_constraints[start_row:end_row, meshes[i].bot_slip_idx] = (
-                np.eye(len(meshes[i].bot_slip_idx))
-            )
-        # Side constraints
-        if meshes[i].config.side_slip_rate_constraint > 0:
-            # Indices of side elements
-            side_indices = np.asarray(np.where(meshes[i].side_elements))
-            # Indices of side elements' 2 slip components
-            meshes[i].side_slip_idx = get_2component_index(side_indices)
-            start_row = end_row
-            end_row = start_row + len(meshes[i].side_slip_idx)
-            tde_slip_rate_constraints[start_row:end_row, meshes[i].side_slip_idx] = (
-                np.eye(len(meshes[i].side_slip_idx))
-            )
-        # Other element indices
+
+        # Process boundary constraints (top, bottom, side)
+        boundary_constraints = [
+            ("top", meshes[i].config.top_slip_rate_constraint, meshes[i].top_elements),
+            ("bot", meshes[i].config.bot_slip_rate_constraint, meshes[i].bot_elements),
+            (
+                "side",
+                meshes[i].config.side_slip_rate_constraint,
+                meshes[i].side_elements,
+            ),
+        ]
+
+        for name, constraint_value, elements in boundary_constraints:
+            if constraint_value > 0:
+                indices = np.asarray(np.where(elements))
+                slip_idx = get_2component_index(indices)
+                setattr(meshes[i], f"{name}_slip_idx", slip_idx)
+                start_row = end_row
+                end_row = start_row + len(slip_idx)
+                tde_slip_rate_constraints[start_row:end_row, slip_idx] = np.eye(
+                    len(slip_idx)
+                )
+
+        # Process coupling constraints
         if len(meshes[i].config.coupling_constraint_idx) > 0:
             meshes[i].coup_idx = get_2component_index(
                 np.asarray(meshes[i].config.coupling_constraint_idx)
             )
-            start_row += end_row
-            end_row += 2 * len(meshes[i].config.coupling_constraint_idx)
+            start_row = end_row
+            end_row = start_row + 2 * len(meshes[i].config.coupling_constraint_idx)
             tde_slip_rate_constraints[start_row:end_row, meshes[i].coup_idx] = np.eye(
                 2 * len(meshes[i].config.coupling_constraint_idx)
             )
-        if len(meshes[i].config.ss_slip_constraint_idx) > 0:
-            ss_idx = get_2component_index(
-                np.asarray(meshes[i].config.ss_slip_constraint_idx)
-            )
-            meshes[i].ss_slip_idx = ss_idx[0::2]
-            start_row += end_row
-            end_row += len(meshes[i].ss_slip_idx)
-            # Component slip needs identities placed every other row, column
-            tde_slip_rate_constraints[start_row:end_row, meshes[i].ss_slip_idx] = (
-                np.eye(len(meshes[i].ss_slip_idx))
-            )
-        if len(meshes[i].config.ds_slip_constraint_idx) > 0:
-            ds_idx = get_2component_index(
-                np.asarray(meshes[i].config.ds_slip_constraint_idx)
-            )
-            meshes[i].ds_slip_idx = ds_idx[1::2]
-            start_row += end_row
-            end_row += len(meshes[i].ds_slip_idx)
-            tde_slip_rate_constraints[start_row:end_row, meshes[i].ds_slip_idx] = (
-                np.eye(len(meshes[i].ds_slip_idx))
-            )
+
+        # Process slip constraint indices
+        slip_constraints = [
+            ("ss", meshes[i].config.ss_slip_constraint_idx),
+            ("ds", meshes[i].config.ds_slip_constraint_idx),
+        ]
+
+        for name, constraint_indices in slip_constraints:
+            if len(constraint_indices) > 0:
+                idx = get_2component_index(np.asarray(constraint_indices))
+                slip_idx = idx[0::2]
+                setattr(meshes[i], f"{name}_slip_idx", slip_idx)
+                start_row = end_row
+                end_row = start_row + len(slip_idx)
+                # Component slip needs identities placed every other row, column
+                tde_slip_rate_constraints[start_row:end_row, slip_idx] = np.eye(
+                    len(slip_idx)
+                )
+
         # Eliminate blank rows
         sum_constraint_columns = np.sum(tde_slip_rate_constraints, 1)
         tde_slip_rate_constraints = tde_slip_rate_constraints[
@@ -1562,6 +1627,7 @@ def get_rotation_to_tri_slip_rate_partials(model: Model, mesh_idx: int) -> np.nd
     """Calculate partial derivatives relating relative block motion to TDE slip rates
     for a single mesh. Called within a loop from get_tde_coupling_constraints().
     """
+    # TODO(Adrian): This function modifies model.meshes[mesh_idx] in place.
     mesh = model.meshes[mesh_idx]
     segment = model.segment
     n_blocks = len(model.block)
@@ -2399,12 +2465,16 @@ def get_full_dense_operator_block_only(operators: Operators) -> np.ndarray:
     return operator
 
 
-def get_full_dense_operator(model: Model, operators: Operators) -> np.ndarray:
+def get_full_dense_operator(operators: Operators) -> np.ndarray:
     # TODO: This should either take an OperatorBuilder as input and
     # store the final operator *or* return the final operator, but not
     # modify the operator in place
     index = operators.index
+    model = operators.model
     assert index.tde is not None
+
+    assert operators.eigen is None
+    assert operators.tde is not None
 
     operator = np.zeros(
         (
@@ -2423,10 +2493,6 @@ def get_full_dense_operator(model: Model, operators: Operators) -> np.ndarray:
     # DEBUG:
     # IPython.embed(banner1="")
 
-    # Insert block rotations and elastic velocities from fully locked segments
-    operators.rotation_to_slip_rate_to_okada_to_velocities = (
-        operators.slip_rate_to_okada_to_velocities @ operators.rotation_to_slip_rate
-    )
     operator[
         index.start_station_row : index.end_station_row,
         index.start_block_col : index.end_block_col,
@@ -2452,18 +2518,22 @@ def get_full_dense_operator(model: Model, operators: Operators) -> np.ndarray:
     # Insert all TDE operators
     for i in range(len(model.meshes)):
         # Insert TDE to velocity matrix
-        tde_keep_row_index = get_keep_index_12(operators.tde_to_velocities[i].shape[0])
-        tde_keep_col_index = get_keep_index_12(operators.tde_to_velocities[i].shape[1])
+        tde_keep_row_index = get_keep_index_12(
+            operators.tde.tde_to_velocities[i].shape[0]
+        )
+        tde_keep_col_index = get_keep_index_12(
+            operators.tde.tde_to_velocities[i].shape[1]
+        )
         operator[
             index.start_station_row : index.end_station_row,
             index.tde.start_tde_col[i] : index.tde.end_tde_col[i],
-        ] = -operators.tde_to_velocities[i][tde_keep_row_index, :][
+        ] = -operators.tde.tde_to_velocities[i][tde_keep_row_index, :][
             :, tde_keep_col_index
         ]
 
         # Insert TDE smoothing matrix
         smoothing_keep_index = get_keep_index_12(
-            operators.tde_to_velocities[i].shape[1]
+            operators.tde.tde_to_velocities[i].shape[1]
         )
         operator[
             index.tde.start_tde_smoothing_row[i] : index.tde.end_tde_smoothing_row[i],
@@ -2477,7 +2547,7 @@ def get_full_dense_operator(model: Model, operators: Operators) -> np.ndarray:
         operator[
             index.tde.start_tde_constraint_row[i] : index.tde.end_tde_constraint_row[i],
             index.tde.start_tde_col[i] : index.tde.end_tde_col[i],
-        ] = operators.tde_slip_rate_constraints[i]
+        ] = operators.tde.tde_slip_rate_constraints[i]
         # Insert block motion constraints for any coupling-constrained rows
         if model.meshes[i].config.top_slip_rate_constraint == 2:
             operator[
@@ -2510,14 +2580,12 @@ def get_full_dense_operator(model: Model, operators: Operators) -> np.ndarray:
                 :,
             ]
     # Insert block strain operator
-    assert operators.block_strain_rate_to_velocities is not None
     operator[
         index.start_station_row : index.end_station_row,
         index.start_block_strain_col : index.end_block_strain_col,
     ] = operators.block_strain_rate_to_velocities[index.station_row_keep_index, :]
 
     # Insert Mogi source operators
-    assert operators.mogi_to_velocities is not None
     operator[
         index.start_station_row : index.end_station_row,
         index.start_mogi_col : index.end_mogi_col,
@@ -2535,9 +2603,16 @@ def get_full_dense_operator(model: Model, operators: Operators) -> np.ndarray:
     return operator
 
 
-def get_full_dense_operator_eigen(model: Model, operators: Operators, index: Index):
+def get_full_dense_operator_eigen(operators: Operators):
+    # TODO deduplicate with get_full_dense_operator and get_full_dense_operator_block_only
+    index = operators.index
+    model = operators.model
+
     assert index.tde is not None
     assert index.eigen is not None
+
+    assert operators.eigen is not None
+    assert operators.tde is not None
 
     # Initialize linear operator
     operator = np.zeros(
@@ -2553,10 +2628,6 @@ def get_full_dense_operator_eigen(model: Model, operators: Operators, index: Ind
         )
     )
 
-    # Insert block rotations and elastic velocities from fully locked segments
-    operators.rotation_to_slip_rate_to_okada_to_velocities = (
-        operators.slip_rate_to_okada_to_velocities @ operators.rotation_to_slip_rate
-    )
     operator[
         index.start_station_row : index.end_station_row,
         index.start_block_col : index.end_block_col,
@@ -2581,31 +2652,21 @@ def get_full_dense_operator_eigen(model: Model, operators: Operators, index: Ind
 
     # EIGEN Eigenvector to velocity matrix
     for i in range(index.n_meshes):
-        # Eliminate vertical elastic velocities
-        tde_keep_row_index = get_keep_index_12(operators.tde_to_velocities[i].shape[0])
-        tde_keep_col_index = get_keep_index_12(operators.tde_to_velocities[i].shape[1])
-
-        # Create eigenvector to velocities operator
-        operators.eigen_to_velocities[i] = (
-            -operators.tde_to_velocities[i][tde_keep_row_index, :][
-                :, tde_keep_col_index
-            ]
-            @ operators.eigenvectors_to_tde_slip[i]
-        )
-
         # Insert eigenvector to velocities operator
         operator[
             index.start_station_row : index.end_station_row,
             index.eigen.start_col_eigen[i] : index.eigen.end_col_eigen[i],
-        ] = operators.eigen_to_velocities[i]
+        ] = operators.eigen.eigen_to_velocities[i]
+
+    tde_keep_row_index = get_keep_index_12(operators.tde.tde_to_velocities[-1].shape[0])
 
     # EIGEN Eigenvector to TDE boundary conditions matrix
     for i in range(index.n_meshes):
         # Create eigenvector to TDE boundary conditions matrix
-        operators.eigen_to_tde_bcs[i] = (
+        operators.eigen.eigen_to_tde_bcs[i] = (
             model.meshes[i].config.mesh_tde_modes_bc_weight
-            * operators.tde_slip_rate_constraints[i]
-            @ operators.eigenvectors_to_tde_slip[i]
+            * operators.tde.tde_slip_rate_constraints[i]
+            @ operators.eigen.eigenvectors_to_tde_slip[i]
         )
 
         # Insert eigenvector to TDE boundary conditions matrix
@@ -2614,18 +2675,18 @@ def get_full_dense_operator_eigen(model: Model, operators: Operators, index: Ind
                 i
             ] : index.eigen.end_tde_constraint_row_eigen[i],
             index.eigen.start_col_eigen[i] : index.eigen.end_col_eigen[i],
-        ] = operators.eigen_to_tde_bcs[i]
+        ] = operators.eigen.eigen_to_tde_bcs[i]
 
     # EIGEN: Block strain operator
     operator[
         0 : 2 * index.n_stations,
-        index.eigen.start_block_strain_col_eigen : index.eigen.end_block_strain_col_eigen,
+        index.start_block_strain_col : index.end_block_strain_col,
     ] = operators.block_strain_rate_to_velocities[tde_keep_row_index, :]
 
     # EIGEN: Mogi operator
     operator[
         0 : 2 * index.n_stations,
-        index.eigen.start_mogi_col_eigen : index.eigen.end_mogi_col_eigen,
+        index.start_mogi_col : index.end_mogi_col,
     ] = operators.mogi_to_velocities[tde_keep_row_index, :]
 
     return operator
@@ -2719,10 +2780,11 @@ def get_slip_rate_bounds(segment, block):
 
 
 def get_qp_tde_inequality_operator_and_data_vector(
-    model: Model, operators: _OperatorBuilder | Operators, index: Index
+    model: Model, operators: Operators, index: Index
 ) -> tuple[np.ndarray, np.ndarray]:
     assert index.eigen is not None
     assert index.tde is not None
+    assert operators.eigen is not None
 
     qp_constraint_matrix = np.zeros(
         (4 * index.n_tde_total, index.n_operator_cols_eigen)
@@ -2731,19 +2793,25 @@ def get_qp_tde_inequality_operator_and_data_vector(
 
     for i in range(index.n_meshes):
         # TDE strike- and dip-slip lower bounds
+        lower_ss = model.meshes[i].config.qp_mesh_tde_slip_rate_lower_bound_ss
+        assert lower_ss is not None
+
+        lower_ds = model.meshes[i].config.qp_mesh_tde_slip_rate_lower_bound_ds
+        assert lower_ds is not None
+
         lower_bound_current_mesh = interleave2(
-            model.meshes[i].config.qp_mesh_tde_slip_rate_lower_bound_ss
-            * np.ones(index.tde.n_tde[i]),
-            model.meshes[i].config.qp_mesh_tde_slip_rate_lower_bound_ds
-            * np.ones(index.tde.n_tde[i]),
+            lower_ss * np.ones(index.tde.n_tde[i]),
+            lower_ds * np.ones(index.tde.n_tde[i]),
         )
 
         # TDE strike- and dip-slip upper bounds
+        upper_ss = model.meshes[i].config.qp_mesh_tde_slip_rate_upper_bound_ss
+        assert upper_ss is not None
+        upper_ds = model.meshes[i].config.qp_mesh_tde_slip_rate_upper_bound_ds
+        assert upper_ds is not None
         upper_bound_current_mesh = interleave2(
-            model.meshes[i].config.qp_mesh_tde_slip_rate_upper_bound_ss
-            * np.ones(index.tde.n_tde[i]),
-            model.meshes[i].config.qp_mesh_tde_slip_rate_upper_bound_ds
-            * np.ones(index.tde.n_tde[i]),
+            upper_ss * np.ones(index.tde.n_tde[i]),
+            upper_ds * np.ones(index.tde.n_tde[i]),
         )
 
         # Insert TDE lower bounds into QP constraint data vector (note negative sign)
@@ -2769,7 +2837,7 @@ def get_qp_tde_inequality_operator_and_data_vector(
             ] : index.eigen.qp_constraint_tde_rate_start_row_eigen[i]
             + 2 * index.tde.n_tde[i],
             index.eigen.start_col_eigen[i] : index.eigen.end_col_eigen[i],
-        ] = -operators.eigenvectors_to_tde_slip[i]
+        ] = -operators.eigen.eigenvectors_to_tde_slip[i]
 
         # Insert eigenmode to TDE slip operator into QP constraint data vector for lower bounds
         qp_constraint_matrix[
@@ -2778,13 +2846,13 @@ def get_qp_tde_inequality_operator_and_data_vector(
                 i
             ],
             index.eigen.start_col_eigen[i] : index.eigen.end_col_eigen[i],
-        ] = operators.eigenvectors_to_tde_slip[i]
+        ] = operators.eigen.eigenvectors_to_tde_slip[i]
 
     return qp_constraint_matrix, qp_constraint_data_vector
 
 
 def get_qp_all_inequality_operator_and_data_vector(
-    model: Model, operators: _OperatorBuilder | Operators, index: Index
+    model: Model, operators: Operators, index: Index
 ) -> tuple[np.ndarray, np.ndarray]:
     # Create arrays and data vector of correct size for linear inequality constraints
     # Stack TDE slip rate bounds on top of slip rate bounds
@@ -2820,7 +2888,7 @@ def get_qp_all_inequality_operator_and_data_vector(
 
 
 def get_qp_slip_rate_inequality_operator_and_data_vector(
-    model: Model, operators: _OperatorBuilder | Operators, index: Index
+    model: Model, operators: Operators, index: Index
 ) -> tuple[np.ndarray, np.ndarray]:
     # Get slip rate bounds vectors and operators
     slip_rate_bound_min, slip_rate_bound_max, slip_rate_bound_partials = (
@@ -2906,9 +2974,12 @@ def get_elastic_operator_single_mesh(
 def get_h_matrices_for_tde_meshes(
     model: Model, operators: Operators, col_norms: np.ndarray
 ):
+    # TODO This modifies the type of operators.tde.tde_slip_rate_constraints. Fix this.
     # TODO should this be in hmatrix.py?
     # TODO fix late import
     from celeri.hmatrix import build_hmatrix_from_mesh_tdes
+
+    assert operators.tde is not None
 
     meshes = model.meshes
     station = model.station
@@ -2943,8 +3014,8 @@ def get_h_matrices_for_tde_meshes(
                 :, smoothing_keep_index
             ]
         )
-        operators.tde_slip_rate_constraints[i] = csr_matrix(
-            operators.tde_slip_rate_constraints[i]
+        operators.tde.tde_slip_rate_constraints[i] = csr_matrix(
+            operators.tde.tde_slip_rate_constraints[i]
         )
 
         # Eliminate unused columns and rows of TDE to velocity matrix
@@ -3338,11 +3409,6 @@ def _get_index_eigen(model: Model, assembly: Assembly) -> Index:
         qp_constraint_slip_rate_end_row_eigen=np.zeros(index.n_meshes, dtype=int),
         qp_constraint_slip_rate_start_row_eigen=np.zeros(index.n_meshes, dtype=int),
         end_row_eigen=np.zeros(index.n_meshes, dtype=int),
-        # These are updated later in the function
-        start_block_strain_col_eigen=-1,
-        end_block_strain_col_eigen=-1,
-        start_mogi_col_eigen=-1,
-        end_mogi_col_eigen=-1,
     )
     index.eigen = eigen
 
@@ -3407,13 +3473,13 @@ def _get_index_eigen(model: Model, assembly: Assembly) -> Index:
         )
 
     # EIGEN: Index for block strain
-    eigen.start_block_strain_col_eigen = eigen.end_col_eigen[-1]
-    eigen.end_block_strain_col_eigen = (
-        eigen.start_block_strain_col_eigen + index.n_block_strain_components
+    index.start_block_strain_col = eigen.end_col_eigen[-1]
+    index.end_block_strain_col = (
+        index.start_block_strain_col + index.n_block_strain_components
     )
 
     # EIGEN: Index for Mogi sources
-    eigen.start_mogi_col_eigen = eigen.end_block_strain_col_eigen
-    eigen.end_mogi_col_eigen = eigen.start_mogi_col_eigen + index.n_mogis
+    index.start_mogi_col = index.end_block_strain_col
+    index.end_mogi_col = index.start_mogi_col + index.n_mogis
 
     return index

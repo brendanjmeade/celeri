@@ -322,15 +322,15 @@ class Estimation:
         vel_tde = np.zeros(2 * self.index.n_stations)
 
         if index.eigen is None:
-            for i in range(len(self.operators.tde_to_velocities)):
+            for i in range(len(self.operators.tde.tde_to_velocities)):
                 tde_keep_row_index = get_keep_index_12(
-                    self.operators.tde_to_velocities[i].shape[0]
+                    self.operators.tde.tde_to_velocities[i].shape[0]
                 )
                 tde_keep_col_index = get_keep_index_12(
-                    self.operators.tde_to_velocities[i].shape[1]
+                    self.operators.tde.tde_to_velocities[i].shape[1]
                 )
                 vel_tde += (
-                    self.operators.tde_to_velocities[i][tde_keep_row_index, :][
+                    self.operators.tde.tde_to_velocities[i][tde_keep_row_index, :][
                         :, tde_keep_col_index
                     ]
                     @ self.state_vector[
