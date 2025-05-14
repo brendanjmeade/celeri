@@ -28,6 +28,7 @@ from celeri.model import (
     process_segment,
     process_station,
     read_data,
+    station_row_keep,
 )
 from celeri.operators import (
     Operators,
@@ -210,4 +211,5 @@ __all__ = [
     "wrap2360",
     "write_output",
     "write_output_supplemental",
+    "station_row_keep",
 ]
