@@ -1,8 +1,9 @@
+from __future__ import annotations
+
 import glob
 import json
 import os
 from dataclasses import dataclass, field
-from typing import Optional
 
 import numpy as np
 
@@ -14,6 +15,11 @@ class Config:
     block_file_name: str
     mesh_parameters_file_name: str
     segment_file_name: str
+
+    # Runtime fields (not in JSON)
+    file_name: str
+    run_name: str
+    output_path: str
 
     station_file_name: str | None = None
     mogi_file_name: str | None = None
@@ -47,12 +53,16 @@ class Config:
     printslipcons: int = 0
     quiver_scale: int = 100
     repl: int = 1
-    reuse_elastic: int = 1
+
+    # TODO(Adrian): Would it be enough to just have reuse_elastic_file?
+    # And assume that if reuse_elastic_file is None, then reuse_elastic is False?
+    reuse_elastic: bool = True
+    save_elastic: bool = True
     reuse_elastic_file: str | None = None
+    save_elastic_file: str | None = None
+
     ridge_param: int = 0
     sar_file_name: str | None = None
-    save_elastic: int = 0
-    save_elastic_file: str | None = None
     slip_constraint_weight: int = 100000
     slip_constraint_weight_max: int = 100000
     slip_constraint_weight_min: int = 100000
@@ -79,17 +89,12 @@ class Config:
     coupling_bounds_total_percentage_satisfied_target: float | None = None
     coupling_bounds_max_iter: float | None = None
 
-    # Runtime fields (not in JSON)
-    file_name: Optional[str] = None
-    run_name: Optional[str] = None
-    output_path: Optional[str] = None
-
     # Only in tsts/global_command.json?
     patch_file_names: list[str] | None = None
     poissons_ratio: float | None = None
 
     @classmethod
-    def from_file(cls, file_path: str) -> "Config":
+    def from_file(cls, file_path: str) -> Config:
         """Read config from a JSON file and return a Config instance.
 
         Args:
@@ -101,17 +106,17 @@ class Config:
         with open(file_path) as f:
             config_data = json.load(f)
 
-        # Create Config instance from file data
-        config = cls(**config_data)
-        config.file_name = file_path
+        config_data["file_name"] = file_path
+        config_data["run_name"] = _get_new_folder_name()
 
-        # Add run_name and output_path
-        # command.run_name = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-        config.run_name = _get_new_folder_name()
-        config.output_path = os.path.join(config.base_runs_folder, config.run_name)
-        # command.file_name = command_file_name
+        if "base_runs_folder" not in config_data:
+            raise ValueError("base_runs_folder is required in the config file.")
 
-        return config
+        config_data["output_path"] = os.path.join(
+            config_data["base_runs_folder"], config_data["run_name"]
+        )
+
+        return cls(**config_data)
 
 
 def _get_new_folder_name() -> str:
