@@ -8,7 +8,7 @@ import celeri
 
 @logger.catch
 def main(args: Namespace):
-    # Read in command file and start logging
+    # Read in config file and start logging
     model = celeri.build_model(args.config_file_name)
     config = model.config
     logger = celeri.get_logger(config)

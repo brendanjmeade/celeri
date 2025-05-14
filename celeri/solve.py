@@ -1229,7 +1229,7 @@ def build_and_solve_dense_no_meshes(config, assembly, operators, data):
     logger.error(operators.keys())
 
     operator_block_only = _get_full_dense_operator_block_only(operators, index)
-    # weighting_vector = get_weighting_vector(command, data.station, data.meshes, index)
+    # weighting_vector = get_weighting_vector(config, data.station, data.meshes, index)
     weighting_vector = _get_weighting_vector_no_meshes(config, data.station, index)
     data_vector = _get_data_vector(assembly, index)
     weighting_vector_block_only = weighting_vector[0 : operator_block_only.shape[0]]
@@ -1306,7 +1306,7 @@ def build_and_solve_dense_no_meshes(config, assembly, operators, data):
     estimation.north_vel_block_strain_rate = np.zeros(len(data.station))
 
     # # Get all elastic operators for segments and TDEs
-    # get_elastic_operators(operators, data.meshes, data.segment, data.station, command)
+    # get_elastic_operators(operators, data.meshes, data.segment, data.station, config)
 
     # # Get TDE smoothing operators
     # get_all_mesh_smoothing_matrices(data.meshes, operators)
@@ -1317,10 +1317,10 @@ def build_and_solve_dense_no_meshes(config, assembly, operators, data):
     #     data.station
     # )
     # assembly, operators.block_motion_constraints = get_block_motion_constraints(
-    #     assembly, data.block, command
+    #     assembly, data.block, config
     # )
     # assembly, operators.slip_rate_constraints = get_slip_rate_constraints(
-    #     assembly, data.segment, data.block, command
+    #     assembly, data.segment, data.block, config
     # )
     # operators.rotation_to_slip_rate = get_rotation_to_slip_rate_partials(
     #     data.segment, data.block
@@ -1332,7 +1332,7 @@ def build_and_solve_dense_no_meshes(config, assembly, operators, data):
     #     data.block, data.station, data.segment
     # )
     # operators.mogi_to_velocities = get_mogi_to_velocities_partials(
-    #     data.mogi, data.station, command
+    #     data.mogi, data.station, config
     # )
     # get_tde_slip_rate_constraints(data.meshes, operators)
 
@@ -1340,7 +1340,7 @@ def build_and_solve_dense_no_meshes(config, assembly, operators, data):
     # logger.info("Start: Dense assemble and solve")
     # start_solve_time = timeit.default_timer()
     # index, estimation = assemble_and_solve_dense(
-    #     command, assembly, operators, data.station, data.block, data.meshes
+    #     config, assembly, operators, data.station, data.block, data.meshes
     # )
     # end_solve_time = timeit.default_timer()
     # logger.success(
@@ -1374,7 +1374,7 @@ def build_and_solve_qp_kl(config, assembly, operators, data):
     logger.info("PLACEHOLDER")
 
     # # Get all elastic operators for segments and TDEs
-    # get_elastic_operators(operators, data.meshes, data.segment, data.station, command)
+    # get_elastic_operators(operators, data.meshes, data.segment, data.station, config)
 
     # # Get TDE smoothing operators
     # get_all_mesh_smoothing_matrices(data.meshes, operators)
@@ -1387,10 +1387,10 @@ def build_and_solve_qp_kl(config, assembly, operators, data):
     #     data.station
     # )
     # assembly, operators.block_motion_constraints = get_block_motion_constraints(
-    #     assembly, data.block, command
+    #     assembly, data.block, config
     # )
     # assembly, operators.slip_rate_constraints = get_slip_rate_constraints(
-    #     assembly, data.segment, data.block, command
+    #     assembly, data.segment, data.block, config
     # )
     # operators.rotation_to_slip_rate = get_rotation_to_slip_rate_partials(
     #     data.segment, data.block
@@ -1402,7 +1402,7 @@ def build_and_solve_qp_kl(config, assembly, operators, data):
     #     data.block, data.station, data.segment
     # )
     # operators.mogi_to_velocities = get_mogi_to_velocities_partials(
-    #     data.mogi, data.station, command
+    #     data.mogi, data.station, config
     # )
     # get_tde_slip_rate_constraints(data.meshes, operators)
 
@@ -1410,7 +1410,7 @@ def build_and_solve_qp_kl(config, assembly, operators, data):
     # logger.info("Start: Dense assemble and solve")
     # start_solve_time = timeit.default_timer()
     # index, estimation = assemble_and_solve_dense(
-    #     command, assembly, operators, data.station, data.block, data.meshes
+    #     config, assembly, operators, data.station, data.block, data.meshes
     # )
     # end_solve_time = timeit.default_timer()
     # logger.success(
@@ -1420,19 +1420,19 @@ def build_and_solve_qp_kl(config, assembly, operators, data):
     # post_process_estimation(estimation, operators, data.station, index)
 
     # write_output(
-    #     command, estimation, data.station, data.segment, data.block, data.meshes
+    #     config, estimation, data.station, data.segment, data.block, data.meshes
     # )
 
-    # if bool(command.plot_estimation_summary):
+    # if bool(config.plot_estimation_summary):
     #     plot_estimation_summary(
-    #         command,
+    #         config,
     #         data.segment,
     #         data.station,
     #         data.meshes,
     #         estimation,
-    #         lon_range=command.lon_range,
-    #         lat_range=command.lat_range,
-    #         quiver_scale=command.quiver_scale,
+    #         lon_range=config.lon_range,
+    #         lat_range=config.lat_range,
+    #         quiver_scale=config.quiver_scale,
     #     )
 
     # return estimation, operators, index

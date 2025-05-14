@@ -166,8 +166,8 @@ def write_output(
             )
             hdf.create_dataset("earth_radius", data=6371.0)
 
-            # Write command dictionary
-            grp = hdf.create_group("command")
+            # Write config dictionary
+            grp = hdf.create_group("config")
             data = asdict(config)
             mesh_params = data.pop("mesh_params")
             for key, value in data.items():
@@ -337,11 +337,11 @@ def write_output(
             # Store the index as an attribute
             # hdf.attrs["index"] = station_no_name.index.to_numpy()
 
-    # Write the command dict to an a json file
-    args_command_output_file_name = (
+    # Write the config dict to an a json file
+    args_config_output_file_name = (
         config.output_path + "/args_" + os.path.basename(config.file_name)
     )
-    with open(args_command_output_file_name, "w") as f:
+    with open(args_config_output_file_name, "w") as f:
         json.dump(asdict(config), f, indent=4)
 
     # Write all major variables to .pkl file in output folder
@@ -388,7 +388,7 @@ def write_output_supplemental(
             except:
                 logger.warning(f"No {msh_file_name} to copy to output folder")
 
-    # Write command line arguments to output folder
+    # Write config line arguments to output folder
     with open(
         os.path.join(config.output_path, config.run_name + "_args.json"), "w"
     ) as f:

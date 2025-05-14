@@ -508,7 +508,7 @@ def _store_elastic_operators(
         meshes (List): Geometries of meshes
         segment (pd.DataFrame): All segment data
         station (pd.DataFrame): All station data
-        command (Dict): All command data
+        config (Dict): All config data
     """
     config = model.config
     meshes = model.meshes
@@ -591,7 +591,7 @@ def _store_elastic_operators_okada(
         operators (Dict): Elastic operators will be added to this data structure
         segment (pd.DataFrame): All segment data
         station (pd.DataFrame): All station data
-        command (Dict): All command data
+        config (Dict): All config data
     """
     config = model.config
 

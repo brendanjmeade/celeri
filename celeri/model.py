@@ -163,7 +163,7 @@ def create_output_folder(config: Config):
 
 
 def build_model(
-    command_path: str | Path | Config,
+    config_path: str | Path | Config,
     *,
     override_segment: pd.DataFrame | None = None,
     override_block: pd.DataFrame | None = None,
@@ -172,10 +172,10 @@ def build_model(
     override_mogi: pd.DataFrame | None = None,
     override_sar: pd.DataFrame | None = None,
 ) -> Model:
-    if isinstance(command_path, Config):
-        config = command_path
+    if isinstance(config_path, Config):
+        config = config_path
     else:
-        config = get_config(command_path)
+        config = get_config(config_path)
     create_output_folder(config)
     segment, block, meshes, station, mogi, sar = read_data(config)
 
@@ -346,7 +346,7 @@ def order_endpoints_sphere(segment):
 
 
 def locking_depth_manager(segment, config):
-    """This function assigns the locking depths given in the command file to any
+    """This function assigns the locking depths given in the config file to any
     segment that has the same locking depth flag.  Segments with flag =
     0, 1 are untouched.
     """
@@ -601,7 +601,7 @@ def station_row_keep(assembly):
     TODO: I do not understand this!!!
     TODO: The logic in the first conditional seems to indicate that if there are
     no vertical velocities as a part of the data then they should be eliminated.
-    TODO: Perhaps it would be better to make this a flag in command???
+    TODO: Perhaps it would be better to make this a flag in config???
     """
     if np.sum(np.abs(assembly.data.up_vel)) == 0:
         assembly.index.station_row_keep = np.setdiff1d(
@@ -616,7 +616,7 @@ def station_row_keep(assembly):
 def get_processed_data_structures(config):
     # NOTE: Used in celeri_solve.py
     # TODO(Adrian): This function should be replaced by
-    # Model.from_config(command)
+    # Model.from_config(config)
     import addict
 
     data = addict.Dict()

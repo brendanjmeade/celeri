@@ -101,9 +101,9 @@ def test_global_closure():
     Right now all this does is check for the correct number of blocks and
     against one set of polygon edge indices.
     """
-    config_file_name = "./tests/test_closure_command.json"
+    config_file_name = "./tests/test_closure_config.json"
     config = celeri.get_config(config_file_name)
-    # logger = celeri.get_logger(command)
+    # logger = celeri.get_logger(config)
     segment, block, meshes, station, mogi, sar = celeri.read_data(config)
 
     station = celeri.process_station(station, config)

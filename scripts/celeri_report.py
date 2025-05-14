@@ -29,7 +29,7 @@ def print_table_one_run(run: dict):
         f"[{COLOR_1}]{os.path.basename(run.folder_name)}",
     )
     table.add_row(
-        "[white]command file",
+        "[white]config file",
         f"[{COLOR_1}]{os.path.basename(run.config_file_name)}",
     )
     table.add_row(
@@ -136,12 +136,12 @@ def print_table_two_run(run_1: dict, run_2: dict):
         f"[{COLOR_2}]{value_2}",
     )
 
-    # command file names
+    # config file names
     value_1 = os.path.basename(run_1.config_file_name)
     value_2 = os.path.basename(run_2.config_file_name)
     eval_text, eval_color = get_val_text_and_color(value_1 == value_2)
     table.add_row(
-        "[white]command file name",
+        "[white]config file name",
         f"[{eval_color}]{eval_text}",
         f"[{COLOR_1}]{value_1}",
         f"[{COLOR_2}]{value_2}",
@@ -344,7 +344,7 @@ def read_process_run_folder(folder_name: str):
     run = addict.Dict()
     run.folder_name = folder_name
     run.config_file_name = glob.glob(
-        os.path.join(run.folder_name, "args_*_command.json")
+        os.path.join(run.folder_name, "args_*_config.json")
     )[0]
     run.station_file_name = glob.glob(
         os.path.join(run.folder_name, "model_station.csv")

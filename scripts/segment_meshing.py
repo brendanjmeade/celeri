@@ -32,9 +32,9 @@ import celeri
 
 # %%
 # Western North America example
-# command_file_name = "../data/command/western_north_america_command.json"
+# config_file_name = "../data/config/western_north_america_config.json"
 # Japan model
-config_file_name = "../data/command/japan_command.json"
+config_file_name = "../data/config/japan_config.json"
 
 # %%
 config = celeri.get_config(config_file_name)
@@ -243,7 +243,7 @@ else:
         )
 
 # %% [markdown]
-# ## Updating mesh parameters and command
+# ## Updating mesh parameters and config
 
 # %%
 # Establish default mesh parameters
@@ -289,14 +289,14 @@ new_segment_file_name = (
 )
 segment.to_csv(new_segment_file_name)
 
-# Write updated command json
-new_command_file_name = (
+# Write updated config json
+new_config_file_name = (
     os.path.splitext(os.path.normpath(config_file_name))[0] + "_ribbonmesh.json"
 )
 config["segment_file_name"] = new_segment_file_name
 config["mesh_parameters_file_name"] = new_mesh_param_name
 config["reuse_elastic"] = 0
-with open(new_command_file_name, "w") as cf:
+with open(new_config_file_name, "w") as cf:
     json.dump(config, cf, indent=2)
 
 # %% [markdown]
@@ -309,6 +309,6 @@ estimation = addict.Dict(estimation)
 p = celeri.get_default_plotting_dict(config, estimation, station)
 
 # Read in revised inputs
-config = celeri.get_config(new_command_file_name)
+config = celeri.get_config(new_config_file_name)
 segment, block, meshes, station, mogi, sar = celeri.read_data(config)
 celeri.plot_fault_geometry(p, segment, meshes)

@@ -9,7 +9,7 @@ from celeri.config import Config
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "command_file_name", type=str, help="Name of *_command.json file"
+        "config_file_name", type=str, help="Name of *_config.json file"
     )
     parser.add_argument(
         "--segment_file_name",
@@ -131,10 +131,10 @@ def process_args(config: Config, args: argparse.Namespace):
     for field in fields(config):
         key = field.name
         if key in args:
-            command_val = getattr(args, key)
-            if command_val is not None:
-                logger.warning(f"ORIGINAL: command.{key}: {command_val}")
+            config_val = getattr(args, key)
+            if config_val is not None:
+                logger.warning(f"ORIGINAL: config.{key}: {config_val}")
                 setattr(config, key, getattr(args, key))
-                logger.warning(f"REPLACED: command.{key}: {command_val}")
+                logger.warning(f"REPLACED: config.{key}: {config_val}")
             else:
-                logger.info(f"command.{key}: {command_val}")
+                logger.info(f"config.{key}: {config_val}")

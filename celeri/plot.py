@@ -892,7 +892,7 @@ def get_default_plotting_dict(config, estimation, station):
     ----------
     estimation : dictionary
     station : dataframe
-    command : dictionary
+    config : dictionary
 
     Returns
     -------
@@ -902,10 +902,10 @@ def get_default_plotting_dict(config, estimation, station):
         - WORLD_BOUNDARIES: Data loaded from "WorldHiVectors.mat".
         - FIGSIZE_VECTORS: (12, 6) - Default figure size for vector plots.
         - FONTSIZE: 16 - Default font size.
-        - LON_RANGE: - Inferred from command.
-        - LAT_RANGE: - Inferred from command.
-        - LON_TICKS: - Inferred from command.
-        - LAT_TICKS: - Inferred from command.
+        - LON_RANGE: - Inferred from config.
+        - LAT_RANGE: - Inferred from config.
+        - LON_TICKS: - Inferred from config.
+        - LAT_TICKS: - Inferred from config.
         - SLIP_RATE_MIN: - Inferred from estimation.
         - SLIP_RATE_MAX: - Inferred from estimation.
         - LAND_COLOR: "lightgray" - Color of land areas.
@@ -914,8 +914,8 @@ def get_default_plotting_dict(config, estimation, station):
         - KEY_RECTANGLE_ANCHOR: [0, -90] - Anchor point for the key rectangle.
         - KEY_RECTANGLE_WIDTH: 3.0 - Width of the key rectangle.
         - KEY_RECTANGLE_HEIGHT: 1.55 - Height of the key rectangle.
-        - KEY_ARROW_LON: 5.0 - Inferred from command.
-        - KEY_ARROW_LAT: -85.0 - Inferred from command.
+        - KEY_ARROW_LON: 5.0 - Inferred from config.
+        - KEY_ARROW_LAT: -85.0 - Inferred from config.
         - KEY_ARROW_MAGNITUDE: - Magnitude for the key arrow.
         - KEY_ARROW_TEXT: - Text for the key arrow.
         - KEY_ARROW_COLOR: "k" - Color for the key arrow.
@@ -923,9 +923,9 @@ def get_default_plotting_dict(config, estimation, station):
         - KEY_LINEWIDTH: 1.0 - Line width for the key.
         - KEY_EDGECOLOR: "k" - Edge color for the key.
         - ARROW_MAGNITUDE_MIN: 0.0 - Minimum arrow magnitude.
-        - ARROW_MAGNITUDE_MAX: - Maximum arrow magnitude (inferred from command).
+        - ARROW_MAGNITUDE_MAX: - Maximum arrow magnitude (inferred from config).
         - ARROW_COLORMAP: cm.plasma - Colormap for arrows.
-        - ARROW_SCALE: - Inferred from command.
+        - ARROW_SCALE: - Inferred from config.
         - ARROW_WIDTH: 0.0025 - Width for arrows.
         - ARROW_LINEWIDTH: 0.5 - Line width for arrows.
         - ARROW_EDGECOLOR: "k" - Edge color for arrows.

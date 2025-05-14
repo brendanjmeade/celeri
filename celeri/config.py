@@ -93,7 +93,7 @@ class Config:
     coupling_bounds_total_percentage_satisfied_target: float | None = None
     coupling_bounds_max_iter: float | None = None
 
-    # Only in tsts/global_command.json?
+    # Only in tsts/global_config.json?
     patch_file_names: list[str] | None = None
     poissons_ratio: float | None = None
 
@@ -173,7 +173,7 @@ def get_config(config_file_name) -> Config:
     """Get the configuration from a JSON file.
 
     Args:
-        command_file_name (str): Path to the JSON file.
+        config_file_name (str): Path to the JSON file.
 
     Returns:
         Config: A Config object with the loaded configuration.

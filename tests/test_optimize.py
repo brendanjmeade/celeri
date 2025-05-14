@@ -20,17 +20,17 @@ from celeri.optimize import (
 
 
 @pytest.fixture(scope="module")
-def small_test_command_path():
-    # Use a simple test command file or mock it
-    return Path("tests/test_japan_command.json")
+def small_test_config_path():
+    # Use a simple test config file or mock it
+    return Path("tests/test_japan_config.json")
 
 
 @pytest.fixture(scope="module")
-def model(small_test_command_path):
-    # Skip this test if the command file doesn't exist
-    if not os.path.exists(small_test_command_path):
-        pytest.skip(f"Command file not found: {small_test_command_path}")
-    return build_model(small_test_command_path)
+def model(small_test_config_path):
+    # Skip this test if the config file doesn't exist
+    if not os.path.exists(small_test_config_path):
+        pytest.skip(f"Command file not found: {small_test_config_path}")
+    return build_model(small_test_config_path)
 
 
 @pytest.fixture(scope="module")
@@ -45,7 +45,7 @@ def test_build_problem(model):
     assert hasattr(model, "segment")
     assert hasattr(model, "block")
     assert hasattr(model, "station")
-    assert hasattr(model, "command")
+    assert hasattr(model, "config")
     assert model.segment_mesh_indices is not None
     assert model.total_mesh_points > 0
 

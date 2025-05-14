@@ -67,7 +67,7 @@ def get_logger(config):
     #     # format="<cyan>[{level}]</cyan> <green>{message}</green>",
     #     colorize=True,
     # )
-    # logger.add(command.run_name + ".log")
+    # logger.add(config.run_name + ".log")
     logger.add(config.output_path + "/" + config.run_name + ".log")
     logger.info(f"Read: {config.file_name}")
     logger.info("RUN_NAME: " + config.run_name)
@@ -449,15 +449,15 @@ def read_run(folder_name):
     Returns
     -------
     tuple: A tuple containing the following elements in order:
-        - command: command dictionary.
-        - estimation: estimation command dictionary.
+        - config: config dictionary.
+        - estimation: estimation config dictionary.
         - station: station dataframe.
         - segment: segment dataframe.
         - block: block dataframe.
         - meshes: meshes list.
 
     Example:
-    >>> command, estimation, station, segment, block, meshes = read_run(
+    >>> config, estimation, station, segment, block, meshes = read_run(
     ...     "example_folder"
     ... )
     """
