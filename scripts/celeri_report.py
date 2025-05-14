@@ -30,7 +30,7 @@ def print_table_one_run(run: dict):
     )
     table.add_row(
         "[white]command file",
-        f"[{COLOR_1}]{os.path.basename(run.command_file_name)}",
+        f"[{COLOR_1}]{os.path.basename(run.config_file_name)}",
     )
     table.add_row(
         "[white]velocity file",
@@ -137,8 +137,8 @@ def print_table_two_run(run_1: dict, run_2: dict):
     )
 
     # command file names
-    value_1 = os.path.basename(run_1.command_file_name)
-    value_2 = os.path.basename(run_2.command_file_name)
+    value_1 = os.path.basename(run_1.config_file_name)
+    value_2 = os.path.basename(run_2.config_file_name)
     eval_text, eval_color = get_val_text_and_color(value_1 == value_2)
     table.add_row(
         "[white]command file name",
@@ -343,13 +343,13 @@ def read_process_run_folder(folder_name: str):
     # Find and read the data in folder_name
     run = addict.Dict()
     run.folder_name = folder_name
-    run.command_file_name = glob.glob(
+    run.config_file_name = glob.glob(
         os.path.join(run.folder_name, "args_*_command.json")
     )[0]
     run.station_file_name = glob.glob(
         os.path.join(run.folder_name, "model_station.csv")
     )[0]
-    run.config = celeri.get_config(run.command_file_name)
+    run.config = celeri.get_config(run.config_file_name)
 
     # Check for empty los file.  This is common.
     if run.config.los_file_name == {}:

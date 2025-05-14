@@ -48,8 +48,8 @@ fig.plot(x=station.lon, y=station.lat, style="c0.05", color="yellow", pen="0.1p,
 fig.show()
 
 # Plot mesh
-command_file_name = "../data/command/western_north_america_command.json"
-config = celeri.get_config(command_file_name)
+config_file_name = "../data/command/western_north_america_command.json"
+config = celeri.get_config(config_file_name)
 segment, block, meshes, station, mogi, sar = celeri.read_data(config)
 station = celeri.process_station(station, config)
 segment = celeri.process_segment(segment, config, meshes)

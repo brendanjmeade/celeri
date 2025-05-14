@@ -34,10 +34,10 @@ import celeri
 # Western North America example
 # command_file_name = "../data/command/western_north_america_command.json"
 # Japan model
-command_file_name = "../data/command/japan_command.json"
+config_file_name = "../data/command/japan_command.json"
 
 # %%
-config = celeri.get_config(command_file_name)
+config = celeri.get_config(config_file_name)
 logger = celeri.get_logger(config)
 segment, block, meshes, station, mogi, sar = celeri.read_data(config)
 # Update mesh_parameters list
@@ -291,7 +291,7 @@ segment.to_csv(new_segment_file_name)
 
 # Write updated command json
 new_command_file_name = (
-    os.path.splitext(os.path.normpath(command_file_name))[0] + "_ribbonmesh.json"
+    os.path.splitext(os.path.normpath(config_file_name))[0] + "_ribbonmesh.json"
 )
 config["segment_file_name"] = new_segment_file_name
 config["mesh_parameters_file_name"] = new_mesh_param_name

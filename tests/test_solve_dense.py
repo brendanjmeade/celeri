@@ -26,8 +26,8 @@ def test_japan_dense(command_file, eigen: bool, tde: bool):
 
 
 def test_japan_dense_error():
-    command_file_name = "./tests/test_japan_command.json"
-    model = celeri.build_model(command_file_name)
+    config_file_name = "./tests/test_japan_command.json"
+    model = celeri.build_model(config_file_name)
 
     with pytest.raises(ValueError):
         celeri.assemble_and_solve_dense(model, eigen=True, tde=False)
