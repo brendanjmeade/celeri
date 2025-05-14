@@ -37,7 +37,7 @@ import celeri
 command_file_name = "../data/command/japan_command.json"
 
 # %%
-config = celeri.get_command(command_file_name)
+config = celeri.get_config(command_file_name)
 logger = celeri.get_logger(config)
 segment, block, meshes, station, mogi, sar = celeri.read_data(config)
 # Update mesh_parameters list
@@ -309,6 +309,6 @@ estimation = addict.Dict(estimation)
 p = celeri.get_default_plotting_dict(config, estimation, station)
 
 # Read in revised inputs
-config = celeri.get_command(new_command_file_name)
+config = celeri.get_config(new_command_file_name)
 segment, block, meshes, station, mogi, sar = celeri.read_data(config)
 celeri.plot_fault_geometry(p, segment, meshes)

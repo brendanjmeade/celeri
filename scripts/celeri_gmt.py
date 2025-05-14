@@ -49,7 +49,7 @@ fig.show()
 
 # Plot mesh
 command_file_name = "../data/command/western_north_america_command.json"
-config = celeri.get_command(command_file_name)
+config = celeri.get_config(command_file_name)
 segment, block, meshes, station, mogi, sar = celeri.read_data(config)
 station = celeri.process_station(station, config)
 segment = celeri.process_segment(segment, config, meshes)

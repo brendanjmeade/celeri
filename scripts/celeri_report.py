@@ -349,7 +349,7 @@ def read_process_run_folder(folder_name: str):
     run.station_file_name = glob.glob(
         os.path.join(run.folder_name, "model_station.csv")
     )[0]
-    run.config = celeri.get_command(run.command_file_name)
+    run.config = celeri.get_config(run.command_file_name)
 
     # Check for empty los file.  This is common.
     if run.config.los_file_name == {}:
