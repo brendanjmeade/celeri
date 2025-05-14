@@ -215,6 +215,30 @@ def post_process_estimation(
     estimation.east_vel_tde = estimation.vel_tde[0::2]
     estimation.north_vel_tde = estimation.vel_tde[1::2]
 
+    # Calculate and insert kinematic and coupling triangle rates
+    # TODO: This is a placeholder for the real calculation of TDE kinematic
+    # and coupling rates
+    estimation.tde_tensile_slip_rates = np.zeros_like(estimation.tde_strike_slip_rates)
+
+    estimation.tde_strike_slip_rates_kinematic = np.zeros_like(
+        estimation.tde_strike_slip_rates
+    )
+    estimation.tde_dip_slip_rates_kinematic = np.zeros_like(
+        estimation.tde_dip_slip_rates
+    )
+    estimation.tde_tensile_slip_rates_kinematic = np.zeros_like(
+        estimation.tde_tensile_slip_rates
+    )
+    estimation.tde_strike_slip_rates_coupling = np.zeros_like(
+        estimation.tde_strike_slip_rates
+    )
+    estimation.tde_dip_slip_rates_coupling = np.zeros_like(
+        estimation.tde_dip_slip_rates
+    )
+    estimation.tde_tensile_slip_rates_coupling = np.zeros_like(
+        estimation.tde_tensile_slip_rates
+    )
+
 
 def post_process_estimation_eigen(
     model: Model, estimation_eigen: Estimator, operators: Operators
