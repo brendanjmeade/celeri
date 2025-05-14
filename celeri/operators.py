@@ -1,5 +1,6 @@
 import os
 from dataclasses import dataclass, field
+from functools import cached_property
 from typing import Any
 
 import addict
@@ -250,15 +251,30 @@ class Operators:
     # operators without tde or eigen, even if the operators
     # are set up for tde or eigen? We should make sure though
     # that the index is then correct for those use cases.
-    @property
+    @cached_property
     def full_dense_operator(self) -> np.ndarray:
         if self.tde is None:
-            return get_full_dense_operator_block_only(self)
-        if isinstance(self.tde, EigenOperators):
+            return _get_full_dense_operator_block_only(self)
+        if self.eigen is not None:
             return get_full_dense_operator_eigen(self)
-        if self.tde is not None:
-            return get_full_dense_operator(self)
-        return get_full_dense_operator_block_only(self)
+        return get_full_dense_operator(self)
+
+    @property
+    def data_vector(self) -> np.ndarray:
+        if self.tde is None:
+            # TODO(Adrian): Is this the correct method for non-tde?
+            return _get_data_vector(self.model, self.assembly, self.index)
+        if self.eigen is not None:
+            return _get_data_vector_eigen(self.model, self.assembly, self.index)
+        return _get_data_vector(self.model, self.assembly, self.index)
+
+    @property
+    def weighting_vector(self) -> np.ndarray:
+        if self.tde is None:
+            return _get_weighting_vector_no_meshes(self.model, self.index)
+        if self.eigen is not None:
+            return _get_weighting_vector_eigen(self.model, self.index)
+        return _get_weighting_vector(self.model, self.index)
 
 
 # TODO maybe this should only contain commonly used operators,
@@ -275,7 +291,6 @@ class _OperatorBuilder:
     rotation_to_slip_rate: np.ndarray | None = None
     block_strain_rate_to_velocities: np.ndarray | None = None
     mogi_to_velocities: np.ndarray | None = None
-    eigen: np.ndarray | None = None
     slip_rate_to_okada_to_velocities: np.ndarray | None = None
     eigenvectors_to_tde_slip: dict[int, np.ndarray] = field(default_factory=dict)
     rotation_to_tri_slip_rate: dict[int, np.ndarray] = field(default_factory=dict)
@@ -344,7 +359,6 @@ class _OperatorBuilder:
         assert self.eigen_to_velocities is not None
         assert self.eigen_to_tde_bcs is not None
         assert self.eigenvectors_to_tde_slip is not None
-        assert self.eigen is not None
 
         eigen = EigenOperators(
             eigenvectors_to_tde_slip=self.eigenvectors_to_tde_slip,
@@ -399,10 +413,14 @@ def build_operators(model: Model, *, eigen: bool = True, tde: bool = True) -> Op
     (
         operators.block_strain_rate_to_velocities,
         strain_rate_block_index,
-    ) = get_block_strain_rate_to_velocities_partials(model)
+    ) = get_block_strain_rate_to_velocities_partials(
+        model.block, model.station, model.segment
+    )
 
     # Mogi source operator
-    operators.mogi_to_velocities = get_mogi_to_velocities_partials(model)
+    operators.mogi_to_velocities = get_mogi_to_velocities_partials(
+        model.mogi, model.station, model.command
+    )
 
     # Soft TDE boundary condition constraints
     _store_tde_slip_rate_constraints(model, operators)
@@ -410,16 +428,16 @@ def build_operators(model: Model, *, eigen: bool = True, tde: bool = True) -> Op
     if eigen:
         index = _get_index_eigen(model, assembly)
         operators.index = index
-        get_data_vector_eigen(model, assembly, index)
-        get_weighting_vector_eigen(model, index)
+        _get_data_vector_eigen(model, assembly, index)
+        _get_weighting_vector_eigen(model, index)
 
         # Get KL modes for each mesh
         _store_eigenvectors_to_tde_slip(model, operators)
     else:
         index = _get_index(model, assembly)
         operators.index = index
-        get_data_vector(model, assembly, index)
-        get_weighting_vector(model, index)
+        _get_data_vector(model, assembly, index)
+        _get_weighting_vector(model, index)
 
     # Get rotation to TDE kinematic slip rate operator for all meshes tied to segments
     _store_tde_coupling_constraints(model, operators)
@@ -449,13 +467,15 @@ def build_operators(model: Model, *, eigen: bool = True, tde: bool = True) -> Op
             )
 
     # Get smoothing operators for post-hoc smoothing of slip
-    operators = _get_gaussian_smoothing_operator(model.meshes, operators, index)
+    _store_gaussian_smoothing_operator(model.meshes, operators, index)
     if eigen:
         return operators.finalize_eigen()
     return operators.finalize_tde()
 
 
-def _get_gaussian_smoothing_operator(meshes, operators, index):
+def _store_gaussian_smoothing_operator(
+    meshes: list[Mesh], operators: _OperatorBuilder, index: Index
+):
     for i in range(index.n_meshes):
         points = np.vstack((meshes[i].lon_centroid, meshes[i].lat_centroid)).T
 
@@ -476,8 +496,7 @@ def _get_gaussian_smoothing_operator(meshes, operators, index):
         # Normalize rows so each row sums to 1
         W /= W.sum(axis=1, keepdims=True)
 
-        operators.linear_guassian_smoothing[i] = W
-    return operators
+        operators.linear_gaussian_smoothing[i] = W
 
 
 def _store_elastic_operators(
@@ -771,6 +790,7 @@ def get_rotation_to_tri_slip_rate_partials(model: Model, mesh_idx: int) -> np.nd
     for a single mesh. Called within a loop from get_tde_coupling_constraints().
     """
     # TODO(Adrian): This function modifies model.meshes[mesh_idx] in place.
+    # Should part of this be moved to model.py?
     mesh = model.meshes[mesh_idx]
     segment = model.segment
     n_blocks = len(model.block)
@@ -1184,7 +1204,7 @@ def _get_data_vector(model: Model, assembly: Assembly, index: Index) -> np.ndarr
     return data_vector
 
 
-def get_weighting_vector(model: Model, index: Index):
+def _get_weighting_vector(model: Model, index: Index):
     assert index.tde is not None
 
     # Initialize and build weighting matrix
@@ -1216,7 +1236,7 @@ def get_weighting_vector(model: Model, index: Index):
     return weighting_vector
 
 
-def get_weighting_vector_no_meshes(model: Model, index: Index) -> np.ndarray:
+def _get_weighting_vector_no_meshes(model: Model, index: Index) -> np.ndarray:
     station = model.station
     # NOTE: Consider combining with above
     # Initialize and build weighting matrix
@@ -1269,7 +1289,9 @@ def get_weighting_vector_single_mesh_for_col_norms(
     return weighting_vector
 
 
-def get_data_vector_eigen(model: Model, assembly: Assembly, index: Index) -> np.ndarray:
+def _get_data_vector_eigen(
+    model: Model, assembly: Assembly, index: Index
+) -> np.ndarray:
     assert index.tde is not None
     assert index.eigen is not None
 
@@ -1313,7 +1335,7 @@ def get_data_vector_eigen(model: Model, assembly: Assembly, index: Index) -> np.
     return data_vector
 
 
-def get_weighting_vector_eigen(model: Model, index: Index) -> np.ndarray:
+def _get_weighting_vector_eigen(model: Model, index: Index) -> np.ndarray:
     assert index.tde is not None
     assert index.eigen is not None
 
@@ -1352,7 +1374,7 @@ def get_weighting_vector_eigen(model: Model, index: Index) -> np.ndarray:
     return weighting_vector
 
 
-def get_full_dense_operator_block_only(operators: Operators) -> np.ndarray:
+def _get_full_dense_operator_block_only(operators: Operators) -> np.ndarray:
     index = operators.index
 
     # Initialize linear operator
@@ -1586,7 +1608,9 @@ def get_full_dense_operator_eigen(operators: Operators):
             index.eigen.start_col_eigen[i] : index.eigen.end_col_eigen[i],
         ] = operators.eigen.eigen_to_velocities[i]
 
-    tde_keep_row_index = get_keep_index_12(operators.tde.tde_to_velocities[-1].shape[0])
+    tde_keep_row_index = get_keep_index_12(
+        list(operators.tde.tde_to_velocities.values())[-1].shape[0]
+    )
 
     # EIGEN Eigenvector to TDE boundary conditions matrix
     for i in range(index.n_meshes):
@@ -1903,7 +1927,6 @@ def get_h_matrices_for_tde_meshes(
     model: Model, operators: Operators, col_norms: np.ndarray
 ):
     # TODO This modifies the type of operators.tde.tde_slip_rate_constraints. Fix this.
-    # TODO should this be in hmatrix.py?
     # TODO fix late import
     from celeri.hmatrix import build_hmatrix_from_mesh_tdes
 
@@ -2152,7 +2175,7 @@ def _get_index(model: Model, assembly: Assembly) -> Index:
     # TODO: Adapt this to use the dataclasses as in get_index_eigen
     # TODO: But better integrate it with the other get_index_* functions?
 
-    index = get_index_no_meshes(model, assembly)
+    index = _get_index_no_meshes(model, assembly)
     index.n_meshes = len(model.meshes)
 
     # Add TDE mesh indices
@@ -2261,7 +2284,7 @@ def _get_index(model: Model, assembly: Assembly) -> Index:
     return index
 
 
-def get_index_no_meshes(model: Model, assembly: Assembly):
+def _get_index_no_meshes(model: Model, assembly: Assembly):
     # NOTE: Merge with above if possible.
     # Make sure empty meshes work
     n_blocks = len(model.block)

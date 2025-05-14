@@ -2,8 +2,9 @@
 # Right now we have solve.py and optimize.py. This is a bit
 # confusing.
 
-from dataclasses import dataclass
 import timeit
+from dataclasses import dataclass
+from functools import cached_property
 
 import addict
 import cvxopt
@@ -19,7 +20,14 @@ from celeri.model import Model
 from celeri.operators import (
     Index,
     Operators,
+    _get_data_vector,
+    _get_data_vector_eigen,
+    _get_full_dense_operator_block_only,
     _get_index,
+    _get_index_no_meshes,
+    _get_weighting_vector,
+    _get_weighting_vector_eigen,
+    _get_weighting_vector_no_meshes,
     _store_all_mesh_smoothing_matrices,
     _store_block_motion_constraints,
     _store_elastic_operators,
@@ -27,18 +35,13 @@ from celeri.operators import (
     _store_tde_slip_rate_constraints,
     build_operators,
     get_block_strain_rate_to_velocities_partials,
-    get_data_vector,
     get_full_dense_operator,
-    get_full_dense_operator_block_only,
     get_global_float_block_rotation_partials,
     get_h_matrices_for_tde_meshes,
-    get_index_no_meshes,
     get_mogi_to_velocities_partials,
     get_rotation_to_slip_rate_partials,
     get_rotation_to_velocities_partials,
     get_slip_rate_constraints,
-    get_weighting_vector,
-    get_weighting_vector_no_meshes,
     rotation_vector_err_to_euler_pole_err,
     rotation_vectors_to_euler_poles,
 )
@@ -65,7 +68,7 @@ class Estimation:
     def station(self) -> pd.DataFrame:
         return self.model.station
 
-    @property
+    @cached_property
     def predictions(self) -> np.ndarray:
         return self.operator @ self.state_vector
 
@@ -105,7 +108,7 @@ class Estimation:
     def rotation_vector_z(self) -> np.ndarray:
         return self.rotation_vector[2::3]
 
-    @property
+    @cached_property
     def slip_rate_sigma(self) -> np.ndarray | None:
         if self.state_covariance_matrix is not None:
             return np.sqrt(
@@ -137,7 +140,7 @@ class Estimation:
             return self.slip_rate_sigma[2::3]
         return None
 
-    @property
+    @cached_property
     def tde_rates(self) -> np.ndarray | None:
         index = self.index
         if index.tde is None:
@@ -148,6 +151,8 @@ class Estimation:
                 3 * index.n_blocks : 3 * index.n_blocks + 2 * index.n_tde_total
             ]
 
+        assert self.operators.eigen is not None
+
         tde_rates = np.zeros(2 * index.n_tde_total)
         for i in range(index.n_meshes):
             # Temporary indices for easier reading
@@ -156,7 +161,7 @@ class Estimation:
 
             # Calcuate estimated TDE rates for the current mesh
             tde_rates[start_idx:end_idx] = (
-                self.operators.eigenvectors_to_tde_slip[i]
+                self.operators.eigen.eigenvectors_to_tde_slip[i]
                 @ self.state_vector[
                     index.eigen.start_col_eigen[i] : index.eigen.end_col_eigen[i]
                 ]
@@ -218,7 +223,7 @@ class Estimation:
     def north_vel_rotation(self) -> np.ndarray:
         return self.vel_rotation[1::2]
 
-    @property
+    @cached_property
     def vel_elastic_segment(self) -> np.ndarray:
         return (
             self.operators.rotation_to_slip_rate_to_okada_to_velocities[
@@ -235,7 +240,7 @@ class Estimation:
     def north_vel_elastic_segment(self) -> np.ndarray:
         return self.vel_elastic_segment[1::2]
 
-    @property
+    @cached_property
     def vel_block_strain_rate(self) -> np.ndarray:
         return (
             self.operators.block_strain_rate_to_velocities[
@@ -252,7 +257,7 @@ class Estimation:
     def north_vel_block_strain_rate(self) -> np.ndarray:
         return self.vel_block_strain_rate[1::2]
 
-    @property
+    @cached_property
     def euler(self) -> np.ndarray:
         lon, lat, rate = rotation_vectors_to_euler_poles(
             self.rotation_vector_x, self.rotation_vector_y, self.rotation_vector_z
@@ -271,7 +276,7 @@ class Estimation:
     def euler_rate(self) -> np.ndarray:
         return self.euler[2]
 
-    @property
+    @cached_property
     def euler_err(self) -> np.ndarray:
         # TODO
         omega_cov = np.zeros(
@@ -297,7 +302,7 @@ class Estimation:
     def euler_rate_err(self) -> np.ndarray:
         return self.euler_err[2]
 
-    @property
+    @cached_property
     def vel_mogi(self) -> np.ndarray:
         return (
             self.operators.mogi_to_velocities[self.index.station_row_keep_index, :]
@@ -312,12 +317,14 @@ class Estimation:
     def north_vel_mogi(self) -> np.ndarray:
         return self.vel_mogi[1::2]
 
-    @property
+    @cached_property
     def vel_tde(self) -> np.ndarray | None:
         index = self.index
 
         if index.tde is None:
             return None
+
+        assert self.operators.tde is not None
 
         vel_tde = np.zeros(2 * self.index.n_stations)
 
@@ -339,9 +346,10 @@ class Estimation:
                 )
             return vel_tde
 
-        for i in range(len(self.operators.tde_to_velocities)):
+        assert self.operators.eigen is not None
+        for i in range(len(self.operators.tde.tde_to_velocities)):
             vel_tde += (
-                -self.operators.eigen_to_velocities[i]
+                -self.operators.eigen.eigen_to_velocities[i]
                 @ self.state_vector[
                     index.eigen.start_col_eigen[i] : index.eigen.end_col_eigen[i]
                 ]
@@ -404,13 +412,49 @@ class Estimation:
         ]
 
 
+def build_estimation(
+    model: Model, operators: Operators, state_vector: np.ndarray
+) -> Estimation:
+    """Build the estimation object.
+
+    Args:
+        model (Model): The model object.
+        operators (Operators): The operators object.
+        state_vector (np.ndarray): The state vector.
+
+    Returns:
+        Estimation: The estimation object.
+    """
+    if operators.eigen is not None:
+        data_vector = _get_data_vector_eigen(model, operators.assembly, operators.index)
+        weighting_vector = _get_weighting_vector_eigen(model, operators.index)
+    elif operators.tde is not None:
+        data_vector = _get_data_vector(model, operators.assembly, operators.index)
+        weighting_vector = _get_weighting_vector(model, operators.index)
+    else:
+        # TODO is get_data_vector correct here?
+        data_vector = _get_data_vector(model, operators.assembly, operators.index)
+        weighting_vector = _get_weighting_vector_no_meshes(model, operators.index)
+
+    return Estimation(
+        data_vector=data_vector,
+        weighting_vector=weighting_vector,
+        operator=operators.full_dense_operator,
+        state_vector=state_vector,
+        model=model,
+        operators=operators,
+    )
+
+
 def assemble_and_solve_dense(model: Model) -> tuple[Operators, Estimation]:
     # TODO This should be able to ask for specific subsets of operators?
     operators = build_operators(model, eigen=False)
 
     estimation = addict.Dict()
-    estimation.data_vector = get_data_vector(model, operators.assembly, operators.index)
-    estimation.weighting_vector = get_weighting_vector(model, operators.index)
+    estimation.data_vector = _get_data_vector(
+        model, operators.assembly, operators.index
+    )
+    estimation.weighting_vector = _get_weighting_vector(model, operators.index)
     estimation.operator = get_full_dense_operator(model, operators)
 
     # DEBUG HERE:
@@ -824,8 +868,8 @@ def build_and_solve_hmatrix(command, assembly, operators, data):
     index = _get_index(assembly, data.station, data.block, data.meshes)
 
     # Data and data weighting vector
-    weighting_vector = get_weighting_vector(command, data.station, data.meshes, index)
-    data_vector = get_data_vector(assembly, index)
+    weighting_vector = _get_weighting_vector(command, data.station, data.meshes, index)
+    data_vector = _get_data_vector(assembly, index)
 
     # Apply data weighting
     data_vector = data_vector * np.sqrt(weighting_vector)
@@ -841,7 +885,7 @@ def build_and_solve_hmatrix(command, assembly, operators, data):
     sparse_block_slip_rate_constraints = csr_matrix(operators.slip_rate_constraints)
 
     # Calculate column normalization vector for blocks
-    operator_block_only = get_full_dense_operator_block_only(operators, index)
+    operator_block_only = _get_full_dense_operator_block_only(operators, index)
     weighting_vector_block_only = weighting_vector[0 : operator_block_only.shape[0]][
         :, None
     ]
@@ -1176,15 +1220,15 @@ def build_and_solve_dense_no_meshes(command, assembly, operators, data):
     )
 
     # Blocks only operator
-    index = get_index_no_meshes(assembly, data.station, data.block)
+    index = _get_index_no_meshes(assembly, data.station, data.block)
 
     # TODO: Clean up!
     logger.error(operators.keys())
 
-    operator_block_only = get_full_dense_operator_block_only(operators, index)
+    operator_block_only = _get_full_dense_operator_block_only(operators, index)
     # weighting_vector = get_weighting_vector(command, data.station, data.meshes, index)
-    weighting_vector = get_weighting_vector_no_meshes(command, data.station, index)
-    data_vector = get_data_vector(assembly, index)
+    weighting_vector = _get_weighting_vector_no_meshes(command, data.station, index)
+    data_vector = _get_data_vector(assembly, index)
     weighting_vector_block_only = weighting_vector[0 : operator_block_only.shape[0]]
 
     # Solve the overdetermined linear system using only a weighting vector rather than matrix

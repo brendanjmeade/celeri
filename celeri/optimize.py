@@ -3,7 +3,6 @@ from collections import namedtuple
 from dataclasses import dataclass
 from typing import Callable, Literal, cast
 
-import addict
 import cvxopt
 import cvxpy as cp
 import matplotlib.pyplot as plt
@@ -11,15 +10,12 @@ import numpy as np
 from scipy import linalg, sparse
 
 from celeri import (
-    get_data_vector_eigen,
     get_qp_all_inequality_operator_and_data_vector,
-    get_weighting_vector_eigen,
     plot_estimation_summary,
-    post_process_estimation_eigen,
-    write_output,
 )
 from celeri.model import Model
 from celeri.operators import Operators, build_operators
+from celeri.solve import build_estimation
 
 
 @dataclass
@@ -438,57 +434,41 @@ class Minimizer:
                     axes[idx, i].set_xlabel("kinetic")
             axes[idx, 0].set_ylabel("estimated")
 
-            a = self.coupling[idx].strike_slip.kinematic.value
-            b = self.coupling[idx].strike_slip.estimated.value
+            a = self.coupling[idx].strike_slip.kinematic.value  # type: ignore
+            b = self.coupling[idx].strike_slip.estimated.value  # type: ignore
 
             if a is None or b is None:
                 raise ValueError("Problem has not been fit")
             axes[idx, 0].scatter(a, b, c=b**2 - a * b < 0, marker=".", vmin=0, vmax=1)
 
-            a = self.coupling[idx].strike_slip.kinematic_smooth.value
-            b = self.coupling[idx].strike_slip.estimated.value
+            a = self.coupling[idx].strike_slip.kinematic_smooth.value  # type: ignore
+            b = self.coupling[idx].strike_slip.estimated.value  # type: ignore
             if a is None or b is None:
                 raise ValueError("Problem has not been fit")
             axes[idx, 1].scatter(a, b, c=b**2 - a * b < 0, marker=".", vmin=0, vmax=1)
 
-            a = self.coupling[idx].dip_slip.kinematic.value
-            b = self.coupling[idx].dip_slip.estimated.value
+            a = self.coupling[idx].dip_slip.kinematic.value  # type: ignore
+            b = self.coupling[idx].dip_slip.estimated.value  # type: ignore
             if a is None or b is None:
                 raise ValueError("Problem has not been fit")
             axes[idx, 2].scatter(a, b, c=b**2 - a * b < 0, marker=".", vmin=0, vmax=1)
 
-            a = self.coupling[idx].dip_slip.kinematic_smooth.value
-            b = self.coupling[idx].dip_slip.estimated.value
+            a = self.coupling[idx].dip_slip.kinematic_smooth.value  # type: ignore
+            b = self.coupling[idx].dip_slip.estimated.value  # type: ignore
             if a is None or b is None:
                 raise ValueError("Problem has not been fit")
             axes[idx, 3].scatter(a, b, c=b**2 - a * b < 0, marker=".", vmin=0, vmax=1)
 
-    def plot_estimation_summary(self):
-        estimation_qp = addict.Dict()
-        estimation_qp.state_vector = self.params.value
-        estimation_qp.operator = self.operators.eigen
-        post_process_estimation_eigen(
-            self.model,
-            estimation_qp,
-            self.operators,
-        )
-        write_output(
-            self.model.command,
-            estimation_qp,
-            self.model.station,
-            self.model.segment,
-            self.model.block,
-            self.model.meshes,
-        )
+    def to_estimation(self):
+        if self.params.value is None:
+            raise ValueError("Problem has not been fit")
+        return build_estimation(self.model, self.operators, self.params.value)
 
+    def plot_estimation_summary(self):
+        estimation = self.to_estimation()
         plot_estimation_summary(
-            self.model.command,
-            self.model.segment,
-            self.model.station,
-            self.model.meshes,
-            estimation_qp,
-            lon_range=self.model.command.lon_range,
-            lat_range=self.model.command.lat_range,
+            self.model,
+            estimation,
             quiver_scale=self.model.command.quiver_scale,
         )
 
@@ -540,20 +520,12 @@ def build_cvxpy_problem(
     if operators is None:
         operators = build_operators(model)
 
-    # Get data vector for KL problem
-    data_vector_eigen = get_data_vector_eigen(
-        model,
-        operators.assembly,
-        operators.index,
-    )
+    assert operators.eigen is not None
 
-    # Get data vector for KL problem
-    weighting_vector_eigen = get_weighting_vector_eigen(
-        model,
-        operators.index,
-    )
+    data_vector_eigen = operators.data_vector
+    weighting_vector_eigen = operators.weighting_vector
 
-    C = operators.eigen * np.sqrt(weighting_vector_eigen[:, None])
+    C = operators.full_dense_operator * np.sqrt(weighting_vector_eigen[:, None])
     d = data_vector_eigen * np.sqrt(weighting_vector_eigen)
 
     if rescale_parameters:
@@ -572,11 +544,13 @@ def build_cvxpy_problem(
     if init_params_raw_value is not None:
         params_raw = cp.Variable(
             name="params_raw",
-            shape=operators.eigen.shape[1],
+            shape=operators.full_dense_operator.shape[1],
             value=init_params_raw_value,
         )
     else:
-        params_raw = cp.Variable(name="params_raw", shape=operators.eigen.shape[1])
+        params_raw = cp.Variable(
+            name="params_raw", shape=operators.full_dense_operator.shape[1]
+        )
 
     params = params_raw / scale
 
@@ -603,12 +577,13 @@ def build_cvxpy_problem(
         param_slice = slice(start, end)
         estimated_params = params_raw[param_slice]
         estimated_operator = (
-            operators.eigenvectors_to_tde_slip[mesh_idx] / scale[None, param_slice]
+            operators.eigen.eigenvectors_to_tde_slip[mesh_idx]
+            / scale[None, param_slice]
         )
 
         estimated_operator = adapt_operator(estimated_operator)
 
-        smoothing_operator = operators.linear_guassian_smoothing[mesh_idx]
+        smoothing_operator = operators.eigen.linear_gaussian_smoothing[mesh_idx]
 
         smoothing_operator = adapt_operator(smoothing_operator)
 
@@ -992,7 +967,7 @@ def _custom_cvxopt_solve(problem: cp.Problem, **kwargs):
         r_dual=cvxopt_result["dual slack"],
     )
 
-    problem.unpack_results(sol, chain, inverse_data)
+    problem.unpack_results(sol, chain, inverse_data)  # type: ignore
 
 
 def _custom_solve(problem: cp.Problem, solver: str, objective: Objective, **kwargs):
