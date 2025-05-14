@@ -40,11 +40,11 @@ for notebook in notebooks:
                 stderr_file=log
             )
         status = "Success"
-        print(f"✓ {notebook} completed successfully")
+        print(f"{notebook} completed successfully")
         
     except Exception as e:
         status = "Failed"
-        print(f"✗ {notebook} failed: {str(e)}")
+        print(f"{notebook} failed: {str(e)}")
         
         # Extract error message
         with open(log_file, 'a') as log:
