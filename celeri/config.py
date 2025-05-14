@@ -16,7 +16,6 @@ class Config:
     segment_file_name: str
 
     station_file_name: str | None = None
-    apriori_block_name: str | None = None
     mogi_file_name: str | None = None
     atol: float = 0.0001
     block_constraint_weight: float = 1e24
@@ -24,18 +23,11 @@ class Config:
     block_constraint_weight_min: float = 1e20
     block_constraint_weight_steps: int = 1
     btol: float = 0.0001
-    fault_resolution: int = 500
     global_elastic_cutoff_distance: int = 2000000
     global_elastic_cutoff_distance_flag: int = 0
     h_matrix_min_pts_per_box: int = 20
     h_matrix_min_separation: float = 1.25
     h_matrix_tol: float = 1e-06
-    inversion_param01: int = 0
-    inversion_param02: int = 0
-    inversion_param03: int = 0
-    inversion_param04: int = 0
-    inversion_param05: int = 0
-    inversion_type: str = "standard"
     iterative_solver: str = "lsmr"
     lat_range: list[float] = field(default_factory=lambda: [30, 45])
     locking_depth_flag2: int = 25
@@ -52,7 +44,6 @@ class Config:
     pickle_save: int = 1
     plot_estimation_summary: int = 1
     plot_input_summary: int = 1
-    pmag_tri_smooth: int = 0
     printslipcons: int = 0
     quiver_scale: int = 100
     repl: int = 1
@@ -60,8 +51,6 @@ class Config:
     reuse_elastic_file: str | None = None
     ridge_param: int = 0
     sar_file_name: str | None = None
-    sar_ramp: int = 0
-    sar_weight: int = 0
     save_elastic: int = 0
     save_elastic_file: str | None = None
     slip_constraint_weight: int = 100000
@@ -85,7 +74,6 @@ class Config:
     tri_slip_constraint_type: int = 0
     tri_slip_sign: list[int] = field(default_factory=lambda: [0, 0])
     tri_smooth: float = 0.1
-    tvr_lambda: int = 1
     unit_sigmas: int = 0
 
     coupling_bounds_total_percentage_satisfied_target: float | None = None
