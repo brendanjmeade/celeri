@@ -6,6 +6,8 @@ import matplotlib
 import matplotlib.lines as mlines
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
+import matplotlib.collections
+import matplotlib.path
 import numpy as np
 from celeri.model import Model
 import pandas as pd
@@ -658,7 +660,7 @@ def plot_matrix_abs_log(matrix):
     plt.show()
 
 
-def plot_meshes(meshes: list, fill_value: np.array, ax):
+def plot_meshes(meshes: list, fill_value: np.ndarray, ax):
     for i in range(len(meshes)):
         x_coords = meshes[i].points[:, 0]
         y_coords = meshes[i].points[:, 1]
