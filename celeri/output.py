@@ -22,7 +22,7 @@ if typing.TYPE_CHECKING:
 # TODO(Brendan): Why is there a pytest mark here?
 @pytest.mark.skip(reason="Writing output files")
 def write_output(
-    command: Config,
+    config: Config,
     estimation: Estimation,
     station: pd.DataFrame,
     segment: pd.DataFrame,
@@ -39,7 +39,7 @@ def write_output(
     station["model_north_vel_rotation"] = estimation.north_vel_rotation
     station["model_east_elastic_segment"] = estimation.east_vel_elastic_segment
     station["model_north_elastic_segment"] = estimation.north_vel_elastic_segment
-    if command.solve_type != "dense_no_meshes":
+    if config.solve_type != "dense_no_meshes":
         station["model_east_vel_tde"] = estimation.east_vel_tde
         station["model_north_vel_tde"] = estimation.north_vel_tde
     station["model_east_vel_block_strain_rate"] = estimation.east_vel_block_strain_rate
@@ -48,7 +48,7 @@ def write_output(
     )
     station["model_east_vel_mogi"] = estimation.east_vel_mogi
     station["model_north_vel_mogi"] = estimation.north_vel_mogi
-    station_output_file_name = command.output_path + "/" + "model_station.csv"
+    station_output_file_name = config.output_path + "/" + "model_station.csv"
     station.to_csv(station_output_file_name, index=False, float_format="%0.4f")
 
     # Add estimated slip rates to segment dataframe and write .csv
@@ -70,7 +70,7 @@ def write_output(
         if estimation.tensile_slip_rate_sigma is None
         else estimation.tensile_slip_rate_sigma
     )
-    segment_output_file_name = command.output_path + "/" + "model_segment.csv"
+    segment_output_file_name = config.output_path + "/" + "model_segment.csv"
     segment.to_csv(segment_output_file_name, index=False, float_format="%0.4f")
 
     # TODO: Add rotation rates and block strain rate block dataframe and write .csv
@@ -80,7 +80,7 @@ def write_output(
     block["euler_lat_err"] = estimation.euler_lat_err
     block["euler_rate"] = estimation.euler_rate
     block["euler_rate_err"] = estimation.euler_rate_err
-    block_output_file_name = command.output_path + "/" + "model_block.csv"
+    block_output_file_name = config.output_path + "/" + "model_block.csv"
     block.to_csv(block_output_file_name, index=False, float_format="%0.4f")
 
     # Add volume change rates to Mogi source dataframe
@@ -91,7 +91,7 @@ def write_output(
     # mogi["volume_change_sig"] = estimation.mogi_volume_change_rates
 
     # Construct mesh geometry dataframe
-    if command.solve_type != "dense_no_meshes":
+    if config.solve_type != "dense_no_meshes":
         mesh_outputs = pd.DataFrame()
         for i in range(len(meshes)):
             this_mesh_output = {
@@ -114,7 +114,7 @@ def write_output(
         mesh_outputs["dip_slip_rate"] = estimation.tde_dip_slip_rates
 
         # Write to CSV
-        mesh_output_file_name = command.output_path + "/" + "model_meshes.csv"
+        mesh_output_file_name = config.output_path + "/" + "model_meshes.csv"
         mesh_outputs.to_csv(mesh_output_file_name, index=False)
 
         # Write a lot to a single hdf file
@@ -155,20 +155,20 @@ def write_output(
                 hdf.create_dataset(dataset_name, data=dataset)
 
         hdf_output_file_name = (
-            command.output_path + "/" + f"model_{command.run_name}.hdf5"
+            config.output_path + "/" + f"model_{config.run_name}.hdf5"
         )
         with h5py.File(hdf_output_file_name, "w") as hdf:
             # Meta data
             hdf.create_dataset(
                 "run_name",
-                data=command.run_name.encode("utf-8"),
+                data=config.run_name.encode("utf-8"),
                 dtype=h5py.string_dtype(encoding="utf-8"),
             )
             hdf.create_dataset("earth_radius", data=6371.0)
 
             # Write command dictionary
             grp = hdf.create_group("command")
-            data = asdict(command)
+            data = asdict(config)
             mesh_params = data.pop("mesh_params")
             for key, value in data.items():
                 if value is None:
@@ -339,18 +339,18 @@ def write_output(
 
     # Write the command dict to an a json file
     args_command_output_file_name = (
-        command.output_path + "/args_" + os.path.basename(command.file_name)
+        config.output_path + "/args_" + os.path.basename(config.file_name)
     )
     with open(args_command_output_file_name, "w") as f:
-        json.dump(asdict(command), f, indent=4)
+        json.dump(asdict(config), f, indent=4)
 
     # Write all major variables to .pkl file in output folder
-    with open(os.path.join(command.output_path, "output" + ".pkl"), "wb") as f:
-        pickle.dump([command, estimation, station, segment, block, meshes], f)
+    with open(os.path.join(config.output_path, "output" + ".pkl"), "wb") as f:
+        pickle.dump([config, estimation, station, segment, block, meshes], f)
 
 
 def write_output_supplemental(
-    args, command, index, data, operators, estimation, assembly
+    args, config, index, data, operators, estimation, assembly
 ):
     # Copy all input files to output folder
     file_names = [
@@ -364,10 +364,10 @@ def write_output_supplemental(
     for file_name in file_names:
         try:
             shutil.copyfile(
-                command[file_name],
+                config[file_name],
                 os.path.join(
-                    command.output_path,
-                    os.path.basename(os.path.normpath(command[file_name])),
+                    config.output_path,
+                    os.path.basename(os.path.normpath(config[file_name])),
                 ),
             )
         except:
@@ -381,7 +381,7 @@ def write_output_supplemental(
                 shutil.copyfile(
                     msh_file_name,
                     os.path.join(
-                        command.output_path,
+                        config.output_path,
                         os.path.basename(os.path.normpath(msh_file_name)),
                     ),
                 )
@@ -390,13 +390,13 @@ def write_output_supplemental(
 
     # Write command line arguments to output folder
     with open(
-        os.path.join(command.output_path, command.run_name + "_args.json"), "w"
+        os.path.join(config.output_path, config.run_name + "_args.json"), "w"
     ) as f:
         json.dump(args, f, indent=2)
 
     # Write all major variables to .pkl file in output folder
-    if bool(command.pickle_save):
+    if bool(config.pickle_save):
         with open(
-            os.path.join(command.output_path, command.run_name + ".pkl"), "wb"
+            os.path.join(config.output_path, config.run_name + ".pkl"), "wb"
         ) as f:
-            pickle.dump([command, index, data, operators, estimation, assembly], f)
+            pickle.dump([config, index, data, operators, estimation, assembly], f)

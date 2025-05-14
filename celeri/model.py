@@ -29,7 +29,7 @@ class Model:
     block: pd.DataFrame
     station: pd.DataFrame
     mogi: pd.DataFrame
-    command: Config
+    config: Config
     closure: celeri_closure.BlockClosureResult
     sar: pd.DataFrame
 
@@ -48,10 +48,10 @@ class Model:
         return build_model(config.file_name)
 
 
-def read_data(command: Config):
+def read_data(config: Config):
     logger.info("Reading data files")
     # Read segment data
-    segment = pd.read_csv(command.segment_file_name)
+    segment = pd.read_csv(config.segment_file_name)
     segment = segment.loc[:, ~segment.columns.str.match("Unnamed")]
 
     for name in ["ss", "ds", "ts"]:
@@ -62,19 +62,19 @@ def read_data(command: Config):
         if f"{name}_rate_bound_max" not in segment.columns:
             segment[f"{name}_rate_bound_max"] = 1.0
 
-    logger.success(f"Read: {command.segment_file_name}")
+    logger.success(f"Read: {config.segment_file_name}")
 
     # Read block data
-    block = pd.read_csv(command.block_file_name)
+    block = pd.read_csv(config.block_file_name)
     block = block.loc[:, ~block.columns.str.match("Unnamed")]
-    logger.success(f"Read: {command.block_file_name}")
+    logger.success(f"Read: {config.block_file_name}")
 
     # Read mesh data - List of dictionary version
     meshes = []
-    meshes = [Mesh.from_params(mesh_param) for mesh_param in command.mesh_params]
+    meshes = [Mesh.from_params(mesh_param) for mesh_param in config.mesh_params]
 
     # Read station data
-    if command.station_file_name is None:
+    if config.station_file_name is None:
         columns = pd.Index(
             [
                 "lon",
@@ -102,12 +102,12 @@ def read_data(command: Config):
         station = pd.DataFrame(columns=columns)
         logger.info("No station_file_name")
     else:
-        station = pd.read_csv(command.station_file_name)
+        station = pd.read_csv(config.station_file_name)
         station = station.loc[:, ~station.columns.str.match("Unnamed")]
-        logger.success(f"Read: {command.station_file_name}")
+        logger.success(f"Read: {config.station_file_name}")
 
     # Read Mogi source data
-    if command.mogi_file_name is None:
+    if config.mogi_file_name is None:
         columns = pd.Index(
             [
                 "name",
@@ -122,12 +122,12 @@ def read_data(command: Config):
         mogi = pd.DataFrame(columns=columns)
         logger.info("No mogi_file_name")
     else:
-        mogi = pd.read_csv(command.mogi_file_name)
+        mogi = pd.read_csv(config.mogi_file_name)
         mogi = mogi.loc[:, ~mogi.columns.str.match("Unnamed")]
-        logger.success(f"Read: {command.mogi_file_name}")
+        logger.success(f"Read: {config.mogi_file_name}")
 
     # Read SAR data
-    if command.sar_file_name is None:
+    if config.sar_file_name is None:
         columns = pd.Index(
             [
                 "lon",
@@ -145,21 +145,21 @@ def read_data(command: Config):
         sar = pd.DataFrame(columns=columns)
         logger.info("No sar_file_name")
     else:
-        sar = pd.read_csv(command.sar_file_name)
+        sar = pd.read_csv(config.sar_file_name)
         sar = sar.loc[:, ~sar.columns.str.match("Unnamed")]
-        logger.success(f"Read: {command.sar_file_name}")
+        logger.success(f"Read: {config.sar_file_name}")
     return segment, block, meshes, station, mogi, sar
 
 
 # TODO(Brendan): Why is there a pytest mark here?
 @pytest.mark.skip(reason="Writing output to disk")
-def create_output_folder(command: Config):
+def create_output_folder(config: Config):
     # Check to see if "runs" folder exists and if not create it
-    if not os.path.exists(command.base_runs_folder):
-        os.mkdir(command.base_runs_folder)
+    if not os.path.exists(config.base_runs_folder):
+        os.mkdir(config.base_runs_folder)
 
     # Make output folder for current run
-    os.mkdir(command.output_path)
+    os.mkdir(config.output_path)
 
 
 def build_model(
@@ -173,11 +173,11 @@ def build_model(
     override_sar: pd.DataFrame | None = None,
 ) -> Model:
     if isinstance(command_path, Config):
-        command = command_path
+        config = command_path
     else:
-        command = get_config(command_path)
-    create_output_folder(command)
-    segment, block, meshes, station, mogi, sar = read_data(command)
+        config = get_config(command_path)
+    create_output_folder(config)
+    segment, block, meshes, station, mogi, sar = read_data(config)
 
     if override_segment is not None:
         segment = override_segment
@@ -192,9 +192,9 @@ def build_model(
     if override_sar is not None:
         sar = override_sar
 
-    station = process_station(station, command)
-    segment = process_segment(segment, command, meshes)
-    sar = process_sar(sar, command)
+    station = process_station(station, config)
+    segment = process_segment(segment, config, meshes)
+    sar = process_sar(sar, config)
     closure, block = assign_block_labels(segment, station, block, mogi, sar)
 
     return Model(
@@ -202,15 +202,15 @@ def build_model(
         segment=segment,
         block=block,
         station=station,
-        command=command,
+        config=config,
         mogi=mogi,
         sar=sar,
         closure=closure,
     )
 
 
-def process_station(station, command):
-    if bool(command.unit_sigmas):  # Assign unit uncertainties, if requested
+def process_station(station, config):
+    if bool(config.unit_sigmas):  # Assign unit uncertainties, if requested
         station.east_sig = np.ones_like(station.east_sig)
         station.north_sig = np.ones_like(station.north_sig)
         station.up_sig = np.ones_like(station.up_sig)
@@ -224,7 +224,7 @@ def process_station(station, command):
     return station
 
 
-def process_sar(sar, command):
+def process_sar(sar, config):
     """Preprocessing of SAR data."""
     if sar.empty:
         sar["depth"] = np.zeros_like(sar.lon)
@@ -270,9 +270,9 @@ def merge_geodetic_data(assembly, station, sar):
     return assembly
 
 
-def process_segment(segment, command, meshes):
+def process_segment(segment, config, meshes):
     """Add derived fields to segment dataframe."""
-    if bool(command.snap_segments):
+    if bool(config.snap_segments):
         segment = snap_segments(segment, meshes)
 
     segment["x1"], segment["y1"], segment["z1"] = sph2cart(
@@ -316,7 +316,7 @@ def process_segment(segment, command, meshes):
     segment["mid_x"], segment["mid_y"], segment["mid_z"] = sph2cart(
         segment.mid_lon, segment.mid_lat, RADIUS_EARTH
     )
-    segment = locking_depth_manager(segment, command)
+    segment = locking_depth_manager(segment, config)
     segment = zero_mesh_segment_locking_depth(segment, meshes)
     segment = segment_centroids(segment)
     return segment
@@ -345,27 +345,27 @@ def order_endpoints_sphere(segment):
     return segment_copy
 
 
-def locking_depth_manager(segment, command):
+def locking_depth_manager(segment, config):
     """This function assigns the locking depths given in the command file to any
     segment that has the same locking depth flag.  Segments with flag =
     0, 1 are untouched.
     """
     segment = segment.copy(deep=True)
     segment.locking_depth.values[segment.locking_depth_flag == 2] = (
-        command.locking_depth_flag2
+        config.locking_depth_flag2
     )
     segment.locking_depth.values[segment.locking_depth_flag == 3] = (
-        command.locking_depth_flag3
+        config.locking_depth_flag3
     )
     segment.locking_depth.values[segment.locking_depth_flag == 4] = (
-        command.locking_depth_flag4
+        config.locking_depth_flag4
     )
     segment.locking_depth.values[segment.locking_depth_flag == 5] = (
-        command.locking_depth_flag5
+        config.locking_depth_flag5
     )
 
-    if bool(command.locking_depth_override_flag):
-        segment.locking_depth.values = command.locking_depth_override_value
+    if bool(config.locking_depth_override_flag):
+        segment.locking_depth.values = config.locking_depth_override_value
     return segment
 
 
@@ -613,7 +613,7 @@ def station_row_keep(assembly):
     return assembly
 
 
-def get_processed_data_structures(command):
+def get_processed_data_structures(config):
     # NOTE: Used in celeri_solve.py
     # TODO(Adrian): This function should be replaced by
     # Model.from_config(command)
@@ -629,10 +629,10 @@ def get_processed_data_structures(command):
         data.station,
         data.mogi,
         data.sar,
-    ) = read_data(command)
-    data.station = process_station(data.station, command)
-    data.segment = process_segment(data.segment, command, data.meshes)
-    data.sar = process_sar(data.sar, command)
+    ) = read_data(config)
+    data.station = process_station(data.station, config)
+    data.segment = process_segment(data.segment, config, data.meshes)
+    data.sar = process_sar(data.sar, config)
     data.closure, data.block = assign_block_labels(
         data.segment, data.station, data.block, data.mogi, data.sar
     )
@@ -641,20 +641,20 @@ def get_processed_data_structures(command):
     )  # TODO: Not sure this works correctly
 
     # Quick input plot
-    if bool(command.plot_input_summary):
+    if bool(config.plot_input_summary):
         from celeri.plot import plot_input_summary
 
         plot_input_summary(
-            command,
+            config,
             data.segment,
             data.station,
             data.block,
             data.meshes,
             data.mogi,
             data.sar,
-            lon_range=command.lon_range,
-            lat_range=command.lat_range,
-            quiver_scale=command.quiver_scale,
+            lon_range=config.lon_range,
+            lat_range=config.lat_range,
+            quiver_scale=config.quiver_scale,
         )
     return data, assembly, operators
 

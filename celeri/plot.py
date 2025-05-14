@@ -92,9 +92,9 @@ def plot_input_summary(
         quiver_scale (float): Scaling for velocity arrows
     """
     if lon_range is None:
-        lon_range = model.command.lon_range
+        lon_range = model.config.lon_range
     if lat_range is None:
-        lat_range = model.command.lat_range
+        lat_range = model.config.lat_range
 
     segment = model.segment
     block = model.block
@@ -293,11 +293,11 @@ def plot_input_summary(
     plt.suptitle("inputs")
     plt.show(block=False)
 
-    if model.command.output_path is not None:
-        plt.savefig(model.command.output_path + "/" + "plot_input_summary.png", dpi=300)
-        plt.savefig(model.command.output_path + "/" + "plot_input_summary.pdf")
+    if model.config.output_path is not None:
+        plt.savefig(model.config.output_path + "/" + "plot_input_summary.png", dpi=300)
+        plt.savefig(model.config.output_path + "/" + "plot_input_summary.pdf")
         logger.success(
-            f"Wrote figures {model.command.output_path}/plot_input_summary.(pdf, png)"
+            f"Wrote figures {model.config.output_path}/plot_input_summary.(pdf, png)"
         )
     else:
         logger.info("No output_path specified, figures not saved to disk")
@@ -321,11 +321,11 @@ def plot_estimation_summary(
         quiver_scale (float): Scaling for velocity arrows
     """
     if lon_range is None:
-        lon_range = model.command.lon_range
+        lon_range = model.config.lon_range
     if lat_range is None:
-        lat_range = model.command.lat_range
+        lat_range = model.config.lat_range
     if quiver_scale is None:
-        quiver_scale = model.command.quiver_scale
+        quiver_scale = model.config.quiver_scale
 
     segment = model.segment
     station = model.station
@@ -433,7 +433,7 @@ def plot_estimation_summary(
         color="magenta",
     )
 
-    if model.command.solve_type != "dense_no_meshes":
+    if model.config.solve_type != "dense_no_meshes":
         if len(meshes) > 0:
             subplot_index += 1
             plt.subplot(
@@ -509,7 +509,7 @@ def plot_estimation_summary(
         "green",
     )
 
-    if model.command.solve_type != "dense_no_meshes":
+    if model.config.solve_type != "dense_no_meshes":
         if len(meshes) > 0:
             subplot_index += 1
             plt.subplot(
@@ -618,12 +618,12 @@ def plot_estimation_summary(
 
     plt.show(block=False)
     plt.savefig(
-        model.command.output_path + "/" + "plot_estimation_summary.png", dpi=300
+        model.config.output_path + "/" + "plot_estimation_summary.png", dpi=300
     )
-    plt.savefig(model.command.output_path + "/" + "plot_estimation_summary.pdf")
+    plt.savefig(model.config.output_path + "/" + "plot_estimation_summary.pdf")
     logger.success(
         "Wrote figures"
-        + model.command.output_path
+        + model.config.output_path
         + "/"
         + "plot_estimation_summary.(pdf, png)"
     )
@@ -671,7 +671,7 @@ def plot_meshes(meshes: list, fill_value: np.ndarray, ax):
 def plot_segment_displacements(
     segment,
     station,
-    command,
+    config,
     segment_idx,
     strike_slip,
     dip_slip,
@@ -691,8 +691,8 @@ def plot_segment_displacements(
         segment.burial_depth[segment_idx],
         segment.dip[segment_idx],
         segment.azimuth[segment_idx],
-        command.material_lambda,
-        command.material_mu,
+        config.material_lambda,
+        config.material_mu,
         strike_slip,
         dip_slip,
         tensile_slip,
@@ -887,7 +887,7 @@ def plot_rotation_components(closure, station):
     plt.show()
 
 
-def get_default_plotting_dict(command, estimation, station):
+def get_default_plotting_dict(config, estimation, station):
     """Parameters
     ----------
     estimation : dictionary
@@ -957,10 +957,10 @@ def get_default_plotting_dict(command, estimation, station):
     p = addict.Dict()
     p.FIGSIZE_VECTORS = (12, 6)
     p.FONTSIZE = 16
-    p.LON_RANGE = command.lon_range
-    p.LAT_RANGE = command.lat_range
-    p.LON_TICKS = np.linspace(command.lon_range[0], command.lon_range[1], 3)
-    p.LAT_TICKS = np.linspace(command.lat_range[0], command.lat_range[1], 3)
+    p.LON_RANGE = config.lon_range
+    p.LAT_RANGE = config.lat_range
+    p.LON_TICKS = np.linspace(config.lon_range[0], config.lon_range[1], 3)
+    p.LAT_TICKS = np.linspace(config.lat_range[0], config.lat_range[1], 3)
     p.SLIP_RATE_MIN = -slip_rate_scale
     p.SLIP_RATE_MAX = slip_rate_scale
     p.LAND_COLOR = "lightgray"
@@ -969,9 +969,9 @@ def get_default_plotting_dict(command, estimation, station):
     p.KEY_RECTANGLE_ANCHOR = [0, -90]
     p.KEY_RECTANGLE_WIDTH = 3.0
     p.KEY_RECTANGLE_HEIGHT = 1.55
-    p.KEY_ARROW_LON = np.mean(command.lon_range)
-    p.KEY_ARROW_LAT = np.min(command.lat_range) + 0.05 * (
-        command.lat_range[1] - command.lat_range[0]
+    p.KEY_ARROW_LON = np.mean(config.lon_range)
+    p.KEY_ARROW_LAT = np.min(config.lat_range) + 0.05 * (
+        config.lat_range[1] - config.lat_range[0]
     )
     p.KEY_ARROW_MAGNITUDE = vel_scale
     p.KEY_ARROW_TEXT = f"{vel_scale:d} mm/yr"

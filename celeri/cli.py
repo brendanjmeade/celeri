@@ -127,14 +127,14 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def process_args(command: Config, args: argparse.Namespace):
-    for field in fields(command):
+def process_args(config: Config, args: argparse.Namespace):
+    for field in fields(config):
         key = field.name
         if key in args:
             command_val = getattr(args, key)
             if command_val is not None:
                 logger.warning(f"ORIGINAL: command.{key}: {command_val}")
-                setattr(command, key, getattr(args, key))
+                setattr(config, key, getattr(args, key))
                 logger.warning(f"REPLACED: command.{key}: {command_val}")
             else:
                 logger.info(f"command.{key}: {command_val}")

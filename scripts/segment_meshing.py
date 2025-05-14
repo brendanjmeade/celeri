@@ -37,19 +37,19 @@ import celeri
 command_file_name = "../data/command/japan_command.json"
 
 # %%
-command = celeri.get_command(command_file_name)
-logger = celeri.get_logger(command)
-segment, block, meshes, station, mogi, sar = celeri.read_data(command)
+config = celeri.get_command(command_file_name)
+logger = celeri.get_logger(config)
+segment, block, meshes, station, mogi, sar = celeri.read_data(config)
 # Update mesh_parameters list
-with open(command.mesh_parameters_file_name) as f:
+with open(config.mesh_parameters_file_name) as f:
     mesh_param = json.load(f)
 # Get mesh directory
 mesh_dir = os.path.dirname(mesh_param[0]["mesh_filename"])
 # Get stem of segment file name
-seg_file_stem = os.path.splitext(os.path.basename(command.segment_file_name))[0]
+seg_file_stem = os.path.splitext(os.path.basename(config.segment_file_name))[0]
 n_meshes = len(meshes)  # Number of preexisting meshes
-station = celeri.process_station(station, command)
-segment = celeri.process_segment(segment, command, meshes)
+station = celeri.process_station(station, config)
+segment = celeri.process_segment(segment, config, meshes)
 closure, block = celeri.assign_block_labels(segment, station, block, mogi, sar)
 # Returning a copy of the closure class lets us access data within it
 thisclosure = closure
@@ -277,7 +277,7 @@ for j in range(i + 1):
 
 # Write updated mesh_param json
 new_mesh_param_name = (
-    os.path.splitext(os.path.normpath(command.mesh_parameters_file_name))[0]
+    os.path.splitext(os.path.normpath(config.mesh_parameters_file_name))[0]
     + "_ribbonmesh.json"
 )
 with open(new_mesh_param_name, "w") as mf:
@@ -285,7 +285,7 @@ with open(new_mesh_param_name, "w") as mf:
 
 # Write updated segment csv
 new_segment_file_name = (
-    os.path.splitext(os.path.normpath(command.segment_file_name))[0] + "_ribbonmesh.csv"
+    os.path.splitext(os.path.normpath(config.segment_file_name))[0] + "_ribbonmesh.csv"
 )
 segment.to_csv(new_segment_file_name)
 
@@ -293,11 +293,11 @@ segment.to_csv(new_segment_file_name)
 new_command_file_name = (
     os.path.splitext(os.path.normpath(command_file_name))[0] + "_ribbonmesh.json"
 )
-command["segment_file_name"] = new_segment_file_name
-command["mesh_parameters_file_name"] = new_mesh_param_name
-command["reuse_elastic"] = 0
+config["segment_file_name"] = new_segment_file_name
+config["mesh_parameters_file_name"] = new_mesh_param_name
+config["reuse_elastic"] = 0
 with open(new_command_file_name, "w") as cf:
-    json.dump(command, cf, indent=2)
+    json.dump(config, cf, indent=2)
 
 # %% [markdown]
 # ## Visualize meshes
@@ -306,9 +306,9 @@ with open(new_command_file_name, "w") as cf:
 # Get a default plotting parameter dictionary
 estimation = {"strike_slip_rates": 0, "dip_slip_rates": 0, "tensile_slip_rates": 0}
 estimation = addict.Dict(estimation)
-p = celeri.get_default_plotting_dict(command, estimation, station)
+p = celeri.get_default_plotting_dict(config, estimation, station)
 
 # Read in revised inputs
-command = celeri.get_command(new_command_file_name)
-segment, block, meshes, station, mogi, sar = celeri.read_data(command)
+config = celeri.get_command(new_command_file_name)
+segment, block, meshes, station, mogi, sar = celeri.read_data(config)
 celeri.plot_fault_geometry(p, segment, meshes)

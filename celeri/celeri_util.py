@@ -45,7 +45,7 @@ def triangle_normal(triangles):
     )
 
 
-def get_logger(command):
+def get_logger(config):
     # Create logger
     logger.remove()  # Remove any existing loggers includeing default stderr
 
@@ -68,10 +68,10 @@ def get_logger(command):
     #     colorize=True,
     # )
     # logger.add(command.run_name + ".log")
-    logger.add(command.output_path + "/" + command.run_name + ".log")
-    logger.info(f"Read: {command.file_name}")
-    logger.info("RUN_NAME: " + command.run_name)
-    logger.info(f"Write log file: {command.output_path}/{command.run_name}.log")
+    logger.add(config.output_path + "/" + config.run_name + ".log")
+    logger.info(f"Read: {config.file_name}")
+    logger.info("RUN_NAME: " + config.run_name)
+    logger.info(f"Write log file: {config.output_path}/{config.run_name}.log")
     return logger
 
 
@@ -464,14 +464,14 @@ def read_run(folder_name):
     # TODO(Adrian): Adapt to model data class
     pickle_file = open(f"{folder_name}/output.pkl", "rb")
     pickle_data = pickle.load(pickle_file)
-    command = pickle_data[0]
+    config = pickle_data[0]
     estimation = pickle_data[1]
     station = pickle_data[2]
     segment = pickle_data[3]
     block = pickle_data[4]
     meshes = pickle_data[5]
     del pickle_data
-    return command, estimation, station, segment, block, meshes
+    return config, estimation, station, segment, block, meshes
 
 
 def diagnose_matrix(mat):

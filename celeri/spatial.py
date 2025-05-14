@@ -131,7 +131,7 @@ def get_rotation_displacements(lon_obs, lat_obs, omega_x, omega_y, omega_z):
     return vel_east, vel_north, vel_up
 
 
-def get_segment_station_operator_okada(segment, station, command):
+def get_segment_station_operator_okada(segment, station, config):
     """Calculates the elastic displacement partial derivatives based on the Okada
     formulation, using the source and receiver geometries defined in
     dicitonaries segment and stations. Before calculating the partials for
@@ -172,8 +172,8 @@ def get_segment_station_operator_okada(segment, station, command):
                 segment.burial_depth[i],
                 segment.dip[i],
                 segment.azimuth[i],
-                command.material_lambda,
-                command.material_mu,
+                config.material_lambda,
+                config.material_mu,
                 1,
                 0,
                 0,
@@ -193,8 +193,8 @@ def get_segment_station_operator_okada(segment, station, command):
                 segment.burial_depth[i],
                 segment.dip[i],
                 segment.azimuth[i],
-                command.material_lambda,
-                command.material_mu,
+                config.material_lambda,
+                config.material_mu,
                 0,
                 1,
                 0,
@@ -214,8 +214,8 @@ def get_segment_station_operator_okada(segment, station, command):
                 segment.burial_depth[i],
                 segment.dip[i],
                 segment.azimuth[i],
-                command.material_lambda,
-                command.material_mu,
+                config.material_lambda,
+                config.material_mu,
                 0,
                 0,
                 1,
@@ -505,7 +505,7 @@ def get_rotation_to_slip_rate_partials(segment, block):
     return fault_slip_rate_partials
 
 
-def get_tde_to_velocities(meshes, station, command):
+def get_tde_to_velocities(meshes, station, config):
     """Calculates the elastic displacement partial derivatives based on the
     T. Ben Thompson cutde of the Nikhool and Walters (2015) equations
     for the displacements resulting from slip on a triangular
@@ -544,8 +544,8 @@ def get_tde_to_velocities(meshes, station, command):
                     station.lon.to_numpy(),
                     station.lat.to_numpy(),
                     meshes,
-                    command.material_lambda,
-                    command.material_mu,
+                    config.material_lambda,
+                    config.material_mu,
                     tri_idx=i,
                     strike_slip=1,
                     dip_slip=0,
@@ -559,8 +559,8 @@ def get_tde_to_velocities(meshes, station, command):
                     station.lon.to_numpy(),
                     station.lat.to_numpy(),
                     meshes,
-                    command.material_lambda,
-                    command.material_mu,
+                    config.material_lambda,
+                    config.material_mu,
                     tri_idx=i,
                     strike_slip=0,
                     dip_slip=1,
@@ -574,8 +574,8 @@ def get_tde_to_velocities(meshes, station, command):
                     station.lon.to_numpy(),
                     station.lat.to_numpy(),
                     meshes,
-                    command.material_lambda,
-                    command.material_mu,
+                    config.material_lambda,
+                    config.material_mu,
                     tri_idx=i,
                     strike_slip=0,
                     dip_slip=0,
@@ -597,7 +597,7 @@ def get_tde_to_velocities(meshes, station, command):
     return tri_operator
 
 
-def get_tde_to_velocities_single_mesh(meshes, station, command, mesh_idx):
+def get_tde_to_velocities_single_mesh(meshes, station, config, mesh_idx):
     """Calculates the elastic displacement partial derivatives based on the
     T. Ben Thompson cutde of the Nikhool and Walters (2015) equations
     for the displacements resulting from slip on a triangular
@@ -636,8 +636,8 @@ def get_tde_to_velocities_single_mesh(meshes, station, command, mesh_idx):
                     station.lon.to_numpy(),
                     station.lat.to_numpy(),
                     meshes,
-                    command.material_lambda,
-                    command.material_mu,
+                    config.material_lambda,
+                    config.material_mu,
                     tri_idx=i,
                     strike_slip=1,
                     dip_slip=0,
@@ -652,8 +652,8 @@ def get_tde_to_velocities_single_mesh(meshes, station, command, mesh_idx):
                     station.lon.to_numpy(),
                     station.lat.to_numpy(),
                     meshes,
-                    command.material_lambda,
-                    command.material_mu,
+                    config.material_lambda,
+                    config.material_mu,
                     tri_idx=i,
                     strike_slip=0,
                     dip_slip=1,
@@ -668,8 +668,8 @@ def get_tde_to_velocities_single_mesh(meshes, station, command, mesh_idx):
                     station.lon.to_numpy(),
                     station.lat.to_numpy(),
                     meshes,
-                    command.material_lambda,
-                    command.material_mu,
+                    config.material_lambda,
+                    config.material_mu,
                     tri_idx=i,
                     strike_slip=0,
                     dip_slip=0,
@@ -880,13 +880,13 @@ def get_tri_smoothing_matrix(share, tri_shared_sides_distances) -> csr_matrix:
     return smoothing_matrix.tocsr()
 
 
-def get_mogi_to_velocities_partials(mogi, station, command) -> np.ndarray:
+def get_mogi_to_velocities_partials(mogi, station, config) -> np.ndarray:
     """Mogi volume change to station displacement operator."""
     if mogi.empty:
         mogi_operator = np.zeros((3 * len(station), 0))
     else:
-        poissons_ratio = command.material_mu / (
-            2 * (command.material_lambda + command.material_mu)
+        poissons_ratio = config.material_mu / (
+            2 * (config.material_lambda + config.material_mu)
         )
         mogi_operator = np.zeros((3 * len(station), len(mogi)))
         for i in range(len(mogi)):

@@ -34,23 +34,23 @@ def print_table_one_run(run: dict):
     )
     table.add_row(
         "[white]velocity file",
-        f"[{COLOR_1}]{os.path.basename(run.command.station_file_name)}",
+        f"[{COLOR_1}]{os.path.basename(run.config.station_file_name)}",
     )
     table.add_row(
         "[white]segment file",
-        f"[{COLOR_1}]{os.path.basename(run.command.segment_file_name)}",
+        f"[{COLOR_1}]{os.path.basename(run.config.segment_file_name)}",
     )
     table.add_row(
         "[white]block file",
-        f"[{COLOR_1}]{os.path.basename(run.command.block_file_name)}",
+        f"[{COLOR_1}]{os.path.basename(run.config.block_file_name)}",
     )
     table.add_row(
         "[white]los file",
-        f"[{COLOR_1}]{os.path.basename(run.command.los_file_name)}",
+        f"[{COLOR_1}]{os.path.basename(run.config.los_file_name)}",
     )
     table.add_row(
         "[white]solve type",
-        f"[{COLOR_1}]{run.command.solve_type}",
+        f"[{COLOR_1}]{run.config.solve_type}",
     )
 
     # Velocity information
@@ -148,8 +148,8 @@ def print_table_two_run(run_1: dict, run_2: dict):
     )
 
     # station file names
-    value_1 = os.path.basename(run_1.command.station_file_name)
-    value_2 = os.path.basename(run_2.command.station_file_name)
+    value_1 = os.path.basename(run_1.config.station_file_name)
+    value_2 = os.path.basename(run_2.config.station_file_name)
     eval_text, eval_color = get_val_text_and_color(value_1 == value_2)
     table.add_row(
         "[white]velocity file name",
@@ -159,8 +159,8 @@ def print_table_two_run(run_1: dict, run_2: dict):
     )
 
     # segment file names
-    value_1 = os.path.basename(run_1.command.segment_file_name)
-    value_2 = os.path.basename(run_2.command.segment_file_name)
+    value_1 = os.path.basename(run_1.config.segment_file_name)
+    value_2 = os.path.basename(run_2.config.segment_file_name)
     eval_text, eval_color = get_val_text_and_color(value_1 == value_2)
     table.add_row(
         "[white]segment file name",
@@ -170,8 +170,8 @@ def print_table_two_run(run_1: dict, run_2: dict):
     )
 
     # block file names
-    value_1 = os.path.basename(run_1.command.block_file_name)
-    value_2 = os.path.basename(run_2.command.block_file_name)
+    value_1 = os.path.basename(run_1.config.block_file_name)
+    value_2 = os.path.basename(run_2.config.block_file_name)
     eval_text, eval_color = get_val_text_and_color(value_1 == value_2)
     table.add_row(
         "[white]block file name",
@@ -181,8 +181,8 @@ def print_table_two_run(run_1: dict, run_2: dict):
     )
 
     # los file names
-    value_1 = os.path.basename(run_1.command.los_file_name)
-    value_2 = os.path.basename(run_2.command.los_file_name)
+    value_1 = os.path.basename(run_1.config.los_file_name)
+    value_2 = os.path.basename(run_2.config.los_file_name)
     eval_text, eval_color = get_val_text_and_color(value_1 == value_2)
     table.add_row(
         "[white]los file name",
@@ -192,8 +192,8 @@ def print_table_two_run(run_1: dict, run_2: dict):
     )
 
     # Type of solution
-    value_1 = run_1.command.solve_type
-    value_2 = run_2.command.solve_type
+    value_1 = run_1.config.solve_type
+    value_2 = run_2.config.solve_type
     eval_text, eval_color = get_val_text_and_color(value_1 == value_2)
     table.add_row(
         "[white]solve type",
@@ -349,25 +349,25 @@ def read_process_run_folder(folder_name: str):
     run.station_file_name = glob.glob(
         os.path.join(run.folder_name, "model_station.csv")
     )[0]
-    run.command = celeri.get_command(run.command_file_name)
+    run.config = celeri.get_command(run.command_file_name)
 
     # Check for empty los file.  This is common.
-    if run.command.los_file_name == {}:
-        run.command.los_file_name = "none"
+    if run.config.los_file_name == {}:
+        run.config.los_file_name = "none"
 
     # Modify file names to read from `run` rather than `data` folder
     # because they could have changed in `data` folder
-    run.command.station_file_name = os.path.join(
-        run.folder_name, os.path.basename(run.command.station_file_name)
+    run.config.station_file_name = os.path.join(
+        run.folder_name, os.path.basename(run.config.station_file_name)
     )
-    run.command.segment_file_name = os.path.join(
-        run.folder_name, os.path.basename(run.command.segment_file_name)
+    run.config.segment_file_name = os.path.join(
+        run.folder_name, os.path.basename(run.config.segment_file_name)
     )
-    run.command.block_file_name = os.path.join(
-        run.folder_name, os.path.basename(run.command.block_file_name)
+    run.config.block_file_name = os.path.join(
+        run.folder_name, os.path.basename(run.config.block_file_name)
     )
-    run.command.los_file_name = os.path.join(
-        run.folder_name, os.path.basename(run.command.los_file_name)
+    run.config.los_file_name = os.path.join(
+        run.folder_name, os.path.basename(run.config.los_file_name)
     )
     (
         run.segment,
@@ -376,7 +376,7 @@ def read_process_run_folder(folder_name: str):
         run.station,
         run.mogi,
         run.sar,
-    ) = celeri.read_data(run.command)
+    ) = celeri.read_data(run.config)
 
     run.n_slip_rate_constraints = (
         np.count_nonzero(run.segment.ss_rate_flag)

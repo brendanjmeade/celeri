@@ -469,7 +469,7 @@ class Minimizer:
         plot_estimation_summary(
             self.model,
             estimation,
-            quiver_scale=self.model.command.quiver_scale,
+            quiver_scale=self.model.config.quiver_scale,
         )
 
     def out_of_bounds(self, *, tol: float = 1e-8) -> tuple[int, int]:

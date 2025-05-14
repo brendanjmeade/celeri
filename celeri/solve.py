@@ -827,13 +827,13 @@ def rmatvec(u, h_matrix_solve_parameters):
     return out / col_norms
 
 
-def build_and_solve_hmatrix(command, assembly, operators, data):
+def build_and_solve_hmatrix(config, assembly, operators, data):
     # TODO: Fix this after dataclass refactor
     # TODO This is almost the same as the initialization of Operator...
     logger.info("build_and_solve_hmatrix")
 
     # Calculate Okada partials for all segments
-    _store_elastic_operators_okada(operators, data.segment, data.station, command)
+    _store_elastic_operators_okada(operators, data.segment, data.station, config)
 
     # Get TDE smoothing operators
     _store_all_mesh_smoothing_matrices(data.meshes, operators)
@@ -846,10 +846,10 @@ def build_and_solve_hmatrix(command, assembly, operators, data):
         data.station
     )
     assembly, operators.block_motion_constraints = _store_block_motion_constraints(
-        assembly, data.block, command
+        assembly, data.block, config
     )
     assembly, operators.slip_rate_constraints = get_slip_rate_constraints(
-        assembly, data.segment, data.block, command
+        assembly, data.segment, data.block, config
     )
     operators.rotation_to_slip_rate = get_rotation_to_slip_rate_partials(
         data.segment, data.block
@@ -861,7 +861,7 @@ def build_and_solve_hmatrix(command, assembly, operators, data):
         data.block, data.station, data.segment
     )
     operators.mogi_to_velocities = get_mogi_to_velocities_partials(
-        data.mogi, data.station, command
+        data.mogi, data.station, config
     )
     operators.rotation_to_slip_rate_to_okada_to_velocities = (
         operators.slip_rate_to_okada_to_velocities @ operators.rotation_to_slip_rate
@@ -871,7 +871,7 @@ def build_and_solve_hmatrix(command, assembly, operators, data):
     index = _get_index(assembly, data.station, data.block, data.meshes)
 
     # Data and data weighting vector
-    weighting_vector = _get_weighting_vector(command, data.station, data.meshes, index)
+    weighting_vector = _get_weighting_vector(config, data.station, data.meshes, index)
     data_vector = _get_data_vector(assembly, index)
 
     # Apply data weighting
@@ -899,7 +899,7 @@ def build_and_solve_hmatrix(command, assembly, operators, data):
     # Hmatrix decompositon for each TDE mesh
     logger.info("Start: H-matrix build")
     H, col_norms = get_h_matrices_for_tde_meshes(
-        command, data.meshes, data.station, operators, index, col_norms
+        config, data.meshes, data.station, operators, index, col_norms
     )
     logger.success("Finish: H-matrix build")
 
@@ -927,15 +927,15 @@ def build_and_solve_hmatrix(command, assembly, operators, data):
     logger.info("Start: H-matrix solve")
     start_solve_time = timeit.default_timer()
 
-    if command.iterative_solver == "lsmr":
+    if config.iterative_solver == "lsmr":
         logger.info("Using LSMR solver")
         sparse_hmatrix_solution = scipy.sparse.linalg.lsmr(
-            operator_hmatrix, data_vector, atol=command.atol, btol=command.btol
+            operator_hmatrix, data_vector, atol=config.atol, btol=config.btol
         )
-    elif command.iterative_solver == "lsqr":
+    elif config.iterative_solver == "lsqr":
         logger.info("Using LSQR solver")
         sparse_hmatrix_solution = scipy.sparse.linalg.lsqr(
-            operator_hmatrix, data_vector, atol=command.atol, btol=command.btol
+            operator_hmatrix, data_vector, atol=config.atol, btol=config.btol
         )
 
     end_solve_time = timeit.default_timer()
@@ -947,7 +947,7 @@ def build_and_solve_hmatrix(command, assembly, operators, data):
     estimation = addict.Dict()
 
     sparse_hmatrix_state_vector = sparse_hmatrix_solution[0] / col_norms
-    if command.iterative_solver == "lsqr":
+    if config.iterative_solver == "lsqr":
         sparse_hmatrix_state_vector_sigma = (
             np.sqrt(sparse_hmatrix_solution[9]) / col_norms
         )
@@ -959,7 +959,7 @@ def build_and_solve_hmatrix(command, assembly, operators, data):
     estimation.state_vector = sparse_hmatrix_state_vector
 
     post_process_estimation_hmatrix(
-        command,
+        config,
         data.block,
         estimation,
         operators,
@@ -971,26 +971,26 @@ def build_and_solve_hmatrix(command, assembly, operators, data):
         h_matrix_solve_parameters,
     )
     write_output(
-        command, estimation, data.station, data.segment, data.block, data.meshes
+        config, estimation, data.station, data.segment, data.block, data.meshes
     )
 
-    if bool(command.plot_estimation_summary):
+    if bool(config.plot_estimation_summary):
         plot_estimation_summary(
-            command,
+            config,
             data.segment,
             data.station,
             data.meshes,
             estimation,
-            lon_range=command.lon_range,
-            lat_range=command.lat_range,
-            quiver_scale=command.quiver_scale,
+            lon_range=config.lon_range,
+            lat_range=config.lat_range,
+            quiver_scale=config.quiver_scale,
         )
 
     return estimation, operators, index
 
 
 def post_process_estimation_hmatrix(
-    command: Config,
+    config: Config,
     block: pd.DataFrame,
     estimation_hmatrix: addict.Dict,
     operators: Operators,
@@ -1044,7 +1044,7 @@ def post_process_estimation_hmatrix(
     estimation_hmatrix.dip_slip_rates = estimation_hmatrix.slip_rates[1::3]
     estimation_hmatrix.tensile_slip_rates = estimation_hmatrix.slip_rates[2::3]
 
-    if command.iterative_solver == "lsmr":
+    if config.iterative_solver == "lsmr":
         # All uncertainties set to 1 because lsmr doesn't calculate variance
         logger.warning(
             "Slip rate uncertainty estimates set to 1 because LSMR doesn't provide variance estimates"
@@ -1058,7 +1058,7 @@ def post_process_estimation_hmatrix(
         estimation_hmatrix.tensile_slip_rate_sigma = np.ones_like(
             estimation_hmatrix.tensile_slip_rates
         )
-    elif command.iterative_solver == "lsqr":
+    elif config.iterative_solver == "lsqr":
         # TODO: Block motion uncertainties
         estimation_hmatrix.slip_rate_sigma = np.sqrt(
             np.diag(
@@ -1115,14 +1115,14 @@ def post_process_estimation_hmatrix(
     estimation_hmatrix.north_vel_tde = estimation_hmatrix.vel_tde[1::2]
 
 
-def build_and_solve_dense(command, assembly, operators, data):
+def build_and_solve_dense(config, assembly, operators, data):
     # NOTE: Used in celeri_solve.py
     # TODO: Again, very similar to Operator initialization
     logger.info("build_and_solve_dense")
 
     # Get all elastic operators for segments and TDEs
     _store_elastic_operators(
-        operators, data.meshes, data.segment, data.station, command
+        operators, data.meshes, data.segment, data.station, config
     )
 
     # Get TDE smoothing operators
@@ -1136,10 +1136,10 @@ def build_and_solve_dense(command, assembly, operators, data):
         data.station
     )
     assembly, operators.block_motion_constraints = _store_block_motion_constraints(
-        assembly, data.block, command
+        assembly, data.block, config
     )
     assembly, operators.slip_rate_constraints = get_slip_rate_constraints(
-        assembly, data.segment, data.block, command
+        assembly, data.segment, data.block, config
     )
     operators.rotation_to_slip_rate = get_rotation_to_slip_rate_partials(
         data.segment, data.block
@@ -1151,7 +1151,7 @@ def build_and_solve_dense(command, assembly, operators, data):
         data.block, data.station, data.segment
     )
     operators.mogi_to_velocities = get_mogi_to_velocities_partials(
-        data.mogi, data.station, command
+        data.mogi, data.station, config
     )
     _store_tde_slip_rate_constraints(data.meshes, operators)
 
@@ -1159,7 +1159,7 @@ def build_and_solve_dense(command, assembly, operators, data):
     logger.info("Start: Dense assemble and solve")
     start_solve_time = timeit.default_timer()
     index, estimation = assemble_and_solve_dense(
-        command, assembly, operators, data.station, data.block, data.meshes, data.mogi
+        config, assembly, operators, data.station, data.block, data.meshes, data.mogi
     )
     end_solve_time = timeit.default_timer()
     logger.success(
@@ -1169,32 +1169,32 @@ def build_and_solve_dense(command, assembly, operators, data):
     post_process_estimation(estimation, operators, data.station, index)
 
     write_output(
-        command, estimation, data.station, data.segment, data.block, data.meshes
+        config, estimation, data.station, data.segment, data.block, data.meshes
     )
 
-    if bool(command.plot_estimation_summary):
+    if bool(config.plot_estimation_summary):
         plot_estimation_summary(
-            command,
+            config,
             data.segment,
             data.station,
             data.meshes,
             estimation,
-            lon_range=command.lon_range,
-            lat_range=command.lat_range,
-            quiver_scale=command.quiver_scale,
+            lon_range=config.lon_range,
+            lat_range=config.lat_range,
+            quiver_scale=config.quiver_scale,
         )
 
     return estimation, operators, index
 
 
-def build_and_solve_dense_no_meshes(command, assembly, operators, data):
+def build_and_solve_dense_no_meshes(config, assembly, operators, data):
     # NOTE: Used in celeri_solve.py
     # TODO This is almost the same as the initialization of Operator...
     logger.info("build_and_solve_dense_no_meshes")
 
     # Get all elastic operators for segments and TDEs
     _store_elastic_operators(
-        operators, data.meshes, data.segment, data.station, command
+        operators, data.meshes, data.segment, data.station, config
     )
 
     operators.rotation_to_velocities = get_rotation_to_velocities_partials(
@@ -1204,10 +1204,10 @@ def build_and_solve_dense_no_meshes(command, assembly, operators, data):
         data.station
     )
     assembly, operators.block_motion_constraints = _store_block_motion_constraints(
-        assembly, data.block, command
+        assembly, data.block, config
     )
     assembly, operators.slip_rate_constraints = get_slip_rate_constraints(
-        assembly, data.segment, data.block, command
+        assembly, data.segment, data.block, config
     )
     operators.rotation_to_slip_rate = get_rotation_to_slip_rate_partials(
         data.segment, data.block
@@ -1219,7 +1219,7 @@ def build_and_solve_dense_no_meshes(command, assembly, operators, data):
         data.block, data.station, data.segment
     )
     operators.mogi_to_velocities = get_mogi_to_velocities_partials(
-        data.mogi, data.station, command
+        data.mogi, data.station, config
     )
 
     # Blocks only operator
@@ -1230,7 +1230,7 @@ def build_and_solve_dense_no_meshes(command, assembly, operators, data):
 
     operator_block_only = _get_full_dense_operator_block_only(operators, index)
     # weighting_vector = get_weighting_vector(command, data.station, data.meshes, index)
-    weighting_vector = _get_weighting_vector_no_meshes(command, data.station, index)
+    weighting_vector = _get_weighting_vector_no_meshes(config, data.station, index)
     data_vector = _get_data_vector(assembly, index)
     weighting_vector_block_only = weighting_vector[0 : operator_block_only.shape[0]]
 
@@ -1350,25 +1350,25 @@ def build_and_solve_dense_no_meshes(command, assembly, operators, data):
     # post_process_estimation(estimation, operators, data.station, index)
 
     write_output(
-        command, estimation, data.station, data.segment, data.block, data.meshes
+        config, estimation, data.station, data.segment, data.block, data.meshes
     )
 
-    if bool(command.plot_estimation_summary):
+    if bool(config.plot_estimation_summary):
         plot_estimation_summary(
-            command,
+            config,
             data.segment,
             data.station,
             data.meshes,
             estimation,
-            lon_range=command.lon_range,
-            lat_range=command.lat_range,
-            quiver_scale=command.quiver_scale,
+            lon_range=config.lon_range,
+            lat_range=config.lat_range,
+            quiver_scale=config.quiver_scale,
         )
 
     return estimation, operators, index
 
 
-def build_and_solve_qp_kl(command, assembly, operators, data):
+def build_and_solve_qp_kl(config, assembly, operators, data):
     # NOTE: Used in celeri_solve.py
     logger.info("build_and_solve_qp_kl")
     logger.info("PLACEHOLDER")
