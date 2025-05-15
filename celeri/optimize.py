@@ -952,6 +952,10 @@ def build_cvxpy_problem(
     )
 
 
+class MinimizationComplete(Exception):
+    pass
+
+
 def _tighten_kinematic_bounds(
     minimizer: Minimizer,
     *,
@@ -961,6 +965,9 @@ def _tighten_kinematic_bounds(
     num_oob: int,
 ):
     assert factor > 0 and factor < 1
+
+    if num_oob == 0:
+        raise MinimizationComplete()
 
     def tighten_item(limits: SlipRateLimitItem, coupling: SlipRateItem):
         elastic = coupling.elastic_numpy()
@@ -1360,16 +1367,17 @@ def solve_sqp2(
             trace.print_last_progress()
 
         num_oob, _total = minimizer.out_of_bounds()
-        if num_oob == 0:
-            break
 
-        _tighten_kinematic_bounds(
-            minimizer,
-            factor=reduction_factor,
-            tighten_all=True,
-            iteration_number=iteration_number,
-            num_oob=num_oob,
-        )
+        try:
+            _tighten_kinematic_bounds(
+                minimizer,
+                factor=reduction_factor,
+                tighten_all=True,
+                iteration_number=iteration_number,
+                num_oob=num_oob,
+            )
+        except MinimizationComplete:
+            break
 
     # Log warning if the last iteration includes an error
     if all_warnings:
