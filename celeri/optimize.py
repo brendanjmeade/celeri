@@ -931,6 +931,10 @@ def build_cvxpy_problem(
     )
 
 
+class MinimizationComplete(Exception):
+    pass
+
+
 def _tighten_kinematic_bounds(
     minimizer: Minimizer,
     *,
@@ -938,8 +942,21 @@ def _tighten_kinematic_bounds(
     velocity_lower: float,
     tighten_all: bool = True,
     factor: float = 0.5,
+    iteration_number: int,
+    num_oob: int,
+    annealing_schedule: list[float],
 ):
     assert factor > 0 and factor < 1
+
+    if num_oob > 0:
+        looseness = 0
+    elif len(annealing_schedule) == 0:
+        raise MinimizationComplete()
+    else:
+        # We have fixed all OOBs, and annealing is enabled, so use the first remaining
+        # value in the annealing schedule as the loosenenss.
+        looseness = annealing_schedule.pop(0)
+        print(f"Loosening constraints by {looseness}")
 
     def tighten_item(limits: VelocityLimitItem, coupling: CouplingItem):
         estimated = coupling.estimated_numpy()
@@ -951,9 +968,9 @@ def _tighten_kinematic_bounds(
         if tighten_all:
             target = kinematic
             diff = upper - target
-            upper = target + factor * diff
+            upper = target + factor * diff + looseness
             diff = lower - target
-            lower = target + factor * diff
+            lower = target + factor * diff - looseness
         else:
             pos = kinematic > 0
             oob = (
@@ -1049,7 +1066,7 @@ class MinimizerTrace:
         print(f"Iteration: {iter_num}")
         print(f"{oob} of {total} velocities are out-of-bounds")
         print(f"Non-convex constraint loss: {nonconvex_loss:.2e}")
-        print(f"residual 2-norm: {objective:.5e}")
+        print(f"residual 2-norm: {objective}")
         print(f"Iteration took {iter_time:.2f}s")
         print()
 
@@ -1181,9 +1198,8 @@ def minimize(
     verbose: bool = False,
     rescale_parameters: bool = True,
     rescale_constraints: bool = True,
-    objective: Literal[
-        "expanded_norm2", "sum_of_squares", "norm1", "norm2"
-    ] = "expanded_norm2",
+    objective: Objective = "expanded_norm2",
+    annealing_schedule: list[float] | None = None,
 ) -> MinimizerTrace:
     """Iteratively solve a constrained optimization problem for fault slip rates.
 
@@ -1203,6 +1219,9 @@ def minimize(
     Returns:
         A trace object containing the optimization history
     """
+    if annealing_schedule is None:
+        annealing_schedule = []
+
     limits = {}
     for idx in problem.segment_mesh_indices:
         length = problem.meshes[idx]["n_tde"]
@@ -1229,7 +1248,7 @@ def minimize(
 
     solver = default_solve_kwargs.pop("solver")
 
-    for _num_iter in range(max_iter):
+    for iteration_number in range(max_iter):
         _custom_solve(
             minimizer.cp_problem,
             solver=solver,
@@ -1241,16 +1260,20 @@ def minimize(
             trace.print_last_progress()
 
         num_oob, total = minimizer.out_of_bounds()
-        if num_oob == 0:
-            break
 
-        _tighten_kinematic_bounds(
-            minimizer,
-            velocity_upper=velocity_upper,
-            velocity_lower=velocity_lower,
-            factor=reduction_factor,
-            tighten_all=True,
-        )
+        try:
+            _tighten_kinematic_bounds(
+                minimizer,
+                velocity_upper=velocity_upper,
+                velocity_lower=velocity_lower,
+                factor=reduction_factor,
+                tighten_all=True,
+                iteration_number=iteration_number,
+                annealing_schedule=annealing_schedule,
+                num_oob=num_oob,
+            )
+        except MinimizationComplete:
+            break
 
     return trace
 
