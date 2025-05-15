@@ -1125,7 +1125,7 @@ class MinimizerTrace:
         print(f"Iteration: {iter_num}")
         print(f"{oob} of {total} velocities are out-of-bounds")
         print(f"Non-convex constraint loss: {nonconvex_loss:.2e}")
-        print(f"residual 2-norm: {objective:.5e}")
+        print(f"residual 2-norm: {objective}")
         print(f"Iteration took {iter_time:.2f}s")
         print()
 
