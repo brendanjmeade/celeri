@@ -957,6 +957,8 @@ def _tighten_kinematic_bounds(
     *,
     tighten_all: bool = True,
     factor: float = 0.5,
+    iteration_number: int,
+    num_oob: int,
 ):
     assert factor > 0 and factor < 1
 
@@ -1329,8 +1331,8 @@ def solve_sqp2(
     all_warnings = []
 
     # Intializing this so that warnings check will run even with no iteration case
-    num_iter = 0
-    for num_iter in range(max_iter):
+    iteration_number = 0
+    for iteration_number in range(max_iter):
         # QP solve in context manager to capture warnings
         with warnings.catch_warnings(record=True) as caught_warnings:
             warnings.simplefilter("always")
@@ -1345,7 +1347,7 @@ def solve_sqp2(
         for warning in caught_warnings:
             all_warnings.append(  # noqa: PERF401
                 {
-                    "iteration": num_iter,
+                    "iteration_number": iteration_number,
                     "message": str(warning.message),
                     "category": warning.category.__name__,
                     "filename": warning.filename,
@@ -1357,7 +1359,7 @@ def solve_sqp2(
         if verbose:
             trace.print_last_progress()
 
-        num_oob, total = minimizer.out_of_bounds()
+        num_oob, _total = minimizer.out_of_bounds()
         if num_oob == 0:
             break
 
@@ -1365,16 +1367,18 @@ def solve_sqp2(
             minimizer,
             factor=reduction_factor,
             tighten_all=True,
+            iteration_number=iteration_number,
+            num_oob=num_oob,
         )
 
     # Log warning if the last iteration includes an error
     if all_warnings:
-        if all_warnings[-1]["iteration"] == num_iter:
+        if all_warnings[-1]["iteration_number"] == iteration_number:
             logger.warning(f"SQP iteration: {all_warnings[-1]['message']}")
         else:
-            iterations_with_warnings = [d["iteration"] for d in all_warnings]
+            iterations_with_warnings = [d["iteration_number"] for d in all_warnings]
             logger.info(
-                f"SQP iteration: Warnings in iterations {iterations_with_warnings} of {num_iter + 1} total iterations"
+                f"SQP iteration: Warnings in iterations {iterations_with_warnings} of {iteration_number + 1} total iterations"
             )
     else:
         logger.info("SQP iteration: Ran with no warnings")
