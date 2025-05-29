@@ -6,6 +6,7 @@ import os
 import pickle
 import shutil
 import timeit
+from typing import Literal
 import warnings
 
 import addict
@@ -2195,6 +2196,7 @@ def get_okada_displacements(
     station_lon,
     station_lat,
     algorithm="cutde",
+    triangulation: Literal["/", "\\", "V"] = "/",
 ):
     """Caculate elastic displacements in a homogeneous elastic half-space.
     Inputs are in geographic coordinates and then projected into a local
@@ -2285,6 +2287,7 @@ def get_okada_displacements(
                     segment_up_dip_width,
                 ],  # (meters) along-dip range of the surface (aw1, aw2 in the original)
                 [strike_slip, dip_slip, tensile_slip],
+                triangulation=triangulation,
             )  # (meters) strike-slip, dip-slip, tensile-slip
         elif algorithm == "okada":
             import okada_wrapper

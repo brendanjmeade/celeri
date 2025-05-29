@@ -1,4 +1,5 @@
 import warnings
+from typing import Literal
 
 import numpy as np
 from cutde.halfspace import disp_matrix
@@ -20,8 +21,17 @@ def cart2sph(x, y, z):
     return azimuth, elevation, r
 
 
-def dc3dwrapper_cutde_disp(alpha, xo, depth, dip, strike_width, dip_width, dislocation):
-    """Compute the Okada displacement vector using the cutde library.
+def dc3dwrapper_cutde_disp(
+    alpha,
+    xo,
+    depth,
+    dip,
+    strike_width,
+    dip_width,
+    dislocation,
+    triangulation: Literal["/", "\\", "V"] = "/",  # Note: "\\" is a single backslash.
+):
+    r"""Compute the Okada displacement vector using the cutde library.
 
     The following should be equivalent up to floating point errors:
 
@@ -33,6 +43,34 @@ def dc3dwrapper_cutde_disp(alpha, xo, depth, dip, strike_width, dip_width, dislo
         alpha, xo, depth, dip, strike_width, dip_width, dislocation
     )
     ```
+
+    The `triangulation` argument is used to specify the triangulation of the
+    rectangle. The default is to use two triangles along the diagonal /,
+    but you can also specify a triangulation \ with the opposite diagonal,
+    or a V-shaped triangulation consisting of three triangles, connecting
+    the midpoint of the bottom edge to the top two vertices.
+
+    The V triangulation should be advantageous when the observation point
+    is near to the centerpoint of the rectangle, because either the / or \
+    triangulations have two opposing edges through the centerpoint, and
+    hence there is a risk of catastrophic cancellation in the calculation,
+    whereas the V triangulation has some distance between the centerpoint
+    and the other edges.
+
+    An illustration of the three triangulations, looking down from above:
+
+        /         \            V
+
+    +------+  +------+  +-------------+
+    |     /|  |\     |  |\           /|
+    |    / |  | \    |  | \         / |
+    |   /  |  |  \   |  |  \       /  |
+    |  /   |  |   \  |  |   \     /   |
+    | /    |  |    \ |  |    \   /    |
+    |/     |  |     \|  |     \ /     |
+    +------+  +------+  +------+------+
+
+    All triangles are oriented counterclockwise when looking down.
     """
     if dip_width[0] == dip_width[1]:
         # cutde returns nan when two vertices coincide, but the
@@ -75,9 +113,21 @@ def dc3dwrapper_cutde_disp(alpha, xo, depth, dip, strike_width, dip_width, dislo
         dip_width[1] * np.cos(dip_rad),
         dip_width[1] * np.sin(dip_rad) - depth,
     ]
-    tris = np.array(
-        [[tr, bl, br], [bl, tr, tl]]
-    )  # Oriented counterclockwise looking down
+    if triangulation == "/":
+        tris = np.array(
+            [[tr, bl, br], [bl, tr, tl]]
+        )  # 
+    elif triangulation == "\\":
+        tris = np.array(
+            [[br, tl, bl], [tl, br, tr]]
+        )  # Oriented counterclockwise looking down
+    elif triangulation == "V":
+        bm = [(bl[0] + br[0]) / 2, (bl[1] + br[1]) / 2, (bl[2] + br[2]) / 2]
+        tris = np.array(
+            [[tr, bm, br], [bm, tl, bl], [tl, bm, tr]]
+        )  # Oriented counterclockwise looking down
+    else:
+        raise ValueError(f"Invalid triangulation parameter: {triangulation}")
 
     with warnings.catch_warnings():
         warnings.filterwarnings(
@@ -95,7 +145,10 @@ def dc3dwrapper_cutde_disp(alpha, xo, depth, dip, strike_width, dip_width, dislo
         disp_mat = disp_matrix(obs_pts=obs_pts, tris=tris, nu=poissons_ratio)
 
     # (obs, space, triangle, slip)
-    assert disp_mat.shape == (1, 3, 2, 3)
+    if triangulation != "V":
+        assert disp_mat.shape == (1, 3, 2, 3)
+    else:
+        assert disp_mat.shape == (1, 3, 3, 3)
 
     if dip_width[1] < dip_width[0]:
         slip_vec = np.array([-dislocation[0], dislocation[1], -dislocation[2]])
