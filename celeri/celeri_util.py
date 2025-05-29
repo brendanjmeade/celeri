@@ -46,12 +46,12 @@ def dc3dwrapper_cutde_disp(
 
     The `triangulation` argument is used to specify the triangulation of the
     rectangle. The default is to use two triangles along the diagonal /,
-    but you can also specify a triangulation \ with the opposite diagonal,
+    but you can also specify a triangulation \\ with the opposite diagonal,
     or a V-shaped triangulation consisting of three triangles, connecting
     the midpoint of the bottom edge to the top two vertices.
 
     The V triangulation should be advantageous when the observation point
-    is near to the centerpoint of the rectangle, because either the / or \
+    is near to the centerpoint of the rectangle, because either the / or \\
     triangulations have two opposing edges through the centerpoint, and
     hence there is a risk of catastrophic cancellation in the calculation,
     whereas the V triangulation has some distance between the centerpoint
@@ -59,6 +59,7 @@ def dc3dwrapper_cutde_disp(
 
     An illustration of the three triangulations, looking down from above:
 
+    ```text
         /         \            V
 
     +------+  +------+  +-------------+
@@ -71,6 +72,7 @@ def dc3dwrapper_cutde_disp(
     +------+  +------+  +------+------+
 
     All triangles are oriented counterclockwise when looking down.
+    ```
     """
     if dip_width[0] == dip_width[1]:
         # cutde returns nan when two vertices coincide, but the
