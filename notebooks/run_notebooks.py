@@ -24,13 +24,13 @@ results = {}
 for notebook in notebooks:
     print(f"Running {notebook}...")
     log_file = f"notebook_run_logs/{notebook}_{timestamp}.log"
-    
+
     try:
         # Run the notebook with papermill, using /dev/null (or NUL on Windows) as output path
         # This effectively discards the output notebook
         # import papermill
         output_path = os.devnull
-        
+
         with open(log_file, 'w') as log:
             result = papermill.execute_notebook(
                 notebook,
@@ -41,15 +41,15 @@ for notebook in notebooks:
             )
         status = "Success"
         print(f"{notebook} completed successfully")
-        
+
     except Exception as e:
         status = "Failed"
         print(f"{notebook} failed: {str(e)}")
-        
+
         # Extract error message
         with open(log_file, 'a') as log:
             log.write(f"\nError: {str(e)}\n")
-    
+
     # Record the result
     results[notebook] = status
     print("----------------------------------------")
