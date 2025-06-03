@@ -1,18 +1,17 @@
-from loguru import logger
+import argparse
+import json
+import os
 from typing import Dict
+
+import addict
+import meshio
 import numpy as np
 import pandas as pd
-import addict
-import argparse
 import pyproj
-import celeri
-import meshio
-import json
-import sys
-import os
-
+from loguru import logger
 from scipy.spatial.distance import cdist
 
+import celeri
 
 # Global constants
 GEOID = pyproj.Geod(ellps="WGS84")
@@ -40,8 +39,7 @@ def cart2sph(x, y, z):
 
 
 def snap_segments(segment, meshes):
-    """
-    Replace segments tracing meshes with the actual top edges of those meshes
+    """Replace segments tracing meshes with the actual top edges of those meshes
     """
     # For each mesh, find associated segments
     cut_segment_idx = []
@@ -133,8 +131,7 @@ def snap_segments(segment, meshes):
 
 
 def make_default_segment(length):
-    """
-    Create a default segment Dict of specified length
+    """Create a default segment Dict of specified length
     """
     default_segment = pd.DataFrame(
         columns=[
@@ -304,5 +301,5 @@ if __name__ == "__main__":
         type=str,
         help="Name of mesh parameter file.",
     )
-args = addict.Dict(vars(parser.parse_args()))
-main(args)
+    args = addict.Dict(vars(parser.parse_args()))
+    main(args)
