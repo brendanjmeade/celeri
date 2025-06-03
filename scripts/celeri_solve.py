@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 from loguru import logger
 from typing import Dict
 import IPython
