@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # %%
 import addict
 import argparse
@@ -11,21 +12,21 @@ from importlib import reload
 from celeri.celeri_util import sph2cart, cart2sph
 import gmsh
 import meshio
-
+import celeri
 import pyproj
+
 # Global constants
 GEOID = pyproj.Geod(ellps="WGS84")
 KM2M = 1.0e3
 M2MM = 1.0e3
 RADIUS_EARTH = np.float64((GEOID.a + GEOID.b) / 2)
 
-import celeri
 
 def main(args):
     command = celeri.get_command(args["command_file_name"])
     logger = celeri.get_logger(command)
     segment, block, meshes, station, mogi, sar = celeri.read_data(command)
-    
+
     # Update mesh_parameters list
     with open(command.mesh_parameters_file_name) as f:
         mesh_param = json.load(f)
@@ -180,7 +181,9 @@ def main(args):
             for m in range(n_surf - 1):
                 gmsh.model.geo.addCurveLoop([m, -(j + 2 + m), j - m, j + 1 + m], m + 1)
             # Last
-            gmsh.model.geo.addCurveLoop([n_surf - 1, n_surf, n_surf + 1, j + 2 + k], m + 2)
+            gmsh.model.geo.addCurveLoop(
+                [n_surf - 1, n_surf, n_surf + 1, j + 2 + k], m + 2
+            )
             # Define surfaces
             for m in range(n_surf):
                 gmsh.model.geo.addSurfaceFilling([m + 1], m + 1)
@@ -219,10 +222,14 @@ def main(args):
 
             # Print status
             print(
-                "Segments " + np.array2string(this_seg_mesh_idx) + " meshed as " + filename + ".msh"
+                "Segments "
+                + np.array2string(this_seg_mesh_idx)
+                + " meshed as "
+                + filename
+                + ".msh"
             )
 
-    # Updating mesh parameters and command 
+    # Updating mesh parameters and command
 
     # Establish default mesh parameters
     mesh_default = celeri.get_default_mesh_parameters()
@@ -246,23 +253,24 @@ def main(args):
 
     # Write updated segment csv
     new_segment_file_name = (
-        os.path.splitext(os.path.normpath(command.segment_file_name))[0] + "_ribbonmesh.csv"
+        os.path.splitext(os.path.normpath(command.segment_file_name))[0]
+        + "_ribbonmesh.csv"
     )
     segment.to_csv(new_segment_file_name)
 
     # Write updated command json
     new_command_file_name = (
-        os.path.splitext(os.path.normpath(args["command_file_name"]))[0] + "_ribbonmesh.json"
+        os.path.splitext(os.path.normpath(args["command_file_name"]))[0]
+        + "_ribbonmesh.json"
     )
     # Reference new segment file, with mesh options set to reflect new meshes
     command["segment_file_name"] = new_segment_file_name
     # Reference new mesh parameter file, including newly created meshes
     command["mesh_parameters_file_name"] = new_mesh_param_name
-    # Set elastic kernel reuse to 0, because we'll need to recalculate 
+    # Set elastic kernel reuse to 0, because we'll need to recalculate
     command["reuse_elastic"] = 0
     with open(new_command_file_name, "w") as cf:
         json.dump(command, cf, indent=2)
-
 
     # Visualize meshes
 
@@ -276,6 +284,7 @@ def main(args):
     segment, block, meshes, station, mogi, sar = celeri.read_data(command)
     celeri.plot_fault_geometry(p, segment, meshes)
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -283,6 +292,5 @@ if __name__ == "__main__":
         type=str,
         help="Name of command file.",
     )
-    
-args = dict(vars(parser.parse_args()))
-main(args)
+    args = dict(vars(parser.parse_args()))
+    main(args)
