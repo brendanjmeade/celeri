@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 
 from loguru import logger
-from typing import Dict
 import IPython
 import celeri
 
 
 @logger.catch
-def main(args: Dict):
+def main():
+    args = celeri.parse_args()
     # Read in command file and start logging
     command = celeri.get_command(args.command_file_name)
     celeri.create_output_folder(command)
@@ -50,5 +50,4 @@ def main(args: Dict):
 
 
 if __name__ == "__main__":
-    args = celeri.parse_args()
-    main(args)
+    main()

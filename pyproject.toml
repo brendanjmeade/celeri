@@ -41,6 +41,13 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 
+[project.scripts]
+celeri-gmt = "celeri.scripts.celeri_gmt:main"
+celeri-report = "celeri.scripts.celeri_report:main"
+celeri-solve = "celeri.scripts.celeri_solve:main"
+celeri-snap-segments = "celeri.scripts.snap_segments:main"
+celeri-segment-meshing-function = "celeri.scripts.segment_meshing_function:main"
+
 [project.urls]
 Homepage = "https://github.com/brendanjmeade/celeri"
 

@@ -416,7 +416,38 @@ def read_process_run_folder(folder_name: str):
     return run
 
 
-def main(args: Dict):
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--folder_name_1",
+        type=str,
+        default=None,
+        required=False,
+        help="Name of of folder 1.  If omited it will assome the most recent model run folder.",
+    )
+    parser.add_argument(
+        "--folder_name_2",
+        type=str,
+        default=None,
+        required=False,
+        help="Name of of folder 2.",
+    )
+    parser.add_argument(
+        "--diff_back",
+        type=int,
+        default=None,
+        required=False,
+        help="Name of of folder 2.",
+    )
+    parser.add_argument(
+        "--repl",
+        type=int,
+        default=0,
+        required=False,
+        help="Start ipython REPL.",
+    )
+    args = addict.Dict(vars(parser.parse_args()))
+
     # Case 1: No arguments passed.  Report on diff between two most recent folders
     if args.folder_name_1 == None:
         list_of_folders = filter(os.path.isdir, glob.glob("./../runs/*"))
@@ -466,34 +497,4 @@ def main(args: Dict):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--folder_name_1",
-        type=str,
-        default=None,
-        required=False,
-        help="Name of of folder 1.  If omited it will assome the most recent model run folder.",
-    )
-    parser.add_argument(
-        "--folder_name_2",
-        type=str,
-        default=None,
-        required=False,
-        help="Name of of folder 2.",
-    )
-    parser.add_argument(
-        "--diff_back",
-        type=int,
-        default=None,
-        required=False,
-        help="Name of of folder 2.",
-    )
-    parser.add_argument(
-        "--repl",
-        type=int,
-        default=0,
-        required=False,
-        help="Start ipython REPL.",
-    )
-    args = addict.Dict(vars(parser.parse_args()))
-    main(args)
+    main()

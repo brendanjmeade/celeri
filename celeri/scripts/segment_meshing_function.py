@@ -22,7 +22,15 @@ M2MM = 1.0e3
 RADIUS_EARTH = np.float64((GEOID.a + GEOID.b) / 2)
 
 
-def main(args):
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "command_file_name",
+        type=str,
+        help="Name of command file.",
+    )
+    args = dict(vars(parser.parse_args()))
+
     command = celeri.get_command(args["command_file_name"])
     logger = celeri.get_logger(command)
     segment, block, meshes, station, mogi, sar = celeri.read_data(command)
@@ -286,11 +294,4 @@ def main(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "command_file_name",
-        type=str,
-        help="Name of command file.",
-    )
-    args = dict(vars(parser.parse_args()))
-    main(args)
+    main()
