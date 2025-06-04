@@ -189,7 +189,20 @@ def make_default_segment(length):
 
 
 @logger.catch
-def main(args: Dict):
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "segment_file_name",
+        type=str,
+        help="Name of segment file.",
+    )
+    parser.add_argument(
+        "mesh_parameters_file_name",
+        type=str,
+        help="Name of mesh parameter file.",
+    )
+    args = addict.Dict(vars(parser.parse_args()))
+
     # Read segment data
     segment = pd.read_csv(args.segment_file_name)
     segment = segment.loc[:, ~segment.columns.str.match("Unnamed")]
@@ -292,16 +305,4 @@ def main(args: Dict):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "segment_file_name",
-        type=str,
-        help="Name of segment file.",
-    )
-    parser.add_argument(
-        "mesh_parameters_file_name",
-        type=str,
-        help="Name of mesh parameter file.",
-    )
-    args = addict.Dict(vars(parser.parse_args()))
-    main(args)
+    main()
