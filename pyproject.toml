@@ -47,6 +47,9 @@ celeri-report = "celeri.scripts.celeri_report:main"
 celeri-solve = "celeri.scripts.celeri_solve:main"
 celeri-snap-segments = "celeri.scripts.snap_segments:main"
 celeri-segment-meshing-function = "celeri.scripts.segment_meshing_function:main"
+celeri-msh2stl = "celeri.scripts.msh2stl:main"
+celeri-stl2msh = "celeri.scripts.stl2msh:main"
+
 
 [project.urls]
 Homepage = "https://github.com/brendanjmeade/celeri"
