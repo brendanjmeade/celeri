@@ -31,8 +31,9 @@ def main():
         type=str,
         help="Name of command file.",
     )
+    parser.add_argument("-el", "--el_length", nargs='*', default=["5"], help="Element length (1 value for constant, 2 for top, bottom)", required=False)
     args = dict(vars(parser.parse_args()))
-
+    
     command = celeri.get_command(args["command_file_name"])
     logger = celeri.get_logger(command)
     segment, block, meshes, station, mogi, sar = celeri.read_data(command)
@@ -160,7 +161,7 @@ def main():
             top_coords = np.hstack((ordered_coords, np.zeros((len(ordered_coords), 1))))
             # Use top and bottom coordinates to make a mesh
             filename = mesh_dir + "/" + seg_file_stem + "_segmesh" + str(unique_mesh_idx[i])
-            clen = 5
+            
 
             # Combined coordinates making a continuous perimeter loop
             all_coords = np.vstack((top_coords, np.flipud(bot_coords)))
@@ -169,7 +170,14 @@ def main():
             n_coords = np.shape(all_coords)[0]
             n_surf = int((n_coords - 2) / 2)
             n_lines = int(4 + (n_surf - 1) * 3)
-
+            el_length = [float(i) for i in args["el_length"]]
+            if len(el_length) == 2:
+                el_length_bot = el_length[1]*np.ones(int(n_coords/2))
+                el_length_top = el_length[0]*np.ones(int(n_coords/2))
+                all_el_length = np.hstack((el_length_top, el_length_bot))
+            else:
+                all_el_length = el_length[0]*np.ones(int(n_coords))
+            
             # Convert to Cartesian coordinates
             cx, cy, cz = sph2cart(
                 all_coords[:, 0], all_coords[:, 1], 6371 - all_coords[:, 2]
@@ -181,7 +189,7 @@ def main():
             gmsh.clear()
             # Define points
             for j in range(n_coords):
-                gmsh.model.geo.addPoint(cx[j], cy[j], cz[j], clen, j)
+                gmsh.model.geo.addPoint(cx[j], cy[j], cz[j], all_el_length[j], j)
             # Define lines
             # Start with lines around the perimeter
             for j in range(n_coords - 1):
