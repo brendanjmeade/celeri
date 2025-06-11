@@ -51,12 +51,12 @@ class Config:
     material_mu: int = 30000000000
     n_iterations: int = 1
     operators_folder: str = "../data/operators/"
-    pickle_save: int = 1
-    plot_estimation_summary: int = 1
-    plot_input_summary: int = 1
+    pickle_save: bool = True
+    plot_estimation_summary: bool = True
+    plot_input_summary: bool = True
     printslipcons: int = 0
     quiver_scale: int = 100
-    repl: int = 1
+    repl: bool = False
 
     # TODO(Adrian): Would it be enough to just have reuse_elastic_file?
     # And assume that if reuse_elastic_file is None, then reuse_elastic is False?
