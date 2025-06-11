@@ -30,7 +30,7 @@ def main():
     args = dict(vars(parser.parse_args()))
 
     command = celeri.get_command(args["command_file_name"])
-    logger = celeri.get_logger(command)
+    celeri.get_logger(command)
     segment, block, meshes, station, mogi, sar = celeri.read_data(command)
 
     # Update mesh_parameters list
@@ -159,7 +159,7 @@ def main():
             # Number of geometric objects
             n_coords = np.shape(all_coords)[0]
             n_surf = int((n_coords - 2) / 2)
-            n_lines = int(4 + (n_surf - 1) * 3)
+            int(4 + (n_surf - 1) * 3)
 
             # Convert to Cartesian coordinates
             cx, cy, cz = sph2cart(

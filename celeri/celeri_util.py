@@ -457,9 +457,7 @@ def read_run(folder_name):
         - meshes: meshes list.
 
     Example:
-    >>> config, estimation, station, segment, block, meshes = read_run(
-    ...     "example_folder"
-    ... )
+    >>> config, estimation, station, segment, block, meshes = read_run("example_folder")
     """
     # TODO(Adrian): Adapt to model data class
     pickle_file = open(f"{folder_name}/output.pkl", "rb")

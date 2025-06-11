@@ -617,9 +617,7 @@ def plot_estimation_summary(
     )
 
     plt.show(block=False)
-    plt.savefig(
-        model.config.output_path + "/" + "plot_estimation_summary.png", dpi=300
-    )
+    plt.savefig(model.config.output_path + "/" + "plot_estimation_summary.png", dpi=300)
     plt.savefig(model.config.output_path + "/" + "plot_estimation_summary.pdf")
     logger.success(
         "Wrote figures"

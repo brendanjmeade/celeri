@@ -8,9 +8,7 @@ from celeri.config import Config
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "config_file_name", type=str, help="Name of *_config.json file"
-    )
+    parser.add_argument("config_file_name", type=str, help="Name of *_config.json file")
     parser.add_argument(
         "--segment_file_name",
         type=str,
