@@ -1154,7 +1154,9 @@ def get_slip_rake_constraints(model: Model, assembly: Assembly) -> np.ndarray:
     return slip_rake_constraint_partials
 
 
-def _get_data_vector_no_meshes(model: Model, assembly: Assembly, index: Index) -> np.ndarray:
+def _get_data_vector_no_meshes(
+    model: Model, assembly: Assembly, index: Index
+) -> np.ndarray:
     data_vector = np.zeros(
         2 * index.n_stations
         + 3 * index.n_block_constraints
@@ -1351,7 +1353,6 @@ def get_weighting_vector_single_mesh_for_col_norms(
     )
 
     return weighting_vector
-
 
 
 def _get_weighting_vector_eigen(model: Model, index: Index) -> np.ndarray:
