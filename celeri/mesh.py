@@ -1,7 +1,7 @@
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import cast
+from typing import TypeVar, cast
 
 import meshio
 import numpy as np
@@ -10,7 +10,10 @@ from loguru import logger
 from celeri import constants
 from celeri.celeri_util import cart2sph, sph2cart, triangle_area, wrap2360
 
-type ByMesh[T] = dict[int, T]
+# Should be once we support Python 3.11+
+# type ByMesh[T] = dict[int, T]
+T = TypeVar("T")
+ByMesh = dict[int, T]
 
 
 @dataclass
