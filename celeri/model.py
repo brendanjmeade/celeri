@@ -613,52 +613,6 @@ def station_row_keep(assembly):
     return assembly
 
 
-def get_processed_data_structures(config):
-    # NOTE: Used in celeri_solve.py
-    # TODO(Adrian): This function should be replaced by
-    # Model.from_config(config)
-    import addict
-
-    data = addict.Dict()
-    assembly = addict.Dict()
-    operators = addict.Dict()
-    (
-        data.segment,
-        data.block,
-        data.meshes,
-        data.station,
-        data.mogi,
-        data.sar,
-    ) = read_data(config)
-    data.station = process_station(data.station, config)
-    data.segment = process_segment(data.segment, config, data.meshes)
-    data.sar = process_sar(data.sar, config)
-    data.closure, data.block = assign_block_labels(
-        data.segment, data.station, data.block, data.mogi, data.sar
-    )
-    assembly = merge_geodetic_data(
-        assembly, data.station, data.sar
-    )  # TODO: Not sure this works correctly
-
-    # Quick input plot
-    if bool(config.plot_input_summary):
-        from celeri.plot import plot_input_summary
-
-        plot_input_summary(
-            config,
-            data.segment,
-            data.station,
-            data.block,
-            data.meshes,
-            data.mogi,
-            data.sar,
-            lon_range=config.lon_range,
-            lat_range=config.lat_range,
-            quiver_scale=config.quiver_scale,
-        )
-    return data, assembly, operators
-
-
 def make_default_segment(length):
     """Create a default segment Dict of specified length."""
     columns = pd.Index(

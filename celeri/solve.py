@@ -20,30 +20,14 @@ from celeri.operators import (
     Operators,
     _get_data_vector,
     _get_data_vector_eigen,
-    _get_full_dense_operator_block_only,
-    _get_index,
-    _get_index_no_meshes,
     _get_weighting_vector,
     _get_weighting_vector_eigen,
     _get_weighting_vector_no_meshes,
-    _store_all_mesh_smoothing_matrices,
-    _store_block_motion_constraints,
-    _store_elastic_operators,
-    _store_elastic_operators_okada,
-    _store_tde_slip_rate_constraints,
     build_operators,
-    get_block_strain_rate_to_velocities_partials,
-    get_global_float_block_rotation_partials,
-    get_h_matrices_for_tde_meshes,
-    get_mogi_to_velocities_partials,
-    get_rotation_to_slip_rate_partials,
-    get_rotation_to_velocities_partials,
-    get_slip_rate_constraints,
     rotation_vector_err_to_euler_pole_err,
     rotation_vectors_to_euler_poles,
 )
 from celeri.output import write_output
-from celeri.plot import plot_estimation_summary
 
 
 @dataclass
@@ -653,324 +637,75 @@ def lsqlin_qp(
     return sol
 
 
-def build_and_solve_dense(config, assembly, operators, data):
+def _build_and_solve(name: str, model: Model, *, tde: bool, eigen: bool):
     # NOTE: Used in celeri_solve.py
-    # TODO: Again, very similar to Operator initialization
-    logger.info("build_and_solve_dense")
-
-    # Get all elastic operators for segments and TDEs
-    _store_elastic_operators(
-        operators, data.meshes, data.segment, data.station, config
-    )
-
-    # Get TDE smoothing operators
-    _store_all_mesh_smoothing_matrices(data.meshes, operators)
-
-    # Get non-elastic operators
-    operators.rotation_to_velocities = get_rotation_to_velocities_partials(
-        data.station, data.block.shape[0]
-    )
-    operators.global_float_block_rotation = get_global_float_block_rotation_partials(
-        data.station
-    )
-    assembly, operators.block_motion_constraints = _store_block_motion_constraints(
-        assembly, data.block, config
-    )
-    assembly, operators.slip_rate_constraints = get_slip_rate_constraints(
-        assembly, data.segment, data.block, config
-    )
-    operators.rotation_to_slip_rate = get_rotation_to_slip_rate_partials(
-        data.segment, data.block
-    )
-    (
-        operators.block_strain_rate_to_velocities,
-        strain_rate_block_index,
-    ) = get_block_strain_rate_to_velocities_partials(
-        data.block, data.station, data.segment
-    )
-    operators.mogi_to_velocities = get_mogi_to_velocities_partials(
-        data.mogi, data.station, config
-    )
-    _store_tde_slip_rate_constraints(data.meshes, operators)
+    logger.info(f"build_and_solve_{name}")
 
     # Direct solve dense linear system
     logger.info("Start: Dense assemble and solve")
     start_solve_time = timeit.default_timer()
-    index, estimation = assemble_and_solve_dense(
-        config, assembly, operators, data.station, data.block, data.meshes, data.mogi
-    )
+    index, estimation = assemble_and_solve_dense(model, tde=True, eigen=False)
     end_solve_time = timeit.default_timer()
     logger.success(
         f"Finish: Dense assemble and solve: {end_solve_time - start_solve_time:0.2f} seconds for solve"
     )
 
-    post_process_estimation(estimation, operators, data.station, index)
-
     write_output(
-        config, estimation, data.station, data.segment, data.block, data.meshes
+        model.config,
+        estimation,
+        model.station,
+        model.segment,
+        model.block,
+        model.meshes,
     )
 
-    if bool(config.plot_estimation_summary):
-        plot_estimation_summary(
-            config,
-            data.segment,
-            data.station,
-            data.meshes,
-            estimation,
-            lon_range=config.lon_range,
-            lat_range=config.lat_range,
-            quiver_scale=config.quiver_scale,
-        )
+    if model.config.plot_estimation_summary:
+        import celeri
 
-    return estimation, operators, index
+        celeri.plot_estimation_summary(model, estimation)
+
+    return estimation
 
 
-def build_and_solve_dense_no_meshes(config, assembly, operators, data):
-    # NOTE: Used in celeri_solve.py
-    # TODO This is almost the same as the initialization of Operator...
-    logger.info("build_and_solve_dense_no_meshes")
+def build_and_solve_dense(model: Model) -> Estimation:
+    """Build and solve the dense linear system.
 
-    # Get all elastic operators for segments and TDEs
-    _store_elastic_operators(
-        operators, data.meshes, data.segment, data.station, config
+    Args:
+        config (Config): The configuration object.
+        model (Model): The model object.
+
+    Returns:
+        Estimation: The estimation object.
+    """
+    return _build_and_solve(
+        "dense",
+        model,
+        tde=True,
+        eigen=False,
     )
 
-    operators.rotation_to_velocities = get_rotation_to_velocities_partials(
-        data.station, data.block.shape[0]
-    )
-    operators.global_float_block_rotation = get_global_float_block_rotation_partials(
-        data.station
-    )
-    assembly, operators.block_motion_constraints = _store_block_motion_constraints(
-        assembly, data.block, config
-    )
-    assembly, operators.slip_rate_constraints = get_slip_rate_constraints(
-        assembly, data.segment, data.block, config
-    )
-    operators.rotation_to_slip_rate = get_rotation_to_slip_rate_partials(
-        data.segment, data.block
-    )
-    (
-        operators.block_strain_rate_to_velocities,
-        strain_rate_block_index,
-    ) = get_block_strain_rate_to_velocities_partials(
-        data.block, data.station, data.segment
-    )
-    operators.mogi_to_velocities = get_mogi_to_velocities_partials(
-        data.mogi, data.station, config
+
+def build_and_solve_dense_no_meshes(model: Model) -> Estimation:
+    """Build and solve the dense linear system without meshes.
+
+    Args:
+        config (Config): The configuration object.
+        model (Model): The model object.
+
+    Returns:
+        Estimation: The estimation object.
+    """
+    return _build_and_solve(
+        "dense_no_meshes",
+        model,
+        tde=False,
+        eigen=False,
     )
 
-    # Blocks only operator
-    index = _get_index_no_meshes(assembly, data.station, data.block)
 
-    # TODO: Clean up!
-    logger.error(operators.keys())
-
-    operator_block_only = _get_full_dense_operator_block_only(operators, index)
-    # weighting_vector = get_weighting_vector(config, data.station, data.meshes, index)
-    weighting_vector = _get_weighting_vector_no_meshes(config, data.station, index)
-    data_vector = _get_data_vector(assembly, index)
-    weighting_vector_block_only = weighting_vector[0 : operator_block_only.shape[0]]
-
-    # Solve the overdetermined linear system using only a weighting vector rather than matrix
-    estimation = addict.Dict()
-    estimation.operator = operator_block_only
-    estimation.weighting_vector = weighting_vector_block_only
-
-    estimation.state_covariance_matrix = np.linalg.inv(
-        operator_block_only.T * weighting_vector_block_only @ operator_block_only
-    )
-    estimation.state_vector = (
-        estimation.state_covariance_matrix
-        @ operator_block_only.T
-        * weighting_vector_block_only
-        @ data_vector[0 : weighting_vector_block_only.size]
-    )
-
-    # Post-processing
-
-    estimation.predictions = estimation.operator @ estimation.state_vector
-    estimation.vel = estimation.predictions[0 : 2 * index.n_stations]
-    estimation.east_vel = estimation.vel[0::2]
-    estimation.north_vel = estimation.vel[1::2]
-
-    # Estimate slip rate uncertainties
-    estimation.slip_rate_sigma = np.sqrt(
-        np.diag(
-            operators.rotation_to_slip_rate
-            @ estimation.state_covariance_matrix[
-                0 : 3 * index.n_blocks, 0 : 3 * index.n_blocks
-            ]
-            @ operators.rotation_to_slip_rate.T
-        )
-    )  # I don't think this is correct because for the case when there is a rotation vector a priori
-    estimation.strike_slip_rate_sigma = estimation.slip_rate_sigma[0::3]
-    estimation.dip_slip_rate_sigma = estimation.slip_rate_sigma[1::3]
-    estimation.tensile_slip_rate_sigma = estimation.slip_rate_sigma[2::3]
-
-    # Calculate mean squared residual velocity
-    estimation.east_vel_residual = estimation.east_vel - data.station.east_vel
-    estimation.north_vel_residual = estimation.north_vel - data.station.north_vel
-
-    # Extract segment slip rates from state vector
-    estimation.slip_rates = (
-        operators.rotation_to_slip_rate
-        @ estimation.state_vector[0 : 3 * index.n_blocks]
-    )
-    estimation.strike_slip_rates = estimation.slip_rates[0::3]
-    estimation.dip_slip_rates = estimation.slip_rates[1::3]
-    estimation.tensile_slip_rates = estimation.slip_rates[2::3]
-
-    # Calculate rotation only velocities
-    estimation.vel_rotation = (
-        operators.rotation_to_velocities[index.station_row_keep_index, :]
-        @ estimation.state_vector[0 : 3 * index.n_blocks]
-    )
-    estimation.east_vel_rotation = estimation.vel_rotation[0::2]
-    estimation.north_vel_rotation = estimation.vel_rotation[1::2]
-
-    # Calculate fully locked segment velocities
-    estimation.vel_elastic_segment = (
-        operators.rotation_to_slip_rate_to_okada_to_velocities[
-            index.station_row_keep_index, :
-        ]
-        @ estimation.state_vector[0 : 3 * index.n_blocks]
-    )
-    estimation.east_vel_elastic_segment = estimation.vel_elastic_segment[0::2]
-    estimation.north_vel_elastic_segment = estimation.vel_elastic_segment[1::2]
-
-    # TODO: Calculate block strain rate velocities
-    estimation.east_vel_block_strain_rate = np.zeros(len(data.station))
-    estimation.north_vel_block_strain_rate = np.zeros(len(data.station))
-
-    # # Get all elastic operators for segments and TDEs
-    # get_elastic_operators(operators, data.meshes, data.segment, data.station, config)
-
-    # # Get TDE smoothing operators
-    # get_all_mesh_smoothing_matrices(data.meshes, operators)
-
-    # # Get non-elastic operators
-    # operators.rotation_to_velocities = get_rotation_to_velocities_partials(data.station, data.block.shape[0])
-    # operators.global_float_block_rotation = get_global_float_block_rotation_partials(
-    #     data.station
-    # )
-    # assembly, operators.block_motion_constraints = get_block_motion_constraints(
-    #     assembly, data.block, config
-    # )
-    # assembly, operators.slip_rate_constraints = get_slip_rate_constraints(
-    #     assembly, data.segment, data.block, config
-    # )
-    # operators.rotation_to_slip_rate = get_rotation_to_slip_rate_partials(
-    #     data.segment, data.block
-    # )
-    # (
-    #     operators.block_strain_rate_to_velocities,
-    #     strain_rate_block_index,
-    # ) = get_block_strain_rate_to_velocities_partials(
-    #     data.block, data.station, data.segment
-    # )
-    # operators.mogi_to_velocities = get_mogi_to_velocities_partials(
-    #     data.mogi, data.station, config
-    # )
-    # get_tde_slip_rate_constraints(data.meshes, operators)
-
-    # # Direct solve dense linear system
-    # logger.info("Start: Dense assemble and solve")
-    # start_solve_time = timeit.default_timer()
-    # index, estimation = assemble_and_solve_dense(
-    #     config, assembly, operators, data.station, data.block, data.meshes
-    # )
-    # end_solve_time = timeit.default_timer()
-    # logger.success(
-    #     f"Finish: Dense assemble and solve: {end_solve_time - start_solve_time:0.2f} seconds for solve"
-    # )
-
-    # post_process_estimation(estimation, operators, data.station, index)
-
-    write_output(
-        config, estimation, data.station, data.segment, data.block, data.meshes
-    )
-
-    if bool(config.plot_estimation_summary):
-        plot_estimation_summary(
-            config,
-            data.segment,
-            data.station,
-            data.meshes,
-            estimation,
-            lon_range=config.lon_range,
-            lat_range=config.lat_range,
-            quiver_scale=config.quiver_scale,
-        )
-
-    return estimation, operators, index
-
-
-def build_and_solve_qp_kl(config, assembly, operators, data):
+def build_and_solve_qp_kl(model: Model) -> Estimation:
     # NOTE: Used in celeri_solve.py
     logger.info("build_and_solve_qp_kl")
     logger.info("PLACEHOLDER")
 
-    # # Get all elastic operators for segments and TDEs
-    # get_elastic_operators(operators, data.meshes, data.segment, data.station, config)
-
-    # # Get TDE smoothing operators
-    # get_all_mesh_smoothing_matrices(data.meshes, operators)
-
-    # # Get non-elastic operators
-    # operators.rotation_to_velocities = get_rotation_to_velocities_partials(
-    #     data.station, data.block.shape[0]
-    # )
-    # operators.global_float_block_rotation = get_global_float_block_rotation_partials(
-    #     data.station
-    # )
-    # assembly, operators.block_motion_constraints = get_block_motion_constraints(
-    #     assembly, data.block, config
-    # )
-    # assembly, operators.slip_rate_constraints = get_slip_rate_constraints(
-    #     assembly, data.segment, data.block, config
-    # )
-    # operators.rotation_to_slip_rate = get_rotation_to_slip_rate_partials(
-    #     data.segment, data.block
-    # )
-    # (
-    #     operators.block_strain_rate_to_velocities,
-    #     strain_rate_block_index,
-    # ) = get_block_strain_rate_to_velocities_partials(
-    #     data.block, data.station, data.segment
-    # )
-    # operators.mogi_to_velocities = get_mogi_to_velocities_partials(
-    #     data.mogi, data.station, config
-    # )
-    # get_tde_slip_rate_constraints(data.meshes, operators)
-
-    # # Direct solve dense linear system
-    # logger.info("Start: Dense assemble and solve")
-    # start_solve_time = timeit.default_timer()
-    # index, estimation = assemble_and_solve_dense(
-    #     config, assembly, operators, data.station, data.block, data.meshes
-    # )
-    # end_solve_time = timeit.default_timer()
-    # logger.success(
-    #     f"Finish: Dense assemble and solve: {end_solve_time - start_solve_time:0.2f} seconds for solve"
-    # )
-
-    # post_process_estimation(estimation, operators, data.station, index)
-
-    # write_output(
-    #     config, estimation, data.station, data.segment, data.block, data.meshes
-    # )
-
-    # if bool(config.plot_estimation_summary):
-    #     plot_estimation_summary(
-    #         config,
-    #         data.segment,
-    #         data.station,
-    #         data.meshes,
-    #         estimation,
-    #         lon_range=config.lon_range,
-    #         lat_range=config.lat_range,
-    #         quiver_scale=config.quiver_scale,
-    #     )
-
-    # return estimation, operators, index
+    raise NotImplementedError()
