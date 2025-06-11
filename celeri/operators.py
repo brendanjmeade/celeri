@@ -262,7 +262,7 @@ class Operators:
     @property
     def data_vector(self) -> np.ndarray:
         if self.tde is None:
-            return _get_data_vector(self.model, self.assembly, self.index)
+            return _get_data_vector_no_meshes(self.model, self.assembly, self.index)
         if self.eigen is not None:
             return _get_data_vector_eigen(self.model, self.assembly, self.index)
         return _get_data_vector(self.model, self.assembly, self.index)
@@ -423,16 +423,12 @@ def build_operators(model: Model, *, eigen: bool = True, tde: bool = True) -> Op
     if eigen:
         index = _get_index_eigen(model, assembly)
         operators.index = index
-        _get_data_vector_eigen(model, assembly, index)
-        _get_weighting_vector_eigen(model, index)
 
         # Get KL modes for each mesh
         _store_eigenvectors_to_tde_slip(model, operators)
     else:
         index = _get_index(model, assembly)
         operators.index = index
-        _get_data_vector(model, assembly, index)
-        _get_weighting_vector(model, index)
 
     # Get rotation to TDE kinematic slip rate operator for all meshes tied to segments
     _store_tde_coupling_constraints(model, operators)
@@ -1158,6 +1154,31 @@ def get_slip_rake_constraints(model: Model, assembly: Assembly) -> np.ndarray:
     return slip_rake_constraint_partials
 
 
+def _get_data_vector_no_meshes(model: Model, assembly: Assembly, index: Index) -> np.ndarray:
+    data_vector = np.zeros(
+        2 * index.n_stations
+        + 3 * index.n_block_constraints
+        + index.n_slip_rate_constraints
+    )
+
+    # Add GPS stations to data vector
+    data_vector[index.start_station_row : index.end_station_row] = interleave2(
+        assembly.data.east_vel, assembly.data.north_vel
+    )
+
+    # Add block motion constraints to data vector
+    data_vector[index.start_block_constraints_row : index.end_block_constraints_row] = (
+        DEG_PER_MYR_TO_RAD_PER_YR * assembly.data.block_constraints
+    )
+
+    # Add slip rate constraints to data vector
+    data_vector[
+        index.start_slip_rate_constraints_row : index.end_slip_rate_constraints_row
+    ] = assembly.data.slip_rate_constraints
+
+    return data_vector
+
+
 def _get_data_vector(model: Model, assembly: Assembly, index: Index) -> np.ndarray:
     assert index.tde is not None
 
@@ -1198,6 +1219,52 @@ def _get_data_vector(model: Model, assembly: Assembly, index: Index) -> np.ndarr
                 i
             ] : index.tde.end_tde_ds_slip_constraint_row[i]
         ] = model.meshes[i].config.ds_slip_constraint_rate
+    return data_vector
+
+
+def _get_data_vector_eigen(
+    model: Model, assembly: Assembly, index: Index
+) -> np.ndarray:
+    assert index.tde is not None
+    assert index.eigen is not None
+
+    data_vector = np.zeros(
+        2 * index.n_stations
+        + 3 * index.n_block_constraints
+        + index.n_slip_rate_constraints
+        + index.n_tde_constraints_total
+    )
+
+    # Add GPS stations to data vector
+    data_vector[index.start_station_row : index.end_station_row] = interleave2(
+        assembly.data.east_vel, assembly.data.north_vel
+    )
+
+    # Add block motion constraints to data vector
+    data_vector[index.start_block_constraints_row : index.end_block_constraints_row] = (
+        DEG_PER_MYR_TO_RAD_PER_YR * assembly.data.block_constraints
+    )
+
+    # Add slip rate constraints to data vector
+    data_vector[
+        index.start_slip_rate_constraints_row : index.end_slip_rate_constraints_row
+    ] = assembly.data.slip_rate_constraints
+
+    # Add TDE boundary condtions constraints
+    for i in range(index.n_meshes):
+        # Place strike-slip TDE BCs
+        data_vector[
+            index.eigen.start_tde_constraint_row_eigen[
+                i
+            ] : index.eigen.end_tde_constraint_row_eigen[i] : 2
+        ] = model.meshes[i].config.ss_slip_constraint_rate
+
+        # Place dip-slip TDE BCs
+        data_vector[
+            index.eigen.start_tde_constraint_row_eigen[i]
+            + 1 : index.eigen.end_tde_constraint_row_eigen[i] : 2
+        ] = model.meshes[i].config.ds_slip_constraint_rate
+
     return data_vector
 
 
@@ -1285,51 +1352,6 @@ def get_weighting_vector_single_mesh_for_col_norms(
 
     return weighting_vector
 
-
-def _get_data_vector_eigen(
-    model: Model, assembly: Assembly, index: Index
-) -> np.ndarray:
-    assert index.tde is not None
-    assert index.eigen is not None
-
-    data_vector = np.zeros(
-        2 * index.n_stations
-        + 3 * index.n_block_constraints
-        + index.n_slip_rate_constraints
-        + index.n_tde_constraints_total
-    )
-
-    # Add GPS stations to data vector
-    data_vector[index.start_station_row : index.end_station_row] = interleave2(
-        assembly.data.east_vel, assembly.data.north_vel
-    )
-
-    # Add block motion constraints to data vector
-    data_vector[index.start_block_constraints_row : index.end_block_constraints_row] = (
-        DEG_PER_MYR_TO_RAD_PER_YR * assembly.data.block_constraints
-    )
-
-    # Add slip rate constraints to data vector
-    data_vector[
-        index.start_slip_rate_constraints_row : index.end_slip_rate_constraints_row
-    ] = assembly.data.slip_rate_constraints
-
-    # Add TDE boundary condtions constraints
-    for i in range(index.n_meshes):
-        # Place strike-slip TDE BCs
-        data_vector[
-            index.eigen.start_tde_constraint_row_eigen[
-                i
-            ] : index.eigen.end_tde_constraint_row_eigen[i] : 2
-        ] = model.meshes[i].config.ss_slip_constraint_rate
-
-        # Place dip-slip TDE BCs
-        data_vector[
-            index.eigen.start_tde_constraint_row_eigen[i]
-            + 1 : index.eigen.end_tde_constraint_row_eigen[i] : 2
-        ] = model.meshes[i].config.ds_slip_constraint_rate
-
-    return data_vector
 
 
 def _get_weighting_vector_eigen(model: Model, index: Index) -> np.ndarray:
