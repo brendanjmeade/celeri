@@ -55,11 +55,8 @@ def main():
     fig.show()
 
     # Plot mesh
-    command_file_name = "../data/command/western_north_america_command.json"
-    command = celeri.get_command(command_file_name)
-    segment, block, meshes, station, mogi, sar = celeri.read_data(command)
-    station = celeri.process_station(station, command)
-    segment = celeri.process_segment(segment, command, meshes)
+    config_file_name = "../data/config/western_north_america_config.json"
+    model = celeri.build_model(config_file_name)
 
     # matplotlib version
     # plt.figure()

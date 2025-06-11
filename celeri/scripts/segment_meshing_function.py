@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
-# %%
-import addict
+# TODO (Adrian): Adapt to model refactor
+
 import argparse
 import json
 import os
-import copy
-import sys
-import numpy as np
-from importlib import reload
 
-from celeri.celeri_util import sph2cart, cart2sph
+import addict
 import gmsh
-import meshio
-import celeri
+import numpy as np
 import pyproj
+
+import celeri
+from celeri.celeri_util import cart2sph, sph2cart
 
 # Global constants
 GEOID = pyproj.Geod(ellps="WGS84")

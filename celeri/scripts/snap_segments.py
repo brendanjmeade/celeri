@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
+# TODO (Adrian): Adapt to model refactor
 
 import argparse
 import json
 import os
-from typing import Dict
 
 import addict
 import meshio

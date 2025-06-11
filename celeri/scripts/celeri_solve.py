@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
+# TODO (Adrian): Adapt to model refactor
 
-from loguru import logger
 import IPython
+from loguru import logger
+
 import celeri
 
 

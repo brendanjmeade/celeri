@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
+# TODO(Adrian): Adapt to model refactor
+# We should make Estimation serializable, then this report generation
+# should easily be able to use the final Estimation objects.
 
-from typing import Dict
-import IPython
 import argparse
-import numpy as np
+import glob
 import os
+
 import addict
+import IPython
+import numpy as np
+import pandas as pd
 from rich.console import Console
 from rich.table import Table
-import glob
-import pandas as pd
+
 import celeri
 
 # Reference colors
@@ -19,7 +23,7 @@ COLOR_SAME = "green"
 COLOR_DIFF = "red"
 
 
-def print_table_one_run(run: Dict):
+def print_table_one_run(run: dict):
     # Build table for reporting on a single model run
     console = Console()
     table = Table(show_header=True, header_style="bold #ffffff")
