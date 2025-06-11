@@ -37,7 +37,8 @@ for notebook in notebooks:
                 output_path,
                 progress_bar=True,
                 stdout_file=log,
-                stderr_file=log
+                stderr_file=log,
+                kernel_name='python',
             )
         status = "Success"
         print(f"{notebook} completed successfully")
