@@ -7,15 +7,9 @@
   "block_constraint_weight_steps": 1,
   "block_file_name": "../data/block/japan_block.csv",
   "btol": 0.0001,
-<<<<<<< HEAD
-<<<<<<<< HEAD:data/config/japan_config.json
   "coupling_bounds_total_percentage_satisfied_target": 95,
   "coupling_bounds_max_iter": 500,
   "fault_resolution": 500,
-========
->>>>>>>> 1e0b2c88cd4e190ee4fbd05bf7d9cba018f34c3a:data/config/japan_config_cmi.json
-=======
->>>>>>> 1e0b2c88cd4e190ee4fbd05bf7d9cba018f34c3a
   "global_elastic_cutoff_distance": 2000000,
   "global_elastic_cutoff_distance_flag": 0,
   "h_matrix_min_pts_per_box": 20,
@@ -32,11 +26,7 @@
   "lon_range": [130, 150],
   "material_lambda": 30000000000,
   "material_mu": 30000000000,
-<<<<<<< HEAD
   "mesh_parameters_file_name": "../data/mesh/japan_mesh.json",
-=======
-  "mesh_parameters_file_name": "../data/mesh/japan_mesh_parameters.json",
->>>>>>> 1e0b2c88cd4e190ee4fbd05bf7d9cba018f34c3a
   "mogi_file_name": "../data/mogi/japan_mogi.csv",
   "n_iterations": 1,
   "operators_folder": "../data/operators/",
@@ -46,7 +36,6 @@
   "printslipcons": 0,
   "quiver_scale": 100,
   "repl": 1,
-<<<<<<< HEAD
   "reuse_elastic": 0,
   "reuse_elastic_file": "",
   "ridge_param": 0,
@@ -54,24 +43,11 @@
   "save_elastic": 0,
   "save_elastic_file": "",
   "segment_file_name": "../data/segment/japan_segment.csv",
-=======
-  "reuse_elastic": 1,
-  "reuse_elastic_file": "../data/operators/japan_elastic_operators.hdf5",
-  "ridge_param": 0,
-  "sar_file_name": null,
-  "save_elastic": 0,
-  "save_elastic_file": "../data/operators/japan_elastic_operators.hdf5",
-  "segment_file_name": "../data/segment/qp_japan_segment.csv",
->>>>>>> 1e0b2c88cd4e190ee4fbd05bf7d9cba018f34c3a
   "slip_constraint_weight": 100000,
   "slip_constraint_weight_max": 100000,
   "slip_constraint_weight_min": 100000,
   "slip_constraint_weight_steps": 1,
-<<<<<<< HEAD
-  "slip_file_names": "",
-=======
   "slip_file_names": null,
->>>>>>> 1e0b2c88cd4e190ee4fbd05bf7d9cba018f34c3a
   "smooth_type": 1,
   "snap_segments": 0,
   "solution_method": "backslash",
