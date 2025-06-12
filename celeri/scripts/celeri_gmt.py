@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 
-import IPython
-import pygmt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
+import pygmt
+
 import celeri
 
 
@@ -20,7 +19,6 @@ def main():
     min_lat = 30.0
     max_lat = 50.0
     region = [min_lon, max_lon, min_lat, max_lat]
-    topo_data = "@earth_relief_30s"
     # topo_data = '@earth_relief_01m'
     projection = "J-65/12c"
 
@@ -55,11 +53,8 @@ def main():
     fig.show()
 
     # Plot mesh
-    command_file_name = "../data/command/western_north_america_command.json"
-    command = celeri.get_command(command_file_name)
-    segment, block, meshes, station, mogi, sar = celeri.read_data(command)
-    station = celeri.process_station(station, command)
-    segment = celeri.process_segment(segment, command, meshes)
+    config_file_name = "../data/config/western_north_america_config.json"
+    celeri.build_model(config_file_name)
 
     # matplotlib version
     # plt.figure()
@@ -87,8 +82,8 @@ def main():
     fig.plot(x=[-130, -125, -127], y=[35, 40, 39], color="red", pen="1.1p,black")
     fig.plot(x=[-128, -127, -129], y=[35, 40, 39], color="red", pen="1.1p,black")
 
-    x = np.array([-130, -125, -127, np.nan, -128, -127, -129])
-    y = np.array([35, 40, 39, np.nan, 35, 40, 39])
+    np.array([-130, -125, -127, np.nan, -128, -127, -129])
+    np.array([35, 40, 39, np.nan, 35, 40, 39])
 
     data = [
         "> -Z0",
