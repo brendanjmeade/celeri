@@ -36,10 +36,13 @@ class Estimation:
     weighting_vector: np.ndarray
     operator: np.ndarray
     state_vector: np.ndarray
-    model: Model
     operators: Operators
 
     state_covariance_matrix: np.ndarray | None
+
+    @property
+    def model(self) -> Model:
+        return self.operators.model
 
     @property
     def index(self) -> Index:
@@ -426,7 +429,6 @@ def build_estimation(
         weighting_vector=weighting_vector,
         operator=operators.full_dense_operator,
         state_vector=state_vector,
-        model=model,
         operators=operators,
         state_covariance_matrix=state_covariance_matrix,
     )
