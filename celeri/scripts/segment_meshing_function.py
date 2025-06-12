@@ -283,7 +283,7 @@ def main():
     # Get a default plotting parameter dictionary
     estimation = {"strike_slip_rates": 0, "dip_slip_rates": 0, "tensile_slip_rates": 0}
     estimation = addict.Dict(estimation)
-    p = celeri.get_default_plotting_dict(command, estimation, station)
+    p = celeri.get_default_plotting_class(command, estimation, station)
 
     # Read in revised inputs
     command = celeri.get_command(new_command_file_name)

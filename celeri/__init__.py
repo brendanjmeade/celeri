@@ -110,7 +110,7 @@ __all__ = [
     "get_3component_index",
     "get_block_strain_rate_to_velocities_partials",
     "get_config",
-    "get_default_plotting_dict",
+    "get_default_plotting_class",
     "get_eigenvalues_and_eigenvectors",
     "get_elastic_operator_single_mesh",
     "get_full_dense_operator",
