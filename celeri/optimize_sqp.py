@@ -1,14 +1,28 @@
+from dataclasses import dataclass
+
 import numpy as np
+import pandas as pd
 from loguru import logger
 
 from celeri.celeri_util import interleave2
+from celeri.mesh import Mesh
 from celeri.model import Model
 from celeri.operators import Operators, get_qp_all_inequality_operator_and_data_vector
 from celeri.output import write_output
 from celeri.solve import Estimation, lsqlin_qp
 
 
-def _presolve(model: Model, operators: Operators, *, show_progress: bool = False):
+@dataclass
+class SqpEstimation(Estimation):
+    n_out_of_bounds_trace: np.ndarray
+    trace: dict[str, list[np.ndarray]] | None
+
+
+def _presolve(
+    model: Model, operators: Operators, *, show_progress: bool = False
+) -> SqpEstimation:
+    n_segment_meshes = np.max(model.segment.patch_file_name).astype(int) + 1
+
     # Get QP bounds as inequality constraints
     qp_inequality_constraints_matrix, qp_inequality_constraints_data_vector = (
         get_qp_all_inequality_operator_and_data_vector(
@@ -33,7 +47,7 @@ def _presolve(model: Model, operators: Operators, *, show_progress: bool = False
         opts,
     )
 
-    estimation_qp = Estimation(
+    estimation_qp = SqpEstimation(
         data_vector=operators.data_vector,
         weighting_vector=operators.weighting_vector,
         operator=operators.full_dense_operator,
@@ -41,6 +55,8 @@ def _presolve(model: Model, operators: Operators, *, show_progress: bool = False
         model=model,
         operators=operators,
         state_covariance_matrix=None,
+        n_out_of_bounds_trace=np.zeros((n_segment_meshes, 0)),
+        trace=None,
     )
 
     return estimation_qp
@@ -64,240 +80,196 @@ def _get_coupling_linear(
     return coupling, kinematic_slip
 
 
+@dataclass
+class _SlipRateBounds:
+    ss_lower: np.ndarray
+    ss_upper: np.ndarray
+    ds_lower: np.ndarray
+    ds_upper: np.ndarray
+
+
 def _update_slip_rate_bounds(
-    meshes,
-    mesh_idx,
-    tde_coupling_ss,
-    tde_coupling_ds,
-    kinematic_tde_rates_ss,
-    kinematic_tde_rates_ds,
-    current_ss_bounds_lower,
-    current_ss_bounds_upper,
-    current_ds_bounds_lower,
-    current_ds_bounds_upper,
-):
-    tde_coupling_ss_lower_oob_idx = np.where(
-        tde_coupling_ss
-        < meshes[mesh_idx].config.qp_mesh_tde_slip_rate_lower_bound_ss_coupling
-    )[0]
+    meshes: list[Mesh],
+    mesh_idx: int,
+    tde_coupling_ss: np.ndarray,
+    tde_coupling_ds: np.ndarray,
+    kinematic_tde_rates_ss: np.ndarray,
+    kinematic_tde_rates_ds: np.ndarray,
+    current_bounds: _SlipRateBounds,
+) -> tuple[int, _SlipRateBounds]:
+    """Update slip rate bounds based on coupling constraints.
 
-    tde_coupling_ss_upper_oob_idx = np.where(
-        tde_coupling_ss
-        > meshes[mesh_idx].config.qp_mesh_tde_slip_rate_upper_bound_ss_coupling
-    )[0]
+    For points outside the coupling bounds, adjust the slip rate bounds
+    to move toward a midpoint coupling value.
+    """
+    mesh_config = meshes[mesh_idx].config
 
-    tde_coupling_ds_lower_oob_idx = np.where(
-        tde_coupling_ds
-        < meshes[mesh_idx].config.qp_mesh_tde_slip_rate_lower_bound_ds_coupling
-    )[0]
+    # Find indices where coupling is out of bounds (OOB)
+    ss_lower_bound = mesh_config.qp_mesh_tde_slip_rate_lower_bound_ss_coupling
+    ss_upper_bound = mesh_config.qp_mesh_tde_slip_rate_upper_bound_ss_coupling
+    ds_lower_bound = mesh_config.qp_mesh_tde_slip_rate_lower_bound_ds_coupling
+    ds_upper_bound = mesh_config.qp_mesh_tde_slip_rate_upper_bound_ds_coupling
 
-    tde_coupling_ds_upper_oob_idx = np.where(
-        tde_coupling_ds
-        > meshes[mesh_idx].config.qp_mesh_tde_slip_rate_upper_bound_ds_coupling
-    )[0]
+    # Identify out-of-bounds indices
+    ss_lower_oob_idx = np.where(tde_coupling_ss < ss_lower_bound)[0]
+    ss_upper_oob_idx = np.where(tde_coupling_ss > ss_upper_bound)[0]
+    ds_lower_oob_idx = np.where(tde_coupling_ds < ds_lower_bound)[0]
+    ds_upper_oob_idx = np.where(tde_coupling_ds > ds_upper_bound)[0]
 
-    # Find indices of mesh elements with negative kinematic rate
-    neg_kinematic_ss_idx = np.where(kinematic_tde_rates_ss < 0)[0]
-    neg_kinematic_ds_idx = np.where(kinematic_tde_rates_ds < 0)[0]
-    pos_kinematic_ss_idx = np.where(kinematic_tde_rates_ss >= 0)[0]
-    pos_kinematic_ds_idx = np.where(kinematic_tde_rates_ds >= 0)[0]
+    # Separate indices by kinematic rate sign
+    neg_ss_idx = np.where(kinematic_tde_rates_ss < 0)[0]
+    pos_ss_idx = np.where(kinematic_tde_rates_ss >= 0)[0]
+    neg_ds_idx = np.where(kinematic_tde_rates_ds < 0)[0]
+    pos_ds_idx = np.where(kinematic_tde_rates_ds >= 0)[0]
 
-    # NEGATIVE CASE: Find intersection of indices with negative kinematic rates and OOB ss lower bounds
-    tde_coupling_ss_lower_oob_and_neg_kinematic_ss = np.intersect1d(
-        tde_coupling_ss_lower_oob_idx, neg_kinematic_ss_idx
-    )
+    # Calculate intersections for both positive and negative kinematic rates
+    # Strike-slip intersections
+    ss_lower_oob_neg = np.intersect1d(ss_lower_oob_idx, neg_ss_idx)
+    ss_upper_oob_neg = np.intersect1d(ss_upper_oob_idx, neg_ss_idx)
+    ss_lower_oob_pos = np.intersect1d(ss_lower_oob_idx, pos_ss_idx)
+    ss_upper_oob_pos = np.intersect1d(ss_upper_oob_idx, pos_ss_idx)
 
-    # NEGATIVE CASE: Find intersection of indices with negative kinematic rates and OOB ss upper bounds
-    tde_coupling_ss_upper_oob_and_neg_kinematic_ss = np.intersect1d(
-        tde_coupling_ss_upper_oob_idx, neg_kinematic_ss_idx
-    )
-
-    # NEGATIVE CASE: Find intersection of indices with negative kinematic rates and OOB ds lower bounds
-    tde_coupling_ds_lower_oob_and_neg_kinematic_ds = np.intersect1d(
-        tde_coupling_ds_lower_oob_idx, neg_kinematic_ds_idx
-    )
-
-    # NEGATIVE CASE: Find intersection of indices with negative kinematic rates and OOB ds upper bounds
-    tde_coupling_ds_upper_oob_and_neg_kinematic_ds = np.intersect1d(
-        tde_coupling_ds_upper_oob_idx, neg_kinematic_ds_idx
-    )
-
-    # POSITIVE CASE: Find intersection of indices with positive kinematic rates and OOB ss lower bounds
-    tde_coupling_ss_lower_oob_and_pos_kinematic_ss = np.intersect1d(
-        tde_coupling_ss_lower_oob_idx, pos_kinematic_ss_idx
-    )
-
-    # POSITIVE CASE: Find intersection of indices with positive kinematic rates and OOB ss upper bounds
-    tde_coupling_ss_upper_oob_and_pos_kinematic_ss = np.intersect1d(
-        tde_coupling_ss_upper_oob_idx, pos_kinematic_ss_idx
-    )
-
-    # POSITIVE CASE: Find intersection of indices with positive kinematic rates and OOB ds lower bounds
-    tde_coupling_ds_lower_oob_and_pos_kinematic_ds = np.intersect1d(
-        tde_coupling_ds_lower_oob_idx, pos_kinematic_ds_idx
-    )
-
-    # POSITIVE CASE: Find intersection of indices with positive kinematic rates and OOB ds upper bounds
-    tde_coupling_ds_upper_oob_and_pos_kinematic_ds = np.intersect1d(
-        tde_coupling_ds_upper_oob_idx, pos_kinematic_ds_idx
-    )
+    # Dip-slip intersections
+    ds_lower_oob_neg = np.intersect1d(ds_lower_oob_idx, neg_ds_idx)
+    ds_upper_oob_neg = np.intersect1d(ds_upper_oob_idx, neg_ds_idx)
+    ds_lower_oob_pos = np.intersect1d(ds_lower_oob_idx, pos_ds_idx)
+    ds_upper_oob_pos = np.intersect1d(ds_upper_oob_idx, pos_ds_idx)
 
     # Calculate total number of OOB coupling constraints
     n_oob = (
-        len(tde_coupling_ss_lower_oob_idx)
-        + len(tde_coupling_ss_upper_oob_idx)
-        + len(tde_coupling_ds_lower_oob_idx)
-        + len(tde_coupling_ds_upper_oob_idx)
+        len(ss_lower_oob_idx)
+        + len(ss_upper_oob_idx)
+        + len(ds_lower_oob_idx)
+        + len(ds_upper_oob_idx)
     )
 
-    # Make vectors for update slip rates (not neccesary but useful for debugging)
-    updated_ss_bounds_lower = np.copy(current_ss_bounds_lower)
-    updated_ss_bounds_upper = np.copy(current_ss_bounds_upper)
-    updated_ds_bounds_lower = np.copy(current_ds_bounds_lower)
-    updated_ds_bounds_upper = np.copy(current_ds_bounds_upper)
+    # Start with copies of current bounds
+    updated_ss_bounds_lower = np.copy(current_bounds.ss_lower)
+    updated_ss_bounds_upper = np.copy(current_bounds.ss_upper)
+    updated_ds_bounds_lower = np.copy(current_bounds.ds_lower)
+    updated_ds_bounds_upper = np.copy(current_bounds.ds_upper)
 
-    # Calculate midpoint slip rate assciated with midpoint coupling
-    mid_point_ss_coupling = 0.5 * (
-        meshes[mesh_idx].config.qp_mesh_tde_slip_rate_lower_bound_ss_coupling
-        + meshes[mesh_idx].config.qp_mesh_tde_slip_rate_upper_bound_ss_coupling
-    )
-    mid_point_ds_coupling = 0.5 * (
-        meshes[mesh_idx].config.qp_mesh_tde_slip_rate_lower_bound_ds_coupling
-        + meshes[mesh_idx].config.qp_mesh_tde_slip_rate_upper_bound_ds_coupling
-    )
+    # Calculate midpoint coupling values
+    mid_point_ss_coupling = 0.5 * (ss_lower_bound + ss_upper_bound)
+    mid_point_ds_coupling = 0.5 * (ds_lower_bound + ds_upper_bound)
 
     mid_point_ss_rate = mid_point_ss_coupling * kinematic_tde_rates_ss
     mid_point_ds_rate = mid_point_ds_coupling * kinematic_tde_rates_ds
 
-    # Update bounds with a linear approach towards midpoint
-    new_ss_bounds_lower = current_ss_bounds_lower + meshes[
-        mesh_idx
-    ].config.iterative_coupling_linear_slip_rate_reduction_factor * (
-        mid_point_ss_rate - current_ss_bounds_lower
+    reduction_factor = mesh_config.iterative_coupling_linear_slip_rate_reduction_factor
+
+    # Calculate new bounds with linear approach towards midpoint
+    new_ss_bounds_lower = current_bounds.ss_lower + reduction_factor * (
+        mid_point_ss_rate - current_bounds.ss_lower
+    )
+    new_ss_bounds_upper = current_bounds.ss_upper + reduction_factor * (
+        mid_point_ss_rate - current_bounds.ss_upper
+    )
+    new_ds_bounds_lower = current_bounds.ds_lower + reduction_factor * (
+        mid_point_ds_rate - current_bounds.ds_lower
+    )
+    new_ds_bounds_upper = current_bounds.ds_upper + reduction_factor * (
+        mid_point_ds_rate - current_bounds.ds_upper
     )
 
-    new_ss_bounds_upper = current_ss_bounds_upper + meshes[
-        mesh_idx
-    ].config.iterative_coupling_linear_slip_rate_reduction_factor * (
-        mid_point_ss_rate - current_ss_bounds_upper
+    # Update bounds for out-of-bounds points
+    # Note: For negative kinematic rates, upper and lower bounds are swapped
+
+    # Negative kinematic case updates
+    updated_ss_bounds_lower[ss_upper_oob_neg] = new_ss_bounds_lower[ss_upper_oob_neg]
+    updated_ss_bounds_upper[ss_lower_oob_neg] = new_ss_bounds_upper[ss_lower_oob_neg]
+    updated_ds_bounds_lower[ds_upper_oob_neg] = new_ds_bounds_lower[ds_upper_oob_neg]
+    updated_ds_bounds_upper[ds_lower_oob_neg] = new_ds_bounds_upper[ds_lower_oob_neg]
+
+    # Positive kinematic case updates
+    updated_ss_bounds_lower[ss_lower_oob_pos] = new_ss_bounds_lower[ss_lower_oob_pos]
+    updated_ss_bounds_upper[ss_upper_oob_pos] = new_ss_bounds_upper[ss_upper_oob_pos]
+    updated_ds_bounds_lower[ds_lower_oob_pos] = new_ds_bounds_lower[ds_lower_oob_pos]
+    updated_ds_bounds_upper[ds_upper_oob_pos] = new_ds_bounds_upper[ds_upper_oob_pos]
+
+    updated_bounds = _SlipRateBounds(
+        ss_lower=updated_ss_bounds_lower,
+        ss_upper=updated_ss_bounds_upper,
+        ds_lower=updated_ds_bounds_lower,
+        ds_upper=updated_ds_bounds_upper,
     )
 
-    new_ds_bounds_lower = current_ds_bounds_lower + meshes[
-        mesh_idx
-    ].config.iterative_coupling_linear_slip_rate_reduction_factor * (
-        mid_point_ds_rate - current_ds_bounds_lower
-    )
-
-    new_ds_bounds_upper = current_ds_bounds_upper + meshes[
-        mesh_idx
-    ].config.iterative_coupling_linear_slip_rate_reduction_factor * (
-        mid_point_ds_rate - current_ds_bounds_upper
-    )
-
-    # Update slip rate bounds
-    # NOTE: Note upper and lower swap here for negative kinmatic cases (2nd and 3rd quadrants)
-    # Negative kinematic case
-    updated_ss_bounds_lower[tde_coupling_ss_upper_oob_and_neg_kinematic_ss] = (
-        new_ss_bounds_lower[tde_coupling_ss_upper_oob_and_neg_kinematic_ss]
-    )
-    updated_ss_bounds_upper[tde_coupling_ss_lower_oob_and_neg_kinematic_ss] = (
-        new_ss_bounds_upper[tde_coupling_ss_lower_oob_and_neg_kinematic_ss]
-    )
-    updated_ds_bounds_lower[tde_coupling_ds_upper_oob_and_neg_kinematic_ds] = (
-        new_ds_bounds_lower[tde_coupling_ds_upper_oob_and_neg_kinematic_ds]
-    )
-    updated_ds_bounds_upper[tde_coupling_ds_lower_oob_and_neg_kinematic_ds] = (
-        new_ds_bounds_upper[tde_coupling_ds_lower_oob_and_neg_kinematic_ds]
-    )
-
-    # Positive kinematic case
-    updated_ss_bounds_lower[tde_coupling_ss_lower_oob_and_pos_kinematic_ss] = (
-        new_ss_bounds_lower[tde_coupling_ss_lower_oob_and_pos_kinematic_ss]
-    )
-    updated_ss_bounds_upper[tde_coupling_ss_upper_oob_and_pos_kinematic_ss] = (
-        new_ss_bounds_upper[tde_coupling_ss_upper_oob_and_pos_kinematic_ss]
-    )
-    updated_ds_bounds_lower[tde_coupling_ds_lower_oob_and_pos_kinematic_ds] = (
-        new_ds_bounds_lower[tde_coupling_ds_lower_oob_and_pos_kinematic_ds]
-    )
-    updated_ds_bounds_upper[tde_coupling_ds_upper_oob_and_pos_kinematic_ds] = (
-        new_ds_bounds_upper[tde_coupling_ds_upper_oob_and_pos_kinematic_ds]
-    )
-
-    return (
-        n_oob,
-        updated_ss_bounds_lower,
-        updated_ss_bounds_upper,
-        updated_ds_bounds_lower,
-        updated_ds_bounds_upper,
-    )
+    return n_oob, updated_bounds
 
 
 def _check_coupling_bounds_single_mesh(
-    operators,
-    block,
-    index,
-    meshes,
-    mesh_idx,
-    estimation_qp,
-    current_ss_bounds_lower,
-    current_ss_bounds_upper,
-    current_ds_bounds_lower,
-    current_ds_bounds_upper,
-):
-    # Get kinematic rates on mesh elements
+    operators: Operators,
+    block: pd.DataFrame,
+    meshes: list[Mesh],
+    mesh_idx: int,
+    estimation_qp: Estimation,
+    current_bounds: _SlipRateBounds,
+) -> tuple[
+    _SlipRateBounds,  # Updated bounds
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,  # Rates
+    int,  # Number of out-of-bounds points
+]:
+    """Check coupling bounds for a single mesh and update slip rate bounds accordingly.
+
+    Returns updated bounds, kinematic and estimated rates, and count of out-of-bounds points.
+    """
+    index = operators.index
+    assert index.eigen is not None
+    assert operators.eigen is not None
+
+    block_size = 3 * len(block)
+    eigen_start = index.eigen.start_col_eigen[mesh_idx]
+    eigen_end = index.eigen.end_col_eigen[mesh_idx]
+
     kinematic_tde_rates = (
         operators.rotation_to_tri_slip_rate[mesh_idx]
-        @ estimation_qp.state_vector[0 : 3 * len(block)]
+        @ estimation_qp.state_vector[0:block_size]
     )
 
-    # Get estimated elastic rates on mesh elements
     estimated_tde_rates = (
         operators.eigen.eigenvectors_to_tde_slip[mesh_idx]
-        @ estimation_qp.state_vector[
-            index.eigen.start_col_eigen[mesh_idx] : index.eigen.end_col_eigen[mesh_idx]
-        ]
+        @ estimation_qp.state_vector[eigen_start:eigen_end]
     )
 
-    # Calculate strike-slip and dip-slip coupling with linear coupling matrix
+    # Separate strike-slip and dip-slip components
+    ss_indices = slice(0, None, 2)
+    ds_indices = slice(1, None, 2)
+
+    # Calculate coupling and get smoothed kinematic rates
     tde_coupling_ss, kinematic_tde_rates_ss_smooth = _get_coupling_linear(
-        estimated_tde_rates[0::2], kinematic_tde_rates[0::2], operators, mesh_idx
+        estimated_tde_rates[ss_indices],
+        kinematic_tde_rates[ss_indices],
+        operators,
+        mesh_idx,
     )
 
-    # Calculate strike-slip and dip-slip coupling with linear coupling matrix
     tde_coupling_ds, kinematic_tde_rates_ds_smooth = _get_coupling_linear(
-        estimated_tde_rates[1::2], kinematic_tde_rates[1::2], operators, mesh_idx
+        estimated_tde_rates[ds_indices],
+        kinematic_tde_rates[ds_indices],
+        operators,
+        mesh_idx,
     )
 
-    # Update slip rate bounds
-    (
-        n_oob,
-        updated_ss_bounds_lower,
-        updated_ss_bounds_upper,
-        updated_ds_bounds_lower,
-        updated_ds_bounds_upper,
-    ) = _update_slip_rate_bounds(
+    # Update slip rate bounds based on coupling constraints
+    n_oob, updated_bounds = _update_slip_rate_bounds(
         meshes,
         mesh_idx,
         tde_coupling_ss,
         tde_coupling_ds,
         kinematic_tde_rates_ss_smooth,
         kinematic_tde_rates_ds_smooth,
-        current_ss_bounds_lower,
-        current_ss_bounds_upper,
-        current_ds_bounds_lower,
-        current_ds_bounds_upper,
+        current_bounds,
     )
 
     return (
-        updated_ss_bounds_lower,
-        updated_ss_bounds_upper,
-        updated_ds_bounds_lower,
-        updated_ds_bounds_upper,
+        updated_bounds,
         kinematic_tde_rates_ss_smooth,
         kinematic_tde_rates_ds_smooth,
-        estimated_tde_rates[0::2],
-        estimated_tde_rates[1::2],
+        estimated_tde_rates[ss_indices],
+        estimated_tde_rates[ds_indices],
         n_oob,
     )
 
@@ -308,7 +280,12 @@ def solve_sqp(
     *,
     max_iter: int | None = None,
     percentage_satisfied_target: float | None = None,
-) -> Estimation:
+) -> SqpEstimation:
+    """Solve the sequential quadratic programming problem with coupling constraints.
+
+    Iteratively adjusts slip rate bounds to satisfy coupling constraints.
+    """
+    # Validate prerequisites
     if operators.eigen is None:
         raise ValueError(
             "Operators must have eigenvectors defined for coupling bounds."
@@ -320,193 +297,171 @@ def solve_sqp(
 
     assert index.tde is not None
 
-    if max_iter is None:
-        max_iter = model.config.coupling_bounds_max_iter
-    if percentage_satisfied_target is None:
-        percentage_satisfied_target = (
-            model.config.coupling_bounds_total_percentage_satisfied_target
-        )
+    # Set default values from model config if not provided
+    max_iter = max_iter or model.config.coupling_bounds_max_iter
+    percentage_satisfied_target = (
+        percentage_satisfied_target
+        or model.config.coupling_bounds_total_percentage_satisfied_target
+    )
 
     if max_iter is None:
         raise ValueError("Maximum number of iterations must be defined.")
     if percentage_satisfied_target is None:
         raise ValueError("Percentage satisfied target must be defined.")
 
+    # Initial solve to get starting point
     estimation_qp = _presolve(model, operators)
 
-    # Get QP bounds as inequality constraints
-    qp_inequality_constraints_matrix, qp_inequality_constraints_data_vector = (
+    # Get QP inequality constraints
+    qp_inequality_matrix, qp_inequality_data_vector = (
         get_qp_all_inequality_operator_and_data_vector(
             model, operators, operators.index
         )
     )
 
-    data_vector_eigen = operators.data_vector
-    weighting_vector_eigen = operators.weighting_vector
-
-    segment = model.segment
     meshes = model.meshes
     config = model.config
-    station = model.station
-    block = model.block
+    n_segment_meshes = np.max(model.segment.patch_file_name).astype(int) + 1
 
-    # Get total number of segment meshes
-    n_segment_meshes = np.max(segment.patch_file_name).astype(int) + 1
+    # Initialize bounds for each mesh
+    slip_rate_bounds = [None] * n_segment_meshes
 
-    # Count total number of triangles in segment meshes
-    n_segment_meshes_tri = 0
-    for i in range(n_segment_meshes):
-        n_segment_meshes_tri += meshes[i].n_tde
+    # Initialize storage arrays for each mesh
+    optimizer_trace = {
+        key: [None] * n_segment_meshes
+        for key in [
+            "ss_lower",
+            "ss_upper",
+            "ds_lower",
+            "ds_upper",
+            "ss_kinematic",
+            "ss_estimated",
+            "ds_kinematic",
+            "ds_estimated",
+        ]
+    }
 
-    # Create initial mesh slip rate bound arrays
-    current_ss_bounds_lower = [None] * n_segment_meshes
-    current_ss_bounds_upper = [None] * n_segment_meshes
-    current_ds_bounds_lower = [None] * n_segment_meshes
-    current_ds_bounds_upper = [None] * n_segment_meshes
+    # Set initial bounds and create storage arrays
     for i in range(n_segment_meshes):
         mesh_config = meshes[i].config
+        n_tde = meshes[i].n_tde
+
+        # Validate mesh configuration
+        for bound_type in ["ss", "ds"]:
+            for bound_dir in ["lower", "upper"]:
+                attr = f"qp_mesh_tde_slip_rate_{bound_dir}_bound_{bound_type}"
+                assert getattr(mesh_config, attr) is not None
 
         assert mesh_config.qp_mesh_tde_slip_rate_lower_bound_ss is not None
         assert mesh_config.qp_mesh_tde_slip_rate_upper_bound_ss is not None
         assert mesh_config.qp_mesh_tde_slip_rate_lower_bound_ds is not None
         assert mesh_config.qp_mesh_tde_slip_rate_upper_bound_ds is not None
 
-        current_ss_bounds_lower[i] = (
-            mesh_config.qp_mesh_tde_slip_rate_lower_bound_ss * np.ones(meshes[i].n_tde)
-        )
-        current_ss_bounds_upper[i] = (
-            mesh_config.qp_mesh_tde_slip_rate_upper_bound_ss * np.ones(meshes[i].n_tde)
-        )
-        current_ds_bounds_lower[i] = (
-            mesh_config.qp_mesh_tde_slip_rate_lower_bound_ds * np.ones(meshes[i].n_tde)
-        )
-        current_ds_bounds_upper[i] = (
-            mesh_config.qp_mesh_tde_slip_rate_upper_bound_ds * np.ones(meshes[i].n_tde)
+        # Set initial bounds using the _SlipRateBounds dataclass
+        slip_rate_bounds[i] = _SlipRateBounds(
+            ss_lower=mesh_config.qp_mesh_tde_slip_rate_lower_bound_ss * np.ones(n_tde),
+            ss_upper=mesh_config.qp_mesh_tde_slip_rate_upper_bound_ss * np.ones(n_tde),
+            ds_lower=mesh_config.qp_mesh_tde_slip_rate_lower_bound_ds * np.ones(n_tde),
+            ds_upper=mesh_config.qp_mesh_tde_slip_rate_upper_bound_ds * np.ones(n_tde),
         )
 
-    # Storage for number of OOB coupling values per mesh
-    n_oob_vec = np.zeros((n_segment_meshes, 1))
-
-    # Initialize lists and arrays for storing various slip rates
-    store_ss_lower = [None] * n_segment_meshes
-    store_ss_upper = [None] * n_segment_meshes
-    store_ds_lower = [None] * n_segment_meshes
-    store_ds_upper = [None] * n_segment_meshes
-    store_ss_kinematic = [None] * n_segment_meshes
-    store_ss_elcon = [None] * n_segment_meshes
-    store_ds_kinematic = [None] * n_segment_meshes
-    store_ds_elcon = [None] * n_segment_meshes
-    for i in range(n_segment_meshes):
+        # Initialize storage arrays
         assert config.coupling_bounds_max_iter is not None
-        shape = (meshes[i].n_tde, config.coupling_bounds_max_iter)
+        shape = (n_tde, config.coupling_bounds_max_iter)
 
-        store_ss_lower[i] = np.zeros(shape)
-        store_ss_upper[i] = np.zeros(shape)
-        store_ds_lower[i] = np.zeros(shape)
-        store_ds_upper[i] = np.zeros(shape)
-        store_ss_kinematic[i] = np.zeros(shape)
-        store_ss_elcon[i] = np.zeros(shape)
-        store_ds_kinematic[i] = np.zeros(shape)
-        store_ds_elcon[i] = np.zeros(shape)
+        for key in optimizer_trace:
+            optimizer_trace[key][i] = np.zeros(shape)
 
-    # Variables for tracking overall convergence
-
+    # Track out-of-bounds elements
+    n_oob_vec = np.zeros((n_segment_meshes, 1))
     tde_total = sum(mesh.n_tde for mesh in meshes)
-    total_percentages = list()
+    total_percentages = []
+    iteration = 0
 
-    # Coupling bound iteration
-    continue_iterating = True
-    i = 0
-    while continue_iterating:
-        # Create storage for updates slip rate constraints
-        updated_qp_inequality_constraints_data_vector = np.copy(
-            qp_inequality_constraints_data_vector
-        )
-
-        # Create storage for n OOB
+    # Main iteration loop
+    for iteration in range(max_iter):
+        # Create copy of inequality constraints for this iteration
+        updated_inequality_data = np.copy(qp_inequality_data_vector)
         current_noob = np.zeros((n_segment_meshes, 1))
 
-        # Loop over meshes
-        for j in range(n_segment_meshes):
+        # Process each mesh
+        for mesh_idx in range(n_segment_meshes):
+            current_bounds = slip_rate_bounds[mesh_idx]
+
+            # Check coupling bounds and get updated bounds
             (
-                updated_ss_bounds_lower,
-                updated_ss_bounds_upper,
-                updated_ds_bounds_lower,
-                updated_ds_bounds_upper,
-                kinematic_tde_rates_ss,
-                kinematic_tde_rates_ds,
-                estimated_tde_rates_ss,
-                estimated_tde_rates_ds,
+                updated_bounds,
+                kinematic_ss,
+                kinematic_ds,
+                estimated_ss,
+                estimated_ds,
                 n_oob,
             ) = _check_coupling_bounds_single_mesh(
                 operators,
-                block,
-                index,
+                model.block,
                 meshes,
-                j,  # This is the mesh index
+                mesh_idx,
                 estimation_qp,
-                current_ss_bounds_lower[j],
-                current_ss_bounds_upper[j],
-                current_ds_bounds_lower[j],
-                current_ds_bounds_upper[j],
+                current_bounds,
             )
-            logger.info(f"Iteration: {i}, Mesh: {j}, NOOB: {n_oob}")
 
-            # Store total number of OOB elements at this iteration step
-            n_oob_vec[j, i] = n_oob
+            logger.info(f"Iteration: {iteration}, Mesh: {mesh_idx}, NOOB: {n_oob}")
+            current_noob[mesh_idx, 0] = n_oob
 
-            # Build and insert update slip rate bounds into QP inequality vector
+            # Update inequality constraints
             updated_lower_bounds = -1.0 * interleave2(
-                updated_ss_bounds_lower, updated_ds_bounds_lower
+                updated_bounds.ss_lower, updated_bounds.ds_lower
             )
             updated_upper_bounds = interleave2(
-                updated_ss_bounds_upper, updated_ds_bounds_upper
+                updated_bounds.ss_upper, updated_bounds.ds_upper
             )
-            updated_bounds = np.hstack((updated_lower_bounds, updated_upper_bounds))
 
-            # Insert TDE lower bounds into QP constraint data vector
-            updated_qp_inequality_constraints_data_vector[
-                index.eigen.qp_constraint_tde_rate_start_row_eigen[
-                    j
-                ] : index.eigen.qp_constraint_tde_rate_start_row_eigen[j]
-                + 2 * index.tde.n_tde[j]
-            ] = updated_lower_bounds
+            # Lower bounds
+            lower_start = index.eigen.qp_constraint_tde_rate_start_row_eigen[mesh_idx]
+            lower_end = lower_start + 2 * index.tde.n_tde[mesh_idx]
+            updated_inequality_data[lower_start:lower_end] = updated_lower_bounds
 
-            # Insert TDE upper bounds into QP constraint data vector
-            updated_qp_inequality_constraints_data_vector[
-                index.eigen.qp_constraint_tde_rate_start_row_eigen[j]
-                + 2
-                * index.tde.n_tde[j] : index.eigen.qp_constraint_tde_rate_end_row_eigen[
-                    j
-                ]
-            ] = updated_upper_bounds
+            # Upper bounds
+            upper_start = lower_end
+            upper_end = index.eigen.qp_constraint_tde_rate_end_row_eigen[mesh_idx]
+            updated_inequality_data[upper_start:upper_end] = updated_upper_bounds
 
-            # Set *updated* to *current* for next iteration
-            current_ss_bounds_lower[j] = np.copy(updated_ss_bounds_lower)
-            current_ss_bounds_upper[j] = np.copy(updated_ss_bounds_upper)
-            current_ds_bounds_lower[j] = np.copy(updated_ds_bounds_lower)
-            current_ds_bounds_upper[j] = np.copy(updated_ds_bounds_upper)
+            # Update current bounds for next iteration
+            slip_rate_bounds[mesh_idx] = updated_bounds
 
             # Store values for visualization and debugging
-            store_ss_lower[j][:, i] = current_ss_bounds_lower[j]
-            store_ss_upper[j][:, i] = current_ss_bounds_upper[j]
-            store_ds_lower[j][:, i] = current_ds_bounds_lower[j]
-            store_ds_upper[j][:, i] = current_ds_bounds_upper[j]
-            store_ss_elcon[j][:, i] = estimated_tde_rates_ss
-            store_ds_elcon[j][:, i] = estimated_tde_rates_ds
-            store_ss_kinematic[j][:, i] = kinematic_tde_rates_ss
-            store_ds_kinematic[j][:, i] = kinematic_tde_rates_ds
+            optimizer_trace["ss_lower"][mesh_idx][:, iteration] = (
+                updated_bounds.ss_lower
+            )
+            optimizer_trace["ss_upper"][mesh_idx][:, iteration] = (
+                updated_bounds.ss_upper
+            )
+            optimizer_trace["ds_lower"][mesh_idx][:, iteration] = (
+                updated_bounds.ds_lower
+            )
+            optimizer_trace["ds_upper"][mesh_idx][:, iteration] = (
+                updated_bounds.ds_upper
+            )
+            optimizer_trace["ss_estimated"][mesh_idx][:, iteration] = estimated_ss
+            optimizer_trace["ds_estimated"][mesh_idx][:, iteration] = estimated_ds
+            optimizer_trace["ss_kinematic"][mesh_idx][:, iteration] = kinematic_ss
+            optimizer_trace["ds_kinematic"][mesh_idx][:, iteration] = kinematic_ds
 
-        # Store new number of OOB elements permesh
+        # Update out-of-bounds tracking
         n_oob_vec = np.hstack((n_oob_vec, current_noob))
 
-        # QP solve with updated TDE slip rate constraints
+        # Solve QP with updated constraints
+        weighted_operator = operators.full_dense_operator * np.sqrt(
+            operators.weighting_vector[:, None]
+        )
+        weighted_data = operators.data_vector * np.sqrt(operators.weighting_vector)
+
         solution_qp = lsqlin_qp(
-            operators.full_dense_operator * np.sqrt(weighting_vector_eigen[:, None]),
-            data_vector_eigen * np.sqrt(weighting_vector_eigen),
+            weighted_operator,
+            weighted_data,
             0,
-            qp_inequality_constraints_matrix,  # Inequality matrix
-            updated_qp_inequality_constraints_data_vector,  # Inequality data vector
+            qp_inequality_matrix,
+            updated_inequality_data,
             None,
             None,
             None,
@@ -516,12 +471,11 @@ def solve_sqp(
         )
 
         if solution_qp["status"] != "optimal":
-            logger.error(" ")
-            logger.error(f"NON OPTIMAL SOLUTION AT: {i=}")
-            logger.error(" ")
+            logger.error(f"NON OPTIMAL SOLUTION AT: iteration={iteration}")
             raise ValueError("Solver did not converge")
 
-        estimation_qp = Estimation(
+        # Create estimation object with updated solution
+        estimation_qp = SqpEstimation(
             data_vector=operators.data_vector,
             weighting_vector=operators.weighting_vector,
             operator=operators.full_dense_operator,
@@ -529,41 +483,40 @@ def solve_sqp(
             model=model,
             operators=operators,
             state_covariance_matrix=None,
+            n_out_of_bounds_trace=n_oob_vec.copy(),
+            trace=None,
         )
 
-        # Calculate total percentage of OOB elements to determine if we iterate again
-        total_oob = np.sum(n_oob_vec[:, i], axis=0)
-        total_percentages.append(total_oob / (2 * tde_total) * 100)
-        total_percentage_satisfied = 100 - total_percentages[-1]
+        # Check convergence
+        total_oob = np.sum(current_noob)
+        percent_oob = total_oob / (2 * tde_total) * 100
+        percent_satisfied = 100 - percent_oob
+        total_percentages.append(percent_oob)
+
         logger.info(
-            f"Iteration: {i}, Total %TDE inside coupling bounds: {100 - total_percentages[-1]:0.3f}"
+            f"Iteration: {iteration}, Total %TDE inside coupling bounds: {percent_satisfied:0.3f}"
         )
 
-        # Decide if iteration should continue
-        if i + 1 < max_iter:
-            if (
-                total_percentage_satisfied
-                <= config.coupling_bounds_total_percentage_satisfied_target
-            ):
-                continue_iterating = True
-                i += 1
-            else:
-                continue_iterating = False
-        else:
-            continue_iterating = False
-        n_iter = np.copy(i)
+        # Check if we've reached the target percentage of satisfied constraints
+        if percent_satisfied >= percentage_satisfied_target:
+            break
+    else:
+        # This block is executed if the loop completes without breaking
+        logger.info(
+            f"Maximum iterations ({max_iter}) reached without meeting target percentage."
+        )
 
     # Write output
-    write_output(config, estimation_qp, station, segment, block, meshes)
+    write_output(
+        config, estimation_qp, model.station, model.segment, model.block, meshes
+    )
 
-    # Delete columns less that n_iter
-    for j in range(n_segment_meshes):
-        store_ss_lower[j] = store_ss_lower[j][:, 0:n_iter]
-        store_ss_upper[j] = store_ss_upper[j][:, 0:n_iter]
-        store_ds_lower[j] = store_ds_lower[j][:, 0:n_iter]
-        store_ds_upper[j] = store_ds_upper[j][:, 0:n_iter]
-        store_ss_elcon[j] = store_ss_elcon[j][:, 0:n_iter]
-        store_ds_elcon[j] = store_ds_elcon[j][:, 0:n_iter]
-        store_ss_kinematic[j] = store_ss_kinematic[j][:, 0:n_iter]
-        store_ds_kinematic[j] = store_ds_kinematic[j][:, 0:n_iter]
+    # Trim storage arrays to actual number of iterations
+    for mesh_idx in range(n_segment_meshes):
+        for key in optimizer_trace:
+            optimizer_trace[key][mesh_idx] = optimizer_trace[key][mesh_idx][
+                :, 0 : iteration + 1
+            ]
+
+    estimation_qp.trace = optimizer_trace
     return estimation_qp
