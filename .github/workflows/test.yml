@@ -23,7 +23,7 @@ jobs:
       fail-fast: false
       matrix:
         os: ["ubuntu-latest"]
-        pixi-environment: ["py39", "default"]
+        pixi-environment: ["py310", "default"]
         tests-to-run: ["japan", "other"]
     name: Test (${{ matrix.pixi-environment }}, ${{ matrix.tests-to-run }})
     runs-on:  ${{ matrix.os }}
@@ -41,8 +41,8 @@ jobs:
     - name: Test
       if: ${{ matrix.tests-to-run == 'other' }}
       run: |
-        pixi run -e ${{ matrix.pixi-environment }} pytest ./tests/test_closure.py ./tests/test_okada_equals_cutde.py ./tests/test_western_north_america_dense.py
+        pixi run -e ${{ matrix.pixi-environment }} pytest ./tests/test_closure.py ./tests/test_okada_equals_cutde.py ./tests/test_optimize.py
     - name: Test
       if: ${{ matrix.tests-to-run == 'japan' }}
       run: |
-        pixi run -e ${{ matrix.pixi-environment }} pytest ./tests/test_japan_dense.py
+        pixi run -e ${{ matrix.pixi-environment }} pytest ./tests/test_solve_dense.py

@@ -51,9 +51,9 @@ okada-wrapper = ">=24.6.15"
 celeri = { path = ".", editable = true }
 loguru = ">=0.7.2"
 
-[feature.py39.dependencies]
-python = "3.9.*"
+[feature.py310.dependencies]
+python = "3.10.*"
 
 [environments]
 default = ["dev"]
-py39 = ["py39"]
+py310 = ["py310"]

@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
+# TODO(Adrian): Adapt to model refactor
+# We should make Estimation serializable, then this report generation
+# should easily be able to use the final Estimation objects.
 
-from typing import Dict
-import IPython
 import argparse
-import numpy as np
+import glob
 import os
+
 import addict
+import IPython
+import numpy as np
+import pandas as pd
 from rich.console import Console
 from rich.table import Table
-import glob
-import pandas as pd
+
 import celeri
 
 # Reference colors
@@ -19,7 +23,7 @@ COLOR_SAME = "green"
 COLOR_DIFF = "red"
 
 
-def print_table_one_run(run: Dict):
+def print_table_one_run(run: dict):
     # Build table for reporting on a single model run
     console = Console()
     table = Table(show_header=True, header_style="bold #ffffff")
@@ -108,7 +112,7 @@ def print_table_one_run(run: Dict):
 
 
 def get_val_text_and_color(eval_value):
-    if eval_value == True:
+    if eval_value is True:
         eval_text = "SAME"
         eval_color = COLOR_SAME
     else:
@@ -117,7 +121,7 @@ def get_val_text_and_color(eval_value):
     return eval_text, eval_color
 
 
-def print_table_two_run(run_1: Dict, run_2: Dict):
+def print_table_two_run(run_1: dict, run_2: dict):
     # Build table for reporting on a single model run
     console = Console()
     table = Table(show_header=True, header_style="bold #ffffff")
@@ -396,16 +400,16 @@ def read_process_run_folder(folder_name: str):
     ).flatten()
     run.station_residual = run.station_vel - run.station_model_vel
     run.mae = np.mean(np.abs(run.station_residual))
-    run.mse = np.mean(run.station_residual ** 2.0)
+    run.mse = np.mean(run.station_residual**2.0)
 
     # Weighted sum of square residuals.  This is what is really minimized.
-    run.wssr = np.sum((run.station_residual ** 2.0 / (run.station_sig ** 2.0)))
+    run.wssr = np.sum(run.station_residual**2.0 / (run.station_sig**2.0))
 
     # Find the names of the 5 stations with largest WSSR
     run.station_wssr = ((run.station.east_vel - run.station.model_east_vel) ** 2.0) / (
-        run.station.east_sig ** 2.0
+        run.station.east_sig**2.0
     ) + ((run.station.north_vel - run.station.model_north_vel) ** 2.0) / (
-        run.station.north_sig ** 2.0
+        run.station.north_sig**2.0
     )
     run.station_wssr_percentage = 100 * run.station_wssr / (np.sum(run.station_wssr))
 
@@ -449,7 +453,7 @@ def main():
     args = addict.Dict(vars(parser.parse_args()))
 
     # Case 1: No arguments passed.  Report on diff between two most recent folders
-    if args.folder_name_1 == None:
+    if args.folder_name_1 is None:
         list_of_folders = filter(os.path.isdir, glob.glob("./../runs/*"))
         list_of_folders = sorted(list_of_folders, key=os.path.getmtime)
         folder_name_1 = list_of_folders[-1]
@@ -462,14 +466,14 @@ def main():
         print_table_two_run(run_1, run_2)
 
     # Case 2: One argument passed.  Report on this folder.
-    elif (args.folder_name_1 != None) and (args.folder_name_2 == None):
+    elif (args.folder_name_1 is not None) and (args.folder_name_2 is None):
         folder_name = os.path.join("./../runs/", args.folder_name_1)
         print(f"Reporting on single run {folder_name}")
         run = read_process_run_folder(folder_name)
         print_table_one_run(run)
 
     # Case 3: Two arguments passed.  Report on diff between these folders.
-    elif (args.folder_name_1 != None) and (args.folder_name_2 != None):
+    elif (args.folder_name_1 is not None) and (args.folder_name_2 is not None):
         folder_name_1 = os.path.join("./../runs/", args.folder_name_1)
         folder_name_2 = os.path.join("./../runs/", args.folder_name_2)
         print(f"Reporting on runs {folder_name_1} and {folder_name_2}")
@@ -478,7 +482,7 @@ def main():
         print_table_two_run(run_1, run_2)
 
     # Case 4: Report on diff between two most recent folders
-    elif (args.diff_back != None) and (args.folder_name_1 == None):
+    elif (args.diff_back is not None) and (args.folder_name_1 is None):
         list_of_folders = filter(os.path.isdir, glob.glob("./../runs/*"))
         list_of_folders = sorted(list_of_folders, key=os.path.getmtime)
         folder_name_1 = list_of_folders[-1]
