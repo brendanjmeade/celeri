@@ -51,7 +51,12 @@ from celeri.operators import (
     get_tde_to_velocities_single_mesh,
     get_weighting_vector_single_mesh_for_col_norms,
 )
-from celeri.optimize_sqp import plot_iterative_convergence, solve_sqp
+from celeri.optimize_sqp import (
+    plot_coupling,
+    plot_coupling_evolution,
+    plot_iterative_convergence,
+    solve_sqp,
+)
 from celeri.output import write_output, write_output_supplemental
 from celeri.plot import (
     get_default_plotting_dict,
@@ -145,6 +150,8 @@ __all__ = [
     "merge_geodetic_data",
     "parse_args",
     "plot_common_elements",
+    "plot_coupling",
+    "plot_coupling_evolution",
     "plot_estimation_summary",
     "plot_fault_geometry",
     "plot_input_summary",
