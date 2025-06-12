@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,6 +12,7 @@ from pydantic import BaseModel
 
 from celeri import constants
 from celeri.celeri_util import cart2sph, sph2cart, triangle_area, wrap2360
+from celeri.output import dataclass_from_disk, dataclass_to_disk
 
 # Should be once we support Python 3.11+
 # type ByMesh[T] = dict[int, T]
@@ -445,3 +448,35 @@ class Mesh:
     def name(self) -> str:
         """Return the name of the mesh configuration."""
         return Path(self.file_name).stem
+
+    def to_disk(self, output_dir: str | Path):
+        """Save the mesh configuration to a JSON file."""
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Save the MeshConfig separately
+        config_file = output_dir / "mesh_config.json"
+        with open(config_file, "w") as f:
+            json.dump(self.config.model_dump(), f, indent=4)
+
+        # Use the general dataclass serialization function for the rest
+        dataclass_to_disk(self, output_dir, skip={"config"})
+
+        logger.success(f"Mesh configuration saved to {output_dir}")
+
+    @classmethod
+    def from_disk(cls, input_dir: str | Path):
+        """Load the mesh configuration from a JSON file."""
+        input_dir = Path(input_dir)
+        config_file = input_dir / "mesh_config.json"
+
+        if not config_file.exists():
+            raise FileNotFoundError(f"Mesh configuration file {config_file} not found.")
+
+        with open(config_file) as f:
+            config_data = json.load(f)
+
+        config = MeshConfig(**config_data)
+
+        # Use the general dataclass deserialization function with the config as extra data
+        return dataclass_from_disk(cls, input_dir, extra={"config": config})

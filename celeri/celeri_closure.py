@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import scipy.spatial
 from spherical_geometry.great_circle_arc import intersection
 from spherical_geometry.polygon import SingleSphericalPolygon
@@ -422,6 +423,16 @@ class BlockClosureResult:
         for i in range(self.n_polygons()):
             block_assignments[self.polygons[i].contains_point(lon, lat)] = i
         return block_assignments
+
+    @classmethod
+    def from_segments(cls, segment: pd.DataFrame):
+        np_segments = np.zeros((len(segment), 2, 2))
+        np_segments[:, 0, 0] = segment.lon1.to_numpy()
+        np_segments[:, 1, 0] = segment.lon2.to_numpy()
+        np_segments[:, 0, 1] = segment.lat1.to_numpy()
+        np_segments[:, 1, 1] = segment.lat2.to_numpy()
+
+        return run_block_closure(np_segments)
 
 
 def run_block_closure(np_segments):

@@ -510,9 +510,7 @@ def solve_sqp(
         )
 
     # Write output
-    write_output(
-        config, estimation_qp, model.station, model.segment, model.block, meshes
-    )
+    write_output(estimation_qp)
 
     # Trim storage arrays to actual number of iterations
     for mesh_idx in range(n_segment_meshes):

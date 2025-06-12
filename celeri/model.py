@@ -47,6 +47,58 @@ class Model:
         """Create a Model instance from a Config object."""
         return build_model(config.file_name)
 
+    def to_disk(self, output_path: str | Path | None = None):
+        """Save the model to disk."""
+        if output_path is None:
+            output_path = self.config.output_path
+        if output_path is None:
+            raise ValueError("Output path must be specified.")
+
+        output_path = Path(output_path)
+        if not os.path.exists(output_path):
+            os.makedirs(output_path)
+        self.segment.to_parquet(os.path.join(output_path, "segment.parquet"))
+        self.block.to_parquet(os.path.join(output_path, "block.parquet"))
+        self.station.to_parquet(os.path.join(output_path, "station.parquet"))
+        self.mogi.to_parquet(os.path.join(output_path, "mogi.parquet"))
+        self.sar.to_parquet(os.path.join(output_path, "sar.parquet"))
+        with (output_path / "config.json").open("w") as f:
+            f.write(self.config.model_dump_json())
+        for i, mesh in enumerate(self.meshes):
+            mesh.to_disk(output_path / f"meshes/{i:05d}/")
+        logger.success(f"Model saved to {output_path}")
+
+    @classmethod
+    def from_disk(cls, path: str | Path) -> "Model":
+        """Load a Model instance from disk."""
+        path = Path(path)
+        # read the config using pydantic:
+        config = Config.model_validate_json(
+            (path / "config.json").read_text(encoding="utf-8")
+        )
+        segment = pd.read_parquet(path / "segment.parquet")
+        block = pd.read_parquet(path / "block.parquet")
+        station = pd.read_parquet(path / "station.parquet")
+        mogi = pd.read_parquet(path / "mogi.parquet")
+        sar = pd.read_parquet(path / "sar.parquet")
+
+        meshes = [
+            Mesh.from_disk(mesh_file) for mesh_file in sorted(path.glob("meshes/*"))
+        ]
+
+        closure = celeri_closure.BlockClosureResult.from_segments(segment)
+
+        return cls(
+            meshes=meshes,
+            segment=segment,
+            block=block,
+            station=station,
+            mogi=mogi,
+            config=config,
+            closure=closure,
+            sar=sar,
+        )
+
 
 def read_data(config: Config):
     logger.info("Reading data files")
@@ -195,7 +247,9 @@ def build_model(
     station = process_station(station, config)
     segment = process_segment(segment, config, meshes)
     sar = process_sar(sar, config)
-    closure, block = assign_block_labels(segment, station, block, mogi, sar)
+    closure, segment, station, block, mogi, sar = assign_block_labels(
+        segment, station, block, mogi, sar
+    )
 
     return Model(
         meshes=meshes,
@@ -530,14 +584,13 @@ def assign_block_labels(segment, station, block, mogi, sar):
     block labeling problem and east/west assignment.
     """
     # segment = split_segments_crossing_meridian(segment)
+    segment = segment.copy(deep=True)
+    station = station.copy(deep=True)
+    block = block.copy(deep=True)
+    mogi = mogi.copy(deep=True)
+    sar = sar.copy(deep=True)
 
-    np_segments = np.zeros((len(segment), 2, 2))
-    np_segments[:, 0, 0] = segment.lon1.to_numpy()
-    np_segments[:, 1, 0] = segment.lon2.to_numpy()
-    np_segments[:, 0, 1] = segment.lat1.to_numpy()
-    np_segments[:, 1, 1] = segment.lat2.to_numpy()
-
-    closure = celeri_closure.run_block_closure(np_segments)
+    closure = celeri_closure.BlockClosureResult.from_segments(segment)
     labels = celeri_closure.get_segment_labels(closure)
 
     segment["west_labels"] = labels[:, 0]
@@ -593,7 +646,7 @@ def assign_block_labels(segment, station, block, mogi, sar):
             mogi.lon.to_numpy(), mogi.lat.to_numpy()
         )
 
-    return closure, block
+    return closure, segment, station, block, mogi, sar
 
 
 def station_row_keep(assembly):
