@@ -24,14 +24,14 @@ def write_output(
 ):
     config = estimation.model.config
     output_path = Path(config.output_path)
-
     estimation.to_disk(output_path)
 
     # Write model estimates to CSV files for easy access
-    estimation.station.to_csv(output_path / "model_station.csv", index=False, float_format="%0.4f")
-    estimation.segment.to_csv(output_path / "model_segment.csv", index=False, float_format="%0.4f")
-    estimation.block.to_csv(output_path / "model_block.csv", index=False, float_format="%0.4f")
-    estimation.mogi.to_csv(output_path / "model_mogi.csv", index=False, float_format="%0.4f")
+    kwargs = {"index": False, "float_format": "%0.4f"}
+    estimation.station.to_csv(output_path / "model_station.csv", **kwargs)
+    estimation.segment.to_csv(output_path / "model_segment.csv", **kwargs)
+    estimation.block.to_csv(output_path / "model_block.csv", **kwargs)
+    estimation.mogi.to_csv(output_path / "model_mogi.csv", **kwargs)
     # Construct mesh geometry dataframe
     mesh_estimates = estimation.mesh_estimate
     if mesh_estimates is not None:
@@ -128,7 +128,9 @@ def dataclass_to_disk(
         ):
             group = store.create_group(name)
             for key, val in value.items():
-                array_store = group.create_array(str(key), shape=val.shape, dtype=val.dtype)
+                array_store = group.create_array(
+                    str(key), shape=val.shape, dtype=val.dtype
+                )
                 array_store[...] = val
         elif isinstance(value, np.number):
             remaining[name] = value.item()

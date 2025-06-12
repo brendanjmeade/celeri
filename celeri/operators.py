@@ -129,6 +129,7 @@ class EigenIndex:
         path = Path(input_dir)
         return dataclass_from_disk(cls, path)
 
+
 @dataclass
 class Index:
     n_blocks: int
@@ -247,7 +248,6 @@ class Index:
             eigen = None
 
         return dataclass_from_disk(cls, path, extra={"tde": tde, "eigen": eigen})
-
 
 
 # TODO: Figure out what the types should be
@@ -397,7 +397,9 @@ class Operators:
             if matrix_path.exists():
                 smoothing_matrix[mesh_idx] = scipy.sparse.load_npz(matrix_path)
             else:
-                logger.warning(f"Smoothing matrix for mesh {mesh_idx} not found at {matrix_path}")
+                logger.warning(
+                    f"Smoothing matrix for mesh {mesh_idx} not found at {matrix_path}"
+                )
 
         extra = {
             "tde": tde,
@@ -405,7 +407,9 @@ class Operators:
             "index": index,
             "model": model,
             "smoothing_matrix": smoothing_matrix,
-            "assembly": Assembly(data=addict.Dict(), sigma=addict.Dict(), index=addict.Dict()),
+            "assembly": Assembly(
+                data=addict.Dict(), sigma=addict.Dict(), index=addict.Dict()
+            ),
         }
 
         return dataclass_from_disk(cls, path, extra=extra)
@@ -911,14 +915,16 @@ def get_rotation_to_tri_slip_rate_partials(model: Model, mesh_idx: int) -> np.nd
     tri_slip_rate_partials = np.zeros((3 * model.meshes[mesh_idx].n_tde, 3 * n_blocks))
 
     # Generate strikes and dips for elements using same sign convention as segments
-    # Element strikes are 0–180
-    # Dip direction is 0-90 for E dips, 90–180 for W dips
+    # Element strikes are 0-180
+    # Dip direction is 0-90 for E dips, 90-180 for W dips
     ew_switch = np.zeros_like(model.meshes[mesh_idx].strike)
     ns_switch = np.zeros_like(model.meshes[mesh_idx].strike)
     tristrike = np.array(model.meshes[mesh_idx].strike)
     tristrike[model.meshes[mesh_idx].strike > 180] -= 180
     tridip = np.array(model.meshes[mesh_idx].dip)
-    tridip[model.meshes[mesh_idx].strike > 180] = 180 - tridip[model.meshes[mesh_idx].strike > 180]
+    tridip[model.meshes[mesh_idx].strike > 180] = (
+        180 - tridip[model.meshes[mesh_idx].strike > 180]
+    )
     # Find subset of segments that are replaced by this mesh
     seg_replace_idx = np.where(
         (model.segment.patch_flag != 0) & (model.segment.patch_file_name == mesh_idx)
@@ -926,7 +932,12 @@ def get_rotation_to_tri_slip_rate_partials(model: Model, mesh_idx: int) -> np.nd
     # Find closest segment midpoint to each element centroid, using scipy.spatial.cdist
     model.meshes[mesh_idx].closest_segment_idx = seg_replace_idx[0][
         cdist(
-            np.array([model.meshes[mesh_idx].lon_centroid, model.meshes[mesh_idx].lat_centroid]).T,
+            np.array(
+                [
+                    model.meshes[mesh_idx].lon_centroid,
+                    model.meshes[mesh_idx].lat_centroid,
+                ]
+            ).T,
             np.array(
                 [
                     model.segment.mid_lon[seg_replace_idx[0]],
@@ -936,8 +947,12 @@ def get_rotation_to_tri_slip_rate_partials(model: Model, mesh_idx: int) -> np.nd
         ).argmin(axis=1)
     ]
     # Add segment labels to elements
-    model.meshes[mesh_idx].east_labels = np.array(model.segment.east_labels[model.meshes[mesh_idx].closest_segment_idx])
-    model.meshes[mesh_idx].west_labels = np.array(model.segment.west_labels[model.meshes[mesh_idx].closest_segment_idx])
+    model.meshes[mesh_idx].east_labels = np.array(
+        model.segment.east_labels[model.meshes[mesh_idx].closest_segment_idx]
+    )
+    model.meshes[mesh_idx].west_labels = np.array(
+        model.segment.west_labels[model.meshes[mesh_idx].closest_segment_idx]
+    )
 
     # Find rotation partials for each element
     for el_idx in range(model.meshes[mesh_idx].n_tde):
@@ -1035,8 +1050,25 @@ def get_rotation_to_tri_slip_rate_partials(model: Model, mesh_idx: int) -> np.nd
         # Additional sign correction needs to compare TDE strike and corresponding segment strike
         # If they're on different sides of an E-W line, we need to apply a negative sign
         # This effectively flips the east and west labels
-        ns_switch[el_idx] = np.sign(90 - np.abs(tristrike[el_idx] - model.segment.azimuth[model.meshes[mesh_idx].closest_segment_idx[el_idx]]))
-        ew_switch[el_idx] = ns_switch[el_idx]*np.sign(tristrike[el_idx]-90) * np.sign(model.segment.azimuth[model.meshes[mesh_idx].closest_segment_idx[el_idx]] - 90)
+        ns_switch[el_idx] = np.sign(
+            90
+            - np.abs(
+                tristrike[el_idx]
+                - model.segment.azimuth[
+                    model.meshes[mesh_idx].closest_segment_idx[el_idx]
+                ]
+            )
+        )
+        ew_switch[el_idx] = (
+            ns_switch[el_idx]
+            * np.sign(tristrike[el_idx] - 90)
+            * np.sign(
+                model.segment.azimuth[
+                    model.meshes[mesh_idx].closest_segment_idx[el_idx]
+                ]
+                - 90
+            )
+        )
         # ew_switch = 1
         # Insert this element's partials into operator
         tri_slip_rate_partials[

@@ -178,23 +178,36 @@ def test_operators_serialization(config_file, temp_dir):
     # Verify files were created
     assert (output_dir / "index" / "arrays.zarr").exists(), "Index file not created"
     assert (output_dir / "tde" / "arrays.zarr").exists(), "TDE index file not created"
-    assert (output_dir / "eigen" / "arrays.zarr").exists(), "Eigen index file not created"
+    assert (output_dir / "eigen" / "arrays.zarr").exists(), (
+        "Eigen index file not created"
+    )
     assert (output_dir / "arrays.zarr").exists(), "Operators file not created"
 
     # Deserialize the operators
     deserialized_operators = celeri.Operators.from_disk(output_dir)
 
     # Verify basic properties match
-    assert original_operators.index.n_operator_cols == deserialized_operators.index.n_operator_cols
-    assert original_operators.index.n_operator_rows == deserialized_operators.index.n_operator_rows
+    assert (
+        original_operators.index.n_operator_cols
+        == deserialized_operators.index.n_operator_cols
+    )
+    assert (
+        original_operators.index.n_operator_rows
+        == deserialized_operators.index.n_operator_rows
+    )
 
     assert original_operators.index.tde is not None
     assert deserialized_operators.index.tde is not None
-    assert original_operators.index.n_tde_total == deserialized_operators.index.n_tde_total
+    assert (
+        original_operators.index.n_tde_total == deserialized_operators.index.n_tde_total
+    )
 
     assert original_operators.eigen is not None
     assert deserialized_operators.eigen is not None
-    np.testing.assert_equal(original_operators.eigen.eigen_to_velocities, deserialized_operators.eigen.eigen_to_velocities)
+    np.testing.assert_equal(
+        original_operators.eigen.eigen_to_velocities,
+        deserialized_operators.eigen.eigen_to_velocities,
+    )
 
     # Compare dense operators if available
     G_original = original_operators.full_dense_operator

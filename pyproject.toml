@@ -185,3 +185,7 @@ exclude = [
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
+
+[tool.pyright]
+venvPath = ".pixi/envs"
+venv = "default"

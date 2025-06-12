@@ -66,9 +66,7 @@ class Estimation:
         if self.north_vel_tde is not None:
             station["model_north_vel_tde"] = self.north_vel_tde
         station["model_east_vel_block_strain_rate"] = self.east_vel_block_strain_rate
-        station["model_north_vel_block_strain_rate"] = (
-            self.north_vel_block_strain_rate
-        )
+        station["model_north_vel_block_strain_rate"] = self.north_vel_block_strain_rate
         station["model_east_vel_mogi"] = self.east_vel_mogi
         station["model_north_vel_mogi"] = self.north_vel_mogi
         return station
@@ -85,9 +83,7 @@ class Estimation:
             else self.strike_slip_rate_sigma
         )
         segment["model_dip_slip_rate_uncertainty"] = (
-            np.nan
-            if self.dip_slip_rate_sigma is None
-            else self.dip_slip_rate_sigma
+            np.nan if self.dip_slip_rate_sigma is None else self.dip_slip_rate_sigma
         )
         segment["model_tensile_slip_rate_uncertainty"] = (
             np.nan

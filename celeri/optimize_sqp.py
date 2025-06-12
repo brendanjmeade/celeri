@@ -325,7 +325,6 @@ def solve_sqp(
     )
 
     meshes = model.meshes
-    config = model.config
     n_segment_meshes = np.max(model.segment.patch_file_name).astype(int) + 1
 
     # Initialize bounds for each mesh
