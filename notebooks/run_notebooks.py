@@ -2,70 +2,201 @@
 
 import os
 import sys
-import subprocess
 import datetime
 import glob
 import papermill
+import argparse
+import csv
+import logging
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Dict, List, Optional, Tuple
 
-# Create directory for logs
-Path("notebook_run_logs").mkdir(exist_ok=True)
 
-# Get all .ipynb files in the current directory
-notebooks = glob.glob("*.ipynb")
+def setup_logging(log_dir: str) -> None:
+    """Configure logging for the application."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
+    # Ensure log directory exists
+    Path(log_dir).mkdir(exist_ok=True)
 
-# Timestamp for log files
-timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
-# Results dictionary
-results = {}
+def parse_args() -> argparse.Namespace:
+    """Parse and validate command line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Run Jupyter notebooks and log results."
+    )
+    parser.add_argument(
+        "notebooks",
+        nargs="*",
+        help="Specific notebook files to run (*.ipynb). If none provided, all notebooks in current directory will be run.",
+    )
+    parser.add_argument(
+        "--log-dir",
+        default="notebook_run_logs",
+        help="Directory to store logs (default: notebook_run_logs)",
+    )
+    parser.add_argument(
+        "--output-csv",
+        default="notebook_results.csv",
+        help="Path for the CSV results file (default: notebook_results.csv)",
+    )
+    parser.add_argument(
+        "--kernel",
+        default="python",
+        help="Kernel to use for notebook execution (default: python)",
+    )
+    parser.add_argument(
+        "--exclude",
+        action="append",
+        default=[],
+        help="Exclude notebooks containing this substring. Can be used multiple times.",
+    )
+    parser.add_argument(
+        "--parallel",
+        type=int,
+        default=1,
+        help="Number of notebooks to run in parallel (default: 1)",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=None,
+        help="Maximum execution time in seconds for each notebook (default: no timeout)",
+    )
+    return parser.parse_args()
 
-# Run each notebook
-for notebook in notebooks:
-    print(f"Running {notebook}...")
-    log_file = f"notebook_run_logs/{notebook}_{timestamp}.log"
+
+def get_notebooks(args: argparse.Namespace) -> List[str]:
+    """Get the list of notebooks to run based on arguments."""
+    if args.notebooks:
+        notebooks = args.notebooks
+        # Check if provided notebooks exist
+        for notebook in notebooks:
+            if not os.path.exists(notebook):
+                logging.error(f"Notebook {notebook} not found")
+                sys.exit(1)
+    else:
+        # Get all .ipynb files in the current directory
+        notebooks = glob.glob("*.ipynb")
+
+    # Filter out excluded notebooks
+    if args.exclude:
+        original_count = len(notebooks)
+        for exclude_pattern in args.exclude:
+            notebooks = [nb for nb in notebooks if exclude_pattern not in nb]
+        excluded_count = original_count - len(notebooks)
+        if excluded_count > 0:
+            logging.info(f"Excluded {excluded_count} notebook(s) based on pattern(s)")
+
+    if not notebooks:
+        logging.warning("No notebooks found to process")
+
+    return notebooks
+
+
+def execute_notebook(notebook: str, args: argparse.Namespace, timestamp: str) -> Tuple[str, str, Optional[str]]:
+    """Execute a single notebook and return its result."""
+    log_file = f"{args.log_dir}/{notebook}_{timestamp}.log"
+    logging.info(f"Running {notebook}...")
 
     try:
-        # Run the notebook with papermill, using /dev/null (or NUL on Windows) as output path
-        # This effectively discards the output notebook
-        # import papermill
+        # Run the notebook with papermill
         output_path = os.devnull
 
-        with open(log_file, 'w') as log:
-            result = papermill.execute_notebook(
+        # Capture standard output to prevent papermill progress bars from cluttering parallel output
+        with open(log_file, "w") as log:
+            # Disable progress bar in parallel mode to avoid messy output
+            show_progress = args.parallel <= 1
+
+            papermill.execute_notebook(
                 notebook,
                 output_path,
-                progress_bar=True,
+                progress_bar=show_progress,
                 stdout_file=log,
                 stderr_file=log,
-                kernel_name='python',
+                kernel_name=args.kernel,
+                timeout=args.timeout,
             )
         status = "Success"
-        print(f"{notebook} completed successfully")
+        error_msg = None
+        logging.info(f"{notebook} completed successfully")
 
     except Exception as e:
         status = "Failed"
-        print(f"{notebook} failed: {str(e)}")
+        error_msg = str(e)
+        # Use a cleaner one-line error message for parallel execution
+        if args.parallel > 1:
+            logging.error(f"{notebook} failed: {type(e).__name__}")
+        else:
+            logging.error(f"{notebook} failed: {error_msg}")
 
         # Extract error message
-        with open(log_file, 'a') as log:
-            log.write(f"\nError: {str(e)}\n")
+        with open(log_file, "a") as log:
+            log.write(f"\nError: {error_msg}\n")
 
-    # Record the result
-    results[notebook] = status
-    print("----------------------------------------")
+    return notebook, status, error_msg
 
-# Write results to CSV
-with open("notebook_results.csv", 'w') as f:
-    f.write("Notebook,Status\n")
-    for notebook, status in results.items():
-        f.write(f"{notebook},{status}\n")
+def write_results_to_csv(results: Dict[str, Dict[str, str]], csv_path: str) -> None:
+    """Write results to CSV file with additional metadata."""
+    with open(csv_path, "w", newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(["Notebook", "Status", "Error"])
+        for notebook, data in results.items():
+            writer.writerow([notebook, data["status"], data.get("error", "")])
 
-# Print summary
-success_count = list(results.values()).count("Success")
-failed_count = list(results.values()).count("Failed")
-print(f"\nSummary:")
-print(f"Successful notebooks: {success_count}")
-print(f"Failed notebooks: {failed_count}")
-print(f"Results saved to notebook_results.csv")
-print(f"Detailed logs are available in the notebook_run_logs directory")
+
+def main() -> None:
+    args = parse_args()
+    setup_logging(args.log_dir)
+
+    # Get notebooks to run
+    notebooks = get_notebooks(args)
+
+    if not notebooks:
+        return
+
+    # Timestamp for log files
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    # Results dictionary with more information
+    results = {}
+
+    # Parallel execution
+    if args.parallel > 1:
+        logging.info(f"Running notebooks with {args.parallel} workers")
+        with ThreadPoolExecutor(max_workers=args.parallel) as executor:
+            future_to_notebook = {
+                executor.submit(execute_notebook, notebook, args, timestamp): notebook
+                for notebook in notebooks
+            }
+
+            for future in as_completed(future_to_notebook):
+                notebook, status, error = future.result()
+                results[notebook] = {"status": status, "error": error}
+                print("----------------------------------------")
+    else:
+        # Sequential execution
+        for notebook in notebooks:
+            notebook, status, error = execute_notebook(notebook, args, timestamp)
+            results[notebook] = {"status": status, "error": error}
+            print("----------------------------------------")
+
+    # Write results to CSV
+    write_results_to_csv(results, args.output_csv)
+
+    # Print summary
+    success_count = sum(1 for data in results.values() if data["status"] == "Success")
+    failed_count = len(results) - success_count
+
+    logging.info("\nSummary:")
+    logging.info(f"Successful notebooks: {success_count}")
+    logging.info(f"Failed notebooks: {failed_count}")
+    logging.info(f"Results saved to {args.output_csv}")
+    logging.info(f"Detailed logs are available in the {args.log_dir} directory")
+
+
+if __name__ == "__main__":
+    main()
