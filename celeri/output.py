@@ -5,7 +5,6 @@ import os
 import pickle
 import shutil
 import typing
-from dataclasses import asdict
 
 import h5py
 import numpy as np
@@ -169,7 +168,7 @@ def write_output(
 
             # Write config dictionary
             grp = hdf.create_group("config")
-            data = asdict(config)
+            data = config.model_dump()
             mesh_params = data.pop("mesh_params")
             for key, value in data.items():
                 if value is None:
@@ -343,7 +342,7 @@ def write_output(
         config.output_path + "/args_" + os.path.basename(config.file_name)
     )
     with open(args_config_output_file_name, "w") as f:
-        json.dump(asdict(config), f, indent=4)
+        f.write(config.model_dump_json(indent=4))
 
     # Write all major variables to .pkl file in output folder
     with open(os.path.join(config.output_path, "output" + ".pkl"), "wb") as f:

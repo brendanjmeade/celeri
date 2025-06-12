@@ -171,7 +171,7 @@ def find_longitude_interval(lon):
     return final_interval, inverse
 
 
-@dataclass()
+@dataclass
 class Polygon:
     # The half edges on the boundary, in rightwards order.
     edge_idxs: np.ndarray
@@ -183,23 +183,23 @@ class Polygon:
     vertices: np.ndarray
 
     # The actual vertices in unit sphere x,y,z coordinates
-    vertices_xyz: np.ndarray = None
+    vertices_xyz: np.ndarray | None = None
 
     # an arbitrary point that is interior to the polygon
 
-    interior_xyz: np.ndarray = None
+    interior_xyz: np.ndarray | None = None
 
     # A bounding box defining the minimum and maximum lon/lat used for
     # a fast shortcircuiting of the in-polygon test.
-    bounds: BoundingBox = None
+    bounds: BoundingBox | None = None
 
     # The spherical_geometry has some useful tools so we store a reference to
     # a spherical_geometry.polygon.SingleSphericalPolygon in case we need
     # those methods.
-    _sg_polygon: SingleSphericalPolygon = None
+    _sg_polygon: SingleSphericalPolygon | None = None
 
     # Angle in steradians. A full sphere is 4*pi, half sphere is 2*pi.
-    area_steradians: float = None
+    area_steradians: float | None = None
 
     def __init__(self, edge_idxs, vertex_idxs, vs):
         self.edge_idxs = edge_idxs

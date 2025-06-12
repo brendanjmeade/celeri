@@ -1,11 +1,12 @@
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TypeVar, cast
 
 import meshio
 import numpy as np
 from loguru import logger
+from pydantic import BaseModel
 
 from celeri import constants
 from celeri.celeri_util import cart2sph, sph2cart, triangle_area, wrap2360
@@ -16,40 +17,40 @@ T = TypeVar("T")
 ByMesh = dict[int, T]
 
 
-@dataclass
-class MeshConfig:
+class MeshConfig(BaseModel):
     # TODO(Brendan) check types. Sohuld some be bool?
     mesh_filename: str | None = None
-    smoothing_weight: float = 1e0
+    smoothing_weight: float = 1.0
     n_modes_strike_slip: int = 10
     n_modes_dip_slip: int = 10
+    # TODO should be a string with Literal types.
     top_slip_rate_constraint: int = 0
     bot_slip_rate_constraint: int = 0
     side_slip_rate_constraint: int = 0
-    top_slip_rate_weight: float = 1e0
-    bot_slip_rate_weight: float = 1e0
-    side_slip_rate_weight: float = 1e0
-    a_priori_slip_filename: str = ""
+    top_slip_rate_weight: float = 1.0
+    bot_slip_rate_weight: float = 1.0
+    side_slip_rate_weight: float = 1.0
+    a_priori_slip_filename: str | None = None
     # TODO(Brendan) check if this should be a list
-    ss_slip_constraint_idx: list = field(default_factory=list)
+    ss_slip_constraint_idx: list[int] = []
     ss_slip_constraint_rate: float = 0.0
-    ss_slip_constraint_sig: list = field(default_factory=list)
-    ss_slip_constraint_weight: list = field(default_factory=list)
-    ds_slip_constraint_idx: list = field(default_factory=list)
+    ss_slip_constraint_weight: float | None = None
+    ss_slip_constraint_sig: list | None = None
+    ds_slip_constraint_idx: list[int] = []
     ds_slip_constraint_rate: float = 0.0
-    ds_slip_constraint_sig: list = field(default_factory=list)
-    ds_slip_constraint_weight: list = field(default_factory=list)
-    mesh_tde_bound: list = field(default_factory=lambda: [1])
-    mesh_tde_slip_rate_bound_lower_ss: list = field(default_factory=lambda: ["-inf"])
-    mesh_tde_slip_rate_bound_upper_ss: list = field(default_factory=lambda: ["inf"])
-    mesh_tde_slip_rate_bound_lower_ds: list = field(default_factory=lambda: [0])
-    mesh_tde_slip_rate_bound_upper_ds: list = field(default_factory=lambda: [1])
-    mesh_tde_coupling_bound: list = field(default_factory=lambda: [0])
-    mesh_tde_coupling_bound_lower_ss: list = field(default_factory=lambda: ["-inf"])
-    mesh_tde_coupling_upper_ss: list = field(default_factory=lambda: ["inf"])
-    mesh_tde_coupling_lower_ds: list = field(default_factory=lambda: [0])
-    mesh_tde_coupling_upper_ds: list = field(default_factory=lambda: [1])
-    mesh_tde_modes_bc_weight: float = 1e0
+    ds_slip_constraint_weight: float | None = None
+    ds_slip_constraint_sig: list | None = None
+    mesh_tde_bound: list = [1]
+    mesh_tde_slip_rate_bound_lower_ss: list = [-np.inf]
+    mesh_tde_slip_rate_bound_upper_ss: list = [np.inf]
+    mesh_tde_slip_rate_bound_lower_ds: list = [0.0]
+    mesh_tde_slip_rate_bound_upper_ds: list = [1.0]
+    mesh_tde_coupling_bound: list = [0]
+    mesh_tde_coupling_bound_lower_ss: list = [-np.inf]
+    mesh_tde_coupling_upper_ss: list = [np.inf]
+    mesh_tde_coupling_lower_ds: list = [0.0]
+    mesh_tde_coupling_upper_ds: list = [1.0]
+    mesh_tde_modes_bc_weight: float = 1.0
     iterative_coupling_smoothing_length_scale: float | None = None
 
     # TODO(Brendan) verify defaults
@@ -69,7 +70,7 @@ class MeshConfig:
     n_modes: int | None = None
 
     @classmethod
-    def from_file(cls, filename: str | Path) -> "list[MeshConfig]":
+    def from_file(cls, filename: str | Path) -> list[MeshConfig]:
         """Read mesh parameters from a JSON file and override defaults.
 
         Args:
@@ -77,40 +78,14 @@ class MeshConfig:
 
         Returns:
             list[MeshParams]: Instance with parameters from file overriding defaults
-
-        Raises:
-            FileNotFoundError: If the JSON file cannot be found
-            json.JSONDecodeError: If the JSON file is malformed
         """
         with open(filename) as f:
             params_list = json.load(f)
 
-        # Check if params_list is a list of dictionaries
         if not isinstance(params_list, list):
             raise ValueError(f"Expected a list of dictionaries in {filename}")
 
-        # Create instances with default values
-        instances = []
-        for params in params_list:
-            instance = cls()
-
-            if not isinstance(params, dict):
-                raise ValueError(f"Expected a dictionary for parameters in {filename}")
-
-            # Collect all keys that are not valid attributes
-            invalid_keys = [key for key in params if not hasattr(instance, key)]
-            if invalid_keys:
-                raise ValueError(
-                    f"Invalid keys in parameters: {', '.join(invalid_keys)}"
-                )
-
-            # Update instance with values from file
-            for key, value in params.items():
-                setattr(instance, key, value)
-
-            instances.append(instance)
-
-        return instances
+        return [cls.model_validate(params) for params in params_list]
 
 
 def _compute_ordered_edge_nodes(mesh: dict):
