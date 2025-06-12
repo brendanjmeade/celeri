@@ -522,63 +522,64 @@ def solve_sqp(
     return estimation_qp
 
 
-def plot_iterative_convergence(estimation: SqpEstimation):
+def plot_iterative_convergence(estimation: SqpEstimation, *, plot_in_bounds: bool = False):
+    """Plot convergence of out-of-bounds and in-bounds percentages during SQP iterations."""
     meshes = estimation.model.meshes
     n_oob_vec = estimation.n_out_of_bounds_trace
     n_meshes, n_iter = n_oob_vec.shape
 
     assert len(meshes) >= n_meshes
-    mesh_names = [meshes[i].file_name for i in range(n_meshes)]
+    mesh_names = [mesh.name for mesh in meshes[:n_meshes]]
 
     # Calculate total mesh elements
-    tde_total = 0
-    for i in range(3):
-        tde_total += meshes[i].n_tde
+    tde_total = sum(mesh.n_tde for mesh in meshes[:n_meshes])
 
+    # Calculate percentages
     total_oob = np.sum(n_oob_vec, axis=0)
-    total_percentages = total_oob / (2 * tde_total) * 100
-    idx = np.arange(len(total_percentages))
+    total_percentages_oob = total_oob / (2 * tde_total) * 100
+    total_percentages_ib = 100 - total_percentages_oob
+    iterations = np.arange(len(total_percentages_oob))
 
-    # Plot convergence
-    plt.figure(figsize=(4, 3))
-    label_string = f"total ({total_percentages[-1]:0.2f}%)"
-    plt.fill_between(idx, total_percentages, color="lightgray", label=label_string)
-    for i in range(len(mesh_names)):
-        percentages = n_oob_vec[i, :] / (2 * meshes[i].n_tde) * 100
-        label_string = f"{mesh_names[i]} ({percentages[-1]:0.2f}%)"
-        plt.plot(idx, percentages, linewidth=1.0, label=label_string)
+    # Common figure settings
+    fig_size = (4, 3)
+    legend_kwargs = {
+        "fancybox": False,
+        "framealpha": 1,
+        "facecolor": "white",
+        "edgecolor": "black",
+    }
 
-    plt.xlabel("iteration")
-    plt.ylabel("% OOB")
-    plt.xlim([0, n_iter - 1])
-    plt.ylim([0, 100])
-    plt.xticks([0, n_iter - 1])
-    plt.yticks([0, 100])
-    legend_handle = plt.legend(
-        fancybox=False, framealpha=1, facecolor="white", edgecolor="black"
-    )
-    legend_handle.get_frame().set_linewidth(0.5)
-    plt.show()
+    plt.figure(figsize=fig_size)
 
-    # Plot convergence
-    plt.figure(figsize=(4, 3))
-    label_string = f"total ({100 - total_percentages[-1]:0.2f}%)"
+    # Choose appropriate data and labels
+    total_percentages = total_percentages_ib if plot_in_bounds else total_percentages_oob
+    ylabel = "% IB" if plot_in_bounds else "% OOB"
+
+    # Fill total area
     plt.fill_between(
-        idx, 100 - total_percentages, color="lightgray", label=label_string
+        iterations,
+        total_percentages,
+        color="lightgray",
+        label=f"total ({total_percentages[-1]:0.2f}%)",
     )
-    for i in range(len(mesh_names)):
-        percentages = 100 - n_oob_vec[i, :] / (2 * meshes[i].n_tde) * 100
-        label_string = f"{mesh_names[i]} ({percentages[-1]:0.2f}%)"
-        plt.plot(idx, percentages, linewidth=1.0, label=label_string)
 
+    # Plot individual mesh lines
+    for i, mesh_name in enumerate(mesh_names):
+        mesh_oob = n_oob_vec[i, :] / (2 * meshes[i].n_tde) * 100
+        percentages = 100 - mesh_oob if plot_in_bounds else mesh_oob
+        plt.plot(
+            iterations,
+            percentages,
+            linewidth=1.0,
+            label=f"{mesh_name} ({percentages[-1]:0.2f}%)",
+        )
+
+    # Formatting
     plt.xlabel("iteration")
-    plt.ylabel("% IB")
+    plt.ylabel(ylabel)
     plt.xlim([0, n_iter - 1])
     plt.ylim([0, 100])
     plt.xticks([0, n_iter - 1])
     plt.yticks([0, 100])
-    legend_handle = plt.legend(
-        fancybox=False, framealpha=1, facecolor="white", edgecolor="black"
-    )
+    legend_handle = plt.legend(**legend_kwargs)
     legend_handle.get_frame().set_linewidth(0.5)
-    plt.show()

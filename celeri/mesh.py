@@ -469,3 +469,8 @@ class Mesh:
 
         # Convert dict to Mesh dataclass
         return cls(**mesh)
+
+    @property
+    def name(self) -> str:
+        """Return the name of the mesh configuration."""
+        return Path(self.file_name).stem
