@@ -514,7 +514,6 @@ def build_cvxpy_problem(
     rescale_parameters: bool = True,
     rescale_constraints: bool = True,
     mixed_integer: bool = False,
-    default_constraints: bool = True,
     operators: Operators | None = None,
 ) -> Minimizer:
     if operators is None:
@@ -712,23 +711,22 @@ def build_cvxpy_problem(
         case _:
             raise ValueError(f"Unknown objective type: {objective}")
 
-    if default_constraints:
-        A, b = get_qp_all_inequality_operator_and_data_vector(
-            model, operators, operators.index
-        )
-        A_hat = np.array(A / scale)
+    A, b = get_qp_all_inequality_operator_and_data_vector(
+        model, operators, operators.index, include_tde=False
+    )
 
-        if rescale_constraints:
-            A_scale = np.linalg.norm(A_hat, axis=1)
-        else:
-            A_scale = np.ones(A_hat.shape[0])
-        A_hat_ = A_hat / A_scale[:, None]
-        b_hat = b / A_scale
+    A_hat = np.array(A / scale)
 
+    if rescale_constraints:
+        A_scale = np.linalg.norm(A_hat, axis=1)
+    else:
+        A_scale = np.ones(A_hat.shape[0])
+    A_hat_ = A_hat / A_scale[:, None]
+    b_hat = b / A_scale
+
+    if len(b) > 0:
         constraint = adapt_operator(A_hat_) @ params_raw <= b_hat
         constraints.append(constraint)
-    else:
-        A_scale = np.ones(0)
 
     cp_problem = cp.Problem(cp.Minimize(objective_val), constraints)
 
@@ -998,7 +996,6 @@ def minimize(
     verbose: bool = False,
     rescale_parameters: bool = True,
     rescale_constraints: bool = True,
-    default_constraints: bool = True,
     objective: Objective = "qr_sum_of_squares",
     operators: Operators | None = None,
 ) -> MinimizerTrace:
@@ -1032,7 +1029,6 @@ def minimize(
         rescale_parameters=rescale_parameters,
         rescale_constraints=rescale_constraints,
         objective=objective,
-        default_constraints=default_constraints,
         operators=operators,
     )
     trace = MinimizerTrace(minimizer)
