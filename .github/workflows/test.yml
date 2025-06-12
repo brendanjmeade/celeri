@@ -3,46 +3,50 @@ name: Test
 on:
   push:
     branches:
-    - main
+      - main
   pull_request:
 
 jobs:
   check-lockfile:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
-      with:
-        fetch-depth: 0
-    - uses: prefix-dev/setup-pixi@v0.8.5
-      with:
-        run-install: false
-    - name: Check if pixi lockfile is up-to-date
-      run: pixi list --locked
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - uses: prefix-dev/setup-pixi@v0.8.5
+        with:
+          run-install: false
+      - name: Check if pixi lockfile is up-to-date
+        run: pixi list --locked
   test:
     strategy:
       fail-fast: false
       matrix:
         os: ["ubuntu-latest"]
         pixi-environment: ["py310", "default"]
-        tests-to-run: ["japan", "other"]
+        tests-to-run: ["japan", "other", "optimize_sqp"]
     name: Test (${{ matrix.pixi-environment }}, ${{ matrix.tests-to-run }})
-    runs-on:  ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
     defaults:
       run:
         shell: bash -l {0}
     steps:
-    - uses: actions/checkout@v2
-      with:
-        fetch-depth: 0
-    - uses: prefix-dev/setup-pixi@v0.8.5
-      with:
-        cache: true
-        environments: ${{ matrix.pixi-environment }}
-    - name: Test
-      if: ${{ matrix.tests-to-run == 'other' }}
-      run: |
-        pixi run -e ${{ matrix.pixi-environment }} pytest ./tests/test_closure.py ./tests/test_okada_equals_cutde.py ./tests/test_optimize.py
-    - name: Test
-      if: ${{ matrix.tests-to-run == 'japan' }}
-      run: |
-        pixi run -e ${{ matrix.pixi-environment }} pytest ./tests/test_solve_dense.py
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - uses: prefix-dev/setup-pixi@v0.8.5
+        with:
+          cache: true
+          environments: ${{ matrix.pixi-environment }}
+      - name: Test
+        if: ${{ matrix.tests-to-run == 'other' }}
+        run: |
+          pixi run -e ${{ matrix.pixi-environment }} pytest ./tests/test_closure.py ./tests/test_okada_equals_cutde.py ./tests/test_optimize.py
+      - name: Test
+        if: ${{ matrix.tests-to-run == 'japan' }}
+        run: |
+          pixi run -e ${{ matrix.pixi-environment }} pytest ./tests/test_solve_dense.py
+      - name: Test
+        if: ${{ matrix.tests-to-run == 'optimize_sqp' }}
+        run: |
+          pixi run -e ${{ matrix.pixi-environment }} pytest ./tests/test_optimize_sqp.py

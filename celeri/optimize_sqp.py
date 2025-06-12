@@ -527,7 +527,9 @@ def solve_sqp(
     return estimation_qp
 
 
-def plot_iterative_convergence(estimation: SqpEstimation, *, plot_in_bounds: bool = False):
+def plot_iterative_convergence(
+    estimation: SqpEstimation, *, plot_in_bounds: bool = False
+):
     """Plot convergence of out-of-bounds and in-bounds percentages during SQP iterations."""
     meshes = estimation.model.meshes
     n_oob_vec = estimation.n_out_of_bounds_trace
@@ -557,7 +559,9 @@ def plot_iterative_convergence(estimation: SqpEstimation, *, plot_in_bounds: boo
     plt.figure(figsize=fig_size)
 
     # Choose appropriate data and labels
-    total_percentages = total_percentages_ib if plot_in_bounds else total_percentages_oob
+    total_percentages = (
+        total_percentages_ib if plot_in_bounds else total_percentages_oob
+    )
     ylabel = "% IB" if plot_in_bounds else "% OOB"
 
     # Fill total area
