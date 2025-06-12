@@ -40,7 +40,7 @@ ipykernel = ">=6.29.5"
 seaborn = ">=0.13.2"
 papermill = ">=2.6.0,<3"
 python-gmsh = ">=4.13.1,<5"
-zarr = ">=2.18.3,<4"
+zarr = ">=3.0.0,<4"
 pydantic = ">=2.11.6,<3"
 pyarrow = ">=20.0.0,<21"
 
@@ -54,9 +54,9 @@ okada-wrapper = ">=24.6.15"
 celeri = { path = ".", editable = true }
 loguru = ">=0.7.2"
 
-[feature.py310.dependencies]
-python = "3.10.*"
+[feature.py311.dependencies]
+python = "3.11.*"
 
 [environments]
 default = ["dev"]
-py310 = ["py310"]
+py311 = ["py311"]
