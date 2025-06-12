@@ -51,6 +51,7 @@ from celeri.operators import (
     get_tde_to_velocities_single_mesh,
     get_weighting_vector_single_mesh_for_col_norms,
 )
+from celeri.optimize_sqp import solve_sqp
 from celeri.output import write_output, write_output_supplemental
 from celeri.plot import (
     get_default_plotting_dict,
@@ -164,6 +165,7 @@ __all__ = [
     "process_station",
     "read_data",
     "read_run",
+    "solve_sqp",
     "station_row_keep",
     "wrap2360",
     "write_output",
