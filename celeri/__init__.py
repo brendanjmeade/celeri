@@ -53,7 +53,7 @@ from celeri.operators import (
 )
 from celeri.output import write_output, write_output_supplemental
 from celeri.plot import (
-    get_default_plotting_dict,
+    get_default_plotting_class,
     plot_common_elements,
     plot_estimation_summary,
     plot_fault_geometry,
