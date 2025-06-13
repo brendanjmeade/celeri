@@ -28,71 +28,67 @@ from celeri.spatial import (
 if typing.TYPE_CHECKING:
     from celeri.solve import Estimation
 
+
 @dataclass(kw_only=True)
 class PlotParams:
-    """Plot parameters for visualization configuration.
-    #TODO: Remove capitalization?
-    """
-
     """Plot parameters for visualization configuration."""
+
     # Figure configuration
-    FIGSIZE_VECTORS: tuple[int, int] = field(default_factory=lambda: (12, 6))
-    FONTSIZE: int = 16
+    figsize_vectors: tuple[int, int] = field(default_factory=lambda: (12, 6))
+    fontsize: int = 16
 
     # Geographic ranges and ticks
-    LON_RANGE: tuple[float, float] = (0.0, 0.0)
-    LAT_RANGE: tuple[float, float] = (0.0, 0.0)
-    LON_TICKS: np.ndarray = field(default_factory=lambda: np.array([]))
-    LAT_TICKS: np.ndarray = field(default_factory=lambda: np.array([]))
+    lon_range: tuple[float, float] = (0.0, 0.0)
+    lat_range: tuple[float, float] = (0.0, 0.0)
+    lon_ticks: np.ndarray = field(default_factory=lambda: np.array([]))
+    lat_ticks: np.ndarray = field(default_factory=lambda: np.array([]))
 
-    # Slip rate configuration
-    SLIP_RATE_MIN: float = 0.0
-    SLIP_RATE_MAX: float = 0.0
+    # Slip rate limits
+    slip_rate_min: float = 0.0
+    slip_rate_max: float = 0.0
 
     # Land appearance
-    LAND_COLOR: str = "lightgray"
-    LAND_LINEWIDTH: float = 0.5
-    LAND_ZORDER: int = 0
+    land_color: str = "lightgray"
+    land_linewidth: float = 0.5
+    land_zorder: int = 0
 
     # Key/legend rectangle
-    KEY_RECTANGLE_ANCHOR: np.ndarray = field(
+    key_rectangle_anchor: np.ndarray = field(
         default_factory=lambda: np.array([0.0, 0.0])
     )
-    KEY_RECTANGLE_WIDTH: float = 3.0
-    KEY_RECTANGLE_HEIGHT: float = 1.55
+    key_rectangle_width: float = 3.0
+    key_rectangle_height: float = 1.55
 
     # Key arrow configuration
-    KEY_ARROW_LON: float = 0.0
-    KEY_ARROW_LAT: float = 0.0
-    KEY_ARROW_MAGNITUDE: float = 0.0
-    KEY_ARROW_TEXT: str | None = None
-    KEY_ARROW_COLOR: str = "k"
+    key_arrow_lon: float = 0.0
+    key_arrow_lat: float = 0.0
+    key_arrow_magnitude: float = 0.0
+    key_arrow_text: str | None = None
+    key_arrow_color: str = "k"
 
     # Key background
-    KEY_BACKGROUND_COLOR: str = "white"
-    KEY_LINEWIDTH: float = 1.0
-    KEY_EDGECOLOR: str = "k"
+    key_background_color: str = "white"
+    key_linewidth: float = 1.0
+    key_edgecolor: str = "k"
 
     # Arrow magnitude and appearance
-    ARROW_MAGNITUDE_MIN: float = 0.0
-    ARROW_MAGNITUDE_MAX: float = 0.0
-    ARROW_COLORMAP: Any = None
-    ARROW_SCALE: float = 0.0
-    ARROW_WIDTH: float = 0.0025
-    ARROW_LINEWIDTH: float = 0.5
-    ARROW_EDGECOLOR: str = "k"
+    arrow_magnitude_min: float = 0.0
+    arrow_magnitude_max: float = 0.0
+    arrow_colormap: Any = None
+    arrow_scale_default: float = 0.0
+    arrow_width: float = 0.0025
+    arrow_linewidth: float = 0.5
+    arrow_edgecolor: str = "k"
 
     # Segment lines
-    SEGMENT_LINE_WIDTH_OUTER: float = 2.0
-    SEGMENT_LINE_WIDTH_INNER: float = 1.0
-    SEGMENT_LINE_COLOR_OUTER: str = "k"
-    SEGMENT_LINE_COLOR_INNER: str = "w"
+    segment_line_width_outer: float = 2.0
+    segment_line_width_inner: float = 1.0
+    segment_line_color_outer: str = "k"
+    segment_line_color_inner: str = "w"
 
     # Coastlines
-    coastlon: np.ndarray = field(default_factory=lambda: np.array([]))
-    coastlat: np.ndarray = field(default_factory=lambda: np.array([]))
-
-
+    coast_lon: np.ndarray = field(default_factory=lambda: np.array([]))
+    coast_lat: np.ndarray = field(default_factory=lambda: np.array([]))
 
 
 def plot_block_labels(segment, block, station, closure):
@@ -965,39 +961,39 @@ def get_default_plotting_class(config, estimation, station):
 
     The returned dictionary includes the following keys and their default values:
         - WORLD_BOUNDARIES: Data loaded from "WorldHiVectors.mat".
-        - FIGSIZE_VECTORS: (12, 6) - Default figure size for vector plots.
-        - FONTSIZE: 16 - Default font size.
-        - LON_RANGE: - Inferred from config.
-        - LAT_RANGE: - Inferred from config.
-        - LON_TICKS: - Inferred from config.
-        - LAT_TICKS: - Inferred from config.
-        - SLIP_RATE_MIN: - Inferred from estimation.
-        - SLIP_RATE_MAX: - Inferred from estimation.
-        - LAND_COLOR: "lightgray" - Color of land areas.
-        - LAND_LINEWIDTH: 0.5 - Line width for land boundaries.
-        - LAND_ZORDER: 0 - Z-order for land boundaries.
-        - KEY_RECTANGLE_ANCHOR: [0, -90] - Anchor point for the key rectangle.
-        - KEY_RECTANGLE_WIDTH: 3.0 - Width of the key rectangle.
-        - KEY_RECTANGLE_HEIGHT: 1.55 - Height of the key rectangle.
-        - KEY_ARROW_LON: 5.0 - Inferred from config.
-        - KEY_ARROW_LAT: -85.0 - Inferred from config.
-        - KEY_ARROW_MAGNITUDE: - Magnitude for the key arrow.
-        - KEY_ARROW_TEXT: - Text for the key arrow.
-        - KEY_ARROW_COLOR: "k" - Color for the key arrow.
-        - KEY_BACKGROUND_COLOR: "white" - Background color for the key.
-        - KEY_LINEWIDTH: 1.0 - Line width for the key.
-        - KEY_EDGECOLOR: "k" - Edge color for the key.
-        - ARROW_MAGNITUDE_MIN: 0.0 - Minimum arrow magnitude.
-        - ARROW_MAGNITUDE_MAX: - Maximum arrow magnitude (inferred from config).
-        - ARROW_COLORMAP: cm.plasma - Colormap for arrows.
-        - ARROW_SCALE: - Inferred from config.
-        - ARROW_WIDTH: 0.0025 - Width for arrows.
-        - ARROW_LINEWIDTH: 0.5 - Line width for arrows.
-        - ARROW_EDGECOLOR: "k" - Edge color for arrows.
-        - SEGMENT_LINE_WIDTH_OUTER: 2.0 - Outer line width for segments.
-        - SEGMENT_LINE_WIDTH_INNER: 1.0 - Inner line width for segments.
-        - SEGMENT_LINE_COLOR_OUTER: "k" - Outer line color for segments.
-        - SEGMENT_LINE_COLOR_INNER: "w" - Inner line color for segments.
+        - figsize_vectors: (12, 6) - Default figure size for vector plots.
+        - fontsize: 16 - Default font size.
+        - lon_range: - Inferred from config.
+        - lat_range: - Inferred from config.
+        - lon_ticks: - Inferred from config.
+        - lat_ticks: - Inferred from config.
+        - slip_rate_min: - Inferred from estimation.
+        - slip_rate_max: - Inferred from estimation.
+        - land_color: "lightgray" - Color of land areas.
+        - land_linewidth: 0.5 - Line width for land boundaries.
+        - land_zorder: 0 - Z-order for land boundaries.
+        - key_rectangle_anchor: [0, -90] - Anchor point for the key rectangle.
+        - key_rectangle_width: 3.0 - Width of the key rectangle.
+        - key_rectangle_height: 1.55 - Height of the key rectangle.
+        - key_arrow_lon: 5.0 - Inferred from config.
+        - key_arrow_lat: -85.0 - Inferred from config.
+        - key_arrow_magnitude: - Magnitude for the key arrow.
+        - key_arrow_text: - Text for the key arrow.
+        - key_arrow_color: "k" - Color for the key arrow.
+        - key_background_color: "white" - Background color for the key.
+        - key_linewidth: 1.0 - Line width for the key.
+        - key_edgecolor: "k" - Edge color for the key.
+        - arrow_magnitude_min: 0.0 - Minimum arrow magnitude.
+        - arrow_magnitude_max: - Maximum arrow magnitude (inferred from config).
+        - arrow_colormap: cm.plasma - Colormap for arrows.
+        - arrow_scale_default: - Inferred from config.
+        - arrow_width: 0.0025 - Width for arrows.
+        - arrow_linewidth: 0.5 - Line width for arrows.
+        - arrow_edgecolor: "k" - Edge color for arrows.
+        - segment_line_width_outer: 2.0 - Outer line width for segments.
+        - segment_line_width_inner: 1.0 - Inner line width for segments.
+        - segment_line_color_outer: "k" - Outer line color for segments.
+        - segment_line_color_inner: "w" - Inner line color for segments.
 
     """
     slip_rate_scale = 0.5 * np.max(
@@ -1020,41 +1016,41 @@ def get_default_plotting_class(config, estimation, station):
     vel_scale = round(vel_scale / 5) * 5
 
     p = PlotParams()
-    p.FIGSIZE_VECTORS = (12, 6)
-    p.FONTSIZE = 16
-    p.LON_RANGE = config.lon_range
-    p.LAT_RANGE = config.lat_range
-    p.LON_TICKS = np.linspace(config.lon_range[0], config.lon_range[1], 3)
-    p.LAT_TICKS = np.linspace(config.lat_range[0], config.lat_range[1], 3)
-    p.SLIP_RATE_MIN = -slip_rate_scale
-    p.SLIP_RATE_MAX = slip_rate_scale
-    # p.LAND_COLOR = "lightgray"
-    # p.LAND_LINEWIDTH = 0.5
-    # p.LAND_ZORDER = 0
-    # p.KEY_RECTANGLE_ANCHOR = np.array([0, -90])
-    # p.KEY_RECTANGLE_WIDTH = 3.0
-    # p.KEY_RECTANGLE_HEIGHT = 1.55
-    # p.KEY_ARROW_LON = np.mean(config.lon_range)
-    # p.KEY_ARROW_LAT = np.min(config.lat_range) + 0.05 * (
+    p.figsize_vectors = (12, 6)
+    p.fontsize = 16
+    p.lon_range = config.lon_range
+    p.lat_range = config.lat_range
+    p.lon_ticks = np.linspace(config.lon_range[0], config.lon_range[1], 3)
+    p.lat_ticks = np.linspace(config.lat_range[0], config.lat_range[1], 3)
+    p.slip_rate_min = -slip_rate_scale
+    p.slip_rate_max = slip_rate_scale
+    # p.land_color = "lightgray"
+    # p.land_linewidth = 0.5
+    # p.land_zorder = 0
+    # p.key_rectangle_anchor = np.array([0, -90])
+    # p.key_rectangle_width = 3.0
+    # p.key_rectangle_height = 1.55
+    # p.key_arrow_lon = np.mean(config.lon_range)
+    # p.key_arrow_lat = np.min(config.lat_range) + 0.05 * (
     #     config.lat_range[1] - config.lat_range[0]
     # )
-    # p.KEY_ARROW_MAGNITUDE = vel_scale
-    # p.KEY_ARROW_TEXT = f"{vel_scale:d} mm/yr"
-    # p.KEY_ARROW_COLOR = "k"
-    # p.KEY_BACKGROUND_COLOR = "white"
-    # p.KEY_LINEWIDTH = 1.0
-    # p.KEY_EDGECOLOR = "k"
-    # p.ARROW_MAGNITUDE_MIN = 0.0
-    # p.ARROW_MAGNITUDE_MAX = 0.35 * vel_scale
-    # p.ARROW_COLORMAP = cm.plasma  # type: ignore
-    # p.ARROW_SCALE = vel_scale
-    # p.ARROW_WIDTH = 0.0025
-    # p.ARROW_LINEWIDTH = 0.5
-    # p.ARROW_EDGECOLOR = "k"
-    # p.SEGMENT_LINE_WIDTH_OUTER = 2.0
-    # p.SEGMENT_LINE_WIDTH_INNER = 1.0
-    # p.SEGMENT_LINE_COLOR_OUTER = "k"
-    # p.SEGMENT_LINE_COLOR_INNER = "w"
+    # p.key_arrow_magnitude = vel_scale
+    # p.key_arrow_text = f"{vel_scale:d} mm/yr"
+    # p.key_arrow_color = "k"
+    # p.key_background_color = "white"
+    # p.key_linewidth = 1.0
+    # p.key_edgecolor = "k"
+    # p.arrow_magnitude_min = 0.0
+    # p.arrow_magnitude_max = 0.35 * vel_scale
+    # p.arrow_colormap = cm.plasma  # type: ignore
+    # p.arrow_scale_default = vel_scale
+    # p.arrow_width = 0.0025
+    # p.arrow_linewidth = 0.5
+    # p.arrow_edgecolor = "k"
+    # p.segment_line_width_outer = 2.0
+    # p.segment_line_width_inner = 1.0
+    # p.segment_line_color_outer = "k"
+    # p.segment_line_color_inner = "w"
 
     # Read coastlines and trim to within map boundaries
     WORLD_BOUNDARIES = scipy.io.loadmat("WorldHiVectors.mat")
@@ -1064,10 +1060,10 @@ def get_default_plotting_class(config, estimation, station):
     # Use matplotlib path tool to make a rectangle
     maprect = matplotlib.path.Path(
         [
-            (p.LON_RANGE[0] - shift, p.LAT_RANGE[0] - shift),
-            (p.LON_RANGE[1] + shift, p.LAT_RANGE[0] - shift),
-            (p.LON_RANGE[1] + shift, p.LAT_RANGE[1] + shift),
-            (p.LON_RANGE[0] - shift, p.LAT_RANGE[1] + shift),
+            (p.lon_range[0] - shift, p.lat_range[0] - shift),
+            (p.lon_range[1] + shift, p.lat_range[0] - shift),
+            (p.lon_range[1] + shift, p.lat_range[1] + shift),
+            (p.lon_range[0] - shift, p.lat_range[1] + shift),
         ]
     )
     lon = WORLD_BOUNDARIES["lon"]
@@ -1081,8 +1077,8 @@ def get_default_plotting_class(config, estimation, station):
     coast_idx[np.isnan(lon[:, 0])] = True
 
     # Add coordinates to dict
-    p.coastlon = coastpoints[coast_idx, 0]
-    p.coastlat = coastpoints[coast_idx, 1]
+    p.coast_lon = coastpoints[coast_idx, 0]
+    p.coast_lat = coastpoints[coast_idx, 1]
 
     return p
 
@@ -1117,24 +1113,24 @@ def plot_common_elements(p, segment, lon_range, lat_range):
             [segment.lon1[i], segment.lon2[i]],
             [segment.lat1[i], segment.lat2[i]],
             "-k",
-            linewidth=p.SEGMENT_LINE_WIDTH_OUTER,
+            linewidth=p.segment_line_width_outer,
         )
     for i in range(len(segment)):
         plt.plot(
             [segment.lon1[i], segment.lon2[i]],
             [segment.lat1[i], segment.lat2[i]],
             "-w",
-            linewidth=p.SEGMENT_LINE_WIDTH_INNER,
+            linewidth=p.segment_line_width_inner,
         )
 
     plt.xlim([lon_range[0], lon_range[1]])
     plt.ylim([lat_range[0], lat_range[1]])
-    plt.xticks(p.LON_TICKS)
-    plt.yticks(p.LAT_TICKS)
+    plt.xticks(p.lon_ticks)
+    plt.yticks(p.lat_ticks)
     plt.gca().set_aspect("equal", adjustable="box")
-    plt.xlabel("longitude (degrees)", fontsize=p.FONTSIZE)
-    plt.ylabel("latitude (degrees)", fontsize=p.FONTSIZE)
-    plt.tick_params(labelsize=p.FONTSIZE)
+    plt.xlabel("longitude (degrees)", fontsize=p.fontsize)
+    plt.ylabel("latitude (degrees)", fontsize=p.fontsize)
+    plt.tick_params(labelsize=p.fontsize)
 
 
 def plot_vel_arrows_elements(p, lon, lat, east_velocity, north_velocity, arrow_scale):
@@ -1177,53 +1173,53 @@ def plot_vel_arrows_elements(p, lon, lat, east_velocity, north_velocity, arrow_s
     velocity_magnitude = np.sqrt(east_velocity**2.0 + north_velocity**2.0)
     norm = Normalize()
     norm.autoscale(velocity_magnitude)
-    norm.vmin = p.ARROW_MAGNITUDE_MIN
-    norm.vmax = p.ARROW_MAGNITUDE_MAX
-    colormap = p.ARROW_COLORMAP
+    norm.vmin = p.arrow_magnitude_min
+    norm.vmax = p.arrow_magnitude_max
+    colormap = p.arrow_colormap
     quiver_handle = plt.quiver(
         lon,
         lat,
         east_velocity,
         north_velocity,
-        scale=p.ARROW_SCALE * arrow_scale,
-        width=p.ARROW_WIDTH,
+        scale=p.arrow_scale_default * arrow_scale,
+        width=p.arrow_width,
         scale_units="inches",
         color=colormap(norm(velocity_magnitude)),
-        linewidth=p.ARROW_LINEWIDTH,
-        edgecolor=p.ARROW_EDGECOLOR,
+        linewidth=p.arrow_linewidth,
+        edgecolor=p.arrow_edgecolor,
     )
 
     # Draw land
     plt.fill(
-        p.coastlon,
-        p.coastlat,
-        color=p.LAND_COLOR,
-        linewidth=p.LAND_LINEWIDTH,
-        zorder=p.LAND_ZORDER,
+        p.coast_lon,
+        p.coast_lat,
+        color=p.land_color,
+        linewidth=p.land_linewidth,
+        zorder=p.land_zorder,
     )
 
     # Draw white background rectangle
     rect = mpatches.Rectangle(
-        p.KEY_RECTANGLE_ANCHOR,
-        p.KEY_RECTANGLE_WIDTH,
-        p.KEY_RECTANGLE_HEIGHT,
+        p.key_rectangle_anchor,
+        p.key_rectangle_width,
+        p.key_rectangle_height,
         fill=True,
-        color=p.KEY_BACKGROUND_COLOR,
-        linewidth=p.KEY_LINEWIDTH,
-        ec=p.KEY_EDGECOLOR,
+        color=p.key_background_color,
+        linewidth=p.key_linewidth,
+        ec=p.key_edgecolor,
     )
     plt.gca().add_patch(rect)
 
     # Draw arrow legend
     plt.quiverkey(
         quiver_handle,
-        p.KEY_ARROW_LON,
-        p.KEY_ARROW_LAT,
-        p.KEY_ARROW_MAGNITUDE,
-        p.KEY_ARROW_TEXT,
+        p.key_arrow_lon,
+        p.key_arrow_lat,
+        p.key_arrow_magnitude,
+        p.key_arrow_text,
         coordinates="data",
-        color=p.KEY_ARROW_COLOR,
-        fontproperties={"size": p.FONTSIZE},
+        color=p.key_arrow_color,
+        fontproperties={"size": p.fontsize},
     )
 
     plt.gca().set_aspect("equal")
@@ -1256,9 +1252,9 @@ def plot_vels(
     3. Plots common map elements including segment lines and axis settings.
     4. Plots velocity vectors as arrows with scaling and color mapping.
     """
-    plt.figure(figsize=p.FIGSIZE_VECTORS)
-    plt.title(title_string, fontsize=p.FONTSIZE)
-    plot_common_elements(p, segment, p.LON_RANGE, p.LAT_RANGE)
+    plt.figure(figsize=p.figsize_vectors)
+    plt.title(title_string, fontsize=p.fontsize)
+    plot_common_elements(p, segment, p.lon_range, p.lat_range)
     plot_vel_arrows_elements(p, lon, lat, east_vel, north_vel, arrow_scale=arrow_scale)
 
 
@@ -1293,7 +1289,7 @@ def plot_residuals(p, segment, station):
         + station.model_north_vel_residual.values**2.0
     )
 
-    plt.figure(figsize=p.FIGSIZE_VECTORS)
+    plt.figure(figsize=p.figsize_vectors)
     plt.scatter(
         station.lon,
         station.lat,
@@ -1303,12 +1299,12 @@ def plot_residuals(p, segment, station):
         cmap="YlOrRd",
         linewidths=0.1,
     )
-    plot_common_elements(p, segment, p.LON_RANGE, p.LAT_RANGE)
+    plot_common_elements(p, segment, p.lon_range, p.lat_range)
     plt.clim(0, 10)
     plt.title("mean average error")
     plt.show()
 
-    plt.figure(figsize=p.FIGSIZE_VECTORS)
+    plt.figure(figsize=p.figsize_vectors)
     plt.scatter(
         station.lon,
         station.lat,
@@ -1318,7 +1314,7 @@ def plot_residuals(p, segment, station):
         cmap="YlOrRd",
         linewidths=0.1,
     )
-    plot_common_elements(p, segment, p.LON_RANGE, p.LAT_RANGE)
+    plot_common_elements(p, segment, p.lon_range, p.lat_range)
     plt.clim(0, 10)
     plt.title("mean squared error")
     plt.show()
@@ -1355,22 +1351,22 @@ def plot_segment_rates(p, segment, estimation, rate_type, rate_scale=1):
     -------
     None
     """
-    plt.figure(figsize=p.FIGSIZE_VECTORS)
+    plt.figure(figsize=p.figsize_vectors)
 
     if rate_type == "ss":
-        plt.title("strike-slip rates", fontsize=p.FONTSIZE)
+        plt.title("strike-slip rates", fontsize=p.fontsize)
         label_text_negative = "right-lateral"
         label_text_positive = "left-lateral"
     elif rate_type == "ds":
-        plt.title("dip-slip rates", fontsize=p.FONTSIZE)
+        plt.title("dip-slip rates", fontsize=p.fontsize)
         label_text_negative = "normal"
         label_text_positive = "reverse"
     elif rate_type == "ts":
-        plt.title("tensile-slip rates", fontsize=p.FONTSIZE)
+        plt.title("tensile-slip rates", fontsize=p.fontsize)
         label_text_negative = "convergence"
         label_text_positive = "extension"
     elif rate_type == "dsts":
-        plt.title("dip+tensile-slip rates", fontsize=p.FONTSIZE)
+        plt.title("dip+tensile-slip rates", fontsize=p.fontsize)
         label_text_negative = "convergence"
         label_text_positive = "extension"
     else:
@@ -1378,14 +1374,14 @@ def plot_segment_rates(p, segment, estimation, rate_type, rate_scale=1):
             f"Invalid rate_type: {rate_type}. Must be one of 'ss', 'ds', 'ts', or 'dsts'."
         )
 
-    plot_common_elements(p, segment, p.LON_RANGE, p.LAT_RANGE)
+    plot_common_elements(p, segment, p.lon_range, p.lat_range)
 
     plt.fill(
-        p.coastlon,
-        p.coastlat,
-        color=p.LAND_COLOR,
-        linewidth=p.LAND_LINEWIDTH,
-        zorder=p.LAND_ZORDER,
+        p.coast_lon,
+        p.coast_lat,
+        color=p.land_color,
+        linewidth=p.land_linewidth,
+        zorder=p.land_zorder,
     )
 
     for i in range(len(segment)):
@@ -1477,7 +1473,7 @@ def plot_segment_rates(p, segment, estimation, rate_type, rate_scale=1):
     plt.legend(
         handles=[black_segments, red_segments],
         loc="lower right",
-        fontsize=p.FONTSIZE,
+        fontsize=p.fontsize,
         framealpha=1.0,
         edgecolor="k",
     ).get_frame().set_boxstyle("Square")  # type: ignore
@@ -1504,16 +1500,16 @@ def plot_fault_geometry(p, segment, meshes):
     -------
     None
     """
-    plt.figure(figsize=p.FIGSIZE_VECTORS)
+    plt.figure(figsize=p.figsize_vectors)
 
-    plot_common_elements(p, segment, p.LON_RANGE, p.LAT_RANGE)
+    plot_common_elements(p, segment, p.lon_range, p.lat_range)
 
     plt.fill(
-        p.coastlon,
-        p.coastlat,
-        color=p.LAND_COLOR,
-        linewidth=p.LAND_LINEWIDTH,
-        zorder=p.LAND_ZORDER,
+        p.coast_lon,
+        p.coast_lat,
+        color=p.land_color,
+        linewidth=p.land_linewidth,
+        zorder=p.land_zorder,
     )
 
     for i in range(len(meshes)):
