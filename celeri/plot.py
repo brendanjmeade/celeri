@@ -1024,33 +1024,15 @@ def get_default_plotting_class(config, estimation, station):
     p.lat_ticks = np.linspace(config.lat_range[0], config.lat_range[1], 3)
     p.slip_rate_min = -slip_rate_scale
     p.slip_rate_max = slip_rate_scale
-    # p.land_color = "lightgray"
-    # p.land_linewidth = 0.5
-    # p.land_zorder = 0
-    # p.key_rectangle_anchor = np.array([0, -90])
-    # p.key_rectangle_width = 3.0
-    # p.key_rectangle_height = 1.55
-    # p.key_arrow_lon = np.mean(config.lon_range)
-    # p.key_arrow_lat = np.min(config.lat_range) + 0.05 * (
-    #     config.lat_range[1] - config.lat_range[0]
-    # )
-    # p.key_arrow_magnitude = vel_scale
-    # p.key_arrow_text = f"{vel_scale:d} mm/yr"
-    # p.key_arrow_color = "k"
-    # p.key_background_color = "white"
-    # p.key_linewidth = 1.0
-    # p.key_edgecolor = "k"
-    # p.arrow_magnitude_min = 0.0
-    # p.arrow_magnitude_max = 0.35 * vel_scale
-    # p.arrow_colormap = cm.plasma  # type: ignore
-    # p.arrow_scale_default = vel_scale
-    # p.arrow_width = 0.0025
-    # p.arrow_linewidth = 0.5
-    # p.arrow_edgecolor = "k"
-    # p.segment_line_width_outer = 2.0
-    # p.segment_line_width_inner = 1.0
-    # p.segment_line_color_outer = "k"
-    # p.segment_line_color_inner = "w"
+    p.key_arrow_lon = np.mean(config.lon_range)
+    p.key_arrow_lat = np.min(config.lat_range) + 0.05 * (
+        config.lat_range[1] - config.lat_range[0]
+    )
+    p.key_arrow_magnitude = vel_scale
+    p.key_arrow_text = f"{vel_scale:d} mm/yr"
+    p.arrow_magnitude_max = 0.35 * vel_scale
+    p.arrow_colormap = cm.plasma  # type: ignore
+    p.arrow_scale_default = vel_scale
 
     # Read coastlines and trim to within map boundaries
     WORLD_BOUNDARIES = scipy.io.loadmat("WorldHiVectors.mat")
