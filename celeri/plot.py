@@ -14,7 +14,6 @@ import numpy as np
 import pandas as pd
 import scipy.io
 from loguru import logger
-from matplotlib import cm
 from matplotlib.colors import Normalize
 
 from celeri.constants import EPS
@@ -27,6 +26,7 @@ from celeri.spatial import (
 
 if typing.TYPE_CHECKING:
     from celeri.solve import Estimation
+
 
 @dataclass(kw_only=True)
 class PlotParams:
@@ -91,8 +91,6 @@ class PlotParams:
     # Coastlines
     coastlon: np.ndarray = field(default_factory=lambda: np.array([]))
     coastlat: np.ndarray = field(default_factory=lambda: np.array([]))
-
-
 
 
 def plot_block_labels(segment, block, station, closure):
