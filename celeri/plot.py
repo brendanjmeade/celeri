@@ -1481,6 +1481,7 @@ def plot_fault_geometry(p, segment, meshes):
                 "-r",
                 linewidth=1,
             )
+    plt.show()
 
 
 def plot_mesh_mode(meshes, eigenvectors_to_tde_slip, mesh_idx, mode_idx, start_idx=0):
