@@ -28,6 +28,72 @@ from celeri.spatial import (
 if typing.TYPE_CHECKING:
     from celeri.solve import Estimation
 
+@dataclass(kw_only=True)
+class PlotParams:
+    """Plot parameters for visualization configuration.
+    #TODO: Remove capitalization?
+    """
+
+    """Plot parameters for visualization configuration."""
+    # Figure configuration
+    FIGSIZE_VECTORS: tuple[int, int] = field(default_factory=lambda: (12, 6))
+    FONTSIZE: int = 16
+
+    # Geographic ranges and ticks
+    LON_RANGE: tuple[float, float] = (0.0, 0.0)
+    LAT_RANGE: tuple[float, float] = (0.0, 0.0)
+    LON_TICKS: np.ndarray = field(default_factory=lambda: np.array([]))
+    LAT_TICKS: np.ndarray = field(default_factory=lambda: np.array([]))
+
+    # Slip rate configuration
+    SLIP_RATE_MIN: float = 0.0
+    SLIP_RATE_MAX: float = 0.0
+
+    # Land appearance
+    LAND_COLOR: str = "lightgray"
+    LAND_LINEWIDTH: float = 0.5
+    LAND_ZORDER: int = 0
+
+    # Key/legend rectangle
+    KEY_RECTANGLE_ANCHOR: np.ndarray = field(
+        default_factory=lambda: np.array([0.0, 0.0])
+    )
+    KEY_RECTANGLE_WIDTH: float = 3.0
+    KEY_RECTANGLE_HEIGHT: float = 1.55
+
+    # Key arrow configuration
+    KEY_ARROW_LON: float = 0.0
+    KEY_ARROW_LAT: float = 0.0
+    KEY_ARROW_MAGNITUDE: float = 0.0
+    KEY_ARROW_TEXT: str | None = None
+    KEY_ARROW_COLOR: str = "k"
+
+    # Key background
+    KEY_BACKGROUND_COLOR: str = "white"
+    KEY_LINEWIDTH: float = 1.0
+    KEY_EDGECOLOR: str = "k"
+
+    # Arrow magnitude and appearance
+    ARROW_MAGNITUDE_MIN: float = 0.0
+    ARROW_MAGNITUDE_MAX: float = 0.0
+    ARROW_COLORMAP: Any = None
+    ARROW_SCALE: float = 0.0
+    ARROW_WIDTH: float = 0.0025
+    ARROW_LINEWIDTH: float = 0.5
+    ARROW_EDGECOLOR: str = "k"
+
+    # Segment lines
+    SEGMENT_LINE_WIDTH_OUTER: float = 2.0
+    SEGMENT_LINE_WIDTH_INNER: float = 1.0
+    SEGMENT_LINE_COLOR_OUTER: str = "k"
+    SEGMENT_LINE_COLOR_INNER: str = "w"
+
+    # Coastlines
+    coastlon: np.ndarray = field(default_factory=lambda: np.array([]))
+    coastlat: np.ndarray = field(default_factory=lambda: np.array([]))
+
+
+
 
 def plot_block_labels(segment, block, station, closure):
     plt.figure()
@@ -953,71 +1019,6 @@ def get_default_plotting_class(config, estimation, station):
     )
     vel_scale = round(vel_scale / 5) * 5
 
-    @dataclass()
-    class PlotParams:
-        """Plot parameters for visualization configuration.
-        #TODO: Remove capitalization?
-        """
-
-        """Plot parameters for visualization configuration."""
-        # Figure configuration
-        FIGSIZE_VECTORS: tuple[int, int] = field(default_factory=lambda: (12, 6))
-        FONTSIZE: int = 16
-
-        # Geographic ranges and ticks
-        LON_RANGE: tuple[float, float] = field(default_factory=lambda: (0.0, 0.0))
-        LAT_RANGE: tuple[float, float] = field(default_factory=lambda: (0.0, 0.0))
-        LON_TICKS: np.ndarray = field(default_factory=lambda: np.array([]))
-        LAT_TICKS: np.ndarray = field(default_factory=lambda: np.array([]))
-
-        # Slip rate configuration
-        SLIP_RATE_MIN: float = 0.0
-        SLIP_RATE_MAX: float = 0.0
-
-        # Land appearance
-        LAND_COLOR: str = "lightgray"
-        LAND_LINEWIDTH: float = 0.5
-        LAND_ZORDER: int = 0
-
-        # Key/legend rectangle
-        KEY_RECTANGLE_ANCHOR: np.ndarray = field(
-            default_factory=lambda: np.array([0.0, 0.0])
-        )
-        KEY_RECTANGLE_WIDTH: float = 3.0
-        KEY_RECTANGLE_HEIGHT: float = 1.55
-
-        # Key arrow configuration
-        KEY_ARROW_LON: float = 0.0
-        KEY_ARROW_LAT: float = 0.0
-        KEY_ARROW_MAGNITUDE: float = 0.0
-        KEY_ARROW_TEXT: str = ""
-        KEY_ARROW_COLOR: str = "k"
-
-        # Key background
-        KEY_BACKGROUND_COLOR: str = "white"
-        KEY_LINEWIDTH: float = 1.0
-        KEY_EDGECOLOR: str = "k"
-
-        # Arrow magnitude and appearance
-        ARROW_MAGNITUDE_MIN: float = 0.0
-        ARROW_MAGNITUDE_MAX: float = 0.0
-        ARROW_COLORMAP: Any = None
-        ARROW_SCALE: float = 0.0
-        ARROW_WIDTH: float = 0.0025
-        ARROW_LINEWIDTH: float = 0.5
-        ARROW_EDGECOLOR: str = "k"
-
-        # Segment lines
-        SEGMENT_LINE_WIDTH_OUTER: float = 2.0
-        SEGMENT_LINE_WIDTH_INNER: float = 1.0
-        SEGMENT_LINE_COLOR_OUTER: str = "k"
-        SEGMENT_LINE_COLOR_INNER: str = "w"
-
-        # Coastlines
-        coastlon: np.ndarray = field(default_factory=lambda: np.array([]))
-        coastlat: np.ndarray = field(default_factory=lambda: np.array([]))
-
-    # p = addict.Dict()
     p = PlotParams()
     p.FIGSIZE_VECTORS = (12, 6)
     p.FONTSIZE = 16
@@ -1027,33 +1028,33 @@ def get_default_plotting_class(config, estimation, station):
     p.LAT_TICKS = np.linspace(config.lat_range[0], config.lat_range[1], 3)
     p.SLIP_RATE_MIN = -slip_rate_scale
     p.SLIP_RATE_MAX = slip_rate_scale
-    p.LAND_COLOR = "lightgray"
-    p.LAND_LINEWIDTH = 0.5
-    p.LAND_ZORDER = 0
-    p.KEY_RECTANGLE_ANCHOR = np.array([0, -90])
-    p.KEY_RECTANGLE_WIDTH = 3.0
-    p.KEY_RECTANGLE_HEIGHT = 1.55
-    p.KEY_ARROW_LON = np.mean(config.lon_range)
-    p.KEY_ARROW_LAT = np.min(config.lat_range) + 0.05 * (
-        config.lat_range[1] - config.lat_range[0]
-    )
-    p.KEY_ARROW_MAGNITUDE = vel_scale
-    p.KEY_ARROW_TEXT = f"{vel_scale:d} mm/yr"
-    p.KEY_ARROW_COLOR = "k"
-    p.KEY_BACKGROUND_COLOR = "white"
-    p.KEY_LINEWIDTH = 1.0
-    p.KEY_EDGECOLOR = "k"
-    p.ARROW_MAGNITUDE_MIN = 0.0
-    p.ARROW_MAGNITUDE_MAX = 0.35 * vel_scale
-    p.ARROW_COLORMAP = cm.plasma  # type: ignore
-    p.ARROW_SCALE = vel_scale
-    p.ARROW_WIDTH = 0.0025
-    p.ARROW_LINEWIDTH = 0.5
-    p.ARROW_EDGECOLOR = "k"
-    p.SEGMENT_LINE_WIDTH_OUTER = 2.0
-    p.SEGMENT_LINE_WIDTH_INNER = 1.0
-    p.SEGMENT_LINE_COLOR_OUTER = "k"
-    p.SEGMENT_LINE_COLOR_INNER = "w"
+    # p.LAND_COLOR = "lightgray"
+    # p.LAND_LINEWIDTH = 0.5
+    # p.LAND_ZORDER = 0
+    # p.KEY_RECTANGLE_ANCHOR = np.array([0, -90])
+    # p.KEY_RECTANGLE_WIDTH = 3.0
+    # p.KEY_RECTANGLE_HEIGHT = 1.55
+    # p.KEY_ARROW_LON = np.mean(config.lon_range)
+    # p.KEY_ARROW_LAT = np.min(config.lat_range) + 0.05 * (
+    #     config.lat_range[1] - config.lat_range[0]
+    # )
+    # p.KEY_ARROW_MAGNITUDE = vel_scale
+    # p.KEY_ARROW_TEXT = f"{vel_scale:d} mm/yr"
+    # p.KEY_ARROW_COLOR = "k"
+    # p.KEY_BACKGROUND_COLOR = "white"
+    # p.KEY_LINEWIDTH = 1.0
+    # p.KEY_EDGECOLOR = "k"
+    # p.ARROW_MAGNITUDE_MIN = 0.0
+    # p.ARROW_MAGNITUDE_MAX = 0.35 * vel_scale
+    # p.ARROW_COLORMAP = cm.plasma  # type: ignore
+    # p.ARROW_SCALE = vel_scale
+    # p.ARROW_WIDTH = 0.0025
+    # p.ARROW_LINEWIDTH = 0.5
+    # p.ARROW_EDGECOLOR = "k"
+    # p.SEGMENT_LINE_WIDTH_OUTER = 2.0
+    # p.SEGMENT_LINE_WIDTH_INNER = 1.0
+    # p.SEGMENT_LINE_COLOR_OUTER = "k"
+    # p.SEGMENT_LINE_COLOR_INNER = "w"
 
     # Read coastlines and trim to within map boundaries
     WORLD_BOUNDARIES = scipy.io.loadmat("WorldHiVectors.mat")
