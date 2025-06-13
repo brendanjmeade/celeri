@@ -1,23 +1,19 @@
 #!/usr/bin/env python3
 # %%
 
-# TODO: addict is only used for the final plotting and can be removed here when it's stripped out of celeri.get_default_plotting_dict 
-import addict
-import celeri
+# TODO: addict is only used for the final plotting and can be removed here when it's stripped out of celeri.get_default_plotting_dict
 import argparse
 import json
 import os
-import copy
-import sys
-import numpy as np
-from importlib import reload
 from dataclasses import asdict
 
-from celeri.celeri_util import sph2cart, cart2sph
 import gmsh
-import meshio
-
+import numpy as np
 import pyproj
+
+import celeri
+from celeri.celeri_util import cart2sph, sph2cart
+
 # Global constants
 GEOID = pyproj.Geod(ellps="WGS84")
 KM2M = 1.0e3
@@ -32,13 +28,20 @@ def main():
         type=str,
         help="Name of config file.",
     )
-    parser.add_argument("-el", "--el_length", nargs='*', default=["5"], help="Element length (1 value for constant, 2 for top, bottom)", required=False)
+    parser.add_argument(
+        "-el",
+        "--el_length",
+        nargs="*",
+        default=["5"],
+        help="Element length (1 value for constant, 2 for top, bottom)",
+        required=False,
+    )
     args = dict(vars(parser.parse_args()))
-    
+
     config = celeri.config.get_config(args["config_file_name"])
-    logger = celeri.celeri_util.get_logger(config)
+    celeri.celeri_util.get_logger(config)
     segment, block, meshes, station, mogi, sar = celeri.read_data(config)
-    
+
     # Update mesh_parameters list
     with open(config.mesh_parameters_file_name) as f:
         mesh_param = json.load(f)
@@ -49,7 +52,9 @@ def main():
     n_meshes = len(meshes)  # Number of preexisting meshes
     station = celeri.model.process_station(station, config)
     segment = celeri.model.process_segment(segment, config, meshes)
-    closure, block = celeri.model.assign_block_labels(segment, station, block, mogi, sar)
+    closure, block = celeri.model.assign_block_labels(
+        segment, station, block, mogi, sar
+    )
     # Returning a copy of the closure class lets us access data within it
     thisclosure = closure
 
@@ -58,7 +63,9 @@ def main():
     # Get indices/coordinates of segments with ribbon_mesh flag
     seg_mesh_idx = np.where(segment.create_ribbon_mesh > 0)[0]
     # Unique indices of meshes to be created
-    unique_mesh_idx, unique_mesh_idx_loc = np.unique(segment.create_ribbon_mesh[seg_mesh_idx], return_index=True)
+    unique_mesh_idx, unique_mesh_idx_loc = np.unique(
+        segment.create_ribbon_mesh[seg_mesh_idx], return_index=True
+    )
 
     # Break if no segments need meshing
     if len(seg_mesh_idx) == 0:
@@ -101,7 +108,9 @@ def main():
         # Loop through unique meshes and find indices of ordered coordinates
         for i in range(len(unique_mesh_idx)):
             # Find the segments associated with this mesh
-            this_seg_mesh_idx = seg_mesh_idx[segment.create_ribbon_mesh[seg_mesh_idx] == unique_mesh_idx[i]]
+            this_seg_mesh_idx = seg_mesh_idx[
+                segment.create_ribbon_mesh[seg_mesh_idx] == unique_mesh_idx[i]
+            ]
             # Get the ordered coordinates from the closure array, using the first block label
 
             # Concatenated endpoint arrays
@@ -161,8 +170,9 @@ def main():
             # Top coordinates are ordered block coordinates with zero depths appended
             top_coords = np.hstack((ordered_coords, np.zeros((len(ordered_coords), 1))))
             # Use top and bottom coordinates to make a mesh
-            filename = mesh_dir + "/" + seg_file_stem + "_segmesh" + str(unique_mesh_idx[i])
-            
+            filename = (
+                mesh_dir + "/" + seg_file_stem + "_segmesh" + str(unique_mesh_idx[i])
+            )
 
             # Combined coordinates making a continuous perimeter loop
             all_coords = np.vstack((top_coords, np.flipud(bot_coords)))
@@ -170,15 +180,15 @@ def main():
             # Number of geometric objects
             n_coords = np.shape(all_coords)[0]
             n_surf = int((n_coords - 2) / 2)
-            n_lines = int(4 + (n_surf - 1) * 3)
+            int(4 + (n_surf - 1) * 3)
             el_length = [float(i) for i in args["el_length"]]
             if len(el_length) == 2:
-                el_length_bot = el_length[1]*np.ones(int(n_coords/2))
-                el_length_top = el_length[0]*np.ones(int(n_coords/2))
+                el_length_bot = el_length[1] * np.ones(int(n_coords / 2))
+                el_length_top = el_length[0] * np.ones(int(n_coords / 2))
                 all_el_length = np.hstack((el_length_top, el_length_bot))
             else:
-                all_el_length = el_length[0]*np.ones(int(n_coords))
-            
+                all_el_length = el_length[0] * np.ones(int(n_coords))
+
             # Convert to Cartesian coordinates
             cx, cy, cz = sph2cart(
                 all_coords[:, 0], all_coords[:, 1], 6371 - all_coords[:, 2]
@@ -205,7 +215,9 @@ def main():
             for m in range(n_surf - 1):
                 gmsh.model.geo.addCurveLoop([m, -(j + 2 + m), j - m, j + 1 + m], m + 1)
             # Last
-            gmsh.model.geo.addCurveLoop([n_surf - 1, n_surf, n_surf + 1, j + 2 + k], m + 2)
+            gmsh.model.geo.addCurveLoop(
+                [n_surf - 1, n_surf, n_surf + 1, j + 2 + k], m + 2
+            )
             # Define surfaces
             for m in range(n_surf):
                 gmsh.model.geo.addSurfaceFilling([m + 1], m + 1)
@@ -246,10 +258,14 @@ def main():
 
             # Print status
             print(
-                "Segments " + np.array2string(this_seg_mesh_idx) + " meshed as " + filename + ".msh"
+                "Segments "
+                + np.array2string(this_seg_mesh_idx)
+                + " meshed as "
+                + filename
+                + ".msh"
             )
 
-    # Updating mesh parameters and config 
+    # Updating mesh parameters and config
 
     # Establish default mesh parameters
     mesh_default = celeri.mesh.MeshConfig()
@@ -279,18 +295,18 @@ def main():
 
     # Write updated config json
     new_config_file_name = (
-        os.path.splitext(os.path.normpath(args["config_file_name"]))[0] + "_segmesh.json"
+        os.path.splitext(os.path.normpath(args["config_file_name"]))[0]
+        + "_segmesh.json"
     )
     # Reference new segment file, with mesh options set to reflect new meshes
-    setattr(config, "segment_file_name", new_segment_file_name)
+    config.segment_file_name = new_segment_file_name
     # config["segment_file_name"] = new_segment_file_name
     # Reference new mesh parameter file, including newly created meshes
-    setattr(config, "mesh_parameters_file_name", new_mesh_param_name)
-    # Set elastic kernel reuse to 0, because we'll need to recalculate 
-    setattr(config, "reuse_elastic", 0)
+    config.mesh_parameters_file_name = new_mesh_param_name
+    # Set elastic kernel reuse to 0, because we'll need to recalculate
+    config.reuse_elastic = 0
     with open(new_config_file_name, "w") as cf:
         json.dump(asdict(config), cf, indent=2)
-
 
     # Visualize meshes
 
@@ -299,6 +315,7 @@ def main():
         strike_slip_rates = 0
         dip_slip_rates = 0
         tensile_slip_rates = 0
+
     estimation = BlankEstimation()
     p = celeri.plot.get_default_plotting_dict(config, estimation, station)
 
@@ -306,6 +323,7 @@ def main():
     config = celeri.get_config(new_config_file_name)
     segment, block, meshes, station, mogi, sar = celeri.read_data(config)
     celeri.plot.plot_fault_geometry(p, segment, meshes)
+
 
 if __name__ == "__main__":
     main()
