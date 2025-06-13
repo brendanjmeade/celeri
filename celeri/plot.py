@@ -28,7 +28,6 @@ if typing.TYPE_CHECKING:
     from celeri.solve import Estimation
 
 
-
 @dataclass(kw_only=True)
 class PlotParams:
     """Plot parameters for visualization configuration."""
