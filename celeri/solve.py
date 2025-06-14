@@ -39,7 +39,7 @@ class Estimation:
     model: Model
     operators: Operators
 
-    state_covariance_matrix: np.ndarray | None = None
+    state_covariance_matrix: np.ndarray | None
 
     @property
     def index(self) -> Index:
@@ -394,7 +394,11 @@ class Estimation:
 
 
 def build_estimation(
-    model: Model, operators: Operators, state_vector: np.ndarray
+    model: Model,
+    operators: Operators,
+    state_vector: np.ndarray,
+    *,
+    state_covariance_matrix: np.ndarray | None = None,
 ) -> Estimation:
     """Build the estimation object.
 
@@ -424,6 +428,7 @@ def build_estimation(
         state_vector=state_vector,
         model=model,
         operators=operators,
+        state_covariance_matrix=state_covariance_matrix,
     )
 
 

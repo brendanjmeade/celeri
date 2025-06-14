@@ -91,7 +91,7 @@ class Config:
     unit_sigmas: int = 0
 
     coupling_bounds_total_percentage_satisfied_target: float | None = None
-    coupling_bounds_max_iter: float | None = None
+    coupling_bounds_max_iter: int | None = None
 
     # Only in tsts/global_config.json?
     patch_file_names: list[str] | None = None
