@@ -34,6 +34,10 @@
     "mesh_tde_coupling_upper_ss": ["inf"],
     "mesh_tde_coupling_lower_ds": [0],
     "mesh_tde_coupling_upper_ds": [1],
-    "mesh_tde_modes_bc_weight": 1e1
+    "mesh_tde_modes_bc_weight": 1e1,
+    "qp_mesh_tde_slip_rate_lower_bound_ss": 0.0,
+    "qp_mesh_tde_slip_rate_lower_bound_ds": 0.0,
+    "qp_mesh_tde_slip_rate_upper_bound_ss": 1.0,
+    "qp_mesh_tde_slip_rate_upper_bound_ds": 1.0
   }
 ]
