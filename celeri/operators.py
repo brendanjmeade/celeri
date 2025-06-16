@@ -677,7 +677,6 @@ def _store_tde_slip_rate_constraints(model: Model, operators: _OperatorBuilder):
     and at other elements with indices specified as
     ss_slip_constraint_idx,
     ds_slip_constraint_idx,
-    coupling_constraint_idx
 
     Args:
         meshes (List): list of mesh dictionaries
@@ -712,17 +711,6 @@ def _store_tde_slip_rate_constraints(model: Model, operators: _OperatorBuilder):
                 tde_slip_rate_constraints[start_row:end_row, slip_idx] = np.eye(
                     len(slip_idx)
                 )
-
-        # Process coupling constraints
-        if len(meshes[i].config.coupling_constraint_idx) > 0:
-            meshes[i].coup_idx = get_2component_index(
-                np.asarray(meshes[i].config.coupling_constraint_idx)
-            )
-            start_row = end_row
-            end_row = start_row + 2 * len(meshes[i].config.coupling_constraint_idx)
-            tde_slip_rate_constraints[start_row:end_row, meshes[i].coup_idx] = np.eye(
-                2 * len(meshes[i].config.coupling_constraint_idx)
-            )
 
         # Process slip constraint indices
         slip_constraints = [
