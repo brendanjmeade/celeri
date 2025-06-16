@@ -276,7 +276,6 @@ def plot_input_summary(
         ].config.side_slip_rate_constraint
         is_constrained_tde[meshes[i].config.ss_slip_constraint_idx] = 3
         is_constrained_tde[meshes[i].config.ds_slip_constraint_idx] = 3
-        is_constrained_tde[meshes[i].config.coupling_constraint_idx] = 2
         x_coords = meshes[i].points[:, 0]
         y_coords = meshes[i].points[:, 1]
         vertex_array = np.asarray(meshes[i].verts)
