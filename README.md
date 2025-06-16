@@ -11,7 +11,7 @@
 - Easy IO with standard file types (.csv, .json, .hdf5)
 - Rapid model diffs with [`celeri_report.py`](https://github.com/brendanjmeade/celeri/blob/main/notebooks/celeri_report.py)
 
----
+
 # Getting started
 To set up a development conda environment, install [pixi](https://pixi.sh/) and run the following command in the `celeri` folder.
 ```bash
@@ -36,13 +36,7 @@ To run notebooks from VSCode:
 5. Select the "default" shell.
 6. Run notebook.
 
-
----
-
-If you wish to submit a PR then please run `pre-commit install` to install the [pre-commit](https://pre-commit.com/) hooks.
-
----
-### Folder structure and file locations for applications
+# Folder structure and file locations for applications
 A large number of input files can be involved in a model run.  We assume that a project is arranged using the following folder structure:
 ```
 project_name/
@@ -75,8 +69,11 @@ project_name/
        └── model_station.csv
 ```
 
-### The flow of information through celeri
+# The flow of information through celeri
 ![alt text](https://github.com/user-attachments/assets/d9762dce-eb82-4236-87be-d2b76e2516a4)
+
+# Contributing
+If you wish to submit a PR then please run `pre-commit install` to install the [pre-commit](https://pre-commit.com/) hooks.
 
 # Other earthquake cycle kinematics software
 We think celeri is pretty great, but there are other alternatives worth considering:
