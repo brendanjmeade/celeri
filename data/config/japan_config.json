@@ -38,7 +38,7 @@
   "reuse_elastic": 0,
   "reuse_elastic_file": null,
   "ridge_param": 0,
-  "sar_file_name": None,
+  "sar_file_name": null,
   "save_elastic": 0,
   "save_elastic_file": null,
   "segment_file_name": "../data/segment/japan_segment.csv",
