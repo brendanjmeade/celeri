@@ -1,5 +1,5 @@
 # Quasi-static imaging of earthquake cycle kinematics
-`celeri` is a Python-based package designed to image earthquake cycle activity, including spatial and time varying fault coupling across geometrically complex fault systems at large scales. It features:
+`celeri` is a Python-based package designed to image earthquake cycle activity, including spatial slip deficit/fault coupling across geometrically complex fault systems at large scales. It features:
 
 - Friendly [Jupyter notebook examples](https://github.com/brendanjmeade/celeri/blob/main/notebooks/celeri_dense.ipynb)
 - Web-based model building with [`celeri_ui`](https://brendanjmeade.github.io/celeri_ui/)
@@ -9,7 +9,6 @@
 - Small memory footprint (via distance weighted eigenmodes)
 - Blazingly fast elastic calculations (via [Ben Thompson's](https://github.com/tbenthompson) [C-based triangular dislocation calculations](https://github.com/tbenthompson/cutde))
 - Easy IO with standard file types (.csv, .json, .hdf5)
-- Rapid model diffs with [`celeri_report.py`](https://github.com/brendanjmeade/celeri/blob/main/notebooks/celeri_report.py)
 
 
 # Getting started
