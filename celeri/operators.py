@@ -1824,37 +1824,42 @@ def get_qp_tde_inequality_operator_and_data_vector(
 
 
 def get_qp_all_inequality_operator_and_data_vector(
-    model: Model, operators: Operators, index: Index
+    model: Model, operators: Operators, index: Index, include_tde: bool = True
 ) -> tuple[np.ndarray, np.ndarray]:
     # Create arrays and data vector of correct size for linear inequality constraints
     # Stack TDE slip rate bounds on top of slip rate bounds
     #   TDE slip rate bounds
     #   slip rate bounds
 
-    # Get QP TDE bounds
-    qp_tde_inequality_matrix, qp_tde_inequality_data_vector = (
-        get_qp_tde_inequality_operator_and_data_vector(model, operators, index)
-    )
-
     # Get QP slip rate bounds
     qp_slip_rate_inequality_matrix, qp_slip_rate_inequality_data_vector = (
         get_qp_slip_rate_inequality_operator_and_data_vector(model, operators, index)
     )
 
-    # NOTE: This effectively doubles the memory requirements for the problem.
-    # I could try creating qp_tde_inequality_matrix as sparse and casting
-    # and to full only at the very end
-    qp_inequality_constraints_matrix = np.vstack(
-        (qp_tde_inequality_matrix, qp_slip_rate_inequality_matrix)
-    )
-
-    # Build data vector for QP inequality constraints
-    qp_inequality_constraints_data_vector = np.hstack(
-        (
-            qp_tde_inequality_data_vector,
-            qp_slip_rate_inequality_data_vector,
+    if include_tde:
+        # Get QP TDE bounds
+        qp_tde_inequality_matrix, qp_tde_inequality_data_vector = (
+            get_qp_tde_inequality_operator_and_data_vector(model, operators, index)
         )
-    )
+
+        # NOTE: This effectively doubles the memory requirements for the problem.
+        # I could try creating qp_tde_inequality_matrix as sparse and casting
+        # and to full only at the very end
+        qp_inequality_constraints_matrix = np.vstack(
+            (qp_tde_inequality_matrix, qp_slip_rate_inequality_matrix)
+        )
+
+        # Build data vector for QP inequality constraints
+        qp_inequality_constraints_data_vector = np.hstack(
+            (
+                qp_tde_inequality_data_vector,
+                qp_slip_rate_inequality_data_vector,
+            )
+        )
+    else:
+        # If TDE is not included, just use the slip rate inequality constraints
+        qp_inequality_constraints_matrix = qp_slip_rate_inequality_matrix
+        qp_inequality_constraints_data_vector = qp_slip_rate_inequality_data_vector
 
     return qp_inequality_constraints_matrix, qp_inequality_constraints_data_vector
 
