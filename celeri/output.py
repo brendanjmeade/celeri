@@ -104,6 +104,7 @@ def write_output(
                 "lon3": meshes[i].lon3,
                 "lat3": meshes[i].lat3,
                 "dep3": meshes[i].dep3,
+                "mesh_idx": i * np.ones_like(meshes[i].lon1).astype(int),
             }
             this_mesh_output = pd.DataFrame(this_mesh_output)
             # mesh_outputs = mesh_outputs.append(this_mesh_output)
