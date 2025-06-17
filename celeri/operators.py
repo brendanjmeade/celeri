@@ -677,7 +677,6 @@ def _store_tde_slip_rate_constraints(model: Model, operators: _OperatorBuilder):
     and at other elements with indices specified as
     ss_slip_constraint_idx,
     ds_slip_constraint_idx,
-    coupling_constraint_idx
 
     Args:
         meshes (List): list of mesh dictionaries
@@ -712,17 +711,6 @@ def _store_tde_slip_rate_constraints(model: Model, operators: _OperatorBuilder):
                 tde_slip_rate_constraints[start_row:end_row, slip_idx] = np.eye(
                     len(slip_idx)
                 )
-
-        # Process coupling constraints
-        if len(meshes[i].config.coupling_constraint_idx) > 0:
-            meshes[i].coup_idx = get_2component_index(
-                np.asarray(meshes[i].config.coupling_constraint_idx)
-            )
-            start_row = end_row
-            end_row = start_row + 2 * len(meshes[i].config.coupling_constraint_idx)
-            tde_slip_rate_constraints[start_row:end_row, meshes[i].coup_idx] = np.eye(
-                2 * len(meshes[i].config.coupling_constraint_idx)
-            )
 
         # Process slip constraint indices
         slip_constraints = [
@@ -1784,37 +1772,42 @@ def get_qp_tde_inequality_operator_and_data_vector(
 
 
 def get_qp_all_inequality_operator_and_data_vector(
-    model: Model, operators: Operators, index: Index
+    model: Model, operators: Operators, index: Index, include_tde: bool = True
 ) -> tuple[np.ndarray, np.ndarray]:
     # Create arrays and data vector of correct size for linear inequality constraints
     # Stack TDE slip rate bounds on top of slip rate bounds
     #   TDE slip rate bounds
     #   slip rate bounds
 
-    # Get QP TDE bounds
-    qp_tde_inequality_matrix, qp_tde_inequality_data_vector = (
-        get_qp_tde_inequality_operator_and_data_vector(model, operators, index)
-    )
-
     # Get QP slip rate bounds
     qp_slip_rate_inequality_matrix, qp_slip_rate_inequality_data_vector = (
         get_qp_slip_rate_inequality_operator_and_data_vector(model, operators, index)
     )
 
-    # NOTE: This effectively doubles the memory requirements for the problem.
-    # I could try creating qp_tde_inequality_matrix as sparse and casting
-    # and to full only at the very end
-    qp_inequality_constraints_matrix = np.vstack(
-        (qp_tde_inequality_matrix, qp_slip_rate_inequality_matrix)
-    )
-
-    # Build data vector for QP inequality constraints
-    qp_inequality_constraints_data_vector = np.hstack(
-        (
-            qp_tde_inequality_data_vector,
-            qp_slip_rate_inequality_data_vector,
+    if include_tde:
+        # Get QP TDE bounds
+        qp_tde_inequality_matrix, qp_tde_inequality_data_vector = (
+            get_qp_tde_inequality_operator_and_data_vector(model, operators, index)
         )
-    )
+
+        # NOTE: This effectively doubles the memory requirements for the problem.
+        # I could try creating qp_tde_inequality_matrix as sparse and casting
+        # and to full only at the very end
+        qp_inequality_constraints_matrix = np.vstack(
+            (qp_tde_inequality_matrix, qp_slip_rate_inequality_matrix)
+        )
+
+        # Build data vector for QP inequality constraints
+        qp_inequality_constraints_data_vector = np.hstack(
+            (
+                qp_tde_inequality_data_vector,
+                qp_slip_rate_inequality_data_vector,
+            )
+        )
+    else:
+        # If TDE is not included, just use the slip rate inequality constraints
+        qp_inequality_constraints_matrix = qp_slip_rate_inequality_matrix
+        qp_inequality_constraints_data_vector = qp_slip_rate_inequality_data_vector
 
     return qp_inequality_constraints_matrix, qp_inequality_constraints_data_vector
 

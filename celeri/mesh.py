@@ -39,10 +39,6 @@ class MeshConfig:
     ds_slip_constraint_rate: float = 0.0
     ds_slip_constraint_sig: list = field(default_factory=list)
     ds_slip_constraint_weight: list = field(default_factory=list)
-    coupling_constraint_idx: list = field(default_factory=list)
-    coupling_constraint_frac: list = field(default_factory=lambda: [1.0])
-    coupling_constraint_sigma: list = field(default_factory=lambda: [1.0])
-    coupling_constraint_weight: list = field(default_factory=lambda: [1e0])
     mesh_tde_bound: list = field(default_factory=lambda: [1])
     mesh_tde_slip_rate_bound_lower_ss: list = field(default_factory=lambda: ["-inf"])
     mesh_tde_slip_rate_bound_upper_ss: list = field(default_factory=lambda: ["inf"])
@@ -469,3 +465,8 @@ class Mesh:
 
         # Convert dict to Mesh dataclass
         return cls(**mesh)
+
+    @property
+    def name(self) -> str:
+        """Return the name of the mesh configuration."""
+        return Path(self.file_name).stem

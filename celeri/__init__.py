@@ -51,9 +51,15 @@ from celeri.operators import (
     get_tde_to_velocities_single_mesh,
     get_weighting_vector_single_mesh_for_col_norms,
 )
+from celeri.optimize_sqp import (
+    plot_coupling,
+    plot_coupling_evolution,
+    plot_iterative_convergence,
+    solve_sqp,
+)
 from celeri.output import write_output, write_output_supplemental
 from celeri.plot import (
-    get_default_plotting_dict,
+    get_default_plotting_options,
     plot_common_elements,
     plot_estimation_summary,
     plot_fault_geometry,
@@ -110,7 +116,7 @@ __all__ = [
     "get_3component_index",
     "get_block_strain_rate_to_velocities_partials",
     "get_config",
-    "get_default_plotting_dict",
+    "get_default_plotting_options",
     "get_eigenvalues_and_eigenvectors",
     "get_elastic_operator_single_mesh",
     "get_full_dense_operator",
@@ -144,9 +150,12 @@ __all__ = [
     "merge_geodetic_data",
     "parse_args",
     "plot_common_elements",
+    "plot_coupling",
+    "plot_coupling_evolution",
     "plot_estimation_summary",
     "plot_fault_geometry",
     "plot_input_summary",
+    "plot_iterative_convergence",
     "plot_matrix_abs_log",
     "plot_mesh_mode",
     "plot_meshes",
@@ -164,6 +173,7 @@ __all__ = [
     "process_station",
     "read_data",
     "read_run",
+    "solve_sqp",
     "station_row_keep",
     "wrap2360",
     "write_output",

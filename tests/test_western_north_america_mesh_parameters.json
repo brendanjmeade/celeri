@@ -20,10 +20,6 @@
     "ds_slip_constraint_rate": 0.0,
     "ds_slip_constraint_sig": [],
     "ds_slip_constraint_weight": [],
-    "coupling_constraint_idx": [2],
-    "coupling_constraint_frac": [1],
-    "coupling_constraint_sigma": [0.1],
-    "coupling_constraint_weight": [1e2],
     "mesh_tde_bound": [1],
     "mesh_tde_slip_rate_bound_lower_ss": ["-inf"],
     "mesh_tde_slip_rate_bound_upper_ss": ["inf"],
@@ -34,6 +30,10 @@
     "mesh_tde_coupling_upper_ss": ["inf"],
     "mesh_tde_coupling_lower_ds": [0],
     "mesh_tde_coupling_upper_ds": [1],
-    "mesh_tde_modes_bc_weight": 1e1
+    "mesh_tde_modes_bc_weight": 1e1,
+    "qp_mesh_tde_slip_rate_lower_bound_ss": 0.0,
+    "qp_mesh_tde_slip_rate_lower_bound_ds": 0.0,
+    "qp_mesh_tde_slip_rate_upper_bound_ss": 1.0,
+    "qp_mesh_tde_slip_rate_upper_bound_ds": 1.0
   }
 ]
