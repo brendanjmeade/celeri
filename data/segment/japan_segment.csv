@@ -1,4 +1,4 @@
-name,lon1,lat1,lon2,lat2,dip,rake,rakeSig,rakeTog,locking_depth,locking_depth_flag,ss_rate,ss_rate_sig,ss_rate_flag,ds_rate,ds_rate_sig,ds_rate_flag,ts_rate,ts_rate_sig,ts_rate_flag,patch_file_name,patch_flag,ss_rate_bound_flag,ss_rate_bound_min,ss_rate_bound_max,ds_rate_bound_flag,ds_rate_bound_min,ds_rate_bound_max,ts_rate_bound_flag,ts_rate_bound_min,ts_rate_bound_max
+name,lon1,lat1,lon2,lat2,dip,rake,rake_sig,rake_flag,locking_depth,locking_depth_flag,ss_rate,ss_rate_sig,ss_rate_flag,ds_rate,ds_rate_sig,ds_rate_flag,ts_rate,ts_rate_sig,ts_rate_flag,patch_file_name,patch_flag,ss_rate_bound_flag,ss_rate_bound_min,ss_rate_bound_max,ds_rate_bound_flag,ds_rate_bound_min,ds_rate_bound_max,ts_rate_bound_flag,ts_rate_bound_min,ts_rate_bound_max
 "2sw_hokka                   ",140.401,42.526,140.272,42.795,45,0,0,0,15,0,0,1,0,1,1,0,0,1,0,-1,0,0,-1.0,1.0,0,-1.0,1.0,0,-1.0,1.0
 "2sw_hokkba                  ",140.272,42.795,140.076,43.273,45,0,0,0,15,0,0,1,0,1,1,0,0,1,0,-1,0,0,-1.0,1.0,0,-1.0,1.0,0,-1.0,1.0
 "aleun                       ",197.495,53.352,204.236,54.617,90,0,0,0,15,0,0,1,0,0,1,0,0,1,0,-1,0,0,-1.0,1.0,0,-1.0,1.0,0,-1.0,1.0
