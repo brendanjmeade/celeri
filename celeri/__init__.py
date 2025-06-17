@@ -59,7 +59,7 @@ from celeri.optimize_sqp import (
 )
 from celeri.output import write_output, write_output_supplemental
 from celeri.plot import (
-    get_default_plotting_dict,
+    get_default_plotting_options,
     plot_common_elements,
     plot_estimation_summary,
     plot_fault_geometry,
@@ -116,7 +116,7 @@ __all__ = [
     "get_3component_index",
     "get_block_strain_rate_to_velocities_partials",
     "get_config",
-    "get_default_plotting_dict",
+    "get_default_plotting_options",
     "get_eigenvalues_and_eigenvectors",
     "get_elastic_operator_single_mesh",
     "get_full_dense_operator",
