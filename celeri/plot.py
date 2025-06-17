@@ -947,7 +947,7 @@ def plot_rotation_components(closure, station):
     plt.show()
 
 
-def get_default_plotting_class(config, estimation, station):
+def get_default_plotting_options(config, estimation, station):
     """Parameters
     ----------
     estimation : dictionary
