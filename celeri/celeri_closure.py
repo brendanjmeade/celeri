@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import scipy.spatial
 from spherical_geometry.great_circle_arc import intersection
 from spherical_geometry.polygon import SingleSphericalPolygon
@@ -171,7 +172,7 @@ def find_longitude_interval(lon):
     return final_interval, inverse
 
 
-@dataclass()
+@dataclass
 class Polygon:
     # The half edges on the boundary, in rightwards order.
     edge_idxs: np.ndarray
@@ -183,23 +184,23 @@ class Polygon:
     vertices: np.ndarray
 
     # The actual vertices in unit sphere x,y,z coordinates
-    vertices_xyz: np.ndarray = None
+    vertices_xyz: np.ndarray | None = None
 
     # an arbitrary point that is interior to the polygon
 
-    interior_xyz: np.ndarray = None
+    interior_xyz: np.ndarray | None = None
 
     # A bounding box defining the minimum and maximum lon/lat used for
     # a fast shortcircuiting of the in-polygon test.
-    bounds: BoundingBox = None
+    bounds: BoundingBox | None = None
 
     # The spherical_geometry has some useful tools so we store a reference to
     # a spherical_geometry.polygon.SingleSphericalPolygon in case we need
     # those methods.
-    _sg_polygon: SingleSphericalPolygon = None
+    _sg_polygon: SingleSphericalPolygon | None = None
 
     # Angle in steradians. A full sphere is 4*pi, half sphere is 2*pi.
-    area_steradians: float = None
+    area_steradians: float | None = None
 
     def __init__(self, edge_idxs, vertex_idxs, vs):
         self.edge_idxs = edge_idxs
@@ -422,6 +423,16 @@ class BlockClosureResult:
         for i in range(self.n_polygons()):
             block_assignments[self.polygons[i].contains_point(lon, lat)] = i
         return block_assignments
+
+    @classmethod
+    def from_segments(cls, segment: pd.DataFrame):
+        np_segments = np.zeros((len(segment), 2, 2))
+        np_segments[:, 0, 0] = segment.lon1.to_numpy()
+        np_segments[:, 1, 0] = segment.lon2.to_numpy()
+        np_segments[:, 0, 1] = segment.lat1.to_numpy()
+        np_segments[:, 1, 1] = segment.lat2.to_numpy()
+
+        return run_block_closure(np_segments)
 
 
 def run_block_closure(np_segments):

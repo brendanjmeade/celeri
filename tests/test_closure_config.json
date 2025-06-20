@@ -19,7 +19,7 @@
   "mesh_parameters_file_name": "./tests/test_closure_mesh_parameters.json",
   "n_iterations": 1,
   "operators_folder": "../data/operators/",
-  "patch_file_names": "./mesh/slab_contours_GCS_WGS84-trench_LL.msh",
+  "patch_file_names": ["./mesh/slab_contours_GCS_WGS84-trench_LL.msh"],
   "pickle_save": 0,
   "plot_estimation_summary": 1,
   "plot_input_summary": 1,

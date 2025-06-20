@@ -1,6 +1,7 @@
 import os
 from dataclasses import dataclass, field
 from functools import cached_property
+from pathlib import Path
 from typing import Any
 
 import addict
@@ -31,6 +32,7 @@ from celeri.model import (
     Model,
     merge_geodetic_data,
 )
+from celeri.output import dataclass_from_disk, dataclass_to_disk
 from celeri.spatial import (
     get_block_motion_constraint_partials,
     get_block_strain_rate_to_velocities_partials,
@@ -79,6 +81,17 @@ class TdeIndex:
     def n_tde_constraints_total(self):
         return self.n_tde_constraints.sum()
 
+    def to_disk(self, output_dir: str | Path):
+        """Save TDE operators to disk."""
+        path = Path(output_dir) / "tde_index"
+        dataclass_to_disk(self, path)
+
+    @classmethod
+    def from_disk(cls, input_dir: str | Path) -> "TdeIndex":
+        """Load TDE operators from disk."""
+        path = Path(input_dir) / "tde_index"
+        return dataclass_from_disk(cls, path)
+
 
 @dataclass
 class EigenIndex:
@@ -104,6 +117,17 @@ class EigenIndex:
     @property
     def n_eigen_total(self) -> int:
         return self.n_modes_mesh.sum()
+
+    def to_disk(self, output_dir: str | Path):
+        """Save TDE operators to disk."""
+        path = Path(output_dir)
+        dataclass_to_disk(self, path)
+
+    @classmethod
+    def from_disk(cls, input_dir: str | Path) -> "EigenIndex":
+        """Load TDE operators from disk."""
+        path = Path(input_dir)
+        return dataclass_from_disk(cls, path)
 
 
 @dataclass
@@ -197,6 +221,34 @@ class Index:
             return 0
         return self.tde.n_tde_constraints_total
 
+    def to_disk(self, output_dir: str | Path):
+        """Save TDE operators to disk."""
+        path = Path(output_dir)
+
+        if self.tde is not None:
+            self.tde.to_disk(path / "tde")
+        if self.eigen is not None:
+            self.eigen.to_disk(path / "eigen")
+        dataclass_to_disk(self, path, skip={"tde", "eigen"})
+
+    @classmethod
+    def from_disk(cls, input_dir: str | Path) -> "Index":
+        """Load TDE operators from disk."""
+        path = Path(input_dir)
+
+        tde_path = path / "tde"
+        if tde_path.exists():
+            tde = TdeIndex.from_disk(tde_path)
+        else:
+            tde = None
+        eigen_path = path / "eigen"
+        if eigen_path.exists():
+            eigen = EigenIndex.from_disk(eigen_path)
+        else:
+            eigen = None
+
+        return dataclass_from_disk(cls, path, extra={"tde": tde, "eigen": eigen})
+
 
 # TODO: Figure out what the types should be
 @dataclass
@@ -218,6 +270,17 @@ class TdeOperators:
     tde_to_velocities: ByMesh[np.ndarray]
     tde_slip_rate_constraints: ByMesh[np.ndarray]
 
+    def to_disk(self, output_dir: str | Path):
+        """Save TDE operators to disk."""
+        path = Path(output_dir)
+        dataclass_to_disk(self, path)
+
+    @classmethod
+    def from_disk(cls, input_dir: str | Path) -> "TdeOperators":
+        """Load TDE operators from disk."""
+        path = Path(input_dir)
+        return dataclass_from_disk(cls, path)
+
 
 @dataclass
 class EigenOperators:
@@ -225,6 +288,17 @@ class EigenOperators:
     eigen_to_velocities: ByMesh[np.ndarray]
     eigen_to_tde_bcs: ByMesh[np.ndarray]
     linear_gaussian_smoothing: ByMesh[np.ndarray]
+
+    def to_disk(self, output_dir: str | Path):
+        """Save TDE operators to disk."""
+        path = Path(output_dir)
+        dataclass_to_disk(self, path)
+
+    @classmethod
+    def from_disk(cls, input_dir: str | Path) -> "EigenOperators":
+        """Load TDE operators from disk."""
+        path = Path(input_dir)
+        return dataclass_from_disk(cls, path)
 
 
 @dataclass
@@ -274,6 +348,71 @@ class Operators:
         if self.eigen is not None:
             return _get_weighting_vector_eigen(self.model, self.index)
         return _get_weighting_vector(self.model, self.index)
+
+    def to_disk(self, output_dir: str | Path):
+        """Save TDE operators to disk."""
+        path = Path(output_dir)
+
+        if self.tde is not None:
+            self.tde.to_disk(path / "tde")
+        if self.eigen is not None:
+            self.eigen.to_disk(path / "eigen")
+
+        self.index.to_disk(path / "index")
+        self.model.to_disk(path / "model")
+
+        # Save the smoothing matrix using scipy sparse format
+        for mesh_idx, smoothing_matrix in self.smoothing_matrix.items():
+            matrix_path = path / f"smoothing_matrix_{mesh_idx}.npz"
+            scipy.sparse.save_npz(matrix_path, smoothing_matrix)
+
+        # TODO: We ignore assembly for now. Do we need to save it?
+        skip = {"tde", "eigen", "index", "model", "smoothing_matrix", "assembly"}
+
+        dataclass_to_disk(self, path, skip=skip)
+
+    @classmethod
+    def from_disk(cls, input_dir: str | Path) -> "Operators":
+        """Load TDE operators from disk."""
+        path = Path(input_dir)
+
+        tde_path = path / "tde"
+        if tde_path.exists():
+            tde = TdeOperators.from_disk(tde_path)
+        else:
+            tde = None
+        eigen_path = path / "eigen"
+        if eigen_path.exists():
+            eigen = EigenOperators.from_disk(eigen_path)
+        else:
+            eigen = None
+
+        index = Index.from_disk(path / "index")
+        model = Model.from_disk(path / "model")
+
+        # Load smoothing matrices
+        smoothing_matrix = {}
+        for mesh_idx in range(index.n_meshes):
+            matrix_path = path / f"smoothing_matrix_{mesh_idx}.npz"
+            if matrix_path.exists():
+                smoothing_matrix[mesh_idx] = scipy.sparse.load_npz(matrix_path)
+            else:
+                logger.warning(
+                    f"Smoothing matrix for mesh {mesh_idx} not found at {matrix_path}"
+                )
+
+        extra = {
+            "tde": tde,
+            "eigen": eigen,
+            "index": index,
+            "model": model,
+            "smoothing_matrix": smoothing_matrix,
+            "assembly": Assembly(
+                data=addict.Dict(), sigma=addict.Dict(), index=addict.Dict()
+            ),
+        }
+
+        return dataclass_from_disk(cls, path, extra=extra)
 
 
 @dataclass
@@ -776,14 +915,16 @@ def get_rotation_to_tri_slip_rate_partials(model: Model, mesh_idx: int) -> np.nd
     tri_slip_rate_partials = np.zeros((3 * model.meshes[mesh_idx].n_tde, 3 * n_blocks))
 
     # Generate strikes and dips for elements using same sign convention as segments
-    # Element strikes are 0–180
-    # Dip direction is 0-90 for E dips, 90–180 for W dips
+    # Element strikes are 0-180
+    # Dip direction is 0-90 for E dips, 90-180 for W dips
     ew_switch = np.zeros_like(model.meshes[mesh_idx].strike)
     ns_switch = np.zeros_like(model.meshes[mesh_idx].strike)
     tristrike = np.array(model.meshes[mesh_idx].strike)
     tristrike[model.meshes[mesh_idx].strike > 180] -= 180
     tridip = np.array(model.meshes[mesh_idx].dip)
-    tridip[model.meshes[mesh_idx].strike > 180] = 180 - tridip[model.meshes[mesh_idx].strike > 180]
+    tridip[model.meshes[mesh_idx].strike > 180] = (
+        180 - tridip[model.meshes[mesh_idx].strike > 180]
+    )
     # Find subset of segments that are replaced by this mesh
     seg_replace_idx = np.where(
         (model.segment.patch_flag != 0) & (model.segment.patch_file_name == mesh_idx)
@@ -791,7 +932,12 @@ def get_rotation_to_tri_slip_rate_partials(model: Model, mesh_idx: int) -> np.nd
     # Find closest segment midpoint to each element centroid, using scipy.spatial.cdist
     model.meshes[mesh_idx].closest_segment_idx = seg_replace_idx[0][
         cdist(
-            np.array([model.meshes[mesh_idx].lon_centroid, model.meshes[mesh_idx].lat_centroid]).T,
+            np.array(
+                [
+                    model.meshes[mesh_idx].lon_centroid,
+                    model.meshes[mesh_idx].lat_centroid,
+                ]
+            ).T,
             np.array(
                 [
                     model.segment.mid_lon[seg_replace_idx[0]],
@@ -801,8 +947,12 @@ def get_rotation_to_tri_slip_rate_partials(model: Model, mesh_idx: int) -> np.nd
         ).argmin(axis=1)
     ]
     # Add segment labels to elements
-    model.meshes[mesh_idx].east_labels = np.array(model.segment.east_labels[model.meshes[mesh_idx].closest_segment_idx])
-    model.meshes[mesh_idx].west_labels = np.array(model.segment.west_labels[model.meshes[mesh_idx].closest_segment_idx])
+    model.meshes[mesh_idx].east_labels = np.array(
+        model.segment.east_labels[model.meshes[mesh_idx].closest_segment_idx]
+    )
+    model.meshes[mesh_idx].west_labels = np.array(
+        model.segment.west_labels[model.meshes[mesh_idx].closest_segment_idx]
+    )
 
     # Find rotation partials for each element
     for el_idx in range(model.meshes[mesh_idx].n_tde):
@@ -853,7 +1003,7 @@ def get_rotation_to_tri_slip_rate_partials(model: Model, mesh_idx: int) -> np.nd
         # This correction gives -1 for strikes > 90
         # Equivalent to the if statement in get_rotation_to_slip_rate_partials
         sign_corr = -np.sign(tristrike[el_idx] - 90)
-   
+
         # Project about fault strike
         unit_x_parallel = sign_corr * np.cos(np.deg2rad(90 - tristrike[el_idx]))
         unit_y_parallel = sign_corr * np.sin(np.deg2rad(90 - tristrike[el_idx]))
@@ -900,8 +1050,25 @@ def get_rotation_to_tri_slip_rate_partials(model: Model, mesh_idx: int) -> np.nd
         # Additional sign correction needs to compare TDE strike and corresponding segment strike
         # If they're on different sides of an E-W line, we need to apply a negative sign
         # This effectively flips the east and west labels
-        ns_switch[el_idx] = np.sign(90 - np.abs(tristrike[el_idx] - model.segment.azimuth[model.meshes[mesh_idx].closest_segment_idx[el_idx]]))
-        ew_switch[el_idx] = ns_switch[el_idx]*np.sign(tristrike[el_idx]-90) * np.sign(model.segment.azimuth[model.meshes[mesh_idx].closest_segment_idx[el_idx]] - 90)
+        ns_switch[el_idx] = np.sign(
+            90
+            - np.abs(
+                tristrike[el_idx]
+                - model.segment.azimuth[
+                    model.meshes[mesh_idx].closest_segment_idx[el_idx]
+                ]
+            )
+        )
+        ew_switch[el_idx] = (
+            ns_switch[el_idx]
+            * np.sign(tristrike[el_idx] - 90)
+            * np.sign(
+                model.segment.azimuth[
+                    model.meshes[mesh_idx].closest_segment_idx[el_idx]
+                ]
+                - 90
+            )
+        )
         # ew_switch = 1
         # Insert this element's partials into operator
         tri_slip_rate_partials[
