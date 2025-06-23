@@ -92,7 +92,7 @@ try:
     from importlib.metadata import version
 
     __version__ = version("celeri")
-except Exception:  # noqa: BLE001
+except Exception:
     __version__ = "unknown"
 
 __all__ = [
