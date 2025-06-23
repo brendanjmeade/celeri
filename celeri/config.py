@@ -123,39 +123,36 @@ class Config(BaseModel):
 
 
 def _get_output_path(base: Path) -> Path:
-    """Generate a unique timestamped output path within the base directory.
+    """Generate a unique numbered output path within the base directory.
 
-    This function creates a new path using the current UTC timestamp in ISO 8601 format
-    (YYYY-MM-DDTHH-MM-SSZ). If the path already exists, it adds a numeric suffix
-    to ensure uniqueness.
+    This function creates a new path using an incremental counter format with 10 digits
+    (e.g., 0000000001). It finds the highest existing numbered directory and creates
+    the next one in sequence.
 
     Args:
         base: Base directory path where the output folder should be created
 
     Returns:
-        Path: A unique timestamped path within the base directory
+        Path: A unique numbered path within the base directory
 
     Example:
-        If the base directory is "/path/to/runs", the function might return
-        "/path/to/runs/2023-01-01T12-34-56Z" or "/path/to/runs/2023-01-01T12-34-56Z_1"
-        if the first path already exists.
+        If the base directory is "/path/to/runs" with existing directories "0000000001"
+        and "0000000002", the function would return "/path/to/runs/0000000003".
     """
-    # Format: ISO 8601 in UTC (YYYY-MM-DDTHH:MM:SSZ)
-    timestamp = datetime.datetime.now(datetime.timezone.utc).strftime(
-        "%Y-%m-%dT%H-%M-%SZ"
-    )
-
-    # Create the output path with the timestamp
-    output_path = base / timestamp
-
-    # Ensure the path is unique by adding a suffix if needed
-    suffix = 1
-    original_path = output_path
-    while output_path.exists():
-        output_path = original_path.with_name(f"{original_path.name}_{suffix}")
-        suffix += 1
-
-    return output_path
+    base.mkdir(parents=True, exist_ok=True)
+    names = [path.name for path in base.iterdir()]
+    base_count = max((int(name) for name in names if name.isdigit()), default=0)
+    for count in range(base_count + 1, base_count + 100):
+        path = base / f"{count:010d}"
+        try:
+            path.mkdir(exist_ok=False)
+            return path
+        except FileExistsError:
+            count += 1
+    else:
+        raise RuntimeError(
+            f"Failed to create a unique output path in {base} after 100 attempts."
+        )
 
 
 def get_config(config_file_name) -> Config:
