@@ -981,7 +981,17 @@ def _custom_solve(problem: cp.Problem, solver: str, objective: Objective, **kwar
             )
         _custom_cvxopt_solve(problem, **kwargs)
     else:
-        problem.solve(solver=solver, **kwargs)
+        result = problem.solve(solver=solver, **kwargs)
+        if isinstance(result, str):
+            raise ValueError(
+                f"Solver {solver} returned an error: {result}. "
+                "Check if the problem is well-posed and constraints are feasible."
+            )
+        if not np.isfinite(result):
+            raise ValueError(
+                f"Solver {solver} failed to solve the problem. "
+                "Check if the problem is well-posed and constraints are feasible."
+            )
 
 
 def minimize(

@@ -3,27 +3,27 @@ from __future__ import annotations
 import glob
 import json
 import os
-from dataclasses import dataclass, field
+from pathlib import Path
 
 import numpy as np
+from pydantic import BaseModel, Field
 
 from celeri.mesh import MeshConfig
 
 
-@dataclass
-class Config:
+class Config(BaseModel):
     # Required fields (no defaults)
     base_runs_folder: str
-    block_file_name: str
+    block_file_name: str | Path
     mesh_parameters_file_name: str
     segment_file_name: str
 
     mesh_params: list[MeshConfig]
 
     # Runtime fields (not in JSON)
-    file_name: str
+    file_name: str | Path
     run_name: str
-    output_path: str
+    output_path: str | Path
 
     station_file_name: str | None = None
     mogi_file_name: str | None = None
@@ -67,9 +67,9 @@ class Config:
 
     ridge_param: int = 0
     sar_file_name: str | None = None
-    slip_constraint_weight: int = 100000
-    slip_constraint_weight_max: int = 100000
-    slip_constraint_weight_min: int = 100000
+    slip_constraint_weight: float = 100000
+    slip_constraint_weight_max: float = 100000
+    slip_constraint_weight_min: float = 100000
     slip_constraint_weight_steps: int = 1
     slip_file_names: str | None = None
     smooth_type: int = 1
@@ -83,10 +83,10 @@ class Config:
     strain_method: int = 1
     tri_con_weight: int = 1000000
     tri_depth_tolerance: int = 0
-    tri_edge: list[int] = field(default_factory=lambda: [0, 0, 0])
+    tri_edge: list[int] = Field(default_factory=lambda: [0, 0, 0])
     tri_full_coupling: int = 0
     tri_slip_constraint_type: int = 0
-    tri_slip_sign: list[int] = field(default_factory=lambda: [0, 0])
+    tri_slip_sign: list[int] = Field(default_factory=lambda: [0, 0])
     tri_smooth: float = 0.1
     unit_sigmas: int = 0
 

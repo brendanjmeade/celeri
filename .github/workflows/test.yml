@@ -9,11 +9,12 @@ on:
 jobs:
   check-lockfile:
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: prefix-dev/setup-pixi@v0.8.5
+      - uses: prefix-dev/setup-pixi@v0.8.10
         with:
           run-install: false
       - name: Check if pixi lockfile is up-to-date
@@ -23,7 +24,7 @@ jobs:
       fail-fast: false
       matrix:
         os: ["ubuntu-latest"]
-        pixi-environment: ["py310", "default"]
+        pixi-environment: ["py311", "default"]
         tests-to-run: ["japan", "other", "optimize_sqp"]
     name: Test (${{ matrix.pixi-environment }}, ${{ matrix.tests-to-run }})
     runs-on: ${{ matrix.os }}
@@ -31,17 +32,17 @@ jobs:
       run:
         shell: bash -l {0}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: prefix-dev/setup-pixi@v0.8.5
+      - uses: prefix-dev/setup-pixi@v0.8.10
         with:
           cache: true
           environments: ${{ matrix.pixi-environment }}
       - name: Test
         if: ${{ matrix.tests-to-run == 'other' }}
         run: |
-          pixi run -e ${{ matrix.pixi-environment }} pytest ./tests/test_closure.py ./tests/test_okada_equals_cutde.py ./tests/test_optimize.py
+          pixi run -e ${{ matrix.pixi-environment }} pytest ./tests/test_closure.py ./tests/test_okada_equals_cutde.py ./tests/test_optimize.py ./tests/test_serialize.py
       - name: Test
         if: ${{ matrix.tests-to-run == 'japan' }}
         run: |

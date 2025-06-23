@@ -1,10 +1,12 @@
 # TODO figure out how to distinguish between different solvers
 # Right now we have solve.py and optimize.py. This is a bit
 # confusing.
+from __future__ import annotations
 
 import timeit
 from dataclasses import dataclass
 from functools import cached_property
+from pathlib import Path
 
 import cvxopt
 import numpy as np
@@ -27,27 +29,116 @@ from celeri.operators import (
     rotation_vector_err_to_euler_pole_err,
     rotation_vectors_to_euler_poles,
 )
-from celeri.output import write_output
+from celeri.output import dataclass_from_disk, dataclass_to_disk, write_output
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Estimation:
     data_vector: np.ndarray
     weighting_vector: np.ndarray
     operator: np.ndarray
     state_vector: np.ndarray
-    model: Model
     operators: Operators
 
     state_covariance_matrix: np.ndarray | None
 
     @property
+    def model(self) -> Model:
+        return self.operators.model
+
+    @property
     def index(self) -> Index:
         return self.operators.index
 
-    @property
+    @cached_property
     def station(self) -> pd.DataFrame:
-        return self.model.station
+        station = self.model.station.copy(deep=True)
+        station["model_east_vel"] = self.east_vel
+        station["model_north_vel"] = self.north_vel
+        station["model_east_vel_residual"] = self.east_vel_residual
+        station["model_north_vel_residual"] = self.north_vel_residual
+        station["model_east_vel_rotation"] = self.east_vel_rotation
+        station["model_north_vel_rotation"] = self.north_vel_rotation
+        station["model_east_elastic_segment"] = self.east_vel_elastic_segment
+        station["model_north_elastic_segment"] = self.north_vel_elastic_segment
+        if self.east_vel_tde is not None:
+            station["model_east_vel_tde"] = self.east_vel_tde
+        if self.north_vel_tde is not None:
+            station["model_north_vel_tde"] = self.north_vel_tde
+        station["model_east_vel_block_strain_rate"] = self.east_vel_block_strain_rate
+        station["model_north_vel_block_strain_rate"] = self.north_vel_block_strain_rate
+        station["model_east_vel_mogi"] = self.east_vel_mogi
+        station["model_north_vel_mogi"] = self.north_vel_mogi
+        return station
+
+    @cached_property
+    def segment(self) -> pd.DataFrame:
+        segment = self.model.segment.copy(deep=True)
+        segment["model_strike_slip_rate"] = self.strike_slip_rates
+        segment["model_dip_slip_rate"] = self.dip_slip_rates
+        segment["model_tensile_slip_rate"] = self.tensile_slip_rates
+        segment["model_strike_slip_rate_uncertainty"] = (
+            np.nan
+            if self.strike_slip_rate_sigma is None
+            else self.strike_slip_rate_sigma
+        )
+        segment["model_dip_slip_rate_uncertainty"] = (
+            np.nan if self.dip_slip_rate_sigma is None else self.dip_slip_rate_sigma
+        )
+        segment["model_tensile_slip_rate_uncertainty"] = (
+            np.nan
+            if self.tensile_slip_rate_sigma is None
+            else self.tensile_slip_rate_sigma
+        )
+        return segment
+
+    @cached_property
+    def block(self) -> pd.DataFrame:
+        block = self.model.block.copy(deep=True)
+        block["euler_lon"] = self.euler_lon
+        block["euler_lon_err"] = self.euler_lon_err
+        block["euler_lat"] = self.euler_lat
+        block["euler_lat_err"] = self.euler_lat_err
+        block["euler_rate"] = self.euler_rate
+        block["euler_rate_err"] = self.euler_rate_err
+        return block
+
+    @cached_property
+    def mogi(self) -> pd.DataFrame:
+        mogi = self.model.mogi.copy(deep=True)
+        # TODO Why the different names?
+        mogi["volume_change"] = self.mogi_volume_change_rates
+        mogi["volume_change_sig"] = self.mogi_volume_change_rates
+        mogi["volume_change_rates"] = self.mogi_volume_change_rates
+        return mogi
+
+    @cached_property
+    def mesh_estimate(self) -> pd.DataFrame | None:
+        if self.tde_strike_slip_rates is None or self.tde_dip_slip_rates is None:
+            return None
+        meshes = self.model.meshes
+        mesh_outputs = pd.DataFrame()
+        for i in range(len(meshes)):
+            this_mesh_output = {
+                "lon1": meshes[i].lon1,
+                "lat1": meshes[i].lat1,
+                "dep1": meshes[i].dep1,
+                "lon2": meshes[i].lon2,
+                "lat2": meshes[i].lat2,
+                "dep2": meshes[i].dep2,
+                "lon3": meshes[i].lon3,
+                "lat3": meshes[i].lat3,
+                "dep3": meshes[i].dep3,
+                "mesh_idx": i * np.ones_like(meshes[i].lon1).astype(int),
+            }
+            this_mesh_output = pd.DataFrame(this_mesh_output)
+            # mesh_outputs = mesh_outputs.append(this_mesh_output)
+            mesh_outputs = pd.concat([mesh_outputs, this_mesh_output])
+
+        # Append slip rates
+        mesh_outputs["strike_slip_rate"] = self.tde_strike_slip_rates
+        mesh_outputs["dip_slip_rate"] = self.tde_dip_slip_rates
+        return mesh_outputs
 
     @cached_property
     def predictions(self) -> np.ndarray:
@@ -67,11 +158,11 @@ class Estimation:
 
     @property
     def east_vel_residual(self) -> np.ndarray:
-        return self.east_vel - self.station.east_vel
+        return self.east_vel - self.model.station.east_vel
 
     @property
     def north_vel_residual(self) -> np.ndarray:
-        return self.north_vel - self.station.north_vel
+        return self.north_vel - self.model.station.north_vel
 
     @property
     def rotation_vector(self) -> np.ndarray:
@@ -392,6 +483,21 @@ class Estimation:
             self.index.eigen.start_col_eigen[0] : self.index.eigen.end_col_eigen[-1]
         ]
 
+    def to_disk(self, output_dir: str | Path) -> None:
+        output_dir = Path(output_dir)
+
+        self.operators.to_disk(output_dir / "operators")
+        dataclass_to_disk(self, output_dir, skip={"operators"})
+
+    @classmethod
+    def from_disk(cls, output_dir: str | Path) -> Estimation:
+        output_dir = Path(output_dir)
+
+        operators = Operators.from_disk(output_dir / "operators")
+
+        extra = {"operators": operators}
+        return dataclass_from_disk(cls, output_dir, extra=extra)
+
 
 def build_estimation(
     model: Model,
@@ -426,7 +532,6 @@ def build_estimation(
         weighting_vector=weighting_vector,
         operator=operators.full_dense_operator,
         state_vector=state_vector,
-        model=model,
         operators=operators,
         state_covariance_matrix=state_covariance_matrix,
     )
@@ -655,14 +760,7 @@ def _build_and_solve(name: str, model: Model, *, tde: bool, eigen: bool):
         f"Finish: Dense assemble and solve: {end_solve_time - start_solve_time:0.2f} seconds for solve"
     )
 
-    write_output(
-        model.config,
-        estimation,
-        model.station,
-        model.segment,
-        model.block,
-        model.meshes,
-    )
+    write_output(estimation)
 
     if model.config.plot_estimation_summary:
         import celeri

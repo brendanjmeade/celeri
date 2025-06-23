@@ -6,11 +6,11 @@ build-backend = "hatchling.build"
 name = "celeri"
 dynamic = ["version", "readme"]
 description = "Next generation earthquake cycle kinematics"
-requires-python = ">=3.10"
 license = {file = "LICENSE"}
 authors = [
     {name = "Brendan Meade", email = "brendanjmeade@gmail.com"},
 ]
+requires-python = ">=3.11"
 dependencies = [
     "addict",
     "cvxopt",
@@ -185,3 +185,7 @@ exclude = [
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
+
+[tool.pyright]
+venvPath = ".pixi/envs"
+venv = "default"

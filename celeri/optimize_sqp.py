@@ -58,7 +58,6 @@ def _presolve(
         weighting_vector=operators.weighting_vector,
         operator=operators.full_dense_operator,
         state_vector=np.array(solution_qp["x"]).flatten(),
-        model=model,
         operators=operators,
         state_covariance_matrix=None,
         n_out_of_bounds_trace=np.zeros((n_segment_meshes, 0)),
@@ -326,7 +325,6 @@ def solve_sqp(
     )
 
     meshes = model.meshes
-    config = model.config
     n_segment_meshes = np.max(model.segment.patch_file_name).astype(int) + 1
 
     # Initialize bounds for each mesh
@@ -485,7 +483,6 @@ def solve_sqp(
             weighting_vector=operators.weighting_vector,
             operator=operators.full_dense_operator,
             state_vector=np.array(solution_qp["x"]).flatten(),
-            model=model,
             operators=operators,
             state_covariance_matrix=None,
             n_out_of_bounds_trace=n_oob_vec.copy(),
@@ -512,9 +509,7 @@ def solve_sqp(
         )
 
     # Write output
-    write_output(
-        config, estimation_qp, model.station, model.segment, model.block, meshes
-    )
+    write_output(estimation_qp)
 
     # Trim storage arrays to actual number of iterations
     for mesh_idx in range(n_segment_meshes):
