@@ -142,31 +142,22 @@ def _get_output_path(base: Path) -> Path:
         "/path/to/runs/2023-01-01T12-34-56Z" or "/path/to/runs/2023-01-01T12-34-56Z_1"
         if the first path already exists.
     """
-    # Get all folder names
-    folder_names = glob.glob("./../runs/*/")
+    # Format: ISO 8601 in UTC (YYYY-MM-DDTHH:MM:SSZ)
+    timestamp = datetime.datetime.now(datetime.timezone.utc).strftime(
+        "%Y-%m-%dT%H-%M-%SZ"
+    )
 
-    # Remove trailing slashes
-    folder_names = [folder_name.rstrip(os.sep) for folder_name in folder_names]
+    # Create the output path with the timestamp
+    output_path = base / timestamp
 
-    # Remove anything before numerical folder name
-    folder_names = [folder_name[-10:] for folder_name in folder_names]
+    # Ensure the path is unique by adding a suffix if needed
+    suffix = 1
+    original_path = output_path
+    while output_path.exists():
+        output_path = original_path.with_name(f"{original_path.name}_{suffix}")
+        suffix += 1
 
-    # Check to see if the folder name is a native run number
-    folder_names_runs = list()
-    for folder_name in folder_names:
-        try:
-            folder_names_runs.append(int(folder_name))
-        except ValueError:
-            pass
-
-    # Get new folder name
-    if len(folder_names_runs) == 0:
-        new_folder_name = "0000000001"
-    else:
-        new_folder_number = np.max(folder_names_runs) + 1
-        new_folder_name = f"{new_folder_number:010d}"
-
-    return new_folder_name
+    return output_path
 
 
 def get_config(config_file_name) -> Config:
