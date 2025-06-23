@@ -1,13 +1,19 @@
+from __future__ import annotations
+
 import copy
 import glob
 import os
 import pickle
+from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pyproj
 from loguru import logger
 from scipy.spatial.distance import cdist
+
+if TYPE_CHECKING:
+    from celeri.config import Config
 
 
 def sph2cart(lon, lat, radius):
@@ -45,7 +51,7 @@ def triangle_normal(triangles):
     )
 
 
-def get_logger(config):
+def get_logger(config: Config):
     # Create logger
     logger.remove()  # Remove any existing loggers includeing default stderr
 
@@ -68,8 +74,11 @@ def get_logger(config):
     #     colorize=True,
     # )
     # logger.add(config.run_name + ".log")
-    logger.add(config.output_path + "/" + config.run_name + ".log")
-    logger.info(f"Read: {config.file_name}")
+    logger.add(
+        (config.output_path / config.run_name).with_suffix(".log"),
+        format=log_format,
+        colorize=True,
+    )
     logger.info("RUN_NAME: " + config.run_name)
     logger.info(f"Write log file: {config.output_path}/{config.run_name}.log")
     return logger

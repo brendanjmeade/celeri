@@ -1,5 +1,4 @@
 import argparse
-from dataclasses import fields
 
 from loguru import logger
 
@@ -126,8 +125,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def process_args(config: Config, args: argparse.Namespace):
-    for field in fields(config):
-        key = field.name
+    for key in Config.model_fields:
         if key in args:
             config_val = getattr(args, key)
             if config_val is not None:
