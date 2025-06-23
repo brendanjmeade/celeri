@@ -1,11 +1,9 @@
 import copy
-import os
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import pytest
 from loguru import logger
 from scipy.spatial.distance import cdist
 
@@ -55,13 +53,12 @@ class Model:
             raise ValueError("Output path must be specified.")
 
         output_path = Path(output_path)
-        if not os.path.exists(output_path):
-            os.makedirs(output_path)
-        self.segment.to_parquet(os.path.join(output_path, "segment.parquet"))
-        self.block.to_parquet(os.path.join(output_path, "block.parquet"))
-        self.station.to_parquet(os.path.join(output_path, "station.parquet"))
-        self.mogi.to_parquet(os.path.join(output_path, "mogi.parquet"))
-        self.sar.to_parquet(os.path.join(output_path, "sar.parquet"))
+        output_path.mkdir(parents=True, exist_ok=True)
+        self.segment.to_parquet(output_path / "segment.parquet")
+        self.block.to_parquet(output_path / "block.parquet")
+        self.station.to_parquet(output_path / "station.parquet")
+        self.mogi.to_parquet(output_path / "mogi.parquet")
+        self.sar.to_parquet(output_path / "sar.parquet")
         with (output_path / "config.json").open("w") as f:
             f.write(self.config.model_dump_json())
         for i, mesh in enumerate(self.meshes):
@@ -203,15 +200,8 @@ def read_data(config: Config):
     return segment, block, meshes, station, mogi, sar
 
 
-# TODO(Brendan): Why is there a pytest mark here?
-@pytest.mark.skip(reason="Writing output to disk")
 def create_output_folder(config: Config):
-    # Check to see if "runs" folder exists and if not create it
-    if not os.path.exists(config.base_runs_folder):
-        os.mkdir(config.base_runs_folder)
-
-    # Make output folder for current run
-    os.mkdir(config.output_path)
+    config.output_path.mkdir(parents=True, exist_ok=True)
 
 
 def build_model(

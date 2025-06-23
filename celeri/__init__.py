@@ -33,11 +33,9 @@ from celeri.operators import (
     build_operators,
     get_block_strain_rate_to_velocities_partials,
     get_eigenvalues_and_eigenvectors,
-    get_elastic_operator_single_mesh,
     get_full_dense_operator,
     get_full_dense_operator_eigen,
     get_global_float_block_rotation_partials,
-    get_h_matrices_for_tde_meshes,
     get_mogi_to_velocities_partials,
     get_qp_all_inequality_operator_and_data_vector,
     get_qp_slip_rate_inequality_operator_and_data_vector,
@@ -57,7 +55,7 @@ from celeri.optimize_sqp import (
     plot_iterative_convergence,
     solve_sqp,
 )
-from celeri.output import write_output, write_output_supplemental
+from celeri.output import write_output
 from celeri.plot import (
     get_default_plotting_options,
     plot_common_elements,
@@ -118,11 +116,9 @@ __all__ = [
     "get_config",
     "get_default_plotting_options",
     "get_eigenvalues_and_eigenvectors",
-    "get_elastic_operator_single_mesh",
     "get_full_dense_operator",
     "get_full_dense_operator_eigen",
     "get_global_float_block_rotation_partials",
-    "get_h_matrices_for_tde_meshes",
     "get_keep_index_12",
     "get_logger",
     "get_mogi_to_velocities_partials",
@@ -177,5 +173,4 @@ __all__ = [
     "station_row_keep",
     "wrap2360",
     "write_output",
-    "write_output_supplemental",
 ]

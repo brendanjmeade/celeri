@@ -1,9 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
-import pickle
-import shutil
 import typing
 from dataclasses import asdict
 from pathlib import Path
@@ -11,7 +8,6 @@ from typing import Any, TypeVar
 
 import numpy as np
 import zarr
-from loguru import logger
 
 if typing.TYPE_CHECKING:
     from _typeshed import DataclassInstance
@@ -36,59 +32,6 @@ def write_output(
     mesh_estimates = estimation.mesh_estimate
     if mesh_estimates is not None:
         mesh_estimates.to_csv(output_path / "model_meshes.csv", index=False)
-
-
-def write_output_supplemental(
-    args, config, index, data, operators, estimation, assembly
-):
-    # Copy all input files to output folder
-    file_names = [
-        "segment_file_name",
-        "station_file_name",
-        "block_file_name",
-        "mesh_parameters_file_name",
-        "los_file_name",
-        "file_name",
-    ]
-    for file_name in file_names:
-        try:
-            shutil.copyfile(
-                config[file_name],
-                os.path.join(
-                    config.output_path,
-                    os.path.basename(os.path.normpath(config[file_name])),
-                ),
-            )
-        except:
-            logger.warning(f"No {file_name} to copy to output folder")
-
-    # Copy .msh files to output foler
-    if len(data.meshes) > 0:
-        for i in range(len(data.meshes)):
-            msh_file_name = data.meshes[i].file_name
-            try:
-                shutil.copyfile(
-                    msh_file_name,
-                    os.path.join(
-                        config.output_path,
-                        os.path.basename(os.path.normpath(msh_file_name)),
-                    ),
-                )
-            except:
-                logger.warning(f"No {msh_file_name} to copy to output folder")
-
-    # Write config line arguments to output folder
-    with open(
-        os.path.join(config.output_path, config.run_name + "_args.json"), "w"
-    ) as f:
-        json.dump(args, f, indent=2)
-
-    # Write all major variables to .pkl file in output folder
-    if bool(config.pickle_save):
-        with open(
-            os.path.join(config.output_path, config.run_name + ".pkl"), "wb"
-        ) as f:
-            pickle.dump([config, index, data, operators, estimation, assembly], f)
 
 
 def dataclass_to_disk(
@@ -139,7 +82,7 @@ def dataclass_to_disk(
 
     # Save remaining non-array data
     remaining_file = output_dir / "remaining.json"
-    with open(remaining_file, "w") as f:
+    with remaining_file.open("w") as f:
         json.dump(remaining, f, indent=4)
 
 
@@ -193,7 +136,7 @@ def dataclass_from_disk(
     remaining_file = input_dir / "remaining.json"
     if not remaining_file.exists():
         raise FileNotFoundError(f"Remaining data file {remaining_file} not found.")
-    with open(remaining_file) as f:
+    with remaining_file.open() as f:
         remaining_data = json.load(f)
     data.update(remaining_data)
     data.update(extra)

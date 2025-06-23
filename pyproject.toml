@@ -159,7 +159,6 @@ ignore = [
     "E501",  # line-too-long
     "PTH",   # pathlib
     "E722",  # do not use bare except
-    "RUF100",  # unused noqa
     "BLE001",  # bare except
     "PERF203", # try-except-in-loop
     # The following list is recommended to disable these when using ruff's formatter.

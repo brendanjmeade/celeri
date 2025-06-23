@@ -1,32 +1,38 @@
 from __future__ import annotations
 
-import glob
+import datetime
 import json
-import os
 from pathlib import Path
 
-import numpy as np
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict
 
 from celeri.mesh import MeshConfig
 
 
 class Config(BaseModel):
-    # Required fields (no defaults)
-    base_runs_folder: str
-    block_file_name: str | Path
-    mesh_parameters_file_name: str
-    segment_file_name: str
+    model_config = ConfigDict(extra='forbid')
 
+    # Base directory for runs
+    base_runs_folder: Path
+    # Where to store the output of estimation runs (subdir of base_runs_folder)
+    output_path: Path
+    # Location of the file containing the blocks
+    block_file_name: Path
+    # Location of the file containing the station data
+    station_file_name: Path
+    # Location of the file containing the segments
+    segment_file_name: Path
+    # Location of the file containing the mogi data (empty for no Mogi sources)
+    mogi_file_name: Path | None = None
+    # Location of the sar data (empty for no SAR data)
+    sar_file_name: Path | None = None
+    # Location of the mesh parameters file
+    mesh_parameters_file_name: Path
+    # Mesh specific parameters for each of the meshes
     mesh_params: list[MeshConfig]
+    # Location of a hdf5 file to cache elastic operators
+    elastic_operator_cache_dir: Path | None = None
 
-    # Runtime fields (not in JSON)
-    file_name: str | Path
-    run_name: str
-    output_path: str | Path
-
-    station_file_name: str | None = None
-    mogi_file_name: str | None = None
     atol: float = 0.0001
     block_constraint_weight: float = 1e24
     block_constraint_weight_max: float = 1e20
@@ -35,9 +41,6 @@ class Config(BaseModel):
     btol: float = 0.0001
     global_elastic_cutoff_distance: int = 2000000
     global_elastic_cutoff_distance_flag: int = 0
-    h_matrix_min_pts_per_box: int = 20
-    h_matrix_min_separation: float = 1.25
-    h_matrix_tol: float = 1e-06
     iterative_solver: str = "lsmr"
     lat_range: tuple[float, float] = (30, 45)
     locking_depth_flag2: int = 25
@@ -50,7 +53,6 @@ class Config(BaseModel):
     material_lambda: int = 30000000000
     material_mu: int = 30000000000
     n_iterations: int = 1
-    operators_folder: str = "../data/operators/"
     pickle_save: bool = True
     plot_estimation_summary: bool = True
     plot_input_summary: bool = True
@@ -58,20 +60,11 @@ class Config(BaseModel):
     quiver_scale: int = 100
     repl: bool = False
 
-    # TODO(Adrian): Would it be enough to just have reuse_elastic_file?
-    # And assume that if reuse_elastic_file is None, then reuse_elastic is False?
-    reuse_elastic: bool = True
-    save_elastic: bool = True
-    reuse_elastic_file: str | None = None
-    save_elastic_file: str | None = None
-
     ridge_param: int = 0
-    sar_file_name: str | None = None
     slip_constraint_weight: float = 100000
     slip_constraint_weight_max: float = 100000
     slip_constraint_weight_min: float = 100000
     slip_constraint_weight_steps: int = 1
-    slip_file_names: str | None = None
     smooth_type: int = 1
     snap_segments: int = 0
     solution_method: str = "backslash"
@@ -83,10 +76,10 @@ class Config(BaseModel):
     strain_method: int = 1
     tri_con_weight: int = 1000000
     tri_depth_tolerance: int = 0
-    tri_edge: list[int] = Field(default_factory=lambda: [0, 0, 0])
+    tri_edge: list[int] = [0, 0, 0]
     tri_full_coupling: int = 0
     tri_slip_constraint_type: int = 0
-    tri_slip_sign: list[int] = Field(default_factory=lambda: [0, 0])
+    tri_slip_sign: list[int] = [0, 0]
     tri_smooth: float = 0.1
     unit_sigmas: int = 0
 
@@ -94,11 +87,15 @@ class Config(BaseModel):
     coupling_bounds_max_iter: int | None = None
 
     # Only in tsts/global_config.json?
-    patch_file_names: list[str] | None = None
+    patch_file_names: list[Path] | None = None
     poissons_ratio: float | None = None
 
+    @property
+    def run_name(self) -> str:
+        return self.output_path.name
+
     @classmethod
-    def from_file(cls, file_path: str) -> Config:
+    def from_file(cls, file_path: Path | str) -> Config:
         """Read config from a JSON file and return a Config instance.
 
         Args:
@@ -107,40 +104,43 @@ class Config(BaseModel):
         Returns:
             Config: A validated Config instance
         """
-        with open(file_path) as f:
-            config_data = json.load(f)
+        file_path = Path(file_path)
+        with file_path.open("r") as file:
+            config_data = json.load(file)
 
-        config_data["file_name"] = file_path
-        config_data["run_name"] = _get_new_folder_name()
+        base_runs_folder = config_data.get("base_runs_folder", None)
+        if base_runs_folder is None:
+            raise ValueError("`base_runs_folder` missing in config")
+        base_runs_folder = Path(base_runs_folder)
+        config_data["output_path"] = _get_output_path(base_runs_folder)
 
-        mesh_params = MeshConfig.from_file(config_data["mesh_parameters_file_name"])
+        mesh_parameters_file_name = config_data.get("mesh_parameters_file_name", None)
+        if mesh_parameters_file_name is None:
+            mesh_params = []
+        else:
+            mesh_params = MeshConfig.from_file(mesh_parameters_file_name)
         config_data["mesh_params"] = mesh_params
-        if "base_runs_folder" not in config_data:
-            raise ValueError("base_runs_folder is required in the config file.")
 
-        config_data["output_path"] = os.path.join(
-            config_data["base_runs_folder"], config_data["run_name"]
-        )
-
-        return cls(**config_data)
+        return Config.model_validate(config_data)
 
 
-def _get_new_folder_name() -> str:
-    """Generate a new folder name based on existing numeric folder names.
+def _get_output_path(base: Path) -> Path:
+    """Generate a unique timestamped output path within the base directory.
 
-    This function scans the current directory for folders with numeric names,
-    identifies the highest number, and returns a new folder name that is one
-    greater than the highest number, formatted as a zero-padded 10-digit string.
+    This function creates a new path using the current UTC timestamp in ISO 8601 format
+    (YYYY-MM-DDTHH-MM-SSZ). If the path already exists, it adds a numeric suffix
+    to ensure uniqueness.
+
+    Args:
+        base: Base directory path where the output folder should be created
 
     Returns:
-        str: A new folder name as a zero-padded 10-digit string.
-
-    Raises:
-        ValueError: If no numeric folder names are found in the current directory.
+        Path: A unique timestamped path within the base directory
 
     Example:
-        If the current directory contains folders named "0000000001", "0000000002",
-        and "0000000003", the function will return "0000000004".
+        If the base directory is "/path/to/runs", the function might return
+        "/path/to/runs/2023-01-01T12-34-56Z" or "/path/to/runs/2023-01-01T12-34-56Z_1"
+        if the first path already exists.
     """
     # Get all folder names
     folder_names = glob.glob("./../runs/*/")

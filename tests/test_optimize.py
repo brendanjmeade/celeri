@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 import numpy as np
@@ -26,9 +25,9 @@ def small_test_config_path():
 
 
 @pytest.fixture(scope="module")
-def model(small_test_config_path):
+def model(small_test_config_path: Path):
     # Skip this test if the config file doesn't exist
-    if not os.path.exists(small_test_config_path):
+    if not small_test_config_path.exists():
         pytest.skip(f"Command file not found: {small_test_config_path}")
     return build_model(small_test_config_path)
 

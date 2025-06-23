@@ -82,7 +82,8 @@ class MeshConfig(BaseModel):
         Returns:
             list[MeshParams]: Instance with parameters from file overriding defaults
         """
-        with open(filename) as f:
+        filename = Path(filename)
+        with filename.open() as f:
             params_list = json.load(f)
 
         if not isinstance(params_list, list):
@@ -456,7 +457,7 @@ class Mesh:
 
         # Save the MeshConfig separately
         config_file = output_dir / "mesh_config.json"
-        with open(config_file, "w") as f:
+        with config_file.open("w") as f:
             json.dump(self.config.model_dump(), f, indent=4)
 
         # Use the general dataclass serialization function for the rest
@@ -473,7 +474,7 @@ class Mesh:
         if not config_file.exists():
             raise FileNotFoundError(f"Mesh configuration file {config_file} not found.")
 
-        with open(config_file) as f:
+        with config_file.open() as f:
             config_data = json.load(f)
 
         config = MeshConfig(**config_data)
