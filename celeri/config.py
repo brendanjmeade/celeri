@@ -10,7 +10,8 @@ from celeri.mesh import MeshConfig
 
 
 class Config(BaseModel):
-    model_config = ConfigDict(extra='forbid')
+    # Forbid extra fields when reading from JSON
+    model_config = ConfigDict(extra="forbid")
 
     # Base directory for runs
     base_runs_folder: Path
@@ -33,62 +34,59 @@ class Config(BaseModel):
     # Location of a hdf5 file to cache elastic operators
     elastic_operator_cache_dir: Path | None = None
 
-    atol: float = 0.0001
+    # Weights for various constraints and parameters in penalized linear inversion
     block_constraint_weight: float = 1e24
     block_constraint_weight_max: float = 1e20
     block_constraint_weight_min: float = 1e20
     block_constraint_weight_steps: int = 1
-    btol: float = 0.0001
+    slip_constraint_weight: float = 100000
+    slip_constraint_weight_max: float = 100000
+    slip_constraint_weight_min: float = 100000
+    slip_constraint_weight_steps: int = 1
+    station_data_weight: int = 1
+    station_data_weight_max: int = 1
+    station_data_weight_min: int = 1
+    station_data_weight_steps: int = 1
+
     global_elastic_cutoff_distance: int = 2000000
     global_elastic_cutoff_distance_flag: int = 0
-    iterative_solver: str = "lsmr"
-    lat_range: tuple[float, float] = (30, 45)
+
+    # TODO(Brendan): They were marked as unused, but are still used in the code.
     locking_depth_flag2: int = 25
     locking_depth_flag3: int = 15
     locking_depth_flag4: int = 10
     locking_depth_flag5: int = 5
     locking_depth_overide_value: int = 15
     locking_depth_override_flag: int = 0
+
+    # Plotting defaults
+    lat_range: tuple[float, float] = (30, 45)
     lon_range: tuple[float, float] = (130, 150)
-    material_lambda: int = 30000000000
-    material_mu: int = 30000000000
-    n_iterations: int = 1
-    pickle_save: bool = True
     plot_estimation_summary: bool = True
     plot_input_summary: bool = True
-    printslipcons: int = 0
     quiver_scale: int = 100
+
+    material_lambda: int = 30000000000
+    material_mu: int = 30000000000
+    poissons_ratio: float | None = None
+
+    pickle_save: bool = True
     repl: bool = False
 
-    ridge_param: int = 0
-    slip_constraint_weight: float = 100000
-    slip_constraint_weight_max: float = 100000
-    slip_constraint_weight_min: float = 100000
-    slip_constraint_weight_steps: int = 1
-    smooth_type: int = 1
     snap_segments: int = 0
-    solution_method: str = "backslash"
     solve_type: str = "hmatrix"
-    station_data_weight: int = 1
-    station_data_weight_max: int = 1
-    station_data_weight_min: int = 1
-    station_data_weight_steps: int = 1
     strain_method: int = 1
     tri_con_weight: int = 1000000
-    tri_depth_tolerance: int = 0
-    tri_edge: list[int] = [0, 0, 0]
-    tri_full_coupling: int = 0
-    tri_slip_constraint_type: int = 0
-    tri_slip_sign: list[int] = [0, 0]
-    tri_smooth: float = 0.1
-    unit_sigmas: int = 0
 
-    coupling_bounds_total_percentage_satisfied_target: float | None = None
-    coupling_bounds_max_iter: int | None = None
+    # Always report data uncertainties as one.
+    unit_sigmas: bool = False
+
+    # Parameters for SQP solver
+    iterative_coupling_bounds_total_percentage_satisfied_target: float | None = None
+    iterative_coupling_bounds_max_iter: int | None = None
 
     # Only in tsts/global_config.json?
     patch_file_names: list[Path] | None = None
-    poissons_ratio: float | None = None
 
     @property
     def run_name(self) -> str:
