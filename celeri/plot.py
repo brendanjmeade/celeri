@@ -337,8 +337,6 @@ def plot_input_summary(
         is_constrained_tde[meshes[i].side_elements] = meshes[
             i
         ].config.side_slip_rate_constraint
-        is_constrained_tde[meshes[i].config.ss_slip_constraint_idx] = 3
-        is_constrained_tde[meshes[i].config.ds_slip_constraint_idx] = 3
         x_coords = meshes[i].points[:, 0]
         y_coords = meshes[i].points[:, 1]
         vertex_array = np.asarray(meshes[i].verts)
@@ -356,8 +354,8 @@ def plot_input_summary(
     plt.show(block=False)
 
     if model.config.output_path is not None:
-        plt.savefig(model.config.output_path + "/" + "plot_input_summary.png", dpi=300)
-        plt.savefig(model.config.output_path + "/" + "plot_input_summary.pdf")
+        plt.savefig(model.config.output_path / "plot_input_summary.png", dpi=300)
+        plt.savefig(model.config.output_path / "plot_input_summary.pdf")
         logger.success(
             f"Wrote figures {model.config.output_path}/plot_input_summary.(pdf, png)"
         )
@@ -679,13 +677,10 @@ def plot_estimation_summary(
     )
 
     plt.show(block=False)
-    plt.savefig(model.config.output_path + "/" + "plot_estimation_summary.png", dpi=300)
-    plt.savefig(model.config.output_path + "/" + "plot_estimation_summary.pdf")
+    plt.savefig(model.config.output_path / "plot_estimation_summary.png", dpi=300)
+    plt.savefig(model.config.output_path / "plot_estimation_summary.pdf")
     logger.success(
-        "Wrote figures"
-        + model.config.output_path
-        + "/"
-        + "plot_estimation_summary.(pdf, png)"
+        f"Wrote figures {model.config.output_path}/plot_estimation_summary.(pdf, png)"
     )
 
 

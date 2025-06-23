@@ -11,18 +11,10 @@
     "bot_slip_rate_weight": 1e2,
     "side_slip_rate_weight": 1e2,
     "a_priori_slip_filename": "",
-    "ss_slip_constraint_idx": [],
-    "ss_slip_constraint_rate": 0.0,
-    "ds_slip_constraint_idx": [],
-    "ds_slip_constraint_rate": 0.0,
-    "qp_mesh_tde_slip_rate_lower_bound_ss": -5,
-    "qp_mesh_tde_slip_rate_upper_bound_ss": 5,
-    "qp_mesh_tde_slip_rate_lower_bound_ds": 0,
-    "qp_mesh_tde_slip_rate_upper_bound_ds": 30,
-    "qp_mesh_tde_slip_rate_lower_bound_ss_coupling": 0.0,
-    "qp_mesh_tde_slip_rate_upper_bound_ss_coupling": 1.0,
-    "qp_mesh_tde_slip_rate_lower_bound_ds_coupling": 0.0,
-    "qp_mesh_tde_slip_rate_upper_bound_ds_coupling": 1.0,
-    "mesh_tde_modes_bc_weight": 1e1
+    "elastic_constraints_ss": [-5, 5],
+    "elastic_constraints_ds": [0, 30],
+    "coupling_constraints_ss": [0, 1],
+    "coupling_constraints_ds": [0, 1],
+    "eigenmode_slip_rate_constraint_weight": 1e1
   }
 ]

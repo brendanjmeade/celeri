@@ -136,7 +136,7 @@ def test_model_round_trip_serialization(temp_dir):
 
     # Compare mesh properties
     for _i, (orig_mesh, deserialized_mesh) in enumerate(
-        zip(original_model.meshes, deserialized_model.meshes)
+        zip(original_model.meshes, deserialized_model.meshes, strict=False)
     ):
         assert orig_mesh.n_tde == deserialized_mesh.n_tde
         assert orig_mesh.n_modes == deserialized_mesh.n_modes

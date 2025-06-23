@@ -111,7 +111,7 @@ addopts = "-s --tb=short"
 
 [tool.ruff]
 line-length = 88
-target-version = "py39"
+target-version = "py311"
 show-fixes = true
 output-format = "full"
 
