@@ -43,7 +43,7 @@ class Model:
     @classmethod
     def from_config(cls, config: Config) -> "Model":
         """Create a Model instance from a Config object."""
-        return build_model(config.file_name)
+        return build_model(config)
 
     def to_disk(self, output_path: str | Path | None = None):
         """Save the model to disk."""
