@@ -1,6 +1,6 @@
 [
     {
-        "mesh_filename": "./tests/test_closure.msh",
+        "mesh_filename": "./test_closure.msh",
         "smoothing_weight": 1e7,
         "top_slip_rate_constraint": 1,
         "bot_slip_rate_constraint": 1,

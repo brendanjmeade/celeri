@@ -1,6 +1,6 @@
 [
     {
-        "mesh_filename": "../data/mesh/nankai.msh",
+        "mesh_filename": "../mesh/nankai.msh",
         "smoothing_weight": 7e14,
         "n_modes_strike_slip": 50,
         "n_modes_dip_slip": 50,
@@ -28,7 +28,7 @@
         "mesh_tde_modes_bc_weight": 1e1
     },
     {
-        "mesh_filename": "../data/mesh/japan.msh",
+        "mesh_filename": "../mesh/japan.msh",
         "smoothing_weight": 7e14,
         "n_modes_strike_slip": 50,
         "n_modes_dip_slip": 50,
@@ -56,7 +56,7 @@
         "mesh_tde_modes_bc_weight": 1e1
     },
     {
-        "mesh_filename": "../data/mesh/sagami.msh",
+        "mesh_filename": "../mesh/sagami.msh",
         "smoothing_weight": 1e14,
         "n_modes_strike_slip": 10,
         "n_modes_dip_slip": 10,
@@ -84,7 +84,7 @@
         "mesh_tde_modes_bc_weight": 1e1
     },
     {
-        "mesh_filename": "../data/mesh/japan_mock_cmi.msh",
+        "mesh_filename": "../mesh/japan_mock_cmi.msh",
         "smoothing_weight": 1e14,
         "n_modes_strike_slip": 5,
         "n_modes_dip_slip": 5,

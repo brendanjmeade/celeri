@@ -8,7 +8,7 @@ from typing import Literal, TypeVar, cast
 import meshio
 import numpy as np
 from loguru import logger
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from celeri import constants
 from celeri.celeri_util import cart2sph, sph2cart, triangle_area, wrap2360
@@ -24,8 +24,12 @@ class MeshConfig(BaseModel):
     # Forbid extra fields when reading from JSON
     model_config = ConfigDict(extra="forbid")
 
-    # TODO(Brendan) check types. Sohuld some be bool?
-    mesh_filename: str | None = None
+    # The path to the mesh configuration file itself.
+    # All other paths in this configuration are relative to this file.
+    file_name: Path
+
+    mesh_filename: Path | None = None
+
     # Weight for Laplacian smooting of slip rates (TODO unit?)
     smoothing_weight: float = 1.0
     # Number of eigenmodes to use for strike-slip and dip-slip
@@ -44,7 +48,7 @@ class MeshConfig(BaseModel):
     side_slip_rate_weight: float = 1.0
 
     # Filename for fixed slip rates, not currently used
-    a_priori_slip_filename: str | None = None
+    a_priori_slip_filename: Path | None = None
 
     # TODO Rework how these constraints are handled.
     # We want to be able to set either coupling constraints, or
@@ -91,14 +95,32 @@ class MeshConfig(BaseModel):
         Returns:
             list[MeshParams]: Instance with parameters from file overriding defaults
         """
-        filename = Path(filename)
+        filename = Path(filename).resolve()
         with filename.open() as f:
             params_list = json.load(f)
 
         if not isinstance(params_list, list):
             raise ValueError(f"Expected a list of dictionaries in {filename}")
 
+        for params in params_list:
+            params["file_name"] = filename
+
         return [cls.model_validate(params) for params in params_list]
+
+    @model_validator(mode="after")
+    def relative_paths(self) -> MeshConfig:
+        """Convert relative paths to absolute paths based on the config file location."""
+        base_dir = self.file_name.parent
+
+        for name in type(self).model_fields:
+            if name == "file_name":
+                continue
+
+            value = getattr(self, name)
+            if isinstance(value, Path):
+                setattr(self, name, (base_dir / value).resolve())
+
+        return self
 
 
 def _compute_ordered_edge_nodes(mesh: dict):
@@ -281,7 +303,6 @@ def _compute_mesh_perimeter(mesh: dict):
 class Mesh:
     """Represents a triangular mesh for fault modeling."""
 
-    file_name: str
     points: np.ndarray
     verts: np.ndarray
     lon1: np.ndarray
@@ -349,7 +370,6 @@ class Mesh:
         mesh = {}
         filename = config.mesh_filename
         meshobj = meshio.read(filename)
-        mesh["file_name"] = filename
         points = cast(np.ndarray, meshobj.points)
         mesh["points"] = points
         verts = meshio.CellBlock("triangle", meshobj.get_cells_type("triangle")).data
@@ -455,9 +475,13 @@ class Mesh:
         return cls(**mesh)
 
     @property
+    def file_name(self) -> Path:
+        return self.config.mesh_filename
+
+    @property
     def name(self) -> str:
         """Return the name of the mesh configuration."""
-        return Path(self.file_name).stem
+        return self.file_name.stem
 
     def to_disk(self, output_dir: str | Path):
         """Save the mesh configuration to a JSON file."""
@@ -467,7 +491,7 @@ class Mesh:
         # Save the MeshConfig separately
         config_file = output_dir / "mesh_config.json"
         with config_file.open("w") as f:
-            json.dump(self.config.model_dump(), f, indent=4)
+            f.write(self.config.model_dump_json(indent=4))
 
         # Use the general dataclass serialization function for the rest
         dataclass_to_disk(self, output_dir, skip={"config"})

@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import datetime
 import json
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from celeri.mesh import MeshConfig
 
@@ -12,6 +11,11 @@ from celeri.mesh import MeshConfig
 class Config(BaseModel):
     # Forbid extra fields when reading from JSON
     model_config = ConfigDict(extra="forbid")
+
+    # Location of the config file itself
+    # All other paths in this configuration are relative to this file,
+    # or relative to the current working directory if this is None.
+    file_name: Path | None
 
     # Base directory for runs
     base_runs_folder: Path
@@ -116,10 +120,29 @@ class Config(BaseModel):
         if mesh_parameters_file_name is None:
             mesh_params = []
         else:
-            mesh_params = MeshConfig.from_file(mesh_parameters_file_name)
+            mesh_params = MeshConfig.from_file(
+                file_path.parent / mesh_parameters_file_name
+            )
         config_data["mesh_params"] = mesh_params
+        config_data["file_name"] = file_path.resolve()
 
         return Config.model_validate(config_data)
+
+    @model_validator(mode="after")
+    def relative_paths(self) -> Config:
+        """Convert relative paths to absolute paths based on the config file location."""
+        if self.file_name is not None:
+            base_dir = self.file_name.parent
+
+            for name in type(self).model_fields:
+                if name == "file_name":
+                    continue
+
+                value = getattr(self, name)
+                if isinstance(value, Path):
+                    setattr(self, name, (base_dir / value).resolve())
+
+        return self
 
 
 def _get_output_path(base: Path) -> Path:

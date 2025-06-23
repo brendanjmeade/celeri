@@ -1,6 +1,6 @@
 [
   {
-    "mesh_filename": "./tests/test_western_north_america_cascadia.msh",
+    "mesh_filename": "./test_western_north_america_cascadia.msh",
     "smoothing_weight": 1e18,
     "n_modes_strike_slip": 20,
     "n_modes_dip_slip": 20,
@@ -10,7 +10,7 @@
     "top_slip_rate_weight": 1e2,
     "bot_slip_rate_weight": 1e2,
     "side_slip_rate_weight": 1e2,
-    "a_priori_slip_filename": "",
+    "a_priori_slip_filename": null,
     "ss_slip_constraint_idx": [],
     "ss_slip_constraint_rate": 0.0,
     "ds_slip_constraint_idx": [],
