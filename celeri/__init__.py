@@ -75,6 +75,7 @@ from celeri.plot import (
     plot_vels,
 )
 from celeri.solve import (
+    Estimation,
     assemble_and_solve_dense,
     build_and_solve_dense,
     build_and_solve_dense_no_meshes,
@@ -91,11 +92,12 @@ try:
     from importlib.metadata import version
 
     __version__ = version("celeri")
-except Exception:
+except Exception:  # noqa: BLE001
     __version__ = "unknown"
 
 __all__ = [
     "Config",
+    "Estimation",
     "Mesh",
     "MeshConfig",
     "Model",

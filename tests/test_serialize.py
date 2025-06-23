@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 import celeri
+from celeri.solve import Estimation
 
 
 @pytest.fixture
@@ -213,3 +214,61 @@ def test_operators_serialization(config_file, temp_dir):
     G_original = original_operators.full_dense_operator
     G_deserialized = deserialized_operators.full_dense_operator
     np.testing.assert_allclose(G_original, G_deserialized)
+
+
+@pytest.mark.parametrize(
+    "config_file",
+    [
+        "./tests/test_japan_config.json",
+    ],
+)
+def test_estimation_serialization(config_file, temp_dir):
+    """Test serializing and deserializing an Estimation object."""
+    # Load model from config
+    config = celeri.get_config(config_file)
+    model = celeri.build_model(config)
+
+    # Generate an estimation object by solving the model
+    operators, original_estimation = celeri.assemble_and_solve_dense(
+        model, eigen=True, tde=True
+    )
+
+    # Test to_disk method
+    output_dir = Path(temp_dir) / "estimation_output"
+    output_dir.mkdir(exist_ok=True)
+    original_estimation.to_disk(output_dir)
+
+    # Verify operators directory was created
+    assert (output_dir / "operators").exists(), "Operators directory not created"
+    assert (output_dir / "operators" / "arrays.zarr").exists(), (
+        "Operators arrays not created"
+    )
+
+    # Deserialize the estimation
+    deserialized_estimation = Estimation.from_disk(output_dir)
+
+    # Verify basic properties match
+    pd.testing.assert_frame_equal(
+        original_estimation.model.station,
+        deserialized_estimation.model.station,
+    )
+
+    # Compare a few key attributes that should be present in a solved estimation
+    np.testing.assert_allclose(original_estimation.vel, deserialized_estimation.vel)
+
+    np.testing.assert_allclose(
+        original_estimation.rotation_vector,
+        deserialized_estimation.rotation_vector,
+    )
+
+    np.testing.assert_allclose(
+        original_estimation.slip_rates,
+        deserialized_estimation.slip_rates,
+    )
+
+    if original_estimation.tde_rates is not None:
+        assert deserialized_estimation.tde_rates is not None
+        np.testing.assert_allclose(
+            original_estimation.tde_rates,
+            deserialized_estimation.tde_rates,
+        )
