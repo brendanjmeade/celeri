@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 
 import celeri
@@ -101,15 +103,17 @@ def test_global_closure():
     Right now all this does is check for the correct number of blocks and
     against one set of polygon edge indices.
     """
-    command_file_name = "./tests/test_closure_command.json"
-    command = celeri.get_command(command_file_name)
-    # logger = celeri.get_logger(command)
-    segment, block, meshes, station, mogi, sar = celeri.read_data(command)
+    config_file_name = "./tests/test_closure_config.json"
+    config = celeri.get_config(config_file_name)
+    # logger = celeri.get_logger(config)
+    segment, block, meshes, station, mogi, sar = celeri.read_data(config)
 
-    station = celeri.process_station(station, command)
-    segment = celeri.process_segment(segment, command, meshes)
-    sar = celeri.process_sar(sar, command)
-    closure, block = celeri.assign_block_labels(segment, station, block, mogi, sar)
+    station = celeri.process_station(station, config)
+    segment = celeri.process_segment(segment, config, meshes)
+    sar = celeri.process_sar(sar, config)
+    closure, segment, station, block, mogi, sar = celeri.assign_block_labels(
+        segment, station, block, mogi, sar
+    )
 
     # Compare calculated edge indices with stored edge indices
     all_edge_idxs = np.array([])
@@ -118,7 +122,7 @@ def test_global_closure():
             (all_edge_idxs, np.array(closure.polygons[i].edge_idxs))
         )
 
-    with open("./tests/test_closure_arrays.npy", "rb") as f:
+    with Path("./tests/test_closure_arrays.npy").open("rb") as f:
         all_edge_idxs_stored = np.load(f)
 
     assert np.allclose(all_edge_idxs, all_edge_idxs_stored)

@@ -1,75 +1,21 @@
 import time
 from collections import namedtuple
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, Callable, Literal, cast
+from typing import Callable, Literal, cast
 
-import addict
 import cvxopt
 import cvxpy as cp
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
-from scipy import linalg, sparse, spatial
+from scipy import linalg, sparse
 
 from celeri import (
-    get_data_vector_eigen,
     get_qp_all_inequality_operator_and_data_vector,
-    get_weighting_vector_eigen,
     plot_estimation_summary,
-    post_process_estimation_eigen,
-    write_output,
 )
-from celeri.celeri import (
-    assign_block_labels,
-    create_output_folder,
-    get_all_mesh_smoothing_matrices,
-    get_block_motion_constraints,
-    get_block_strain_rate_to_velocities_partials,
-    get_command,
-    get_eigenvectors_to_tde_slip,
-    get_elastic_operators,
-    get_full_dense_operator_eigen,
-    get_index_eigen,
-    get_mogi_to_velocities_partials,
-    get_rotation_to_slip_rate_partials,
-    get_rotation_to_velocities_partials,
-    get_slip_rate_constraints,
-    get_tde_coupling_constraints,
-    get_tde_slip_rate_constraints,
-    merge_geodetic_data,
-    process_sar,
-    process_segment,
-    process_station,
-    read_data,
-)
-
-
-@dataclass
-class CeleriProblem:
-    """Represents a problem configuration for Celeri fault slip rate modeling.
-
-    Stores indices, meshes, operators, and various data components needed
-    for solving interseismic coupling and fault slip rate problems.
-    """
-
-    index: dict
-    meshes: addict.Dict
-    operators: addict.Dict
-    segment: pd.DataFrame
-    block: pd.DataFrame
-    station: pd.DataFrame
-    assembly: addict.Dict
-    command: dict[str, Any]
-
-    @property
-    def segment_mesh_indices(self):
-        n_segment_meshes = np.max(self.segment.patch_file_name).astype(int) + 1
-        return list(range(n_segment_meshes))
-
-    @property
-    def total_mesh_points(self):
-        return sum([self.meshes[idx]["n_tde"] for idx in self.segment_mesh_indices])
+from celeri.model import Model
+from celeri.operators import Operators, build_operators
+from celeri.solve import build_estimation
 
 
 @dataclass
@@ -143,116 +89,6 @@ class CouplingItem:
 
         constraint = estimated**2 - estimated * kinematic
         return np.clip(constraint, 0, np.inf).sum()
-
-
-def _get_gaussian_smoothing_operator(meshes, operators, index):
-    for i in range(index.n_meshes):
-        points = np.vstack((meshes[i].lon_centroid, meshes[i].lat_centroid)).T
-
-        if "iterative_coupling_smoothing_length_scale" in meshes[i]:
-            length_scale = meshes[i].iterative_coupling_smoothing_length_scale
-        else:
-            length_scale = 0.25
-
-        # Compute pairwise Euclidean distance matrix
-        D = spatial.distance_matrix(points, points)
-
-        # Define Gaussian weight function
-        # W = np.clip(np.exp(-(D**2) / (2 * length_scale**2)), 1e-6, np.inf)
-        W = np.exp(-(D**2) / (2 * length_scale**2))
-
-        # Normalize rows so each row sums to 1
-        W /= W.sum(axis=1, keepdims=True)
-
-        operators.linear_guassian_smoothing[i] = W
-    return operators
-
-
-# TODO Move this to a more appropriate location
-def build_problem(command_path: str | Path) -> CeleriProblem:
-    command = get_command(command_path)
-    create_output_folder(command)
-    segment, block, meshes, station, mogi, sar = read_data(command)
-    station = process_station(station, command)
-    segment = process_segment(segment, command, meshes)
-    sar = process_sar(sar, command)
-    closure, block = assign_block_labels(segment, station, block, mogi, sar)
-    assembly = addict.Dict()
-    operators = addict.Dict()
-    operators.meshes = [addict.Dict()] * len(meshes)
-    assembly = merge_geodetic_data(assembly, station, sar)
-
-    # Prepare the operators
-
-    # Get all elastic operators for segments and TDEs
-    get_elastic_operators(operators, meshes, segment, station, command)
-
-    # Get TDE smoothing operators
-    get_all_mesh_smoothing_matrices(meshes, operators)
-
-    # Block rotation to velocity operator
-    operators.rotation_to_velocities = get_rotation_to_velocities_partials(
-        station, len(block)
-    )
-
-    # Soft block motion constraints
-    assembly, operators.block_motion_constraints = get_block_motion_constraints(
-        assembly, block, command
-    )
-
-    # Soft slip rate constraints
-    assembly, operators.slip_rate_constraints = get_slip_rate_constraints(
-        assembly, segment, block, command
-    )
-
-    # Rotation vectors to slip rate operator
-    operators.rotation_to_slip_rate = get_rotation_to_slip_rate_partials(segment, block)
-
-    # Internal block strain rate operator
-    (
-        operators.block_strain_rate_to_velocities,
-        strain_rate_block_index,
-    ) = get_block_strain_rate_to_velocities_partials(block, station, segment)
-
-    # Mogi source operator
-    operators.mogi_to_velocities = get_mogi_to_velocities_partials(
-        mogi, station, command
-    )
-
-    # Soft TDE boundary condition constraints
-    get_tde_slip_rate_constraints(meshes, operators)
-
-    # Get index
-    index = get_index_eigen(assembly, segment, station, block, meshes, mogi)
-
-    # Get data vector for KL problem
-    get_data_vector_eigen(meshes, assembly, index)
-
-    # Get data vector for KL problem
-    get_weighting_vector_eigen(command, station, meshes, index)
-
-    # Get KL modes for each mesh
-    get_eigenvectors_to_tde_slip(operators, meshes)
-
-    # Get full operator including all blocks, KL modes, strain blocks, and mogis
-    operators.eigen = get_full_dense_operator_eigen(operators, meshes, index)
-
-    # Get rotation to TDE kinematic slip rate operator for all meshes tied to segments
-    get_tde_coupling_constraints(meshes, segment, block, operators)
-
-    # Get smoothing operators for post-hoc smoothing of slip
-    operators = _get_gaussian_smoothing_operator(meshes, operators, index)
-
-    return CeleriProblem(
-        index=index,
-        meshes=meshes,
-        operators=operators,
-        segment=segment,
-        block=block,
-        station=station,
-        assembly=assembly,
-        command=command,
-    )
 
 
 @dataclass
@@ -570,7 +406,8 @@ class VelocityLimit:
 
 @dataclass
 class Minimizer:
-    problem: CeleriProblem
+    model: Model
+    operators: Operators
     cp_problem: cp.Problem
     params_raw: cp.Expression
     params: cp.Expression
@@ -582,79 +419,62 @@ class Minimizer:
     smooth_kinematic: bool = True
 
     def plot_coupling(self):
-        n_plots = len(self.problem.segment_mesh_indices)
+        n_plots = len(self.model.segment_mesh_indices)
         fig, axes = plt.subplots(n_plots, 4, figsize=(20, 12), sharex=True, sharey=True)
 
-        for idx in self.problem.segment_mesh_indices:
+        for idx in self.model.segment_mesh_indices:
             if idx == 0:
                 axes[idx, 0].set_title("strike slip")
                 axes[idx, 1].set_title("smoothed strike slip")
                 axes[idx, 2].set_title("dip slip")
                 axes[idx, 3].set_title("smoothed dip slip")
 
-            if idx == self.problem.segment_mesh_indices[-1]:
+            if idx == self.model.segment_mesh_indices[-1]:
                 for i in range(4):
                     axes[idx, i].set_xlabel("kinetic")
             axes[idx, 0].set_ylabel("estimated")
 
-            a = self.coupling[idx].strike_slip.kinematic.value
-            b = self.coupling[idx].strike_slip.estimated.value
+            a = self.coupling[idx].strike_slip.kinematic.value  # type: ignore
+            b = self.coupling[idx].strike_slip.estimated.value  # type: ignore
 
             if a is None or b is None:
                 raise ValueError("Problem has not been fit")
             axes[idx, 0].scatter(a, b, c=b**2 - a * b < 0, marker=".", vmin=0, vmax=1)
 
-            a = self.coupling[idx].strike_slip.kinematic_smooth.value
-            b = self.coupling[idx].strike_slip.estimated.value
+            a = self.coupling[idx].strike_slip.kinematic_smooth.value  # type: ignore
+            b = self.coupling[idx].strike_slip.estimated.value  # type: ignore
             if a is None or b is None:
                 raise ValueError("Problem has not been fit")
             axes[idx, 1].scatter(a, b, c=b**2 - a * b < 0, marker=".", vmin=0, vmax=1)
 
-            a = self.coupling[idx].dip_slip.kinematic.value
-            b = self.coupling[idx].dip_slip.estimated.value
+            a = self.coupling[idx].dip_slip.kinematic.value  # type: ignore
+            b = self.coupling[idx].dip_slip.estimated.value  # type: ignore
             if a is None or b is None:
                 raise ValueError("Problem has not been fit")
             axes[idx, 2].scatter(a, b, c=b**2 - a * b < 0, marker=".", vmin=0, vmax=1)
 
-            a = self.coupling[idx].dip_slip.kinematic_smooth.value
-            b = self.coupling[idx].dip_slip.estimated.value
+            a = self.coupling[idx].dip_slip.kinematic_smooth.value  # type: ignore
+            b = self.coupling[idx].dip_slip.estimated.value  # type: ignore
             if a is None or b is None:
                 raise ValueError("Problem has not been fit")
             axes[idx, 3].scatter(a, b, c=b**2 - a * b < 0, marker=".", vmin=0, vmax=1)
 
-    def plot_estimation_summary(self, command):
-        estimation_qp = addict.Dict()
-        estimation_qp.state_vector = self.params.value
-        estimation_qp.operator = self.problem.operators.eigen
-        post_process_estimation_eigen(
-            estimation_qp,
-            self.problem.operators,
-            self.problem.station,
-            self.problem.index,
-        )
-        write_output(
-            command,
-            estimation_qp,
-            self.problem.station,
-            self.problem.segment,
-            self.problem.block,
-            self.problem.meshes,
-        )
+    def to_estimation(self):
+        if self.params.value is None:
+            raise ValueError("Problem has not been fit")
+        return build_estimation(self.model, self.operators, self.params.value)
 
+    def plot_estimation_summary(self):
+        estimation = self.to_estimation()
         plot_estimation_summary(
-            command,
-            self.problem.segment,
-            self.problem.station,
-            self.problem.meshes,
-            estimation_qp,
-            lon_range=command.lon_range,
-            lat_range=command.lat_range,
-            quiver_scale=command.quiver_scale,
+            self.model,
+            estimation,
+            quiver_scale=self.model.config.quiver_scale,
         )
 
     def out_of_bounds(self, *, tol: float = 1e-8) -> tuple[int, int]:
         oob, total = 0, 0
-        for idx in self.problem.segment_mesh_indices:
+        for idx in self.model.segment_mesh_indices:
             oob_mesh, total_mesh = self.coupling[idx].out_of_bounds(
                 smooth_kinematic=self.smooth_kinematic, tol=tol
             )
@@ -664,7 +484,7 @@ class Minimizer:
 
     def constraint_loss(self) -> float:
         loss = 0.0
-        for idx in self.problem.segment_mesh_indices:
+        for idx in self.model.segment_mesh_indices:
             loss += self.coupling[idx].constraint_loss(
                 smooth_kinematic=self.smooth_kinematic
             )
@@ -682,7 +502,7 @@ Objective = Literal[
 
 
 def build_cvxpy_problem(
-    problem: CeleriProblem,
+    model: Model,
     *,
     init_params_raw_value: np.ndarray | None = None,
     init_params_value: np.ndarray | None = None,
@@ -694,32 +514,18 @@ def build_cvxpy_problem(
     rescale_parameters: bool = True,
     rescale_constraints: bool = True,
     mixed_integer: bool = False,
+    operators: Operators | None = None,
 ) -> Minimizer:
-    qp_inequality_constraints_matrix, qp_inequality_constraints_data_vector = (
-        get_qp_all_inequality_operator_and_data_vector(
-            problem.index,
-            problem.meshes,
-            problem.operators,
-            problem.segment,
-            problem.block,
-        )
-    )
+    if operators is None:
+        operators = build_operators(model)
 
-    # Get data vector for KL problem
-    data_vector_eigen = get_data_vector_eigen(
-        problem.meshes, problem.assembly, problem.index
-    )
+    assert operators.eigen is not None
 
-    # Get data vector for KL problem
-    weighting_vector_eigen = get_weighting_vector_eigen(
-        problem.command, problem.station, problem.meshes, problem.index
-    )
+    data_vector_eigen = operators.data_vector
+    weighting_vector_eigen = operators.weighting_vector
 
-    C = problem.operators.eigen * np.sqrt(weighting_vector_eigen[:, None])
+    C = operators.full_dense_operator * np.sqrt(weighting_vector_eigen[:, None])
     d = data_vector_eigen * np.sqrt(weighting_vector_eigen)
-
-    A = qp_inequality_constraints_matrix
-    b = qp_inequality_constraints_data_vector
 
     if rescale_parameters:
         scale = np.abs(C).max(0)
@@ -732,15 +538,17 @@ def build_cvxpy_problem(
     if init_params_value is not None:
         init_params_raw_value = init_params_value * scale
 
+    assert operators.eigen is not None
+
     if init_params_raw_value is not None:
         params_raw = cp.Variable(
             name="params_raw",
-            shape=problem.operators.eigen.shape[1],
+            shape=operators.full_dense_operator.shape[1],
             value=init_params_raw_value,
         )
     else:
         params_raw = cp.Variable(
-            name="params_raw", shape=problem.operators.eigen.shape[1]
+            name="params_raw", shape=operators.full_dense_operator.shape[1]
         )
 
     params = params_raw / scale
@@ -751,30 +559,30 @@ def build_cvxpy_problem(
     def adapt_operator(array: np.ndarray):
         return sparse.csr_array(array)
 
-    for mesh_idx in problem.segment_mesh_indices:
+    for mesh_idx in model.segment_mesh_indices:
         # Matrix vector components of kinematic velocities
-        param_slice = slice(0, 3 * len(problem.block))
+        param_slice = slice(0, 3 * len(model.block))
         kinematic_params = params_raw[param_slice]
         kinematic_operator = (
-            problem.operators.rotation_to_tri_slip_rate[mesh_idx]
-            / scale[None, param_slice]
+            operators.rotation_to_tri_slip_rate[mesh_idx] / scale[None, param_slice]
         )
 
         kinematic_operator = adapt_operator(kinematic_operator)
 
         # Matrix vector components of estimated velocities
-        start = problem.index["start_col_eigen"][mesh_idx]
-        end = problem.index["end_col_eigen"][mesh_idx]
+        assert operators.index.eigen is not None
+        start = operators.index.eigen.start_col_eigen[mesh_idx]
+        end = operators.index.eigen.end_col_eigen[mesh_idx]
         param_slice = slice(start, end)
         estimated_params = params_raw[param_slice]
         estimated_operator = (
-            problem.operators.eigenvectors_to_tde_slip[mesh_idx]
+            operators.eigen.eigenvectors_to_tde_slip[mesh_idx]
             / scale[None, param_slice]
         )
 
         estimated_operator = adapt_operator(estimated_operator)
 
-        smoothing_operator = problem.operators.linear_guassian_smoothing[mesh_idx]
+        smoothing_operator = operators.eigen.linear_gaussian_smoothing[mesh_idx]
 
         smoothing_operator = adapt_operator(smoothing_operator)
 
@@ -855,15 +663,6 @@ def build_cvxpy_problem(
                     )
                 )
 
-    A_hat = np.array(A / scale)
-
-    if rescale_constraints:
-        A_scale = np.linalg.norm(A_hat, axis=1)
-    else:
-        A_scale = np.ones(A_hat.shape[0])
-    A_hat_ = A_hat / A_scale[:, None]
-    b_hat = b / A_scale
-
     objective_norm2 = cp.norm2(C_hat @ params_raw - d)
 
     match objective:
@@ -880,7 +679,8 @@ def build_cvxpy_problem(
             if False:
                 q, r, p = linalg.qr(C_hat, mode="economic", pivoting=True)
             else:
-                q, r = linalg.qr(C_hat, mode="economic", pivoting=False)
+                out = linalg.qr(C_hat, mode="economic", pivoting=False)
+                q, r = cast(tuple[np.ndarray, np.ndarray], out)
                 p = np.arange(C_hat.shape[1])
             p_inv = np.argsort(p)
             np.testing.assert_allclose(q.T @ q, np.eye(len(q.T)), atol=1e-10, rtol=1e-6)
@@ -911,14 +711,28 @@ def build_cvxpy_problem(
         case _:
             raise ValueError(f"Unknown objective type: {objective}")
 
-    constraint = adapt_operator(A_hat_) @ params_raw <= b_hat
+    A, b = get_qp_all_inequality_operator_and_data_vector(
+        model, operators, operators.index, include_tde=False
+    )
 
-    constraints.append(constraint)
+    A_hat = np.array(A / scale)
+
+    if rescale_constraints:
+        A_scale = np.linalg.norm(A_hat, axis=1)
+    else:
+        A_scale = np.ones(A_hat.shape[0])
+    A_hat_ = A_hat / A_scale[:, None]
+    b_hat = b / A_scale
+
+    if len(b) > 0:
+        constraint = adapt_operator(A_hat_) @ params_raw <= b_hat
+        constraints.append(constraint)
 
     cp_problem = cp.Problem(cp.Minimize(objective_val), constraints)
 
     return Minimizer(
-        problem=problem,
+        model=model,
+        operators=operators,
         cp_problem=cp_problem,
         params_raw=params_raw,
         params=params,
@@ -998,7 +812,7 @@ def _tighten_kinematic_bounds(
         raise ValueError("Velocity limits have not been set")
 
     velocity_limits = {}
-    for idx in minimizer.problem.segment_mesh_indices:
+    for idx in minimizer.model.segment_mesh_indices:
         velocity_limits[idx] = limits[idx].apply_with_coupling(
             tighten_item, minimizer.coupling[idx]
         )
@@ -1006,7 +820,8 @@ def _tighten_kinematic_bounds(
 
 @dataclass
 class MinimizerTrace:
-    problem: CeleriProblem
+    problem: Model
+    operators: Operators
     params: list[np.ndarray]
     params_raw: list[np.ndarray]
     coupling: list[dict[int, Coupling]]
@@ -1022,7 +837,7 @@ class MinimizerTrace:
     minimizer: Minimizer
 
     def __init__(self, minimizer: Minimizer):
-        self.problem = minimizer.problem
+        self.problem = minimizer.model
         self.params = []
         self.params_raw = []
         self.coupling = []
@@ -1150,7 +965,7 @@ def _custom_cvxopt_solve(problem: cp.Problem, **kwargs):
         r_dual=cvxopt_result["dual slack"],
     )
 
-    problem.unpack_results(sol, chain, inverse_data)
+    problem.unpack_results(sol, chain, inverse_data)  # type: ignore
 
 
 def _custom_solve(problem: cp.Problem, solver: str, objective: Objective, **kwargs):
@@ -1166,11 +981,21 @@ def _custom_solve(problem: cp.Problem, solver: str, objective: Objective, **kwar
             )
         _custom_cvxopt_solve(problem, **kwargs)
     else:
-        problem.solve(solver=solver, **kwargs)
+        result = problem.solve(solver=solver, **kwargs)
+        if isinstance(result, str):
+            raise ValueError(
+                f"Solver {solver} returned an error: {result}. "
+                "Check if the problem is well-posed and constraints are feasible."
+            )
+        if not np.isfinite(result):
+            raise ValueError(
+                f"Solver {solver} failed to solve the problem. "
+                "Check if the problem is well-posed and constraints are feasible."
+            )
 
 
 def minimize(
-    problem: CeleriProblem,
+    model: Model,
     *,
     velocity_upper: float,
     velocity_lower: float,
@@ -1181,9 +1006,8 @@ def minimize(
     verbose: bool = False,
     rescale_parameters: bool = True,
     rescale_constraints: bool = True,
-    objective: Literal[
-        "expanded_norm2", "sum_of_squares", "norm1", "norm2"
-    ] = "expanded_norm2",
+    objective: Objective = "qr_sum_of_squares",
+    operators: Operators | None = None,
 ) -> MinimizerTrace:
     """Iteratively solve a constrained optimization problem for fault slip rates.
 
@@ -1204,17 +1028,18 @@ def minimize(
         A trace object containing the optimization history
     """
     limits = {}
-    for idx in problem.segment_mesh_indices:
-        length = problem.meshes[idx]["n_tde"]
+    for idx in model.segment_mesh_indices:
+        length = model.meshes[idx].n_tde
         limits[idx] = VelocityLimit.from_scalar(length, velocity_lower, velocity_upper)
 
     minimizer = build_cvxpy_problem(
-        problem,
+        model,
         velocity_limits=limits,
         smooth_kinematic=smooth_kinematic,
         rescale_parameters=rescale_parameters,
         rescale_constraints=rescale_constraints,
         objective=objective,
+        operators=operators,
     )
     trace = MinimizerTrace(minimizer)
 
@@ -1256,7 +1081,7 @@ def minimize(
 
 
 def benchmark_solve(
-    problem: CeleriProblem,
+    model: Model,
     *,
     with_limits: tuple[float, float] | None,
     objective: Objective,
@@ -1265,6 +1090,7 @@ def benchmark_solve(
     velocity_as_variable: bool = False,
     solver: str,
     solve_kwargs: dict | None = None,
+    operators: Operators | None = None,
 ):
     """Benchmark the performance of solving a CeleriProblem with different configurations.
 
@@ -1283,21 +1109,22 @@ def benchmark_solve(
     """
     if with_limits is not None:
         limits = {}
-        for idx in problem.segment_mesh_indices:
-            length = problem.meshes[idx]["n_tde"]
+        for idx in model.segment_mesh_indices:
+            length = model.meshes[idx].n_tde
             lower, upper = with_limits
             limits[idx] = VelocityLimit.from_scalar(length, lower, upper)
     else:
         limits = None
 
     minimizer = build_cvxpy_problem(
-        problem,
+        model,
         velocity_limits=limits,
         objective=objective,
         rescale_parameters=rescale_parameters,
         rescale_constraints=rescale_constraints,
         mixed_integer=False,
         velocity_as_variable=velocity_as_variable,
+        operators=operators,
     )
 
     default_solve_kwargs = {
