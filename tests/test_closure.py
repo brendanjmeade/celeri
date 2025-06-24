@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 
 import celeri
@@ -120,7 +122,7 @@ def test_global_closure():
             (all_edge_idxs, np.array(closure.polygons[i].edge_idxs))
         )
 
-    with open("./tests/test_closure_arrays.npy", "rb") as f:
+    with Path("./tests/test_closure_arrays.npy").open("rb") as f:
         all_edge_idxs_stored = np.load(f)
 
     assert np.allclose(all_edge_idxs, all_edge_idxs_stored)

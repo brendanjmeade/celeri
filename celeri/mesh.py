@@ -3,60 +3,68 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TypeVar, cast
+from typing import Literal, TypeVar, cast
 
 import meshio
 import numpy as np
 from loguru import logger
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from celeri import constants
 from celeri.celeri_util import cart2sph, sph2cart, triangle_area, wrap2360
 from celeri.output import dataclass_from_disk, dataclass_to_disk
 
-# Should be once we support Python 3.11+
+# Should be once we support Python 3.12+
 # type ByMesh[T] = dict[int, T]
 T = TypeVar("T")
 ByMesh = dict[int, T]
 
 
 class MeshConfig(BaseModel):
+    # Forbid extra fields when reading from JSON
+    model_config = ConfigDict(extra="forbid")
+
     # TODO(Brendan) check types. Sohuld some be bool?
     mesh_filename: str | None = None
+    # Weight for Laplacian smooting of slip rates (TODO unit?)
     smoothing_weight: float = 1.0
+    # Number of eigenmodes to use for strike-slip and dip-slip
     n_modes_strike_slip: int = 10
     n_modes_dip_slip: int = 10
-    # TODO should be a string with Literal types.
-    top_slip_rate_constraint: int = 0
-    bot_slip_rate_constraint: int = 0
-    side_slip_rate_constraint: int = 0
+
+    # TODO should be a string with Literal types or bool?
+    # 0: Don't constrain, 1: Constrain to zero
+    top_slip_rate_constraint: Literal[0, 1] = 0
+    bot_slip_rate_constraint: Literal[0, 1] = 0
+    side_slip_rate_constraint: Literal[0, 1] = 0
+
+    # Weight for zero-slip constraints
     top_slip_rate_weight: float = 1.0
     bot_slip_rate_weight: float = 1.0
     side_slip_rate_weight: float = 1.0
+
+    # Filename for fixed slip rates, not currently used
     a_priori_slip_filename: str | None = None
-    # TODO(Brendan) check if this should be a list
+
+    # TODO Rework how these constraints are handled.
+    # We want to be able to set either coupling constraints, or
+    # directly constraints on the elastic slip rates.
+    # This might be different for dip_slip and strike-slip.
+    # For coupling constraints, we also might need inidial guesses
+    # for some constraints: In the old SQP solver, we need
+    # initial constraints for the elastic slip rates, in the
+    # new SQP solver, we need initial guesses for upper and lower
+    # limits of the kinematic slip rates.
     ss_slip_constraint_idx: list[int] = []
-    ss_slip_constraint_rate: float = 0.0
-    ss_slip_constraint_weight: float | None = None
-    ss_slip_constraint_sig: list | None = None
+    ss_slip_constraint_rate: list[float] | float = 0.0
     ds_slip_constraint_idx: list[int] = []
-    ds_slip_constraint_rate: float = 0.0
-    ds_slip_constraint_weight: float | None = None
-    ds_slip_constraint_sig: list | None = None
-    mesh_tde_bound: list = [1]
-    mesh_tde_slip_rate_bound_lower_ss: list = [-np.inf]
-    mesh_tde_slip_rate_bound_upper_ss: list = [np.inf]
-    mesh_tde_slip_rate_bound_lower_ds: list = [0.0]
-    mesh_tde_slip_rate_bound_upper_ds: list = [1.0]
+    ds_slip_constraint_rate: list[float] | float = 0.0
     mesh_tde_coupling_bound: list = [0]
     mesh_tde_coupling_bound_lower_ss: list = [-np.inf]
     mesh_tde_coupling_upper_ss: list = [np.inf]
     mesh_tde_coupling_lower_ds: list = [0.0]
     mesh_tde_coupling_upper_ds: list = [1.0]
     mesh_tde_modes_bc_weight: float = 1.0
-    iterative_coupling_smoothing_length_scale: float | None = None
-
-    # TODO(Brendan) verify defaults
     qp_mesh_tde_bound: int = 1
     qp_mesh_tde_slip_rate_lower_bound_ss: float | None = None
     qp_mesh_tde_slip_rate_upper_bound_ss: float | None = None
@@ -67,10 +75,11 @@ class MeshConfig(BaseModel):
     qp_mesh_tde_slip_rate_upper_bound_ss_coupling: float = 1.0
     qp_mesh_tde_slip_rate_lower_bound_ds_coupling: float = 0.0
     qp_mesh_tde_slip_rate_upper_bound_ds_coupling: float = 1.0
+
+    # Parameters for SQP solver
     iterative_coupling_linear_slip_rate_reduction_factor: float = 0.025
+    iterative_coupling_smoothing_length_scale: float | None = None
     iterative_coupling_kinematic_slip_regularization_scale: float = 1.0
-    n_eigen: int | None = None
-    n_modes: int | None = None
 
     @classmethod
     def from_file(cls, filename: str | Path) -> list[MeshConfig]:
@@ -82,7 +91,8 @@ class MeshConfig(BaseModel):
         Returns:
             list[MeshParams]: Instance with parameters from file overriding defaults
         """
-        with open(filename) as f:
+        filename = Path(filename)
+        with filename.open() as f:
             params_list = json.load(f)
 
         if not isinstance(params_list, list):
@@ -456,7 +466,7 @@ class Mesh:
 
         # Save the MeshConfig separately
         config_file = output_dir / "mesh_config.json"
-        with open(config_file, "w") as f:
+        with config_file.open("w") as f:
             json.dump(self.config.model_dump(), f, indent=4)
 
         # Use the general dataclass serialization function for the rest
@@ -473,7 +483,7 @@ class Mesh:
         if not config_file.exists():
             raise FileNotFoundError(f"Mesh configuration file {config_file} not found.")
 
-        with open(config_file) as f:
+        with config_file.open() as f:
             config_data = json.load(f)
 
         config = MeshConfig(**config_data)

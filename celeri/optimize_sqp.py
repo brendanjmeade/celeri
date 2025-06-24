@@ -303,10 +303,10 @@ def solve_sqp(
     assert index.tde is not None
 
     # Set default values from model config if not provided
-    max_iter = max_iter or model.config.coupling_bounds_max_iter
+    max_iter = max_iter or model.config.iterative_coupling_bounds_max_iter
     percentage_satisfied_target = (
         percentage_satisfied_target
-        or model.config.coupling_bounds_total_percentage_satisfied_target
+        or model.config.iterative_coupling_bounds_total_percentage_satisfied_target
     )
 
     if max_iter is None:

@@ -10,7 +10,7 @@ import celeri
 def main():
     args = celeri.parse_args()
     # Read in command file and start logging
-    config = celeri.get_config(args.command_file_name)
+    config = celeri.get_config(args.config_file_name)
     logger = celeri.get_logger(config)
     celeri.process_args(config, args)
     model = celeri.build_model(config)
@@ -31,19 +31,10 @@ def main():
     else:
         raise ValueError(f"Unknown solve type: {config.solve_type}")
 
-    # Copy input files and adata structures to output folder
-    celeri.write_output_supplemental(
-        args,
-        config,
-        estimation.operators.index,
-        model,
-        estimation.operators,
-        estimation,
-        estimation.operators.assembly,
-    )
+    celeri.write_output(estimation)
 
     # Drop into ipython REPL
-    if bool(config.repl):
+    if config.repl:
         IPython.embed(banner1="")
 
 

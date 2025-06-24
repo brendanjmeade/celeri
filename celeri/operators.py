@@ -1,4 +1,4 @@
-import os
+import hashlib
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
@@ -9,6 +9,7 @@ import h5py
 import numpy as np
 import scipy
 from loguru import logger
+from pandas import DataFrame
 from scipy import spatial
 from scipy.sparse import csr_matrix
 from scipy.spatial.distance import cdist
@@ -23,11 +24,12 @@ from celeri.celeri_util import (
     interleave3,
     sph2cart,
 )
+from celeri.config import Config
 from celeri.constants import (
     DEG_PER_MYR_TO_RAD_PER_YR,
     N_MESH_DIM,
 )
-from celeri.mesh import ByMesh, Mesh
+from celeri.mesh import ByMesh, Mesh, MeshConfig
 from celeri.model import (
     Model,
     merge_geodetic_data,
@@ -631,9 +633,44 @@ def _store_gaussian_smoothing_operator(
         operators.linear_gaussian_smoothing[i] = W
 
 
+def _hash_elastic_operator_input(
+    meshes: list[MeshConfig], segment: DataFrame, station: DataFrame, config: Config
+):
+    """Create a hash from segment, station DataFrames and elastic parameters from config.
+
+    This allows us to check if we need to recompute elastic operators or can use cached ones.
+
+    Args:
+        segment: DataFrame containing fault segment information
+        station: DataFrame containing station information
+        config: Config object containing material parameters
+
+    Returns:
+        str: Hash string representing the input data
+    """
+    # Convert dataframes to string representations
+    segment_str = segment.to_json()
+    station_str = station.to_json()
+    assert isinstance(segment_str, str)
+    assert isinstance(station_str, str)
+
+    # Get material parameters
+    material_params = f"{config.material_mu}_{config.material_lambda}"
+
+    mesh_configs = [mesh.model_dump_json() for mesh in meshes]
+
+    # Combine all inputs and create hash
+    combined_input = "_".join(
+        [segment_str, station_str, material_params, *mesh_configs]
+    )
+    return hashlib.blake2b(combined_input.encode()).hexdigest()[:16]
+
+
 def _store_elastic_operators(
     model: Model,
     operators: _OperatorBuilder,
+    *,
+    tde: bool = True,
 ):
     """Calculate (or load previously calculated) elastic operators from
     both fully locked segments and TDE parameterizes surfaces.
@@ -650,35 +687,44 @@ def _store_elastic_operators(
     segment = model.segment
     station = model.station
 
-    if (
-        bool(config.reuse_elastic)
-        and config.reuse_elastic_file is not None
-        and os.path.exists(config.reuse_elastic_file)
-    ):
-        logger.info("Using precomputed elastic operators")
-        hdf5_file = h5py.File(config.reuse_elastic_file, "r")
+    cache = None
 
-        operators.slip_rate_to_okada_to_velocities = np.array(
-            hdf5_file.get("slip_rate_to_okada_to_velocities")
-        )
-        for i in range(len(meshes)):
-            operators.tde_to_velocities[i] = np.array(
-                hdf5_file.get("tde_to_velocities_" + str(i))
+    if config.elastic_operator_cache_dir is not None:
+        if tde:
+            input_hash = _hash_elastic_operator_input(
+                [mesh.config for mesh in meshes],
+                segment,
+                station,
+                config,
             )
-        hdf5_file.close()
+        else:
+            input_hash = _hash_elastic_operator_input([], segment, station, config)
+        cache = config.elastic_operator_cache_dir / f"{input_hash}.hdf5"
+        if cache.exists():
+            logger.info(f"Using precomputed elastic operators from {cache}")
+            hdf5_file = h5py.File(cache, "r")
+            operators.slip_rate_to_okada_to_velocities = np.array(
+                hdf5_file.get("slip_rate_to_okada_to_velocities")
+            )
+            if tde:
+                for i in range(len(meshes)):
+                    operators.tde_to_velocities[i] = np.array(
+                        hdf5_file.get("tde_to_velocities_" + str(i))
+                    )
+            hdf5_file.close()
+            return
 
+        logger.info("Precomputed elastic operator file not found, computing operators")
     else:
-        if config.reuse_elastic_file is None or not os.path.exists(
-            config.reuse_elastic_file
-        ):
-            logger.warning("Precomputed elastic operator file not found")
-        logger.info("Computing elastic operators")
-
-        # Calculate Okada partials for all segments
-        operators.slip_rate_to_okada_to_velocities = get_segment_station_operator_okada(
-            segment, station, config
+        logger.info(
+            "No precomputed elastic operator file specified, computing operators"
         )
 
+    operators.slip_rate_to_okada_to_velocities = get_segment_station_operator_okada(
+        segment, station, config
+    )
+
+    if tde:
         for i in range(len(meshes)):
             logger.info(
                 f"Start: TDE slip to velocity calculation for mesh: {meshes[i].file_name}"
@@ -690,81 +736,24 @@ def _store_elastic_operators(
                 f"Finish: TDE slip to velocity calculation for mesh: {meshes[i].file_name}"
             )
 
-        # Save elastic to velocity matrices
-        if bool(config.save_elastic):
-            # Check to see if "data/operators" folder exists and if not create it
-            if not os.path.exists(config.operators_folder):
-                os.mkdir(config.operators_folder)
+    # Save elastic to velocity matrices
+    if cache is None:
+        return
+    logger.info("Saving elastic operators in cache")
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    hdf5_file = h5py.File(cache, "w")
 
-            logger.info(
-                "Saving elastic to velocity matrices to :" + config.save_elastic_file
-            )
-            hdf5_file = h5py.File(config.save_elastic_file, "w")
-
+    hdf5_file.create_dataset(
+        "slip_rate_to_okada_to_velocities",
+        data=operators.slip_rate_to_okada_to_velocities,
+    )
+    if tde:
+        for i in range(len(meshes)):
             hdf5_file.create_dataset(
-                "slip_rate_to_okada_to_velocities",
-                data=operators.slip_rate_to_okada_to_velocities,
+                "tde_to_velocities_" + str(i),
+                data=operators.tde_to_velocities[i],
             )
-            for i in range(len(meshes)):
-                hdf5_file.create_dataset(
-                    "tde_to_velocities_" + str(i),
-                    data=operators.tde_to_velocities[i],
-                )
-            hdf5_file.close()
-
-
-def _store_elastic_operators_okada(
-    model: Model,
-    operators: _OperatorBuilder,
-):
-    """NOTE: This is for the case with no TDEs.  May be redundant.  Consider.
-
-    Calculate (or load previously calculated) elastic operators from
-    both fully locked segments and TDE parameterizes surfaces
-
-    Args:
-        operators (Dict): Elastic operators will be added to this data structure
-        segment (pd.DataFrame): All segment data
-        station (pd.DataFrame): All station data
-        config (Dict): All config data
-    """
-    config = model.config
-
-    if bool(config.reuse_elastic) and os.path.exists(config.reuse_elastic_file):
-        logger.info("Using precomputed elastic operators")
-        hdf5_file = h5py.File(config.reuse_elastic_file, "r")
-
-        operators.slip_rate_to_okada_to_velocities = np.array(
-            hdf5_file.get("slip_rate_to_okada_to_velocities")
-        )
-        hdf5_file.close()
-
-    else:
-        if not os.path.exists(config.reuse_elastic_file):
-            logger.warning("Precomputed elastic operator file not found")
-        logger.info("Computing elastic operators")
-
-        # Calculate Okada partials for all segments
-        operators.slip_rate_to_okada_to_velocities = get_segment_station_operator_okada(
-            model.segment, model.station, config
-        )
-
-        # Save elastic to velocity matrices
-        if bool(config.save_elastic):
-            # Check to see if "data/operators" folder exists and if not create it
-            if not os.path.exists(config.operators_folder):
-                os.mkdir(config.operators_folder)
-
-            logger.info(
-                "Saving elastic to velocity matrices to :" + config.save_elastic_file
-            )
-            hdf5_file = h5py.File(config.save_elastic_file, "w")
-
-            hdf5_file.create_dataset(
-                "slip_rate_to_okada_to_velocities",
-                data=operators.slip_rate_to_okada_to_velocities,
-            )
-            hdf5_file.close()
+    hdf5_file.close()
 
 
 def _store_all_mesh_smoothing_matrices(model: Model, operators: _OperatorBuilder):
@@ -2001,143 +1990,6 @@ def get_qp_slip_rate_inequality_operator_and_data_vector(
     slip_rate_bound_data_vector = np.hstack((slip_rate_bound_max, -slip_rate_bound_min))
 
     return slip_rate_bound_matrix, slip_rate_bound_data_vector
-
-
-def get_elastic_operator_single_mesh(
-    model: Model,
-    mesh_idx: int,
-):
-    """Calculate (or load previously calculated) elastic operators from
-    both fully locked segments and TDE parameterizes surfaces.
-    """
-    config = model.config
-    meshes = model.meshes
-    mesh_name = meshes[mesh_idx].file_name
-    dataset_name = f"tde_to_velocities_{mesh_idx}"
-
-    # Try to load precomputed operators if requested
-    if config.reuse_elastic:
-        if config.reuse_elastic_file is None:
-            raise ValueError(
-                "reuse_elastic_file must be set when reuse_elastic is True"
-            )
-
-        try:
-            with h5py.File(config.reuse_elastic_file, "r") as hdf5_file:
-                if dataset_name in hdf5_file:
-                    logger.info("Using precomputed elastic operators")
-                    return hdf5_file[dataset_name][:]
-                else:
-                    logger.warning(
-                        f"Dataset {dataset_name} not found in {config.reuse_elastic_file}. "
-                        "Will compute elastic operators instead."
-                    )
-        except OSError:
-            logger.warning(
-                f"Could not open file {config.reuse_elastic_file}. "
-                "Will compute elastic operators instead."
-            )
-
-    # Compute elastic operators
-    logger.info("Computing elastic operators")
-    logger.info(f"Start: TDE slip to velocity calculation for mesh: {mesh_name}")
-    tde_to_velocities = get_tde_to_velocities_single_mesh(
-        meshes, model.station, config, mesh_idx=mesh_idx
-    )
-    logger.success(f"Finish: TDE slip to velocity calculation for mesh: {mesh_name}")
-
-    # Save operators if requested
-    if config.save_elastic and config.save_elastic_file is not None:
-        if not os.path.exists(config.operators_folder):
-            os.makedirs(config.operators_folder, exist_ok=True)
-
-        logger.info(
-            f"Saving elastic to velocity matrices to: {config.save_elastic_file}"
-        )
-
-        with h5py.File(config.save_elastic_file, "a") as hdf5_file:
-            if dataset_name in hdf5_file:
-                del hdf5_file[dataset_name]  # Remove existing dataset
-            hdf5_file.create_dataset(dataset_name, data=tde_to_velocities)
-
-    return tde_to_velocities
-
-
-def get_h_matrices_for_tde_meshes(
-    model: Model, operators: Operators, col_norms: np.ndarray
-):
-    # TODO This modifies the type of operators.tde.tde_slip_rate_constraints. Fix this.
-    # TODO fix late import
-    from celeri.hmatrix import build_hmatrix_from_mesh_tdes
-
-    assert operators.tde is not None
-
-    meshes = model.meshes
-    station = model.station
-    config = model.config
-
-    # Create lists for all TDE matrices per mesh
-    H = []
-    for i in range(len(meshes)):
-        # Get full TDE to velocity matrix for current mesh
-        tde_to_velocities = get_elastic_operator_single_mesh(model, i)
-
-        # H-matrix representation
-        H.append(
-            build_hmatrix_from_mesh_tdes(
-                meshes[i],
-                station,
-                -tde_to_velocities,
-                config.h_matrix_tol,
-                config.h_matrix_min_separation,
-                config.h_matrix_min_pts_per_box,
-            )
-        )
-
-        logger.info(
-            f"mesh {i} ({meshes[i].file_name}) H-matrix compression ratio: {H[i].report_compression_ratio():0.4f}"
-        )
-
-        # Case smoothing matrices and tde slip rate constraints to sparse
-        smoothing_keep_index = get_keep_index_12(operators.smoothing_matrix[i].shape[0])
-        operators.smoothing_matrix[i] = csr_matrix(
-            operators.smoothing_matrix[i][smoothing_keep_index, :][
-                :, smoothing_keep_index
-            ]
-        )
-        operators.tde.tde_slip_rate_constraints[i] = csr_matrix(
-            operators.tde.tde_slip_rate_constraints[i]
-        )
-
-        # Eliminate unused columns and rows of TDE to velocity matrix
-        tde_to_velocities = np.delete(
-            tde_to_velocities, np.arange(2, tde_to_velocities.shape[0], 3), axis=0
-        )
-        tde_to_velocities = np.delete(
-            tde_to_velocities, np.arange(2, tde_to_velocities.shape[1], 3), axis=1
-        )
-
-        # Calculate column normalization vector current TDE mesh
-        weighting_vector_no_zero_rows = get_weighting_vector_single_mesh_for_col_norms(
-            model, operators.index, i
-        )
-        current_tde_mesh_columns_full_no_zero_rows = np.vstack(
-            (
-                -tde_to_velocities,
-                operators.smoothing_matrix[i].toarray(),
-                operators.tde_slip_rate_constraints[i].toarray(),
-            )
-        ) * np.sqrt(weighting_vector_no_zero_rows[:, None])
-
-        # Concatenate everthing we need for col_norms
-        col_norms_current_tde_mesh = np.linalg.norm(
-            current_tde_mesh_columns_full_no_zero_rows, axis=0
-        )
-        col_norms = np.hstack((col_norms, col_norms_current_tde_mesh))
-
-        # Free memory.  We have the Hmatrix version of this.
-        del tde_to_velocities
-    return H, col_norms
 
 
 def get_eigenvalues_and_eigenvectors(n_eigenvalues, x, y, z, distance_exponent):
