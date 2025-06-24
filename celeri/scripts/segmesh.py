@@ -4,7 +4,6 @@
 import argparse
 import json
 import os
-from dataclasses import asdict
 
 import gmsh
 import numpy as np
@@ -27,14 +26,7 @@ def main():
         type=str,
         help="Name of config file.",
     )
-    parser.add_argument(
-        "-el",
-        "--el_length",
-        nargs="*",
-        default=["5"],
-        help="Element length (1 value for constant, 2 for top, bottom)",
-        required=False,
-    )
+
     parser.add_argument(
         "-el",
         "--el_length",
@@ -59,7 +51,7 @@ def main():
     n_meshes = len(meshes)  # Number of preexisting meshes
     station = celeri.model.process_station(station, config)
     segment = celeri.model.process_segment(segment, config, meshes)
-    closure, block = celeri.model.assign_block_labels(
+    closure, segment, station, block, mogi, sar = celeri.model.assign_block_labels(
         segment, station, block, mogi, sar
     )
     # Returning a copy of the closure class lets us access data within it
@@ -311,9 +303,11 @@ def main():
     # Reference new mesh parameter file, including newly created meshes
     config.mesh_parameters_file_name = new_mesh_param_name
     # Set elastic kernel reuse to 0, because we'll need to recalculate
-    config.reuse_elastic = 0
+    # TODO: I don't know how this works in celeri now. Something with elastic_operator_cache_dir?
+    # config.reuse_elastic = 0
     with open(new_config_file_name, "w") as cf:
-        json.dump(asdict(config), cf, indent=2)
+        # json.dump(asdict(config), cf, indent=2)
+        cf.write(config.model_dump_json())
 
     # Visualize meshes
 
@@ -324,7 +318,7 @@ def main():
         tensile_slip_rates = 0
 
     estimation = BlankEstimation()
-    p = celeri.plot.get_default_plotting_dict(config, estimation, station)
+    p = celeri.plot.get_default_plotting_options(config, estimation, station)
 
     # Read in revised inputs
     config = celeri.get_config(new_config_file_name)
