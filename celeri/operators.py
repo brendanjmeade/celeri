@@ -840,24 +840,6 @@ def _store_tde_slip_rate_constraints(model: Model, operators: _OperatorBuilder):
                     len(slip_idx)
                 )
 
-        # Process slip constraint indices
-        slip_constraints = [
-            ("ss", meshes[i].config.ss_slip_constraint_idx),
-            ("ds", meshes[i].config.ds_slip_constraint_idx),
-        ]
-
-        for name, constraint_indices in slip_constraints:
-            if len(constraint_indices) > 0:
-                idx = get_2component_index(np.asarray(constraint_indices))
-                slip_idx = idx[0::2]
-                setattr(meshes[i], f"{name}_slip_idx", slip_idx)
-                start_row = end_row
-                end_row = start_row + len(slip_idx)
-                # Component slip needs identities placed every other row, column
-                tde_slip_rate_constraints[start_row:end_row, slip_idx] = np.eye(
-                    len(slip_idx)
-                )
-
         # Eliminate blank rows
         sum_constraint_columns = np.sum(tde_slip_rate_constraints, 1)
         tde_slip_rate_constraints = tde_slip_rate_constraints[
@@ -1310,21 +1292,6 @@ def _get_data_vector(model: Model, assembly: Assembly, index: Index) -> np.ndarr
     data_vector[
         index.start_slip_rate_constraints_row : index.end_slip_rate_constraints_row
     ] = assembly.data.slip_rate_constraints
-
-    # Add TDE slip rate constraints to data vector
-    # Coupling fractions remain zero but slip component constraints are as specified in mesh_param
-    for i in range(len(model.meshes)):
-        data_vector[
-            index.tde.start_tde_ss_slip_constraint_row[
-                i
-            ] : index.tde.end_tde_ss_slip_constraint_row[i]
-        ] = model.meshes[i].config.ss_slip_constraint_rate
-
-        data_vector[
-            index.tde.start_tde_ds_slip_constraint_row[
-                i
-            ] : index.tde.end_tde_ds_slip_constraint_row[i]
-        ] = model.meshes[i].config.ds_slip_constraint_rate
     return data_vector
 
 
@@ -1355,22 +1322,6 @@ def _get_data_vector_eigen(
     data_vector[
         index.start_slip_rate_constraints_row : index.end_slip_rate_constraints_row
     ] = assembly.data.slip_rate_constraints
-
-    # Add TDE boundary condtions constraints
-    for i in range(index.n_meshes):
-        # Place strike-slip TDE BCs
-        data_vector[
-            index.eigen.start_tde_constraint_row_eigen[
-                i
-            ] : index.eigen.end_tde_constraint_row_eigen[i] : 2
-        ] = model.meshes[i].config.ss_slip_constraint_rate
-
-        # Place dip-slip TDE BCs
-        data_vector[
-            index.eigen.start_tde_constraint_row_eigen[i]
-            + 1 : index.eigen.end_tde_constraint_row_eigen[i] : 2
-        ] = model.meshes[i].config.ds_slip_constraint_rate
-
     return data_vector
 
 
@@ -1740,7 +1691,7 @@ def get_full_dense_operator_eigen(operators: Operators):
     for i in range(index.n_meshes):
         # Create eigenvector to TDE boundary conditions matrix
         operators.eigen.eigen_to_tde_bcs[i] = (
-            model.meshes[i].config.mesh_tde_modes_bc_weight
+            model.meshes[i].config.eigenmode_slip_rate_constraint_weight
             * operators.tde.tde_slip_rate_constraints[i]
             @ operators.eigen.eigenvectors_to_tde_slip[i]
         )
@@ -1869,10 +1820,10 @@ def get_qp_tde_inequality_operator_and_data_vector(
 
     for i in range(index.n_meshes):
         # TDE strike- and dip-slip lower bounds
-        lower_ss = model.meshes[i].config.qp_mesh_tde_slip_rate_lower_bound_ss
+        lower_ss = model.meshes[i].config.elastic_constraints_ss.lower
         assert lower_ss is not None
 
-        lower_ds = model.meshes[i].config.qp_mesh_tde_slip_rate_lower_bound_ds
+        lower_ds = model.meshes[i].config.elastic_constraints_ds.lower
         assert lower_ds is not None
 
         lower_bound_current_mesh = interleave2(
@@ -1881,9 +1832,9 @@ def get_qp_tde_inequality_operator_and_data_vector(
         )
 
         # TDE strike- and dip-slip upper bounds
-        upper_ss = model.meshes[i].config.qp_mesh_tde_slip_rate_upper_bound_ss
+        upper_ss = model.meshes[i].config.elastic_constraints_ss.upper
         assert upper_ss is not None
-        upper_ds = model.meshes[i].config.qp_mesh_tde_slip_rate_upper_bound_ds
+        upper_ds = model.meshes[i].config.elastic_constraints_ds.upper
         assert upper_ds is not None
         upper_bound_current_mesh = interleave2(
             upper_ss * np.ones(index.tde.n_tde[i]),

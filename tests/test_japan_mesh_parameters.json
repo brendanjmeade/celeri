@@ -1,42 +1,41 @@
 [
     {
-        "mesh_filename": "./tests/test_japan_nankai.msh",
+        "mesh_filename": "./test_japan_nankai.msh",
         "smoothing_weight": 7e14,
         "n_modes_strike_slip": 50,
         "n_modes_dip_slip": 50,
         "top_slip_rate_constraint": 0,
         "bot_slip_rate_constraint": 1,
         "side_slip_rate_constraint": 0,
-        "ss_slip_constraint_rate": 0.0,
-        "qp_mesh_tde_slip_rate_lower_bound_ss": -90,
-        "qp_mesh_tde_slip_rate_upper_bound_ss": 90,
-        "qp_mesh_tde_slip_rate_lower_bound_ds": -90,
-        "qp_mesh_tde_slip_rate_upper_bound_ds": 90
+        "coupling_constraints_ss": [0, 1],
+        "coupling_constraints_ds": [0, 1],
+        "elastic_constraints_ss": [-90, 90],
+        "elastic_constraints_ds": [-90, 90]
     },
     {
-        "mesh_filename": "./tests/test_japan_japan.msh",
+        "mesh_filename": "./test_japan_japan.msh",
         "smoothing_weight": 1e14,
         "n_modes_strike_slip": 50,
         "n_modes_dip_slip": 50,
         "top_slip_rate_constraint": 0,
         "bot_slip_rate_constraint": 1,
         "side_slip_rate_constraint": 0,
-        "qp_mesh_tde_slip_rate_lower_bound_ss": -90,
-        "qp_mesh_tde_slip_rate_upper_bound_ss": 90,
-        "qp_mesh_tde_slip_rate_lower_bound_ds": -90,
-        "qp_mesh_tde_slip_rate_upper_bound_ds": 90
+        "coupling_constraints_ss": [0, 1],
+        "coupling_constraints_ds": [0, 1],
+        "elastic_constraints_ss": [-90, 90],
+        "elastic_constraints_ds": [-90, 90]
     },
     {
-        "mesh_filename": "./tests/test_japan_sagami.msh",
+        "mesh_filename": "./test_japan_sagami.msh",
         "smoothing_weight": 1e14,
         "n_modes_strike_slip": 50,
         "n_modes_dip_slip": 50,
         "top_slip_rate_constraint": 0,
         "bot_slip_rate_constraint": 1,
         "side_slip_rate_constraint": 1,
-        "qp_mesh_tde_slip_rate_lower_bound_ss": -90,
-        "qp_mesh_tde_slip_rate_upper_bound_ss": 90,
-        "qp_mesh_tde_slip_rate_lower_bound_ds": -90,
-        "qp_mesh_tde_slip_rate_upper_bound_ds": 90
+        "coupling_constraints_ss": [0, 1],
+        "coupling_constraints_ds": [0, 1],
+        "elastic_constraints_ss": [-90, 90],
+        "elastic_constraints_ds": [-90, 90]
     }
 ]

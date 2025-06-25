@@ -3,12 +3,12 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, TypeVar, cast
+from typing import Any, Literal, TypeVar, cast
 
 import meshio
 import numpy as np
 from loguru import logger
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from celeri import constants
 from celeri.celeri_util import cart2sph, sph2cart, triangle_area, wrap2360
@@ -20,12 +20,31 @@ T = TypeVar("T")
 ByMesh = dict[int, T]
 
 
+class ScalarBound(BaseModel):
+    lower: float | None
+    upper: float | None
+
+    @model_validator(mode="before")
+    @classmethod
+    def from_list(cls, data: Any) -> Any:
+        if isinstance(data, list):
+            if len(data) != 2:
+                raise ValueError("ScalarBound should be a list of two values")
+            lower, upper = data
+            return {"lower": lower, "upper": upper}
+        return data
+
+
 class MeshConfig(BaseModel):
     # Forbid extra fields when reading from JSON
     model_config = ConfigDict(extra="forbid")
 
-    # TODO(Brendan) check types. Sohuld some be bool?
-    mesh_filename: str | None = None
+    # The path to the mesh configuration file itself.
+    # All other paths in this configuration are relative to this file.
+    file_name: Path
+
+    mesh_filename: Path | None = None
+
     # Weight for Laplacian smooting of slip rates (TODO unit?)
     smoothing_weight: float = 1.0
     # Number of eigenmodes to use for strike-slip and dip-slip
@@ -33,48 +52,46 @@ class MeshConfig(BaseModel):
     n_modes_dip_slip: int = 10
 
     # TODO should be a string with Literal types or bool?
-    # 0: Don't constrain, 1: Constrain to zero
-    top_slip_rate_constraint: Literal[0, 1] = 0
-    bot_slip_rate_constraint: Literal[0, 1] = 0
-    side_slip_rate_constraint: Literal[0, 1] = 0
+    # Constraints for slip rates on the boundary of the mesh.
+    # These use mesh.top_slip_idx, mesh.bot_slip_idx, and mesh.side_slip_idx
+    # to identify the slip rates to constrain.
+    # 0: Don't constrain, 1: Constrain to zero, 2: ????
+    top_slip_rate_constraint: Literal[0, 1, 2] = 0
+    bot_slip_rate_constraint: Literal[0, 1, 2] = 0
+    side_slip_rate_constraint: Literal[0, 1, 2] = 0
 
-    # Weight for zero-slip constraints
+    # Weight for zero-slip constraint loss during optimization.
+    # This will not be used if the elastic velocities are
+    # computed using the TDE eigenmodes.
     top_slip_rate_weight: float = 1.0
     bot_slip_rate_weight: float = 1.0
     side_slip_rate_weight: float = 1.0
 
-    # Filename for fixed slip rates, not currently used
-    a_priori_slip_filename: str | None = None
+    # Weight for TDE modes boundary conditions.
+    # This is used instead of `top_slip_rate_weight`, `bot_slip_rate_weight`, and
+    # `side_slip_rate_weight` if the TDE eigenmodes are used.
+    eigenmode_slip_rate_constraint_weight: float = 1.0
 
-    # TODO Rework how these constraints are handled.
-    # We want to be able to set either coupling constraints, or
-    # directly constraints on the elastic slip rates.
-    # This might be different for dip_slip and strike-slip.
-    # For coupling constraints, we also might need inidial guesses
-    # for some constraints: In the old SQP solver, we need
-    # initial constraints for the elastic slip rates, in the
-    # new SQP solver, we need initial guesses for upper and lower
-    # limits of the kinematic slip rates.
-    ss_slip_constraint_idx: list[int] = []
-    ss_slip_constraint_rate: list[float] | float = 0.0
-    ds_slip_constraint_idx: list[int] = []
-    ds_slip_constraint_rate: list[float] | float = 0.0
-    mesh_tde_coupling_bound: list = [0]
-    mesh_tde_coupling_bound_lower_ss: list = [-np.inf]
-    mesh_tde_coupling_upper_ss: list = [np.inf]
-    mesh_tde_coupling_lower_ds: list = [0.0]
-    mesh_tde_coupling_upper_ds: list = [1.0]
-    mesh_tde_modes_bc_weight: float = 1.0
-    qp_mesh_tde_bound: int = 1
-    qp_mesh_tde_slip_rate_lower_bound_ss: float | None = None
-    qp_mesh_tde_slip_rate_upper_bound_ss: float | None = None
-    qp_mesh_tde_slip_rate_lower_bound_ds: float | None = None
-    qp_mesh_tde_slip_rate_upper_bound_ds: float | None = None
-    qp_mesh_tde_bound_coupling: int = 0
-    qp_mesh_tde_slip_rate_lower_bound_ss_coupling: float = 0.0
-    qp_mesh_tde_slip_rate_upper_bound_ss_coupling: float = 1.0
-    qp_mesh_tde_slip_rate_lower_bound_ds_coupling: float = 0.0
-    qp_mesh_tde_slip_rate_upper_bound_ds_coupling: float = 1.0
+    # Filename for fixed slip rates, not currently used
+    a_priori_slip_filename: Path | None = None
+
+    # Constraints for the coupling on the mesh, ie the ratio
+    # of elastic and kinematic slip rates.
+    # Specified independently for strike-slip and dip-slip
+    coupling_constraints_ss: ScalarBound = ScalarBound(lower=None, upper=None)
+    coupling_constraints_ds: ScalarBound = ScalarBound(lower=None, upper=None)
+
+    # Constraints for elastic rates on the mesh.
+    elastic_constraints_ss: ScalarBound = ScalarBound(lower=None, upper=None)
+    elastic_constraints_ds: ScalarBound = ScalarBound(lower=None, upper=None)
+
+    # Hint for the new sqp solver about the likely range of kinematic slip rates.
+    sqp_kinematic_slip_rate_hint_ss: ScalarBound = ScalarBound(
+        lower=-100.0, upper=100.0
+    )
+    sqp_kinematic_slip_rate_hint_ds: ScalarBound = ScalarBound(
+        lower=-100.0, upper=100.0
+    )
 
     # Parameters for SQP solver
     iterative_coupling_linear_slip_rate_reduction_factor: float = 0.025
@@ -91,14 +108,32 @@ class MeshConfig(BaseModel):
         Returns:
             list[MeshParams]: Instance with parameters from file overriding defaults
         """
-        filename = Path(filename)
+        filename = Path(filename).resolve()
         with filename.open() as f:
             params_list = json.load(f)
 
         if not isinstance(params_list, list):
             raise ValueError(f"Expected a list of dictionaries in {filename}")
 
+        for params in params_list:
+            params["file_name"] = filename
+
         return [cls.model_validate(params) for params in params_list]
+
+    @model_validator(mode="after")
+    def relative_paths(self) -> MeshConfig:
+        """Convert relative paths to absolute paths based on the config file location."""
+        base_dir = self.file_name.parent
+
+        for name in type(self).model_fields:
+            if name == "file_name":
+                continue
+
+            value = getattr(self, name)
+            if isinstance(value, Path):
+                setattr(self, name, (base_dir / value).resolve())
+
+        return self
 
 
 def _compute_ordered_edge_nodes(mesh: dict):
@@ -281,7 +316,6 @@ def _compute_mesh_perimeter(mesh: dict):
 class Mesh:
     """Represents a triangular mesh for fault modeling."""
 
-    file_name: str
     points: np.ndarray
     verts: np.ndarray
     lon1: np.ndarray
@@ -349,7 +383,6 @@ class Mesh:
         mesh = {}
         filename = config.mesh_filename
         meshobj = meshio.read(filename)
-        mesh["file_name"] = filename
         points = cast(np.ndarray, meshobj.points)
         mesh["points"] = points
         verts = meshio.CellBlock("triangle", meshobj.get_cells_type("triangle")).data
@@ -455,9 +488,13 @@ class Mesh:
         return cls(**mesh)
 
     @property
+    def file_name(self) -> Path:
+        return self.config.mesh_filename
+
+    @property
     def name(self) -> str:
         """Return the name of the mesh configuration."""
-        return Path(self.file_name).stem
+        return self.file_name.stem
 
     def to_disk(self, output_dir: str | Path):
         """Save the mesh configuration to a JSON file."""
@@ -467,7 +504,7 @@ class Mesh:
         # Save the MeshConfig separately
         config_file = output_dir / "mesh_config.json"
         with config_file.open("w") as f:
-            json.dump(self.config.model_dump(), f, indent=4)
+            f.write(self.config.model_dump_json(indent=4))
 
         # Use the general dataclass serialization function for the rest
         dataclass_to_disk(self, output_dir, skip={"config"})

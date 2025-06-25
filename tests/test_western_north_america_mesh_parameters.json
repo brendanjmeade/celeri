@@ -1,6 +1,6 @@
 [
   {
-    "mesh_filename": "./tests/test_western_north_america_cascadia.msh",
+    "mesh_filename": "./test_western_north_america_cascadia.msh",
     "smoothing_weight": 1e18,
     "n_modes_strike_slip": 20,
     "n_modes_dip_slip": 20,
@@ -10,20 +10,11 @@
     "top_slip_rate_weight": 1e2,
     "bot_slip_rate_weight": 1e2,
     "side_slip_rate_weight": 1e2,
-    "a_priori_slip_filename": "",
-    "ss_slip_constraint_idx": [],
-    "ss_slip_constraint_rate": 0.0,
-    "ds_slip_constraint_idx": [],
-    "ds_slip_constraint_rate": 0.0,
-    "mesh_tde_coupling_bound": [0],
-    "mesh_tde_coupling_bound_lower_ss": ["-inf"],
-    "mesh_tde_coupling_upper_ss": ["inf"],
-    "mesh_tde_coupling_lower_ds": [0],
-    "mesh_tde_coupling_upper_ds": [1],
-    "mesh_tde_modes_bc_weight": 1e1,
-    "qp_mesh_tde_slip_rate_lower_bound_ss": 0.0,
-    "qp_mesh_tde_slip_rate_lower_bound_ds": 0.0,
-    "qp_mesh_tde_slip_rate_upper_bound_ss": 1.0,
-    "qp_mesh_tde_slip_rate_upper_bound_ds": 1.0
+    "a_priori_slip_filename": null,
+    "coupling_constraints_ss": [null, null],
+    "coupling_constraints_ds": [0, 1],
+    "eigenmode_slip_rate_constraint_weight": 1e1,
+    "elastic_constraints_ss": [0, 1],
+    "elastic_constraints_ds": [0, 1]
   }
 ]

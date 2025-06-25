@@ -1,17 +1,14 @@
 from pathlib import Path
 
-import numpy as np
 import pytest
 
 from celeri.model import build_model
 from celeri.operators import build_operators
 from celeri.optimize import (
-    Coupling,
-    CouplingItem,
     Minimizer,
     Model,
-    VelocityLimit,
-    VelocityLimitItem,
+    SlipRate,
+    SlipRateItem,
     benchmark_solve,
     build_cvxpy_problem,
     minimize,
@@ -50,37 +47,22 @@ def test_build_problem(model):
 
 
 @pytest.mark.parametrize(
-    "velocity_limits, smooth_kinematic, objective",
+    "smooth_kinematic, objective",
     [
-        (None, True, "expanded_norm2"),
-        (None, False, "expanded_norm2"),
-        (None, True, "sum_of_squares"),
-        (None, True, "qr_sum_of_squares"),
-        (None, True, "svd_sum_of_squares"),
-        (None, False, "norm2"),
-        (None, False, "norm1"),
-        ((-50.0, 50.0), True, "expanded_norm2"),
+        (True, "expanded_norm2"),
+        (False, "expanded_norm2"),
+        (True, "sum_of_squares"),
+        (True, "qr_sum_of_squares"),
+        (True, "svd_sum_of_squares"),
+        (False, "norm2"),
+        (False, "norm1"),
+        (True, "expanded_norm2"),
     ],
 )
-def test_build_cvxpy_problem(
-    model: Model, operators, velocity_limits, smooth_kinematic, objective
-):
+def test_build_cvxpy_problem(model: Model, operators, smooth_kinematic, objective):
     """Test that build_cvxpy_problem creates a valid Minimizer object with different parameters."""
-    # Adjust velocity_limits length if needed
-    if velocity_limits is not None:
-        # Create velocity limits as a dict with mesh indices as keys
-        lower, upper = velocity_limits
-        velocity_limits_dict = {}
-        for idx in model.segment_mesh_indices:
-            mesh_length = model.meshes[idx].n_tde
-            velocity_limits_dict[idx] = VelocityLimit.from_scalar(
-                mesh_length, lower, upper
-            )
-        velocity_limits = velocity_limits_dict
-
     minimizer = build_cvxpy_problem(
         model,
-        velocity_limits=velocity_limits,
         smooth_kinematic=smooth_kinematic,
         objective=objective,
         operators=operators,
@@ -91,47 +73,12 @@ def test_build_cvxpy_problem(
     assert minimizer.cp_problem is not None
     assert hasattr(minimizer, "params")
     assert hasattr(minimizer, "params_raw")
-    assert hasattr(minimizer, "coupling")
 
     # Ensure the coupling dictionary has entries for each mesh index
-    for idx in model.segment_mesh_indices:
-        assert idx in minimizer.coupling
-        assert isinstance(minimizer.coupling[idx], Coupling)
-        assert isinstance(minimizer.coupling[idx].strike_slip, CouplingItem)
-        assert isinstance(minimizer.coupling[idx].dip_slip, CouplingItem)
-
-
-def test_velocity_limit_from_scalar():
-    """Test creation of VelocityLimit from scalar values."""
-    length = 10
-    lower = -50.0
-    upper = 50.0
-
-    limits = VelocityLimit.from_scalar(length, lower, upper)
-
-    assert isinstance(limits, VelocityLimit)
-    assert isinstance(limits.strike_slip, VelocityLimitItem)
-    assert isinstance(limits.dip_slip, VelocityLimitItem)
-
-    # Check dimensions and values
-    assert len(limits.strike_slip.kinematic_lower) == length
-    assert len(limits.strike_slip.kinematic_upper) == length
-    assert len(limits.dip_slip.kinematic_lower) == length
-    assert len(limits.dip_slip.kinematic_upper) == length
-
-    # Check that all values are set correctly
-    np.testing.assert_array_equal(
-        limits.strike_slip.kinematic_lower, np.full(length, lower)
-    )
-    np.testing.assert_array_equal(
-        limits.strike_slip.kinematic_upper, np.full(length, upper)
-    )
-    np.testing.assert_array_equal(
-        limits.dip_slip.kinematic_lower, np.full(length, lower)
-    )
-    np.testing.assert_array_equal(
-        limits.dip_slip.kinematic_upper, np.full(length, upper)
-    )
+    for idx, _ in enumerate(model.meshes):
+        assert isinstance(minimizer.slip_rate[idx], SlipRate)
+        assert isinstance(minimizer.slip_rate[idx].strike_slip, SlipRateItem)
+        assert isinstance(minimizer.slip_rate[idx].dip_slip, SlipRateItem)
 
 
 @pytest.mark.parametrize(
@@ -139,13 +86,9 @@ def test_velocity_limit_from_scalar():
 )
 def test_benchmark_solve(model, operators, objective):
     """Test benchmark_solve function with different objectives."""
-    # Use small limits for faster test
-    with_limits = (-10.0, 10.0)
-
     try:
         benchmark_solve(
             model,
-            with_limits=with_limits,
             objective=objective,
             rescale_parameters=True,
             rescale_constraints=True,
@@ -167,8 +110,6 @@ def test_minimize(model):
     try:
         trace = minimize(
             model,
-            velocity_upper=200.0,
-            velocity_lower=-200.0,
             verbose=False,
         )
 

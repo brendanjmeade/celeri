@@ -110,10 +110,21 @@ def _update_slip_rate_bounds(
     mesh_config = meshes[mesh_idx].config
 
     # Find indices where coupling is out of bounds (OOB)
-    ss_lower_bound = mesh_config.qp_mesh_tde_slip_rate_lower_bound_ss_coupling
-    ss_upper_bound = mesh_config.qp_mesh_tde_slip_rate_upper_bound_ss_coupling
-    ds_lower_bound = mesh_config.qp_mesh_tde_slip_rate_lower_bound_ds_coupling
-    ds_upper_bound = mesh_config.qp_mesh_tde_slip_rate_upper_bound_ds_coupling
+    ss_lower_bound = mesh_config.coupling_constraints_ss.lower
+    ss_upper_bound = mesh_config.coupling_constraints_ss.upper
+    ds_lower_bound = mesh_config.coupling_constraints_ds.lower
+    ds_upper_bound = mesh_config.coupling_constraints_ds.upper
+
+    if (
+        ss_lower_bound is None
+        or ss_upper_bound is None
+        or ds_lower_bound is None
+        or ds_upper_bound is None
+    ):
+        raise ValueError(
+            "All meshes must have defined coupling bounds "
+            "for slip rates for SQP optimization."
+        )
 
     # Identify out-of-bounds indices
     ss_lower_oob_idx = np.where(tde_coupling_ss < ss_lower_bound)[0]
@@ -350,23 +361,28 @@ def solve_sqp(
         mesh_config = meshes[i].config
         n_tde = meshes[i].n_tde
 
-        # Validate mesh configuration
-        for bound_type in ["ss", "ds"]:
-            for bound_dir in ["lower", "upper"]:
-                attr = f"qp_mesh_tde_slip_rate_{bound_dir}_bound_{bound_type}"
-                assert getattr(mesh_config, attr) is not None
+        ss_lower_bound = mesh_config.elastic_constraints_ss.lower
+        ss_upper_bound = mesh_config.elastic_constraints_ss.upper
+        ds_lower_bound = mesh_config.elastic_constraints_ds.lower
+        ds_upper_bound = mesh_config.elastic_constraints_ds.upper
 
-        assert mesh_config.qp_mesh_tde_slip_rate_lower_bound_ss is not None
-        assert mesh_config.qp_mesh_tde_slip_rate_upper_bound_ss is not None
-        assert mesh_config.qp_mesh_tde_slip_rate_lower_bound_ds is not None
-        assert mesh_config.qp_mesh_tde_slip_rate_upper_bound_ds is not None
+        if (
+            ss_lower_bound is None
+            or ss_upper_bound is None
+            or ds_lower_bound is None
+            or ds_upper_bound is None
+        ):
+            raise ValueError(
+                "All meshes must have defined elastic constraints "
+                "for slip rates for SQP optimization."
+            )
 
         # Set initial bounds using the _SlipRateBounds dataclass
         slip_rate_bounds[i] = _SlipRateBounds(
-            ss_lower=mesh_config.qp_mesh_tde_slip_rate_lower_bound_ss * np.ones(n_tde),
-            ss_upper=mesh_config.qp_mesh_tde_slip_rate_upper_bound_ss * np.ones(n_tde),
-            ds_lower=mesh_config.qp_mesh_tde_slip_rate_lower_bound_ds * np.ones(n_tde),
-            ds_upper=mesh_config.qp_mesh_tde_slip_rate_upper_bound_ds * np.ones(n_tde),
+            ss_lower=ss_lower_bound * np.ones(n_tde),
+            ss_upper=ss_upper_bound * np.ones(n_tde),
+            ds_lower=ds_lower_bound * np.ones(n_tde),
+            ds_upper=ds_upper_bound * np.ones(n_tde),
         )
 
         # Initialize storage arrays
