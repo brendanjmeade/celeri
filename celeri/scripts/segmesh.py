@@ -297,8 +297,14 @@ def main():
 
     # Try writing list using json.dump
     # Error: Object of type MeshConfig is not JSON serializable
+    # with open(new_mesh_param_name, "w") as mf:
+    #     json.dump(model.config.mesh_params, mf)
+
+    data = [
+        mesh_config.model_dump(mode="json") for mesh_config in model.config.mesh_params
+    ]
     with open(new_mesh_param_name, "w") as mf:
-        json.dump(model.config.mesh_params, mf)
+        json.dump(data, mf, indent=4)
 
     # Write updated segment csv
     new_segment_file_name = (
@@ -316,6 +322,8 @@ def main():
     model.config.segment_file_name = Path(new_segment_file_name)
     # Reference new mesh parameter file, including newly created meshes
     model.config.mesh_parameters_file_name = Path(new_mesh_param_name)
+    # Strip mesh params from config, because if we need to edit params, we want to do so in one place (*mesh_params_segmesh.json)
+    delattr(model.config, "mesh_params")
 
     with open(new_config_file_name, "w") as cf:
         cf.write(model.config.model_dump_json(indent=4))
