@@ -4,6 +4,7 @@
 import argparse
 import json
 import os
+from pathlib import Path
 
 import gmsh
 import numpy as np
@@ -36,34 +37,29 @@ def main():
         required=False,
     )
     args = dict(vars(parser.parse_args()))
-
-    config = celeri.config.get_config(args["config_file_name"])
-    celeri.celeri_util.get_logger(config)
-    segment, block, meshes, station, mogi, sar = celeri.read_data(config)
+    model = celeri.build_model(args["config_file_name"])
 
     # Update mesh_parameters list
-    with open(config.mesh_parameters_file_name) as f:
-        mesh_param = json.load(f)
+    with open(model.config.mesh_parameters_file_name) as f:
+        json.load(f)
     # Get mesh directory
-    mesh_dir = os.path.dirname(mesh_param[0]["mesh_filename"])
+    mesh_dir = os.path.dirname(model.meshes[0].file_name)
     # Get stem of segment file name
-    seg_file_stem = os.path.splitext(os.path.basename(config.segment_file_name))[0]
-    n_meshes = len(meshes)  # Number of preexisting meshes
-    station = celeri.model.process_station(station, config)
-    segment = celeri.model.process_segment(segment, config, meshes)
-    closure, segment, station, block, mogi, sar = celeri.model.assign_block_labels(
-        segment, station, block, mogi, sar
-    )
+    seg_file_stem = os.path.splitext(os.path.basename(model.config.segment_file_name))[
+        0
+    ]
+    n_meshes = len(model.meshes)  # Number of preexisting meshes
+
     # Returning a copy of the closure class lets us access data within it
-    thisclosure = closure
+    thisclosure = model.closure
 
     # Meshing segments with `ribbon_mesh` flag > 0
 
     # Get indices/coordinates of segments with ribbon_mesh flag
-    seg_mesh_idx = np.where(segment.create_ribbon_mesh > 0)[0]
+    seg_mesh_idx = np.where(model.segment.create_ribbon_mesh > 0)[0]
     # Unique indices of meshes to be created
     unique_mesh_idx, unique_mesh_idx_loc = np.unique(
-        segment.create_ribbon_mesh[seg_mesh_idx], return_index=True
+        model.segment.create_ribbon_mesh[seg_mesh_idx], return_index=True
     )
 
     # Break if no segments need meshing
@@ -71,29 +67,31 @@ def main():
         print("No segments with create_ribbon_mesh > 0")
     else:
         # Calculate bottom coordinates
-        width_projected = segment.locking_depth / np.tan(np.deg2rad(segment.dip))
-        lon1_bot = np.zeros(len(segment))
-        lon2_bot = np.zeros(len(segment))
-        lat1_bot = np.zeros(len(segment))
-        lat2_bot = np.zeros(len(segment))
+        width_projected = model.segment.locking_depth / np.tan(
+            np.deg2rad(model.segment.dip)
+        )
+        lon1_bot = np.zeros(len(model.segment))
+        lon2_bot = np.zeros(len(model.segment))
+        lat1_bot = np.zeros(len(model.segment))
+        lat2_bot = np.zeros(len(model.segment))
 
-        for i in range(len(segment)):
+        for i in range(len(model.segment)):
             lon1_bot[i], lat1_bot[i], _ = GEOID.fwd(
-                segment.lon1[i],
-                segment.lat1[i],
-                segment.azimuth[i] + 90,
+                model.segment.lon1[i],
+                model.segment.lat1[i],
+                model.segment.azimuth[i] + 90,
                 1e3 * width_projected[i],
             )
             lon2_bot[i], lat2_bot[i], _ = GEOID.fwd(
-                segment.lon2[i],
-                segment.lat2[i],
-                segment.azimuth[i] + 90,
+                model.segment.lon2[i],
+                model.segment.lat2[i],
+                model.segment.azimuth[i] + 90,
                 1e3 * width_projected[i],
             )
 
         # Get block labels of the segments that should be meshes
-        sm_west_label = segment.loc[seg_mesh_idx, "west_labels"]
-        sm_east_label = segment.loc[seg_mesh_idx, "east_labels"]
+        sm_west_label = model.segment.loc[seg_mesh_idx, "west_labels"]
+        sm_east_label = model.segment.loc[seg_mesh_idx, "east_labels"]
         sm_block_labels = np.sort(np.array([sm_east_label, sm_west_label]), axis=0)
 
         # Block labels for unique meshes
@@ -108,21 +106,21 @@ def main():
         for i in range(len(unique_mesh_idx)):
             # Find the segments associated with this mesh
             this_seg_mesh_idx = seg_mesh_idx[
-                segment.create_ribbon_mesh[seg_mesh_idx] == unique_mesh_idx[i]
+                model.segment.create_ribbon_mesh[seg_mesh_idx] == unique_mesh_idx[i]
             ]
             # Get the ordered coordinates from the closure array, using the first block label
 
             # Concatenated endpoint arrays
             this_coord1 = np.array(
                 [
-                    segment.loc[this_seg_mesh_idx, "lon1"],
-                    segment.loc[this_seg_mesh_idx, "lat1"],
+                    model.segment.loc[this_seg_mesh_idx, "lon1"],
+                    model.segment.loc[this_seg_mesh_idx, "lat1"],
                 ]
             )
             this_coord2 = np.array(
                 [
-                    segment.loc[this_seg_mesh_idx, "lon2"],
-                    segment.loc[this_seg_mesh_idx, "lat2"],
+                    model.segment.loc[this_seg_mesh_idx, "lon2"],
+                    model.segment.loc[this_seg_mesh_idx, "lat2"],
                 ]
             )
             seg_coords = np.zeros((2 * len(this_seg_mesh_idx), 2))
@@ -133,14 +131,14 @@ def main():
                 [
                     lon1_bot[this_seg_mesh_idx],
                     lat1_bot[this_seg_mesh_idx],
-                    segment.loc[this_seg_mesh_idx, "locking_depth"],
+                    model.segment.loc[this_seg_mesh_idx, "locking_depth"],
                 ]
             ).T
             seg_coords_bot[1::2, :] = np.array(
                 [
                     lon2_bot[this_seg_mesh_idx],
                     lat2_bot[this_seg_mesh_idx],
-                    segment.loc[this_seg_mesh_idx, "locking_depth"],
+                    model.segment.loc[this_seg_mesh_idx, "locking_depth"],
                 ]
             ).T
             # Ordered coordinates from block closure
@@ -249,11 +247,16 @@ def main():
             # Update segment DataFrame
             # patch_file_name (really an integer) may differ from the _ribbonmesh number
             # patch_file_name is really an index into the list of meshes in the mesh_param
-            segment.loc[this_seg_mesh_idx, "patch_file_name"] = (
+            # model.segment.patch_file_name[this_seg_mesh_idx] = (
+            #     n_meshes + i
+            # )  # 0-based indexing means we start at n_meshes
+            # model.segment.patch_flag[this_seg_mesh_idx] = 1
+            # model.segment.create_ribbon_mesh[this_seg_mesh_idx] = 0
+            model.segment.loc[this_seg_mesh_idx, "patch_file_name"] = (
                 n_meshes + i
             )  # 0-based indexing means we start at n_meshes
-            segment.loc[this_seg_mesh_idx, "patch_flag"] = 1
-            segment.loc[this_seg_mesh_idx, "create_ribbon_mesh"] = 0
+            model.segment.loc[this_seg_mesh_idx, "patch_flag"] = 1
+            model.segment.loc[this_seg_mesh_idx, "create_ribbon_mesh"] = 0
 
             # Print status
             print(
@@ -266,31 +269,43 @@ def main():
 
     # Updating mesh parameters and config
 
-    # Establish default mesh parameters
-    mesh_default = celeri.mesh.MeshConfig()
-
-    # Assign all parameters to newly created meshes
+    # Assign default parameters to newly created meshes
     for j in range(i + 1):
         filename = mesh_dir + "/" + seg_file_stem + "_segmesh" + str(unique_mesh_idx[j])
-        new_entry = {"mesh_filename": filename + ".msh"}
-        for attr in vars(mesh_default):
-            if attr not in new_entry:
-                new_entry[attr] = getattr(mesh_default, attr)
-        mesh_param.append(new_entry)
+        new_entry = celeri.MeshConfig()
+        new_entry.mesh_filename = filename + ".msh"
+        model.config.mesh_params.append(new_entry)
 
     # Write updated mesh_param json
     new_mesh_param_name = (
-        os.path.splitext(os.path.normpath(config.mesh_parameters_file_name))[0]
+        os.path.splitext(os.path.normpath(model.config.mesh_parameters_file_name))[0]
         + "_segmesh.json"
     )
+
+    # Try writing individual MeshParam objects sequentially
+    # Error: Needs opening and closing brackets to be a valid file
+    # with open(new_mesh_param_name, "w") as mf:
+    #     [
+    #         mf.write(model.config.mesh_params[i].model_dump_json(indent=4))
+    #         for i in range(len(model.config.mesh_params))
+    #     ]
+
+    # Try writing list of MeshParam objects
+    # Error: 'list' object has no attribute 'model_dump_json'
+    # with open(new_mesh_param_name, "w") as mf:
+    #     mf.write(model.config.mesh_params.model_dump_json(indent=4))
+
+    # Try writing list using json.dump
+    # Error: Object of type MeshConfig is not JSON serializable
     with open(new_mesh_param_name, "w") as mf:
-        json.dump(mesh_param, mf, indent=2)  # indent=2 makes pretty json
+        json.dump(model.config.mesh_params, mf)
 
     # Write updated segment csv
     new_segment_file_name = (
-        os.path.splitext(os.path.normpath(config.segment_file_name))[0] + "_segmesh.csv"
+        os.path.splitext(os.path.normpath(model.config.segment_file_name))[0]
+        + "_segmesh.csv"
     )
-    segment.to_csv(new_segment_file_name)
+    model.segment.to_csv(new_segment_file_name)
 
     # Write updated config json
     new_config_file_name = (
@@ -298,16 +313,12 @@ def main():
         + "_segmesh.json"
     )
     # Reference new segment file, with mesh options set to reflect new meshes
-    config.segment_file_name = new_segment_file_name
-    # config["segment_file_name"] = new_segment_file_name
+    model.config.segment_file_name = Path(new_segment_file_name)
     # Reference new mesh parameter file, including newly created meshes
-    config.mesh_parameters_file_name = new_mesh_param_name
-    # Set elastic kernel reuse to 0, because we'll need to recalculate
-    # TODO: I don't know how this works in celeri now. Something with elastic_operator_cache_dir?
-    # config.reuse_elastic = 0
+    model.config.mesh_parameters_file_name = Path(new_mesh_param_name)
+
     with open(new_config_file_name, "w") as cf:
-        # json.dump(asdict(config), cf, indent=2)
-        cf.write(config.model_dump_json())
+        cf.write(model.config.model_dump_json(indent=4))
 
     # Visualize meshes
 
@@ -318,12 +329,13 @@ def main():
         tensile_slip_rates = 0
 
     estimation = BlankEstimation()
-    p = celeri.plot.get_default_plotting_options(config, estimation, station)
+    p = celeri.plot.get_default_plotting_options(
+        model.config, estimation, model.station
+    )
 
     # Read in revised inputs
-    config = celeri.get_config(new_config_file_name)
-    segment, block, meshes, station, mogi, sar = celeri.read_data(config)
-    celeri.plot.plot_fault_geometry(p, segment, meshes)
+    model = celeri.build_model(new_config_file_name)
+    celeri.plot.plot_fault_geometry(p, model.segment, model.meshes)
 
 
 if __name__ == "__main__":
