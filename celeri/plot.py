@@ -743,7 +743,6 @@ def plot_segment_displacements(
         segment.lon2[segment_idx],
         segment.lat2[segment_idx],
         segment.locking_depth[segment_idx],
-        segment.burial_depth[segment_idx],
         segment.dip[segment_idx],
         segment.azimuth[segment_idx],
         config.material_lambda,

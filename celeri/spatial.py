@@ -169,7 +169,6 @@ def get_segment_station_operator_okada(segment, station, config):
                 segment.lon2[i],
                 segment.lat2[i],
                 segment.locking_depth[i],
-                segment.burial_depth[i],
                 segment.dip[i],
                 segment.azimuth[i],
                 config.material_lambda,
@@ -190,7 +189,6 @@ def get_segment_station_operator_okada(segment, station, config):
                 segment.lon2[i],
                 segment.lat2[i],
                 segment.locking_depth[i],
-                segment.burial_depth[i],
                 segment.dip[i],
                 segment.azimuth[i],
                 config.material_lambda,
@@ -211,7 +209,6 @@ def get_segment_station_operator_okada(segment, station, config):
                 segment.lon2[i],
                 segment.lat2[i],
                 segment.locking_depth[i],
-                segment.burial_depth[i],
                 segment.dip[i],
                 segment.azimuth[i],
                 config.material_lambda,
@@ -261,7 +258,6 @@ def get_okada_displacements(
     segment_lon2,
     segment_lat2,
     segment_locking_depth,
-    segment_burial_depth,
     segment_dip,
     segment_azimuth,
     material_lambda,
@@ -282,11 +278,9 @@ def get_okada_displacements(
     # TODO(Brendan): Previous version might have changed the value inplace?
     # If segment_locking_depth is a reference to a pandas Series.
     segment_locking_depth = segment_locking_depth * KM2M
-    segment_burial_depth = segment_burial_depth * KM2M
 
     # Make sure depths are expressed as positive
     segment_locking_depth = np.abs(segment_locking_depth)
-    segment_burial_depth = np.abs(segment_burial_depth)
 
     # Correct sign of dip-slip based on fault dip, as noted on p. 1023 of Okada (1992)
     dip_slip *= np.sign(90 - segment_dip)
@@ -306,7 +300,7 @@ def get_okada_displacements(
     segment_length = np.sqrt(
         (segment_y2 - segment_y1) ** 2.0 + (segment_x2 - segment_x1) ** 2.0
     )
-    segment_up_dip_width = (segment_locking_depth - segment_burial_depth) / np.sin(
+    segment_up_dip_width = segment_locking_depth / np.sin(
         np.deg2rad(segment_dip)
     )
 

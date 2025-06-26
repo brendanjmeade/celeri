@@ -429,7 +429,6 @@ def zero_mesh_segment_locking_depth(segment, meshes):
         & (segment.patch_file_name <= len(meshes))
     )[0]
     segment.locking_depth.values[toggle_off] = 0
-    segment.burial_depth.values[toggle_off] = 0
     return segment
 
 
@@ -452,9 +451,7 @@ def segment_centroids(segment):
             segment.x2[i] - segment.x1[i]
         )
         azimuth_xy_cartesian = np.arctan(-1.0 / azimuth_xy_cartesian)
-        segment.centroid_z.values[i] = (
-            segment.locking_depth[i] - segment.burial_depth[i]
-        ) / 2.0
+        segment.centroid_z.values[i] = segment.locking_depth[i] / 2.0
         segment_down_dip_distance = segment.centroid_z[i] / np.abs(
             np.tan(np.deg2rad(segment.dip[i]))
         )
@@ -689,9 +686,6 @@ def make_default_segment(length):
             "ts_rate",
             "ts_rate_sig",
             "ts_rate_flag",
-            "burial_depth",
-            "burial_depth_sig",
-            "burial_depth_flag",
             "resolution_override",
             "resolution_other",
             "patch_file_name",
