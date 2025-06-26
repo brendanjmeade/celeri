@@ -75,6 +75,7 @@ from celeri.plot import (
     plot_vels,
 )
 from celeri.solve import (
+    Estimation,
     assemble_and_solve_dense,
     build_and_solve_dense,
     build_and_solve_dense_no_meshes,
@@ -96,6 +97,7 @@ except Exception:
 
 __all__ = [
     "Config",
+    "Estimation",
     "Mesh",
     "MeshConfig",
     "Model",

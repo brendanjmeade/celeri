@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import copy
-import glob
-import os
-import pickle
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
@@ -14,6 +12,7 @@ from scipy.spatial.distance import cdist
 
 if TYPE_CHECKING:
     from celeri.config import Config
+    from celeri.solve import Estimation
 
 
 def sph2cart(lon, lat, radius):
@@ -403,7 +402,7 @@ def align_velocities(df_1, df_2, distance_threshold):
     return df_1_aligned
 
 
-def get_newest_run_folder(rewind=0):
+def get_newest_run_folder(rewind=0) -> Path:
     """Generate a new folder name based on existing numeric folder names.
 
     This function scans the current directory for folders with numeric names,
@@ -421,16 +420,17 @@ def get_newest_run_folder(rewind=0):
         and "0000000003", the function will return "0000000004".
     """
     # Get all folder names
-    folder_names = glob.glob("./../runs/*/")
+    base = Path("./../runs/")
+    folder_names = base.iterdir()
 
     # Remove trailing slashes
-    folder_names = [folder_name.rstrip(os.sep) for folder_name in folder_names]
+    folder_names = [folder_name.name for folder_name in folder_names]
 
     # Remove anything before numerical folder name
     folder_names = [folder_name[-10:] for folder_name in folder_names]
 
     # Check to see if the folder name is a native run number
-    folder_names_runs = list()
+    folder_names_runs = []
     for folder_name in folder_names:
         try:
             folder_names_runs.append(int(folder_name))
@@ -438,18 +438,14 @@ def get_newest_run_folder(rewind=0):
             pass
 
     # Get new folder name
-    newest_folder_number = np.max(folder_names_runs) - rewind
-    newest_folder_name = f"./../runs/{newest_folder_number:010d}"
+    newest_folder_number = max(folder_names_runs) - rewind
+    newest_folder_name = base / f"{newest_folder_number:010d}"
 
     return newest_folder_name
 
 
-def read_run(folder_name):
-    """Reads and loads data from a specified folder containing a pickled file.
-
-    This function opens a pickled file located in the directory `./../runs/{folder_name}/`,
-    where `{folder_name}` is provided as an argument. The pickled file is expected to contain
-    a list of six elements, which are extracted and returned as separate variables.
+def read_run(folder_name: Path | str) -> Estimation:
+    """Read a saved estimation object from disk.
 
     Parameters
     ----------
@@ -457,28 +453,14 @@ def read_run(folder_name):
 
     Returns
     -------
-    tuple: A tuple containing the following elements in order:
-        - config: config dictionary.
-        - estimation: estimation config dictionary.
-        - station: station dataframe.
-        - segment: segment dataframe.
-        - block: block dataframe.
-        - meshes: meshes list.
+    The saved estimation object
 
     Example:
-    >>> config, estimation, station, segment, block, meshes = read_run("example_folder")
+    >>> estimation = read_run("example_folder")
+    >>> estimation.model
+    >>> estimation.model.segment
     """
-    # TODO(Adrian): Adapt to model data class
-    pickle_file = open(f"{folder_name}/output.pkl", "rb")
-    pickle_data = pickle.load(pickle_file)
-    config = pickle_data[0]
-    estimation = pickle_data[1]
-    station = pickle_data[2]
-    segment = pickle_data[3]
-    block = pickle_data[4]
-    meshes = pickle_data[5]
-    del pickle_data
-    return config, estimation, station, segment, block, meshes
+    return Estimation.from_disk(folder_name)
 
 
 def diagnose_matrix(mat):
