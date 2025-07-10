@@ -29,7 +29,9 @@ def dc3dwrapper_cutde_disp(
     strike_width,
     dip_width,
     dislocation,
-    triangulation: Literal["/", "\\", "V"] = "/",  # Note: "\\" is a single backslash.
+    triangulation: Literal[
+        "/", "\\", "V", "okada"
+    ] = "/",  # Note: "\\" is a single backslash.
 ):
     r"""Compute the Okada displacement vector using the cutde library.
 
@@ -56,6 +58,10 @@ def dc3dwrapper_cutde_disp(
     hence there is a risk of catastrophic cancellation in the calculation,
     whereas the V triangulation has some distance between the centerpoint
     and the other edges.
+
+    The "okada" option bypasses the cutde triangulation entirely and uses
+    the okada_wrapper library directly. This requires that okada_wrapper
+    has been installed.
 
     An illustration of the three triangulations, looking down from above:
 
@@ -93,7 +99,7 @@ def dc3dwrapper_cutde_disp(
     dislocation : array_like
         [strike_slip, dip_slip, tensile_slip] slip vector
     triangulation : str, optional
-        Triangulation pattern: "/", "\\", or "V"
+        Triangulation pattern: "/", "\\", "V", or "okada"
 
     Returns
     -------
@@ -105,6 +111,22 @@ def dc3dwrapper_cutde_disp(
     """
     originally_1d, obs_pts = _preprocess_obs_pts(xo)
     n_obs = obs_pts.shape[0]
+
+    if triangulation == "okada":
+        from okada_wrapper import dc3dwrapper
+
+        raw_result = np.array(
+            [
+                dc3dwrapper(
+                    alpha, xo, depth, dip, strike_width, dip_width, dislocation
+                )[1]
+                for xo in obs_pts
+            ]
+        )
+        if originally_1d:
+            return raw_result[0]
+        else:
+            return raw_result
 
     # Early return for degenerate case
     if strike_width[0] == strike_width[1] or dip_width[0] == dip_width[1]:
