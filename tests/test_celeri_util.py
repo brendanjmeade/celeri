@@ -43,13 +43,29 @@ SLIP_TEST_CASES = [
     ),
 ]
 
+TRIANGULATION_TEST_CASES = [
+    "/",
+    "\\",
+    "V",
+    "okada",
+]
+
+TRIANGULATION_TEST_IDS = [
+    "forward_slash",
+    "backslash",
+    "v_shape",
+    "okada",
+]
+
 
 class TestDc3dWrapperCutdeDisp:
     """Test suite for the dc3dwrapper_cutde_disp function."""
 
     @pytest.mark.parametrize("dislocation, expected_u", SLIP_TEST_CASES)
     @pytest.mark.parametrize(
-        "triangulation", ["/", "\\", "V"], ids=["forward_slash", "backslash", "v_shape"]
+        "triangulation",
+        TRIANGULATION_TEST_CASES,
+        ids=TRIANGULATION_TEST_IDS,
     )
     def test_slip_types_and_triangulations(
         self, standard_params, dislocation, expected_u, triangulation
@@ -71,7 +87,9 @@ class TestDc3dWrapperCutdeDisp:
 
     @pytest.mark.parametrize("dislocation, expected_u", SLIP_TEST_CASES)
     @pytest.mark.parametrize(
-        "triangulation", ["/", "\\", "V"], ids=["forward_slash", "backslash", "v_shape"]
+        "triangulation",
+        TRIANGULATION_TEST_CASES,
+        ids=TRIANGULATION_TEST_IDS,
     )
     def test_integer_observation_points(
         self, standard_params, dislocation, expected_u, triangulation
@@ -121,7 +139,9 @@ class TestDc3dWrapperCutdeDisp:
 
     @pytest.mark.parametrize("dislocation, expected_u", SLIP_TEST_CASES)
     @pytest.mark.parametrize(
-        "triangulation", ["/", "\\", "V"], ids=["forward_slash", "backslash", "v_shape"]
+        "triangulation",
+        TRIANGULATION_TEST_CASES,
+        ids=TRIANGULATION_TEST_IDS,
     )
     def test_single_vs_multiple_point_consistency(
         self, standard_params, dislocation, expected_u, triangulation
@@ -170,7 +190,14 @@ class TestDc3dWrapperCutdeDisp:
         )
 
     @pytest.mark.parametrize("dislocation, expected_u", SLIP_TEST_CASES)
-    def test_degenerate_dip_width(self, standard_params, dislocation, expected_u):
+    @pytest.mark.parametrize(
+        "triangulation",
+        TRIANGULATION_TEST_CASES,
+        ids=TRIANGULATION_TEST_IDS,
+    )
+    def test_degenerate_dip_width(
+        self, standard_params, dislocation, expected_u, triangulation
+    ):
         """Test degenerate case where dip_width[0] == dip_width[1]."""
         dip_width = [2.0, 2.0]  # Same values - degenerate case
 
@@ -182,14 +209,23 @@ class TestDc3dWrapperCutdeDisp:
             standard_params["strike_width"],
             dip_width,
             dislocation,
+            triangulation=triangulation,
         )
 
         # Should return zeros for degenerate case
-        np.testing.assert_array_equal(u, np.zeros(3))
+        if triangulation == "okada":
+            np.testing.assert_allclose(u, np.zeros(3), atol=1e-16)
+        else:
+            np.testing.assert_array_equal(u, np.zeros(3))
 
     @pytest.mark.parametrize("dislocation, expected_u", SLIP_TEST_CASES)
+    @pytest.mark.parametrize(
+        "triangulation",
+        TRIANGULATION_TEST_CASES,
+        ids=TRIANGULATION_TEST_IDS,
+    )
     def test_degenerate_dip_width_multiple_points(
-        self, standard_params, dislocation, expected_u
+        self, standard_params, dislocation, expected_u, triangulation
     ):
         """Test degenerate case with multiple observation points."""
         dip_width = [2.0, 2.0]  # Same values - degenerate case
@@ -203,10 +239,14 @@ class TestDc3dWrapperCutdeDisp:
             standard_params["strike_width"],
             dip_width,
             dislocation,
+            triangulation=triangulation,
         )
 
         # Should return zeros for degenerate case
-        np.testing.assert_array_equal(u, np.zeros((2, 3)))
+        if triangulation == "okada":
+            np.testing.assert_allclose(u, np.zeros((2, 3)), atol=1e-16)
+        else:
+            np.testing.assert_array_equal(u, np.zeros((2, 3)))
 
     def test_invalid_triangulation(self, standard_params):
         """Test that an exception is raised for invalid triangulation parameter."""
@@ -227,7 +267,14 @@ class TestDc3dWrapperCutdeDisp:
             )
 
     @pytest.mark.parametrize("dislocation, expected_u", SLIP_TEST_CASES)
-    def test_reversed_dip_width(self, standard_params, dislocation, expected_u):
+    @pytest.mark.parametrize(
+        "triangulation",
+        TRIANGULATION_TEST_CASES,
+        ids=TRIANGULATION_TEST_IDS,
+    )
+    def test_reversed_dip_width(
+        self, standard_params, dislocation, expected_u, triangulation
+    ):
         """Test case where dip_width[1] < dip_width[0].
 
         The result should be equivalent to the negative of the expected displacement.
@@ -242,6 +289,7 @@ class TestDc3dWrapperCutdeDisp:
             standard_params["strike_width"],
             dip_width,
             dislocation,
+            triangulation=triangulation,
         )
 
         np.testing.assert_allclose(u, -expected_u, rtol=1e-6)
