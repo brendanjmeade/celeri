@@ -107,13 +107,20 @@ def dc3dwrapper_cutde_disp(
     n_obs = obs_pts.shape[0]
 
     # Early return for degenerate case
-    if dip_width[0] == dip_width[1]:
+    if strike_width[0] == strike_width[1] or dip_width[0] == dip_width[1]:
         # cutde returns nan when two vertices coincide, but the
         # correct answer is obviously zero.
         if originally_1d:
             return np.zeros(3)
         else:
             return np.zeros((n_obs, 3))
+    orientation_correction = 1
+    if dip_width[0] > dip_width[1]:
+        dip_width[0], dip_width[1] = dip_width[1], dip_width[0]
+        orientation_correction *= -1
+    if strike_width[0] > strike_width[1]:
+        strike_width[0], strike_width[1] = strike_width[1], strike_width[0]
+        orientation_correction *= -1
 
     # alpha = (lambda + mu) / (lambda + 2 mu)
     # poissons_ratio = lambda / 2(lambda + mu)
@@ -170,16 +177,15 @@ def dc3dwrapper_cutde_disp(
         # # assert not obs_pts.flags.f_contiguous
         assert obs_pts.flags.c_contiguous
         assert tris.flags.c_contiguous
-        disp_mat = disp_matrix(obs_pts=obs_pts, tris=tris, nu=poissons_ratio)
+        disp_mat = (
+            disp_matrix(obs_pts=obs_pts, tris=tris, nu=poissons_ratio)
+            * orientation_correction
+        )
 
     n_triangles = 3 if triangulation == "V" else 2
     # (n_obs, dim(halfspace) = 3, n_triangles, dim(slip-vector) = 3)
     assert disp_mat.shape == (n_obs, 3, n_triangles, 3)
-
-    if dip_width[1] < dip_width[0]:
-        slip_vec = np.array([-dislocation[0], dislocation[1], -dislocation[2]])
-    else:
-        slip_vec = np.array(dislocation)
+    slip_vec = np.array(dislocation)
     assert slip_vec.shape == (3,)  # (strike, dip, tensile)
 
     # Sum over the triangle axis and contract the slip axis with the slip vector.
