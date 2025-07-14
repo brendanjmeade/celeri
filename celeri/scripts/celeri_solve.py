@@ -32,7 +32,7 @@ def main():
     elif config.solve_type == "qp2":
         # Bounded solve
         logger.info("Quadratic programming with KL modes")
-        estimation = celeri.optimize.minimize(model).to_estimation()
+        estimation = celeri.optimize.solve_sqp2(model)
     else:
         raise ValueError(f"Unknown solve type: {config.solve_type}")
 

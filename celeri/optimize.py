@@ -1005,6 +1005,7 @@ class MinimizerTrace:
         """Convert the minimizer trace to an estimation object."""
         estimation = self.minimizer.to_estimation()
         estimation.n_out_of_bounds_trace = np.array(self.out_of_bounds)
+        estimation.trace = self
         return estimation
 
 
@@ -1109,7 +1110,7 @@ def _custom_solve(problem: cp.Problem, solver: str, objective: Objective, **kwar
             )
 
 
-def minimize(
+def solve_sqp2(
     model: Model,
     *,
     max_iter: int = 20,
@@ -1121,7 +1122,7 @@ def minimize(
     rescale_constraints: bool = True,
     objective: Objective = "qr_sum_of_squares",
     operators: Operators | None = None,
-) -> MinimizerTrace:
+) -> Estimation:
     """Iteratively solve a constrained optimization problem for fault slip rates.
 
     Performs multiple iterations of solving the convex problem, tightening bounds
@@ -1183,7 +1184,7 @@ def minimize(
             tighten_all=True,
         )
 
-    return trace
+    return trace.to_estimation()
 
 
 def benchmark_solve(

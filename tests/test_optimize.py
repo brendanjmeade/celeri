@@ -11,7 +11,7 @@ from celeri.optimize import (
     SlipRateItem,
     benchmark_solve,
     build_cvxpy_problem,
-    minimize,
+    solve_sqp2,
 )
 
 
@@ -108,10 +108,10 @@ def test_benchmark_solve(model, operators, objective):
 def test_minimize(model):
     """Test the minimize function with a small number of iterations."""
     try:
-        trace = minimize(
+        trace = solve_sqp2(
             model,
             verbose=False,
-        )
+        ).trace
 
         # Check that we have trace data
         assert len(trace.params) > 0
