@@ -4,6 +4,7 @@ import IPython
 from loguru import logger
 
 import celeri
+import celeri.optimize
 
 
 @logger.catch
@@ -25,10 +26,13 @@ def main():
         # Classic dense solve with no meshes
         logger.info("Dense build and solve (no meshes)")
         estimation = celeri.build_and_solve_dense_no_meshes(model)
-    elif config.solve_type == "qp_kl":
+    elif config.solve_type == "qp":
+        operators = celeri.build_operators(model, tde=True, eigen=True)
+        estimation = celeri.solve_sqp(model, operators)
+    elif config.solve_type == "qp2":
         # Bounded solve
         logger.info("Quadratic programming with KL modes")
-        raise NotImplementedError("qp_kl is not supported yet")
+        estimation = celeri.optimize.minimize(model).to_estimation()
     else:
         raise ValueError(f"Unknown solve type: {config.solve_type}")
 

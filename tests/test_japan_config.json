@@ -40,5 +40,7 @@
   "station_file_name": "./test_japan_station.csv",
   "strain_method": 1,
   "tri_con_weight": 1000000,
-  "unit_sigmas": 0
+  "unit_sigmas": 0,
+  "iterative_coupling_bounds_max_iter": 5,
+  "iterative_coupling_bounds_total_percentage_satisfied_target": 99.0
 }

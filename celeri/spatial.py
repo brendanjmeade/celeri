@@ -300,9 +300,7 @@ def get_okada_displacements(
     segment_length = np.sqrt(
         (segment_y2 - segment_y1) ** 2.0 + (segment_x2 - segment_x1) ** 2.0
     )
-    segment_up_dip_width = segment_locking_depth / np.sin(
-        np.deg2rad(segment_dip)
-    )
+    segment_up_dip_width = segment_locking_depth / np.sin(np.deg2rad(segment_dip))
 
     # Translate stations and segment so that segment mid-point is at the origin
     segment_x_mid = (segment_x1 + segment_x2) / 2.0
