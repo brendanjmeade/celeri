@@ -21,6 +21,8 @@ ByMesh = dict[int, T]
 
 
 class ScalarBound(BaseModel):
+    model_config = ConfigDict(validate_assignment=True)
+
     lower: float | None
     upper: float | None
 
@@ -37,7 +39,7 @@ class ScalarBound(BaseModel):
 
 class MeshConfig(BaseModel):
     # Forbid extra fields when reading from JSON
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     # The path to the mesh configuration file itself.
     # All other paths in this configuration are relative to this file.
@@ -130,7 +132,7 @@ class MeshConfig(BaseModel):
                 continue
 
             value = getattr(self, name)
-            if isinstance(value, Path):
+            if isinstance(value, Path) and not value.is_absolute():
                 setattr(self, name, (base_dir / value).resolve())
 
         return self
