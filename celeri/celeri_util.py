@@ -460,6 +460,7 @@ def read_run(folder_name: Path | str) -> Estimation:
     >>> estimation.model
     >>> estimation.model.segment
     """
+    from celeri.solve import Estimation
     return Estimation.from_disk(folder_name)
 
 
