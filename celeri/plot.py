@@ -351,7 +351,6 @@ def plot_input_summary(
         # ax.autoscale()
 
     plt.suptitle("inputs")
-    plt.show(block=False)
 
     if model.config.output_path is not None:
         plt.savefig(model.config.output_path / "plot_input_summary.png", dpi=300)
@@ -361,6 +360,8 @@ def plot_input_summary(
         )
     else:
         logger.info("No output_path specified, figures not saved to disk")
+
+    plt.show(block=False)
 
 
 def plot_estimation_summary(
@@ -676,9 +677,10 @@ def plot_estimation_summary(
         f"mae = {mean_average_error:.2f} (mm/yr), mse = {mean_squared_error:.2f} (mm/yr)^2"
     )
 
-    plt.show(block=False)
     plt.savefig(model.config.output_path / "plot_estimation_summary.png", dpi=300)
     plt.savefig(model.config.output_path / "plot_estimation_summary.pdf")
+    plt.show(block=False)
+
     logger.success(
         f"Wrote figures {model.config.output_path}/plot_estimation_summary.(pdf, png)"
     )
