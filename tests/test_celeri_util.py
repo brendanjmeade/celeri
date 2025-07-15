@@ -190,30 +190,26 @@ class TestDc3dWrapperCutdeDisp:
         )
 
     # Parameter combinations for width testing
-    WIDTH_TEST_CASES = (
-        # (strike_width, dip_width, expected_multiplier, test_id)
-        ((3.0, 8.0), (2.0, 6.0), 1.0, "normal_strike_normal_dip"),
-        ((3.0, 8.0), (2.0, 2.0), 0.0, "normal_strike_degenerate_dip"),
-        ((3.0, 8.0), (6.0, 2.0), -1.0, "normal_strike_reversed_dip"),
-        ((3.0, 3.0), (2.0, 6.0), 0.0, "degenerate_strike_normal_dip"),
-        ((3.0, 3.0), (2.0, 2.0), 0.0, "degenerate_strike_degenerate_dip"),
-        ((3.0, 3.0), (6.0, 2.0), 0.0, "degenerate_strike_reversed_dip"),
-        ((8.0, 3.0), (2.0, 6.0), -1.0, "reversed_strike_normal_dip"),
-        ((8.0, 3.0), (2.0, 2.0), 0.0, "reversed_strike_degenerate_dip"),
-        ((8.0, 3.0), (6.0, 2.0), 1.0, "reversed_strike_reversed_dip"),
+    STRIKE_WIDTH_CASES = (
+        pytest.param((3.0, 8.0), id="normal_strike"),
+        pytest.param((3.0, 3.0), id="degenerate_strike"),
+        pytest.param((8.0, 3.0), id="reversed_strike"),
     )
 
-    @pytest.mark.parametrize("dislocation, expected_u", SLIP_TEST_CASES)
+    DIP_WIDTH_CASES = (
+        pytest.param((2.0, 6.0), id="normal_dip"),
+        pytest.param((2.0, 2.0), id="degenerate_dip"),
+        pytest.param((6.0, 2.0), id="reversed_dip"),
+    )
+
+    @pytest.mark.parametrize("dislocation, standard_u", SLIP_TEST_CASES)
     @pytest.mark.parametrize(
         "triangulation",
         TRIANGULATION_TEST_CASES,
         ids=TRIANGULATION_TEST_IDS,
     )
-    @pytest.mark.parametrize(
-        "strike_width, dip_width, expected_multiplier, width_case_id",
-        WIDTH_TEST_CASES,
-        ids=[case[3] for case in WIDTH_TEST_CASES],
-    )
+    @pytest.mark.parametrize("strike_width", STRIKE_WIDTH_CASES)
+    @pytest.mark.parametrize("dip_width", DIP_WIDTH_CASES)
     @pytest.mark.parametrize(
         "use_multiple_points", [False, True], ids=["single_point", "multiple_points"]
     )
@@ -221,19 +217,13 @@ class TestDc3dWrapperCutdeDisp:
         self,
         standard_params,
         dislocation,
-        expected_u,
+        standard_u,
         triangulation,
         strike_width,
         dip_width,
-        expected_multiplier,
-        width_case_id,
         use_multiple_points,
     ):
         """Test all combinations of normal, degenerate, and reversed strike/dip widths."""
-        assert expected_multiplier == np.sign(
-            strike_width[1] - strike_width[0]
-        ) * np.sign(dip_width[1] - dip_width[0])
-
         # Set up observation points
         if use_multiple_points:
             obs_point = [standard_params["obs_point"], standard_params["obs_point"]]
@@ -256,30 +246,33 @@ class TestDc3dWrapperCutdeDisp:
 
         # Verify shape
         assert u.shape == expected_shape, (
-            f"Expected shape {expected_shape}, got {u.shape} for {width_case_id}"
+            f"Expected shape {expected_shape}, got {u.shape}"
+        )
+
+        # This is the expected sign discrepancy relative to the case of
+        # positive strike and dip widths.
+        expected_multiplier = np.sign(strike_width[1] - strike_width[0]) * np.sign(
+            dip_width[1] - dip_width[0]
         )
 
         # Calculate expected result
-        if expected_multiplier == 0.0:
-            # Degenerate case - should be zeros
-            if use_multiple_points:
-                expected_result = np.zeros((2, 3))
-            else:
-                expected_result = np.zeros(3)
-
-            if triangulation == "okada":
-                np.testing.assert_allclose(u, expected_result, atol=1e-16)
-            else:
-                np.testing.assert_array_equal(u, expected_result)
+        if use_multiple_points:
+            expected_result = np.array(
+                [expected_multiplier * standard_u, expected_multiplier * standard_u]
+            )
         else:
-            # Normal or reversed case
-            if use_multiple_points:
-                expected_result = np.array(
-                    [expected_multiplier * expected_u, expected_multiplier * expected_u]
-                )
-            else:
-                expected_result = expected_multiplier * expected_u
+            expected_result = expected_multiplier * standard_u
 
+        if expected_multiplier == 0.0:
+            # The answer is exactly zero, so we can increase the tolerance.
+            if triangulation != "okada":
+                # cutde returns exactly zero.
+                np.testing.assert_array_equal(u, expected_result)
+            else:
+                # Okada doesn't return exactly zero, but very close.
+                np.testing.assert_allclose(u, expected_result, atol=1e-16)
+        else:
+            # The generic case
             np.testing.assert_allclose(u, expected_result, rtol=1e-6)
 
     def test_invalid_triangulation(self, standard_params):
