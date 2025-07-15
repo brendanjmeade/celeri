@@ -128,6 +128,10 @@ def dc3dwrapper_cutde_disp(
         else:
             return raw_result
 
+    # Make copies to avoid mutating input parameters
+    strike_width = list(strike_width)
+    dip_width = list(dip_width)
+
     # Early return for degenerate case
     if strike_width[0] == strike_width[1] or dip_width[0] == dip_width[1]:
         # cutde returns nan when two vertices coincide, but the
