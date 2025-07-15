@@ -402,7 +402,7 @@ def align_velocities(df_1, df_2, distance_threshold):
     return df_1_aligned
 
 
-def get_newest_run_folder(rewind=0) -> Path:
+def get_newest_run_folder(*, base: Path | None = None, rewind=0) -> Path:
     """Generate a new folder name based on existing numeric folder names.
 
     This function scans the current directory for folders with numeric names,
@@ -420,7 +420,8 @@ def get_newest_run_folder(rewind=0) -> Path:
         and "0000000003", the function will return "0000000004".
     """
     # Get all folder names
-    base = Path("./../runs/")
+    if base is None:
+        base = Path("./../runs/")
     folder_names = base.iterdir()
 
     # Remove trailing slashes
@@ -461,6 +462,7 @@ def read_run(folder_name: Path | str) -> Estimation:
     >>> estimation.model.segment
     """
     from celeri.solve import Estimation
+
     return Estimation.from_disk(folder_name)
 
 

@@ -13,20 +13,13 @@ from celeri.celeri_util import interleave2
 from celeri.mesh import Mesh
 from celeri.model import Model
 from celeri.operators import Operators, get_qp_all_inequality_operator_and_data_vector
-from celeri.output import write_output
 from celeri.plot import plot_meshes
 from celeri.solve import Estimation, lsqlin_qp
 
 
-@dataclass
-class SqpEstimation(Estimation):
-    n_out_of_bounds_trace: np.ndarray
-    trace: dict[str, list[np.ndarray]] | None
-
-
 def _presolve(
     model: Model, operators: Operators, *, show_progress: bool = False
-) -> SqpEstimation:
+) -> Estimation:
     n_segment_meshes = np.max(model.segment.patch_file_name).astype(int) + 1
 
     # Get QP bounds as inequality constraints
@@ -53,7 +46,7 @@ def _presolve(
         opts,
     )
 
-    estimation_qp = SqpEstimation(
+    estimation_qp = Estimation(
         data_vector=operators.data_vector,
         weighting_vector=operators.weighting_vector,
         operator=operators.full_dense_operator,
@@ -296,7 +289,7 @@ def solve_sqp(
     *,
     max_iter: int | None = None,
     percentage_satisfied_target: float | None = None,
-) -> SqpEstimation:
+) -> Estimation:
     """Solve the sequential quadratic programming problem with coupling constraints.
 
     Iteratively adjusts slip rate bounds to satisfy coupling constraints.
@@ -494,7 +487,7 @@ def solve_sqp(
             raise ValueError("Solver did not converge")
 
         # Create estimation object with updated solution
-        estimation_qp = SqpEstimation(
+        estimation_qp = Estimation(
             data_vector=operators.data_vector,
             weighting_vector=operators.weighting_vector,
             operator=operators.full_dense_operator,
@@ -524,9 +517,6 @@ def solve_sqp(
             f"Maximum iterations ({max_iter}) reached without meeting target percentage."
         )
 
-    # Write output
-    write_output(estimation_qp)
-
     # Trim storage arrays to actual number of iterations
     for mesh_idx in range(n_segment_meshes):
         for key in optimizer_trace:
@@ -538,9 +528,7 @@ def solve_sqp(
     return estimation_qp
 
 
-def plot_iterative_convergence(
-    estimation: SqpEstimation, *, plot_in_bounds: bool = False
-):
+def plot_iterative_convergence(estimation: Estimation, *, plot_in_bounds: bool = False):
     """Plot convergence of out-of-bounds and in-bounds percentages during SQP iterations."""
     meshes = estimation.model.meshes
     n_oob_vec = estimation.n_out_of_bounds_trace
@@ -664,7 +652,7 @@ def _get_coupling(
     return coupling, kinematic_slip
 
 
-def plot_coupling(estimation: SqpEstimation, *, mesh_idx: int):
+def plot_coupling(estimation: Estimation, *, mesh_idx: int):
     operators = estimation.operators
     block = estimation.model.block
     index = operators.index
@@ -774,7 +762,7 @@ def _plot_evolution(mesh: Mesh, field1: np.ndarray, field2: np.ndarray):
     plt.plot(field1[:, -1], field2[:, -1], ".k", markersize=0.5)
 
 
-def plot_coupling_evolution(estimation: SqpEstimation, *, mesh_idx: int):
+def plot_coupling_evolution(estimation: Estimation, *, mesh_idx: int):
     mesh = estimation.model.meshes[mesh_idx]
 
     if estimation.trace is None:

@@ -41,6 +41,8 @@ class Estimation:
     operators: Operators
 
     state_covariance_matrix: np.ndarray | None
+    n_out_of_bounds_trace: np.ndarray | None = None
+    trace: dict[str, list[np.ndarray]] | None = None
 
     @property
     def model(self) -> Model:
@@ -487,7 +489,8 @@ class Estimation:
         output_dir = Path(output_dir)
 
         self.operators.to_disk(output_dir / "operators")
-        dataclass_to_disk(self, output_dir, skip={"operators"})
+        # We skip saving the trace, it shouldn't be needed later
+        dataclass_to_disk(self, output_dir, skip={"operators", "trace"})
 
     @classmethod
     def from_disk(cls, output_dir: str | Path) -> Estimation:

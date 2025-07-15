@@ -19,7 +19,7 @@ from celeri import (
 from celeri.mesh import ScalarBound
 from celeri.model import Model
 from celeri.operators import Operators, build_operators
-from celeri.solve import build_estimation
+from celeri.solve import Estimation, build_estimation
 
 
 @dataclass
@@ -570,7 +570,7 @@ class Minimizer:
                 raise ValueError("Problem has not been fit")
             axes[idx, 3].scatter(a, b, c=b**2 - a * b < 0, marker=".", vmin=0, vmax=1)
 
-    def to_estimation(self):
+    def to_estimation(self) -> Estimation:
         if self.params.value is None:
             raise ValueError("Problem has not been fit")
         return build_estimation(self.model, self.operators, self.params.value)
@@ -989,6 +989,12 @@ class MinimizerTrace:
 
         self.out_of_bounds.append(self.minimizer.out_of_bounds()[0])
         self.nonconvex_constraint_loss.append(self.minimizer.constraint_loss())
+
+    def to_estimation(self) -> Estimation:
+        """Convert the minimizer trace to an estimation object."""
+        estimation = self.minimizer.to_estimation()
+        estimation.n_out_of_bounds_trace = np.array(self.out_of_bounds)
+        return estimation
 
 
 def _custom_cvxopt_solve(problem: cp.Problem, **kwargs):
