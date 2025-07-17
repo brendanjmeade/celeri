@@ -20,7 +20,7 @@ from celeri.solve import Estimation, lsqlin_qp
 def _presolve(
     model: Model, operators: Operators, *, show_progress: bool = False
 ) -> Estimation:
-    n_segment_meshes = np.max(model.segment.patch_file_name).astype(int) + 1
+    n_segment_meshes = np.max(model.segment.mesh_file_name).astype(int) + 1
 
     # Get QP bounds as inequality constraints
     qp_inequality_constraints_matrix, qp_inequality_constraints_data_vector = (
@@ -329,7 +329,7 @@ def solve_sqp(
     )
 
     meshes = model.meshes
-    n_segment_meshes = np.max(model.segment.patch_file_name).astype(int) + 1
+    n_segment_meshes = np.max(model.segment.mesh_file_name).astype(int) + 1
 
     # Initialize bounds for each mesh
     slip_rate_bounds = [None] * n_segment_meshes

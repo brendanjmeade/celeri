@@ -351,16 +351,17 @@ def plot_input_summary(
         # ax.autoscale()
 
     plt.suptitle("inputs")
-    plt.show(block=False)
 
     if model.config.output_path is not None:
-        plt.savefig(model.config.output_path / "plot_input_summary.png", dpi=300)
+        plt.savefig(model.config.output_path / "plot_input_summary.png", dpi=500)
         plt.savefig(model.config.output_path / "plot_input_summary.pdf")
         logger.success(
             f"Wrote figures {model.config.output_path}/plot_input_summary.(pdf, png)"
         )
     else:
         logger.info("No output_path specified, figures not saved to disk")
+
+    plt.show(block=False)
 
 
 def plot_estimation_summary(
@@ -676,9 +677,10 @@ def plot_estimation_summary(
         f"mae = {mean_average_error:.2f} (mm/yr), mse = {mean_squared_error:.2f} (mm/yr)^2"
     )
 
-    plt.show(block=False)
-    plt.savefig(model.config.output_path / "plot_estimation_summary.png", dpi=300)
+    plt.savefig(model.config.output_path / "plot_estimation_summary.png", dpi=500)
     plt.savefig(model.config.output_path / "plot_estimation_summary.pdf")
+    plt.show(block=False)
+
     logger.success(
         f"Wrote figures {model.config.output_path}/plot_estimation_summary.(pdf, png)"
     )
@@ -1508,7 +1510,7 @@ def plot_fault_geometry(p, segment, meshes):
         plt.plot(x_edge, y_edge, color="red", linewidth=1, linestyle="--")
 
     for i in range(len(segment)):
-        if segment.patch_file_name[i] == -1:
+        if segment.mesh_file_name[i] == -1:
             plt.plot(
                 [segment.lon1[i], segment.lon2[i]],
                 [segment.lat1[i], segment.lat2[i]],

@@ -90,7 +90,7 @@ class Config(BaseModel):
     iterative_coupling_bounds_max_iter: int | None = None
 
     # Only in tsts/global_config.json?
-    patch_file_names: list[Path] | None = None
+    mesh_file_names: list[Path] | None = None
 
     @property
     def run_name(self) -> str:
