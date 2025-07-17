@@ -1,4 +1,4 @@
-name,lon1,lat1,lon2,lat2,dip,locking_depth,locking_depth_flag,ss_rate,ss_rate_sig,ss_rate_flag,ds_rate,ds_rate_sig,ds_rate_flag,ts_rate,ts_rate_sig,ts_rate_flag,patch_file_name,patch_flag
+name,lon1,lat1,lon2,lat2,dip,locking_depth,locking_depth_flag,ss_rate,ss_rate_sig,ss_rate_flag,ds_rate,ds_rate_sig,ds_rate_flag,ts_rate,ts_rate_sig,ts_rate_flag,mesh_file_name,mesh_flag
 10a                                                                 ,27.124,39.861,27.414,39.939,90.0,15.0,0,0.0,1.0,0,0.0,1.0,0,0.0,1.0,0,-1,0
 11a                                                                 ,28.839,40.152,28.552,40.131,90.0,15.0,0,0.0,1.0,0,0.0,1.0,0,0.0,1.0,0,-1,0
 11ba                                                                ,28.839,40.152,29.03,40.171,90.0,15.0,0,-1.0,1.0,0,0.0,1.0,0,0.0,1.0,1,-1,0

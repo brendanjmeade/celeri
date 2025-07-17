@@ -245,17 +245,17 @@ def main():
             gmsh.finalize()
 
             # Update segment DataFrame
-            # patch_file_name (really an integer) may differ from the _ribbonmesh number
-            # patch_file_name is really an index into the list of meshes in the mesh_param
-            # model.segment.patch_file_name[this_seg_mesh_idx] = (
+            # mesh_file_name (really an integer) may differ from the _ribbonmesh number
+            # mesh_file_name is really an index into the list of meshes in the mesh_param
+            # model.segment.mesh_file_name[this_seg_mesh_idx] = (
             #     n_meshes + i
             # )  # 0-based indexing means we start at n_meshes
-            # model.segment.patch_flag[this_seg_mesh_idx] = 1
+            # model.segment.mesh_flag[this_seg_mesh_idx] = 1
             # model.segment.create_ribbon_mesh[this_seg_mesh_idx] = 0
-            model.segment.loc[this_seg_mesh_idx, "patch_file_name"] = (
+            model.segment.loc[this_seg_mesh_idx, "mesh_file_name"] = (
                 n_meshes + i
             )  # 0-based indexing means we start at n_meshes
-            model.segment.loc[this_seg_mesh_idx, "patch_flag"] = 1
+            model.segment.loc[this_seg_mesh_idx, "mesh_flag"] = 1
             model.segment.loc[this_seg_mesh_idx, "create_ribbon_mesh"] = 0
 
             # Print status
