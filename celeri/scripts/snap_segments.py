@@ -47,7 +47,7 @@ def snap_segments(segment, meshes):
     all_edge_segment = make_default_segment(0)
     for i in range(len(meshes)):
         these_segments = np.where(
-            (segment.mesh_flag != 0) & (segment.mesh_file_name == i + 1)
+            (segment.mesh_flag != 0) & (segment.mesh_file_index == i + 1)
         )[0]
         cut_segment_idx = np.append(cut_segment_idx, these_segments)
         # Get top coordinates of the mesh
@@ -86,7 +86,7 @@ def snap_segments(segment, meshes):
         ]
         edge_segs.locking_depth = -15
         edge_segs.mesh_flag = +1
-        edge_segs.mesh_file_name = +i + 1
+        edge_segs.mesh_file_index = +i + 1
         all_edge_segment = all_edge_segment.append(edge_segs)
 
     # Get indices of segments to keep
@@ -154,7 +154,7 @@ def make_default_segment(length):
             "ts_rate",
             "ts_rate_sig",
             "ts_rate_flag",
-            "mesh_file_name",
+            "mesh_file_index",
             "mesh_flag",
         ]
     )

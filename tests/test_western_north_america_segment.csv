@@ -1,4 +1,4 @@
-name,lon1,lat1,lon2,lat2,dip,locking_depth,locking_depth_flag,ss_rate,ss_rate_sig,ss_rate_flag,ds_rate,ds_rate_sig,ds_rate_flag,ts_rate,ts_rate_sig,ts_rate_flag,mesh_file_name,mesh_flag
+name,lon1,lat1,lon2,lat2,dip,locking_depth,locking_depth_flag,ss_rate,ss_rate_sig,ss_rate_flag,ds_rate,ds_rate_sig,ds_rate_flag,ts_rate,ts_rate_sig,ts_rate_flag,mesh_file_index,mesh_flag
 BRa                                                                ,247.087,43.873,247.764,42.286,90.0,15.0,0,0.0,0.0,0,0.0,0.0,0,0,0,0,-1,0
 BRb                                                                ,245.927,44.722,247.087,43.873,90.0,15.0,0,0.0,0.0,0,0.0,0.0,0,0,0,0,-1,0
 Baja_connect_eleaa                                                 ,244.321,31.193,244.76,31.084,90.0,15.0,0,0.0,0.0,0,0.0,0.0,0,0,0,0,-1,0

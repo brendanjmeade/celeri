@@ -1,4 +1,4 @@
-name,lon1,lat1,lon2,lat2,dip,create_ribbon_mesh,locking_depth,locking_depth_flag,ss_rate,ss_rate_sig,ss_rate_flag,ds_rate,ds_rate_sig,ds_rate_flag,ts_rate,ts_rate_sig,ts_rate_flag,mesh_file_name,mesh_flag,ss_rate_bound_flag,ss_rate_bound_min,ss_rate_bound_max,ds_rate_bound_flag,ds_rate_bound_min,ds_rate_bound_max,ts_rate_bound_flag,ts_rate_bound_min,ts_rate_bound_max
+name,lon1,lat1,lon2,lat2,dip,create_ribbon_mesh,locking_depth,locking_depth_flag,ss_rate,ss_rate_sig,ss_rate_flag,ds_rate,ds_rate_sig,ds_rate_flag,ts_rate,ts_rate_sig,ts_rate_flag,mesh_file_index,mesh_flag,ss_rate_bound_flag,ss_rate_bound_min,ss_rate_bound_max,ds_rate_bound_flag,ds_rate_bound_min,ds_rate_bound_max,ts_rate_bound_flag,ts_rate_bound_min,ts_rate_bound_max
 BRa,247.087000,43.873000,247.764000,42.286000,90,0,15,0,0,0,0,0,0,0,0,0,0,-1,0,0,-1,1,0,-1,1,0,-1,1
 BRb,245.927000,44.722000,247.087000,43.873000,90,0,15,0,0,0,0,0,0,0,0,0,0,-1,0,0,-1,1,0,-1,1,0,-1,1
 Baja_connect_eleaa,244.321000,31.193000,244.760000,31.084000,90,0,15,0,0,0,0,0,0,0,0,0,0,-1,0,0,-1,1,0,-1,1,0,-1,1

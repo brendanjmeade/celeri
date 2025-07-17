@@ -1510,7 +1510,7 @@ def plot_fault_geometry(p, segment, meshes):
         plt.plot(x_edge, y_edge, color="red", linewidth=1, linestyle="--")
 
     for i in range(len(segment)):
-        if segment.mesh_file_name[i] == -1:
+        if segment.mesh_file_index[i] == -1:
             plt.plot(
                 [segment.lon1[i], segment.lon2[i]],
                 [segment.lat1[i], segment.lat2[i]],
