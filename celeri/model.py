@@ -33,7 +33,7 @@ class Model:
 
     @property
     def segment_mesh_indices(self):
-        n_segment_meshes = np.max(self.segment.mesh_file_name).astype(int) + 1
+        n_segment_meshes = np.max(self.segment.mesh_file_index).astype(int) + 1
         return list(range(n_segment_meshes))
 
     @property
@@ -419,14 +419,14 @@ def zero_mesh_segment_locking_depth(segment, meshes):
     contribution, as the elastic strain is accounted for by the mesh.
 
     To have its locking depth set to zero, the segment's mesh_flag
-    and mesh_file_name fields must not be equal to zero but also
+    and mesh_file_index fields must not be equal to zero but also
     less than the number of available mesh files.
     """
     segment = segment.copy(deep=True)
     toggle_off = np.where(
         (segment.mesh_flag != 0)
-        & (segment.mesh_file_name >= 0)
-        & (segment.mesh_file_name <= len(meshes))
+        & (segment.mesh_file_index >= 0)
+        & (segment.mesh_file_index <= len(meshes))
     )[0]
     segment.locking_depth.values[toggle_off] = 0
     return segment
@@ -482,7 +482,7 @@ def snap_segments(segment, meshes):
     all_edge_segment = make_default_segment(0)
     for i in range(len(meshes)):
         these_segments = np.where(
-            (segment.mesh_flag != 0) & (segment.mesh_file_name == i)
+            (segment.mesh_flag != 0) & (segment.mesh_file_index == i)
         )[0]
         cut_segment_idx = np.append(cut_segment_idx, these_segments)
         # Get top coordinates of the mesh
@@ -521,7 +521,7 @@ def snap_segments(segment, meshes):
         ]
         edge_segs.locking_depth = +15
         edge_segs.mesh_flag = +1
-        edge_segs.mesh_file_name = +i + 1
+        edge_segs.mesh_file_index = +i + 1
         all_edge_segment = all_edge_segment.append(edge_segs)
 
     # Get indices of segments to keep
@@ -676,7 +676,7 @@ def make_default_segment(length):
             "ts_rate",
             "ts_rate_sig",
             "ts_rate_flag",
-            "mesh_file_name",
+            "mesh_file_index",
             "mesh_flag",
         ]
     )
