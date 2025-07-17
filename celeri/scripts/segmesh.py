@@ -282,24 +282,6 @@ def main():
         + "_segmesh.json"
     )
 
-    # Try writing individual MeshParam objects sequentially
-    # Error: Needs opening and closing brackets to be a valid file
-    # with open(new_mesh_param_name, "w") as mf:
-    #     [
-    #         mf.write(model.config.mesh_params[i].model_dump_json(indent=4))
-    #         for i in range(len(model.config.mesh_params))
-    #     ]
-
-    # Try writing list of MeshParam objects
-    # Error: 'list' object has no attribute 'model_dump_json'
-    # with open(new_mesh_param_name, "w") as mf:
-    #     mf.write(model.config.mesh_params.model_dump_json(indent=4))
-
-    # Try writing list using json.dump
-    # Error: Object of type MeshConfig is not JSON serializable
-    # with open(new_mesh_param_name, "w") as mf:
-    #     json.dump(model.config.mesh_params, mf)
-
     data = [
         mesh_config.model_dump(mode="json") for mesh_config in model.config.mesh_params
     ]
