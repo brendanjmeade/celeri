@@ -1,23 +1,26 @@
 from pathlib import Path
+from typing import cast
 
+import numpy as np
 import pytest
 
+from celeri.config import Config
 from celeri.model import build_model
 from celeri.operators import build_operators
 from celeri.optimize import (
     Minimizer,
+    MinimizerTrace,
     Model,
     SlipRate,
     SlipRateItem,
     benchmark_solve,
     build_cvxpy_problem,
-    minimize,
+    solve_sqp2,
 )
 
 
 @pytest.fixture(scope="module")
 def small_test_config_path():
-    # Use a simple test config file or mock it
     return Path("tests/test_japan_config.json")
 
 
@@ -108,16 +111,62 @@ def test_benchmark_solve(model, operators, objective):
 def test_minimize(model):
     """Test the minimize function with a small number of iterations."""
     try:
-        trace = minimize(
+        trace = solve_sqp2(
             model,
             verbose=False,
-        )
+        ).trace
+        trace = cast(MinimizerTrace, trace)
 
         # Check that we have trace data
         assert len(trace.params) > 0
         assert len(trace.objective) > 0
         assert len(trace.objective_norm2) > 0
         assert len(trace.iter_time) > 0
+
+    except Exception as e:
+        # If the solve fails due to solver not available, skip the test
+        if "solver not available" in str(e).lower():
+            pytest.skip(f"Solver not available: {e}")
+        else:
+            raise
+
+
+@pytest.mark.slow  # Mark as slow since it may take time
+def test_minimize_coupling():
+    """Test the minimize function with coupling [-10, 1]"""
+    path = Path("tests/test_japan_config.json")
+    config = Config.from_file(path)
+
+    # Disable all coupling constraints
+    for mesh_params in config.mesh_params:
+        if mesh_params.coupling_constraints_ds.lower is not None:
+            mesh_params.coupling_constraints_ds = [-10, 1]  # type: ignore
+            mesh_params.coupling_constraints_ss = [-10, 1]  # type: ignore
+
+
+    model = build_model(config)
+    try:
+        estimation = solve_sqp2(
+            model,
+            verbose=False,
+        )
+        trace = cast(MinimizerTrace, estimation.trace)
+
+        # Check that we have trace data
+        assert len(trace.params) > 0
+        assert len(trace.objective) > 0
+        assert len(trace.objective_norm2) > 0
+        assert len(trace.iter_time) > 0
+
+        elastic = trace.minimizer.slip_rate[0].strike_slip.elastic
+        kinematic = trace.minimizer.slip_rate[0].strike_slip.kinematic_smooth
+        coupling = elastic / kinematic
+        if not isinstance(coupling, np.ndarray):
+            coupling = coupling.value
+            assert coupling is not None
+        assert np.all(coupling <= 1.0 + 1e-6)
+        assert np.all(coupling >= -10.0 - 1e-6)
+        assert np.any(coupling < -1)
 
     except Exception as e:
         # If the solve fails due to solver not available, skip the test

@@ -49,6 +49,7 @@ from celeri.operators import (
     get_tde_to_velocities_single_mesh,
     get_weighting_vector_single_mesh_for_col_norms,
 )
+from celeri.optimize import solve_sqp2
 from celeri.optimize_sqp import (
     plot_coupling,
     plot_coupling_evolution,
@@ -172,6 +173,7 @@ __all__ = [
     "read_data",
     "read_run",
     "solve_sqp",
+    "solve_sqp2",
     "station_row_keep",
     "wrap2360",
     "write_output",
