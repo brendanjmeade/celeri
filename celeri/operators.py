@@ -863,7 +863,7 @@ def _store_tde_coupling_constraints(model: Model, operators: _OperatorBuilder):
     # Loop only over meshes that are tied to fault segments.  This *should*
     # eliminate touching CMI meshes which have problems with this function
     # becase it assumes that a mesh is tied to segments.
-    for mesh_idx in range(np.max(model.segment.patch_file_name) + 1):
+    for mesh_idx in range(np.max(model.segment.mesh_file_index) + 1):
         operators.rotation_to_tri_slip_rate[mesh_idx] = (
             get_rotation_to_tri_slip_rate_partials(model, mesh_idx)
         )
@@ -898,7 +898,7 @@ def get_rotation_to_tri_slip_rate_partials(model: Model, mesh_idx: int) -> np.nd
     )
     # Find subset of segments that are replaced by this mesh
     seg_replace_idx = np.where(
-        (model.segment.patch_flag != 0) & (model.segment.patch_file_name == mesh_idx)
+        (model.segment.mesh_flag != 0) & (model.segment.mesh_file_index == mesh_idx)
     )
     # Find closest segment midpoint to each element centroid, using scipy.spatial.cdist
     model.meshes[mesh_idx].closest_segment_idx = seg_replace_idx[0][

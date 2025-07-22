@@ -7,6 +7,7 @@ import timeit
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
+from typing import Any
 
 import cvxopt
 import numpy as np
@@ -42,7 +43,7 @@ class Estimation:
 
     state_covariance_matrix: np.ndarray | None
     n_out_of_bounds_trace: np.ndarray | None = None
-    trace: dict[str, list[np.ndarray]] | None = None
+    trace: Any | None = None
 
     @property
     def model(self) -> Model:

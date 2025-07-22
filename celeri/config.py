@@ -90,7 +90,7 @@ class Config(BaseModel):
     iterative_coupling_bounds_max_iter: int | None = None
 
     # Only in tsts/global_config.json?
-    patch_file_names: list[Path] | None = None
+    mesh_file_names: list[Path] | None = None
 
     @property
     def run_name(self) -> str:
@@ -113,7 +113,7 @@ class Config(BaseModel):
         base_runs_folder = config_data.get("base_runs_folder", None)
         if base_runs_folder is None:
             raise ValueError("`base_runs_folder` missing in config")
-        base_runs_folder = Path(base_runs_folder)
+        base_runs_folder = (file_path.parent / Path(base_runs_folder)).resolve()
         config_data["output_path"] = _get_output_path(base_runs_folder)
 
         mesh_parameters_file_name = config_data.get("mesh_parameters_file_name", None)

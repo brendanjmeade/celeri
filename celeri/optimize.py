@@ -12,13 +12,16 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy import linalg, sparse
 
-from celeri import (
-    get_qp_all_inequality_operator_and_data_vector,
-    plot_estimation_summary,
-)
 from celeri.mesh import ScalarBound
 from celeri.model import Model
-from celeri.operators import Operators, build_operators
+from celeri.operators import (
+    Operators,
+    build_operators,
+    get_qp_all_inequality_operator_and_data_vector,
+)
+from celeri.plot import (
+    plot_estimation_summary,
+)
 from celeri.solve import Estimation, build_estimation
 
 
@@ -84,14 +87,12 @@ class SlipRateItem:
         if kinematic is None:
             raise ValueError("Invalid coupling constraint on non-segment mesh")
 
-        # Other bounds are not supported at the moment
-        assert coupling_bounds.lower == 0.0
-        assert coupling_bounds.upper == 1.0
-
         elastic = self.elastic_numpy()
+        lower = coupling_bounds.lower
+        upper = coupling_bounds.upper
 
         total = len(kinematic)
-        is_oob = elastic**2 - elastic * kinematic > tol
+        is_oob = (elastic - lower * kinematic) * (elastic - upper * kinematic) > tol
         return is_oob.sum(), total
 
     def constraint_loss(
@@ -102,16 +103,14 @@ class SlipRateItem:
             # No coupling bounds defined, so no out-of-bounds points
             return 0.0
 
-        # Other bounds are not supported at the moment
-        assert coupling_bounds.lower == 0.0
-        assert coupling_bounds.upper == 1.0
-
         kinematic = self.kinematic_numpy(smooth=smooth_kinematic)
         if kinematic is None:
             raise ValueError("Invalid coupling constraint on non-segment mesh")
         elastic = self.elastic_numpy()
+        lower = coupling_bounds.lower
+        upper = coupling_bounds.upper
 
-        constraint = elastic**2 - elastic * kinematic
+        constraint = (elastic - lower * kinematic) * (elastic - upper * kinematic)
         return np.clip(constraint, 0, np.inf).sum()
 
 
@@ -196,10 +195,6 @@ class SlipRateLimitItem:
         kinematic_hint: ScalarBound,
     ) -> SlipRateLimitItem:
         if coupling_bounds.lower is not None:
-            if coupling_bounds.lower != 0.0:
-                raise NotImplementedError(
-                    "Only coupling lower bound of 0.0 is supported."
-                )
             hint = kinematic_hint.lower
             if hint is None:
                 raise ValueError("kinematic slip rate lower hint must be defined.")
@@ -207,10 +202,6 @@ class SlipRateLimitItem:
         else:
             lower = None
         if coupling_bounds.upper is not None:
-            if coupling_bounds.upper != 1.0:
-                raise NotImplementedError(
-                    "Only coupling upper bound of 1.0 is supported."
-                )
             hint = kinematic_hint.upper
             if hint is None:
                 raise ValueError("kinematic slip rate upper hint must be defined.")
@@ -233,6 +224,10 @@ class SlipRateLimitItem:
             self.constraints_matrix_elastic = None
             self.constraints_vector = None
             return
+        if self.coupling_bounds.lower is None or self.coupling_bounds.upper is None:
+            raise ValueError("Both coupling lower and upper bounds must be defined.")
+        coupling_lower = self.coupling_bounds.lower
+        coupling_upper = self.coupling_bounds.upper
 
         assert self.kinematic_lower is not None and self.kinematic_upper is not None
 
@@ -255,19 +250,35 @@ class SlipRateLimitItem:
 
         # The lower left corner of the subset
         lower_left_kinematic = self.kinematic_lower
-        lower_left_elastic = np.minimum(0.0, self.kinematic_lower)
+        lower_left_elastic = np.where(
+            self.kinematic_lower < 0,
+            self.kinematic_lower * coupling_upper,
+            self.kinematic_lower * coupling_lower,
+        )
 
         # The upper left corner of the subset
         upper_left_kinematic = self.kinematic_lower
-        upper_left_elastic = np.maximum(0.0, self.kinematic_lower)
+        upper_left_elastic = np.where(
+            self.kinematic_lower < 0,
+            self.kinematic_lower * coupling_lower,
+            self.kinematic_lower * coupling_upper,
+        )
 
         # The lower right corner of the subset
         lower_right_kinematic = self.kinematic_upper
-        lower_right_elastic = np.minimum(0.0, self.kinematic_upper)
+        lower_right_elastic = np.where(
+            self.kinematic_upper < 0,
+            self.kinematic_upper * coupling_upper,
+            self.kinematic_upper * coupling_lower,
+        )
 
         # The upper right corner of the subset
         upper_right_kinematic = self.kinematic_upper
-        upper_right_elastic = np.maximum(0.0, self.kinematic_upper)
+        upper_right_elastic = np.where(
+            self.kinematic_upper < 0,
+            self.kinematic_upper * coupling_lower,
+            self.kinematic_upper * coupling_upper,
+        )
 
         def bounded_through_points(
             x1: np.ndarray, y1: np.ndarray, x2: np.ndarray, y2: np.ndarray
@@ -994,6 +1005,7 @@ class MinimizerTrace:
         """Convert the minimizer trace to an estimation object."""
         estimation = self.minimizer.to_estimation()
         estimation.n_out_of_bounds_trace = np.array(self.out_of_bounds)
+        estimation.trace = self
         return estimation
 
 
@@ -1098,7 +1110,7 @@ def _custom_solve(problem: cp.Problem, solver: str, objective: Objective, **kwar
             )
 
 
-def minimize(
+def solve_sqp2(
     model: Model,
     *,
     max_iter: int = 20,
@@ -1110,7 +1122,7 @@ def minimize(
     rescale_constraints: bool = True,
     objective: Objective = "qr_sum_of_squares",
     operators: Operators | None = None,
-) -> MinimizerTrace:
+) -> Estimation:
     """Iteratively solve a constrained optimization problem for fault slip rates.
 
     Performs multiple iterations of solving the convex problem, tightening bounds
@@ -1172,7 +1184,7 @@ def minimize(
             tighten_all=True,
         )
 
-    return trace
+    return trace.to_estimation()
 
 
 def benchmark_solve(
