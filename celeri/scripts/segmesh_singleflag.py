@@ -263,10 +263,10 @@ def main():
             # )  # 0-based indexing means we start at n_meshes
             # model.segment.patch_flag[this_seg_mesh_idx] = 1
             # model.segment.create_ribbon_mesh[this_seg_mesh_idx] = 0
-            model.segment.loc[this_seg_mesh_idx, "patch_file_name"] = (
+            model.segment.loc[this_seg_mesh_idx, "mesh_file_index"] = (
                 n_meshes + i
             )  # 0-based indexing means we start at n_meshes
-            model.segment.loc[this_seg_mesh_idx, "patch_flag"] = 1
+            model.segment.loc[this_seg_mesh_idx, "mesh_flag"] = 1
             model.segment.loc[this_seg_mesh_idx, "create_ribbon_mesh"] = 0
 
             # Print status
