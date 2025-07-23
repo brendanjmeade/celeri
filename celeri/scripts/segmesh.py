@@ -303,6 +303,7 @@ def main():
     mesh_reorder_index = np.concatenate(
         (segment_mesh_file_index, segmesh_file_index, standalone_mesh_file_index)
     )
+
     model.config.mesh_params = [model.config.mesh_params[i] for i in mesh_reorder_index]
     # Write updated mesh_param json
     new_mesh_param_name = (
