@@ -47,13 +47,15 @@ TRIANGULATION_TEST_CASES = [
     "/",
     "\\",
     "V",
+    "L",
     "okada",
 ]
 
 TRIANGULATION_TEST_IDS = [
     "forward_slash",
     "backslash",
-    "v_shape",
+    "V_shape",
+    "Λ_shape",
     "okada",
 ]
 

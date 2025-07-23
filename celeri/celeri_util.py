@@ -30,7 +30,7 @@ def dc3dwrapper_cutde_disp(
     dip_width,
     dislocation,
     triangulation: Literal[
-        "/", "\\", "V", "okada"
+        "/", "\\", "V", "L", "okada"
     ] = "/",  # Note: "\\" is a single backslash.
 ):
     r"""Compute the Okada displacement vector using the cutde library.
@@ -50,32 +50,33 @@ def dc3dwrapper_cutde_disp(
     rectangle. The default is to use two triangles along the diagonal /,
     but you can also specify a triangulation \\ with the opposite diagonal,
     or a V-shaped triangulation consisting of three triangles, connecting
-    the midpoint of the bottom edge to the top two vertices.
+    the midpoint of the bottom edge to all corners, or a Λ-shaped (L for Lambda)
+    triangulation connecting the midpoint of the top edge to all corners.
 
-    The V triangulation should be advantageous when the observation point
+    The V and L triangulations should be advantageous when the observation point
     is near to the centerpoint of the rectangle, because either the / or \\
     triangulations have two opposing edges through the centerpoint, and
     hence there is a risk of catastrophic cancellation in the calculation,
-    whereas the V triangulation has some distance between the centerpoint
+    whereas the V and L triangulations have some distance between the centerpoint
     and the other edges.
 
     The "okada" option bypasses the cutde triangulation entirely and uses
     the okada_wrapper library directly. This requires that okada_wrapper
     has been installed.
 
-    An illustration of the three triangulations, looking down from above:
+    An illustration of the triangulations, looking down from above:
 
     ```text
-        /         \            V
+        /         \            V                L
 
-    +------+  +------+  +-------------+
-    |     /|  |\     |  |\           /|
-    |    / |  | \    |  | \         / |
-    |   /  |  |  \   |  |  \       /  |
-    |  /   |  |   \  |  |   \     /   |
-    | /    |  |    \ |  |    \   /    |
-    |/     |  |     \|  |     \ /     |
-    +------+  +------+  +------+------+
+    +------+  +------+  +-------------+  +------+------+
+    |     /|  |\     |  |\           /|  |     / \     |
+    |    / |  | \    |  | \         / |  |    /   \    |
+    |   /  |  |  \   |  |  \       /  |  |   /     \   |
+    |  /   |  |   \  |  |   \     /   |  |  /       \  |
+    | /    |  |    \ |  |    \   /    |  | /         \ |
+    |/     |  |     \|  |     \ /     |  |/           \|
+    +------+  +------+  +------+------+  +-------------+
 
     All triangles are oriented counterclockwise when looking down.
     ```
@@ -187,6 +188,11 @@ def dc3dwrapper_cutde_disp(
         tris = np.array(
             [[tr, bm, br], [bm, tl, bl], [tl, bm, tr]]
         )  # Oriented counterclockwise looking down
+    elif triangulation == "L":
+        tm = [(tl[0] + tr[0]) / 2, (tl[1] + tr[1]) / 2, (tl[2] + tr[2]) / 2]
+        tris = np.array(
+            [[bl, tm, tl], [tm, br, tr], [br, tm, bl]]
+        )  # Oriented counterclockwise looking down
     else:
         raise ValueError(f"Invalid triangulation parameter: {triangulation}")
 
@@ -208,7 +214,7 @@ def dc3dwrapper_cutde_disp(
             * orientation_correction
         )
 
-    n_triangles = 3 if triangulation == "V" else 2
+    n_triangles = 3 if triangulation in ["V", "L"] else 2
     # (n_obs, dim(halfspace) = 3, n_triangles, dim(slip-vector) = 3)
     assert disp_mat.shape == (n_obs, 3, n_triangles, 3)
     slip_vec = np.array(dislocation)
