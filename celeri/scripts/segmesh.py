@@ -46,6 +46,19 @@ def main():
         0
     ]
     n_meshes = len(model.meshes)  # Number of preexisting meshes
+    # Identify meshes that replace segments
+    # First catch segments that have their mesh_flag = 1 but no mesh
+    model.segment.loc[
+        (model.segment.mesh_file_index == -1) & (model.segment.mesh_flag == 1),
+        "mesh_flag",
+    ] = 0
+    segment_mesh_file_index = np.unique(
+        model.segment.mesh_file_index[model.segment.mesh_flag == 1]
+    ).astype(int)
+    n_segment_meshes = len(segment_mesh_file_index)
+    standalone_mesh_file_index = np.setdiff1d(
+        np.arange(n_meshes), segment_mesh_file_index
+    )
 
     # Returning a copy of the closure class lets us access data within it
     thisclosure = model.closure
@@ -96,10 +109,11 @@ def main():
         # This forces meshes to be split at triple+ junctions
         # This results in a more straightforward assignment of block labels to mesh elements
         unique_mesh_idx = np.arange(np.shape(sm_block_labels_unique)[1])
+        # Allocate space to hold indices of segmeshes
+        segmesh_file_index = [None] * len(unique_mesh_idx)
 
         # Loop through unique meshes and find indices of ordered coordinates
         for i in range(len(unique_mesh_idx)):
-            # for i in range(1):
             # Find the segments associated with this mesh
             # This is done by finding the segments that have this block label pair
             this_seg_mesh_idx = seg_mesh_idx[
@@ -256,16 +270,14 @@ def main():
             gmsh.finalize()
 
             # Update segment DataFrame
-            # patch_file_name (really an integer) may differ from the _ribbonmesh number
-            # patch_file_name is really an index into the list of meshes in the mesh_param
-            # model.segment.patch_file_name[this_seg_mesh_idx] = (
-            #     n_meshes + i
-            # )  # 0-based indexing means we start at n_meshes
-            # model.segment.patch_flag[this_seg_mesh_idx] = 1
-            # model.segment.create_ribbon_mesh[this_seg_mesh_idx] = 0
+            # mesh_file_index may differ from the _segmesh number
+            # mesh_file_index is an index into the list of meshes in the mesh_param
             model.segment.loc[this_seg_mesh_idx, "mesh_file_index"] = (
-                n_meshes + i
-            )  # 0-based indexing means we start at n_meshes
+                n_segment_meshes + i
+            )  # 0-based indexing means we start at n_segment_meshes
+            # Define index of this segmesh
+            # This is different from the above index, because we use it for reordering mesh_param
+            segmesh_file_index[i] = n_meshes + i
             model.segment.loc[this_seg_mesh_idx, "mesh_flag"] = 1
             model.segment.loc[this_seg_mesh_idx, "create_ribbon_mesh"] = 0
 
@@ -281,12 +293,17 @@ def main():
     # Updating mesh parameters and config
 
     # Assign default parameters to newly created meshes
-    for j in range(i + 1):
+    for j in range(len(unique_mesh_idx)):
         filename = mesh_dir + "/" + seg_file_stem + "_segmesh" + str(unique_mesh_idx[j])
         new_entry = celeri.MeshConfig(file_name=model.config.mesh_parameters_file_name)
         new_entry.mesh_filename = Path(filename + ".msh")
         model.config.mesh_params.append(new_entry)
 
+    # Reorder mesh_param list so that standalone meshes are placed last
+    mesh_reorder_index = np.concatenate(
+        (segment_mesh_file_index, segmesh_file_index, standalone_mesh_file_index)
+    )
+    model.config.mesh_params = [model.config.mesh_params[i] for i in mesh_reorder_index]
     # Write updated mesh_param json
     new_mesh_param_name = (
         os.path.splitext(os.path.normpath(model.config.mesh_parameters_file_name))[0]
