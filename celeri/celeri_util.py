@@ -258,6 +258,21 @@ def _preprocess_obs_pts(xo: list | np.ndarray) -> tuple[bool, np.ndarray]:
         Whether the input was 1D-like.
     obs_pts : np.ndarray
         Observation points. Shape: (N, 3)
+
+    Examples
+    --------
+    The empty list is treated as a length-0 2D array of 3-vectors.
+    >>> _preprocess_obs_pts([])
+    (False, array([], shape=(0, 3), dtype=float64))
+
+    A single vector is converted into an array of shape (1, 3).
+    >>> _preprocess_obs_pts([1, 2, 3])
+    (True, array([[1, 2, 3]]))
+
+    A list of vectors is converted into an array of shape (N, 3).
+    >>> _preprocess_obs_pts([[1, 2, 3], [4, 5, 6]])
+    (False, array([[1, 2, 3],
+           [4, 5, 6]]))
     """
     originally_1d: bool
     obs_pts: np.ndarray
