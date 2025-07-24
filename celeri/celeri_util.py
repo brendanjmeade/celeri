@@ -196,23 +196,10 @@ def dc3dwrapper_cutde_disp(
     else:
         raise ValueError(f"Invalid triangulation parameter: {triangulation}")
 
-    with warnings.catch_warnings():
-        warnings.filterwarnings(
-            "ignore",
-            message="The obs_pts input array has Fortran ordering. "
-            "Converting to C ordering. This may be expensive.",
-            category=UserWarning,
-        )
-        # This warning is false. The array is C-contiguous. It is also F-contiguous.
-        # But instead of correctly checking for C-contiguity, it checks incorrectly
-        # for Fortran-noncontiguity:
-        # # assert not obs_pts.flags.f_contiguous
-        assert obs_pts.flags.c_contiguous
-        assert tris.flags.c_contiguous
-        disp_mat = (
-            disp_matrix(obs_pts=obs_pts, tris=tris, nu=poissons_ratio)
-            * orientation_correction
-        )
+    disp_mat = (
+        disp_matrix(obs_pts=obs_pts, tris=tris, nu=poissons_ratio)
+        * orientation_correction
+    )
 
     n_triangles = 3 if triangulation in ["V", "L"] else 2
     # (n_obs, dim(halfspace) = 3, n_triangles, dim(slip-vector) = 3)
