@@ -430,12 +430,16 @@ class TestCoordinateConversions:
 class TestPreprocessObsPts:
     """Test suite for the _preprocess_obs_pts utility function."""
 
-    def test_empty_list(self):
+    def test_empty_list(self, standard_params):
         """Test empty list input, which is a special case."""
-        originally_1d, obs_pts = _preprocess_obs_pts([])
+        params = standard_params.copy()
+        params.pop("alpha")
+        params["xo"] = []
+        params["dislocation"] = []
+        params.pop("obs_point")
+        _, _, _, _, _, _, originally_1d, n_obs = _preprocess_obs_pts(**params)
         assert originally_1d is False
-        assert obs_pts.shape == (0, 3)
-        assert obs_pts.dtype == np.float64
+        assert n_obs == 0
 
     @pytest.mark.parametrize(
         "xo_1d",
@@ -446,12 +450,27 @@ class TestPreprocessObsPts:
         ],
         ids=["list", "numpy", "tuple"],
     )
-    def test_1d_single_point(self, xo_1d):
+    def test_1d_single_point(self, standard_params, xo_1d):
         """Test various 1D-like inputs for a single 3D point."""
-        originally_1d, obs_pts = _preprocess_obs_pts(xo_1d)
+        params = standard_params.copy()
+        params.pop("alpha")
+        params["xo"] = xo_1d
+        params["dislocation"] = [1.0, 0.0, 0.0]
+        params.pop("obs_point")
+        (
+            xo_b,
+            _,
+            _,
+            _,
+            _,
+            _,
+            originally_1d,
+            n_obs,
+        ) = _preprocess_obs_pts(**params)
         assert originally_1d is True
-        assert obs_pts.shape == (1, 3)
-        np.testing.assert_array_equal(obs_pts, [[1.0, 2.0, 3.0]])
+        assert n_obs == 1
+        assert xo_b.shape == (1, 3)
+        np.testing.assert_array_equal(xo_b, [[1.0, 2.0, 3.0]])
 
     @pytest.mark.parametrize(
         "xo_2d",
@@ -462,12 +481,27 @@ class TestPreprocessObsPts:
         ],
         ids=["list_of_lists", "2d_numpy", "tuple_of_tuples"],
     )
-    def test_2d_single_point(self, xo_2d):
+    def test_2d_single_point(self, standard_params, xo_2d):
         """Test various 2D-like inputs for a single 3D point."""
-        originally_1d, obs_pts = _preprocess_obs_pts(xo_2d)
+        params = standard_params.copy()
+        params.pop("alpha")
+        params["xo"] = xo_2d
+        params["dislocation"] = [1.0, 0.0, 0.0]
+        params.pop("obs_point")
+        (
+            xo_b,
+            _,
+            _,
+            _,
+            _,
+            _,
+            originally_1d,
+            n_obs,
+        ) = _preprocess_obs_pts(**params)
         assert originally_1d is False
-        assert obs_pts.shape == (1, 3)
-        np.testing.assert_array_equal(obs_pts, [[1.0, 2.0, 3.0]])
+        assert n_obs == 1
+        assert xo_b.shape == (1, 3)
+        np.testing.assert_array_equal(xo_b, [[1.0, 2.0, 3.0]])
 
     @pytest.mark.parametrize(
         "xo_multi",
@@ -477,12 +511,27 @@ class TestPreprocessObsPts:
         ],
         ids=["list_of_lists", "2d_numpy"],
     )
-    def test_multiple_points(self, xo_multi):
+    def test_multiple_points(self, standard_params, xo_multi):
         """Test inputs with multiple points."""
-        originally_1d, obs_pts = _preprocess_obs_pts(xo_multi)
+        params = standard_params.copy()
+        params.pop("alpha")
+        params["xo"] = xo_multi
+        params["dislocation"] = [1.0, 0.0, 0.0]
+        params.pop("obs_point")
+        (
+            xo_b,
+            _,
+            _,
+            _,
+            _,
+            _,
+            originally_1d,
+            n_obs,
+        ) = _preprocess_obs_pts(**params)
         assert originally_1d is False
-        assert obs_pts.shape == (2, 3)
-        np.testing.assert_array_equal(obs_pts, [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+        assert n_obs == 2
+        assert xo_b.shape == (2, 3)
+        np.testing.assert_array_equal(xo_b, [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
 
     @pytest.mark.parametrize(
         "xo_hetero",
@@ -492,19 +541,34 @@ class TestPreprocessObsPts:
         ],
         ids=["numpy_and_float", "numpy_and_int_float"],
     )
-    def test_heterogeneous_input_success(self, xo_hetero):
+    def test_heterogeneous_input_success(self, standard_params, xo_hetero):
         """Test successful handling of heterogeneous inputs."""
+        params = standard_params.copy()
+        params.pop("alpha")
+        params["xo"] = xo_hetero
+        params["dislocation"] = [1.0, 0.0, 0.0]
+        params.pop("obs_point")
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
-            originally_1d, obs_pts = _preprocess_obs_pts(xo_hetero)
+            (
+                xo_b,
+                _,
+                _,
+                _,
+                _,
+                _,
+                originally_1d,
+                n_obs,
+            ) = _preprocess_obs_pts(**params)
 
             assert len(w) == 1
             assert "Heterogeneous input types detected" in str(w[0].message)
             assert w[0].category is UserWarning
 
         assert originally_1d is True
-        assert obs_pts.shape == (1, 3)
-        np.testing.assert_array_equal(obs_pts, [[1.0, 2.0, 3.0]])
+        assert n_obs == 1
+        assert xo_b.shape == (1, 3)
+        np.testing.assert_array_equal(xo_b, [[1.0, 2.0, 3.0]])
 
     @pytest.mark.parametrize(
         "xo_invalid_len",
@@ -514,21 +578,25 @@ class TestPreprocessObsPts:
         ],
         ids=["too_few", "too_many"],
     )
-    def test_heterogeneous_input_wrong_length(self, xo_invalid_len):
+    def test_heterogeneous_input_wrong_length(self, standard_params, xo_invalid_len):
         """Test heterogeneous inputs with incorrect length."""
+        params = standard_params.copy()
+        params.pop("alpha")
+        params["xo"] = xo_invalid_len
+        params["dislocation"] = [1.0, 0.0, 0.0]
+        params.pop("obs_point")
         expected_len = len(xo_invalid_len)
         with pytest.raises(
             ValueError,
             match=f"Heterogeneous input must have exactly 3 elements, got {expected_len}",
         ):
-            # Suppress the specific heterogeneous input warning since we're testing error handling
             with warnings.catch_warnings():
                 warnings.filterwarnings(
                     "ignore",
                     message="Heterogeneous input types detected.*",
                     category=UserWarning,
                 )
-                _preprocess_obs_pts(xo_invalid_len)
+                _preprocess_obs_pts(**params)
 
     @pytest.mark.parametrize(
         "xo_invalid_dim, dims",
@@ -538,10 +606,18 @@ class TestPreprocessObsPts:
         ],
         ids=["3d_input", "4d_input"],
     )
-    def test_invalid_dimensions(self, xo_invalid_dim, dims):
+    def test_invalid_dimensions(self, standard_params, xo_invalid_dim, dims):
         """Test inputs with too many dimensions."""
-        with pytest.raises(ValueError, match=f"Got {dims} dimensions, expected 2"):
-            _preprocess_obs_pts(xo_invalid_dim)
+        params = standard_params.copy()
+        params.pop("alpha")
+        params["xo"] = xo_invalid_dim
+        params["dislocation"] = [1.0, 0.0, 0.0]
+        params.pop("obs_point")
+        with pytest.raises(
+            ValueError,
+            match=f"Invalid number of dimensions for xo: expected 1 or 2, but got {dims}",
+        ):
+            _preprocess_obs_pts(**params)
 
     @pytest.mark.parametrize(
         "xo_invalid_width, width",
@@ -551,69 +627,155 @@ class TestPreprocessObsPts:
         ],
         ids=["too_few", "too_many"],
     )
-    def test_invalid_width(self, xo_invalid_width, width):
+    def test_invalid_width(self, standard_params, xo_invalid_width, width):
         """Test inputs with incorrect vector width."""
+        params = standard_params.copy()
+        params.pop("alpha")
+        params["xo"] = xo_invalid_width
+        params["dislocation"] = [1.0, 0.0, 0.0]
+        params.pop("obs_point")
         with pytest.raises(
-            ValueError, match=f"Got {width} elements per vector, expected 3"
+            ValueError,
+            match=f"Invalid shape for xo: expected \\(n_obs, 3\\) but got \\(1, {width}\\)",
         ):
-            _preprocess_obs_pts(xo_invalid_width)
+            _preprocess_obs_pts(**params)
 
-    def test_wrong_width_with_transpose_hint(self):
+    def test_wrong_width_with_transpose_hint(self, standard_params):
         """Test if the transpose hint is provided for (3, N) arrays."""
-        xo = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])  # Shape (3, 2)
+        params = standard_params.copy()
+        params.pop("alpha")
+        params["xo"] = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
+        params["dislocation"] = [1.0, 0.0, 0.0]
+        params.pop("obs_point")
         with pytest.raises(
-            ValueError, match="You probably just need to transpose the input"
+            ValueError,
+            match="Invalid shape for xo: got \\(3, 2\\)\\. Did you mean to transpose it to have shape \\(2, 3\\)\\?",
         ):
-            _preprocess_obs_pts(xo)
+            _preprocess_obs_pts(**params)
 
-    def test_many_points(self):
+    def test_many_points(self, standard_params):
         """Test many points to ensure originally_1d=False path."""
-        xo = [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]]
-        originally_1d, obs_pts = _preprocess_obs_pts(xo)
+        params = standard_params.copy()
+        params.pop("alpha")
+        params["xo"] = [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]]
+        params["dislocation"] = [1.0, 0.0, 0.0]
+        params.pop("obs_point")
+        (
+            xo_b,
+            _,
+            _,
+            _,
+            _,
+            _,
+            originally_1d,
+            n_obs,
+        ) = _preprocess_obs_pts(**params)
         assert originally_1d is False
-        assert obs_pts.shape == (4, 3)
+        assert n_obs == 4
+        assert xo_b.shape == (4, 3)
 
-    def test_wrong_width_without_transpose_hint(self):
+    def test_wrong_width_without_transpose_hint(self, standard_params):
         """Test wrong width case without transpose hint."""
-        xo = np.array([[1.0, 2.0], [3.0, 4.0]])  # Shape (2, 2) - no transpose hint
+        params = standard_params.copy()
+        params.pop("alpha")
+        params["xo"] = np.array([[1.0, 2.0], [3.0, 4.0]])
+        params["dislocation"] = [1.0, 0.0, 0.0]
+        params.pop("obs_point")
         with pytest.raises(ValueError) as exc_info:
-            _preprocess_obs_pts(xo)
-        # Should NOT contain transpose hint
+            _preprocess_obs_pts(**params)
         assert "transpose" not in str(exc_info.value)
-        assert "Got 2 elements per vector, expected 3" in str(exc_info.value)
+        assert "Invalid shape for xo: expected (n_obs, 3) but got (2, 2)" in str(
+            exc_info.value
+        )
 
-    def test_single_point_1d_detection_list(self):
+    def test_single_point_1d_detection_list(self, standard_params):
         """Test 1D detection for list input."""
-        xo = [1, 2, 3]  # xo[0] = 1, np.atleast_1d(1).shape = (1,)
-        originally_1d, obs_pts = _preprocess_obs_pts(xo)
+        params = standard_params.copy()
+        params.pop("alpha")
+        params["xo"] = [1, 2, 3]
+        params["dislocation"] = [1.0, 0.0, 0.0]
+        params.pop("obs_point")
+        (
+            xo_b,
+            _,
+            _,
+            _,
+            _,
+            _,
+            originally_1d,
+            n_obs,
+        ) = _preprocess_obs_pts(**params)
         assert originally_1d is True
-        assert obs_pts.shape == (1, 3)
+        assert n_obs == 1
+        assert xo_b.shape == (1, 3)
 
-    def test_single_point_1d_detection_numpy(self):
+    def test_single_point_1d_detection_numpy(self, standard_params):
         """Test 1D detection for numpy array input."""
-        xo = np.array([1, 2, 3])  # xo[0] = 1, np.atleast_1d(1).shape = (1,)
-        originally_1d, obs_pts = _preprocess_obs_pts(xo)
+        params = standard_params.copy()
+        params.pop("alpha")
+        params["xo"] = np.array([1, 2, 3])
+        params["dislocation"] = [1.0, 0.0, 0.0]
+        params.pop("obs_point")
+        (
+            xo_b,
+            _,
+            _,
+            _,
+            _,
+            _,
+            originally_1d,
+            n_obs,
+        ) = _preprocess_obs_pts(**params)
         assert originally_1d is True
-        assert obs_pts.shape == (1, 3)
+        assert n_obs == 1
+        assert xo_b.shape == (1, 3)
 
-    def test_single_point_2d_detection_list(self):
+    def test_single_point_2d_detection_list(self, standard_params):
         """Test 2D detection for nested list input."""
-        xo = [[1, 2, 3]]  # xo[0] = [1, 2, 3], np.atleast_1d([1, 2, 3]).shape = (3,)
-        originally_1d, obs_pts = _preprocess_obs_pts(xo)
+        params = standard_params.copy()
+        params.pop("alpha")
+        params["xo"] = [[1, 2, 3]]
+        params["dislocation"] = [1.0, 0.0, 0.0]
+        params.pop("obs_point")
+        (
+            xo_b,
+            _,
+            _,
+            _,
+            _,
+            _,
+            originally_1d,
+            n_obs,
+        ) = _preprocess_obs_pts(**params)
         assert originally_1d is False
-        assert obs_pts.shape == (1, 3)
+        assert n_obs == 1
+        assert xo_b.shape == (1, 3)
 
-    def test_single_point_2d_detection_numpy(self):
+    def test_single_point_2d_detection_numpy(self, standard_params):
         """Test 2D detection for numpy array input."""
-        xo = np.array([[1, 2, 3]])  # xo[0] = np.array([1, 2, 3]), shape = (3,)
-        originally_1d, obs_pts = _preprocess_obs_pts(xo)
+        params = standard_params.copy()
+        params.pop("alpha")
+        params["xo"] = np.array([[1, 2, 3]])
+        params["dislocation"] = [1.0, 0.0, 0.0]
+        params.pop("obs_point")
+        (
+            xo_b,
+            _,
+            _,
+            _,
+            _,
+            _,
+            originally_1d,
+            n_obs,
+        ) = _preprocess_obs_pts(**params)
         assert originally_1d is False
-        assert obs_pts.shape == (1, 3)
+        assert n_obs == 1
+        assert xo_b.shape == (1, 3)
 
     @pytest.mark.parametrize(
         "xo",
         [
-            [1, 2, 3],  # Integer input
+            [1, 2, 3],
             np.array([1, 2, 3], dtype=np.int32),
             np.array([1.0, 2.0, 3.0], dtype=np.float32),
             [1, 2.0, 3],
@@ -633,64 +795,131 @@ class TestPreprocessObsPts:
             "negatives",
         ],
     )
-    def test_various_numeric_types_and_values(self, xo):
+    def test_various_numeric_types_and_values(self, standard_params, xo):
         """Test with various numeric types and value ranges."""
-        originally_1d, obs_pts = _preprocess_obs_pts(xo)
+        params = standard_params.copy()
+        params.pop("alpha")
+        params["xo"] = xo
+        params["dislocation"] = [1.0, 0.0, 0.0]
+        params.pop("obs_point")
+        (
+            xo_b,
+            _,
+            _,
+            _,
+            _,
+            _,
+            originally_1d,
+            n_obs,
+        ) = _preprocess_obs_pts(**params)
         assert originally_1d is True
-        assert obs_pts.shape == (1, 3)
-        np.testing.assert_allclose(obs_pts, [xo])
+        assert n_obs == 1
+        assert xo_b.shape == (1, 3)
+        np.testing.assert_allclose(xo_b, [xo])
 
     @pytest.mark.parametrize(
         "dtype",
         [np.int32, np.int64, np.float32, np.float64],
         ids=["int32", "int64", "float32", "float64"],
     )
-    def test_numpy_array_different_dtypes(self, dtype):
+    def test_numpy_array_different_dtypes(self, standard_params, dtype):
         """Test various numpy array dtypes."""
-        xo = np.array([1, 2, 3], dtype=dtype)
-        originally_1d, obs_pts = _preprocess_obs_pts(xo)
+        params = standard_params.copy()
+        params.pop("alpha")
+        params["xo"] = np.array([1, 2, 3], dtype=dtype)
+        params["dislocation"] = [1.0, 0.0, 0.0]
+        params.pop("obs_point")
+        (
+            xo_b,
+            _,
+            _,
+            _,
+            _,
+            _,
+            originally_1d,
+            n_obs,
+        ) = _preprocess_obs_pts(**params)
         assert originally_1d is True
-        assert obs_pts.shape == (1, 3)
+        assert n_obs == 1
+        assert xo_b.shape == (1, 3)
 
-    def test_all_valid_single_point_formats(self):
+    def test_all_valid_single_point_formats(self, standard_params):
         """Test all valid ways to represent a single point."""
         point = [1.0, 2.0, 3.0]
         test_cases = [
-            # 1D-like inputs
             (point, True, "list"),
             (np.array(point), True, "numpy 1D"),
             (tuple(point), True, "tuple"),
-            # 2D-like inputs
             ([point], False, "nested list"),
             (np.array([point]), False, "numpy 2D"),
             ((point,), False, "nested tuple"),
         ]
 
         for xo, expected_1d, desc in test_cases:
-            originally_1d, obs_pts = _preprocess_obs_pts(xo)
+            params = standard_params.copy()
+            params.pop("alpha")
+            params["xo"] = xo
+            params["dislocation"] = [1.0, 0.0, 0.0]
+            params.pop("obs_point")
+            (
+                xo_b,
+                _,
+                _,
+                _,
+                _,
+                _,
+                originally_1d,
+                n_obs,
+            ) = _preprocess_obs_pts(**params)
             assert originally_1d == expected_1d, f"Failed for {desc}"
-            assert obs_pts.shape == (1, 3), f"Failed for {desc}"
-            np.testing.assert_array_equal(
-                obs_pts, [point], err_msg=f"Failed for {desc}"
-            )
+            assert n_obs == 1, f"Failed for {desc}"
+            assert xo_b.shape == (1, 3), f"Failed for {desc}"
+            np.testing.assert_array_equal(xo_b, [point], err_msg=f"Failed for {desc}")
 
-    def test_return_types(self):
+    def test_return_types(self, standard_params):
         """Test that return types are correct."""
-        xo = [1.0, 2.0, 3.0]
-        originally_1d, obs_pts = _preprocess_obs_pts(xo)
+        params = standard_params.copy()
+        params.pop("alpha")
+        params["xo"] = [1.0, 2.0, 3.0]
+        params["dislocation"] = [1.0, 0.0, 0.0]
+        params.pop("obs_point")
+        (
+            xo_b,
+            _,
+            _,
+            _,
+            _,
+            _,
+            originally_1d,
+            n_obs,
+        ) = _preprocess_obs_pts(**params)
         assert isinstance(originally_1d, bool)
-        assert isinstance(obs_pts, np.ndarray)
-        assert obs_pts.ndim == 2
-        assert obs_pts.shape[1] == 3
+        assert isinstance(xo_b, np.ndarray)
+        assert xo_b.ndim == 2
+        assert xo_b.shape[1] == 3
 
     @pytest.mark.parametrize(
         "order",
         ["C", "F"],
     )
-    def test_array_memory_layout(self, order):
+    def test_array_memory_layout(self, standard_params, order):
         """Test C-contiguous and Fortran-contiguous arrays work correctly."""
-        xo = np.array([[1, 2, 3], [4, 5, 6]], order=order)
-        originally_1d, obs_pts = _preprocess_obs_pts(xo)
+        params = standard_params.copy()
+        params.pop("alpha")
+        params["xo"] = np.array([[1, 2, 3], [4, 5, 6]], order=order)
+        params["dislocation"] = [1.0, 0.0, 0.0]
+        params.pop("obs_point")
+        (
+            xo_b,
+            _,
+            _,
+            _,
+            _,
+            _,
+            originally_1d,
+            n_obs,
+        ) = _preprocess_obs_pts(**params)
         assert originally_1d is False
-        assert obs_pts.shape == (2, 3)
-        np.testing.assert_array_equal(obs_pts, [[1, 2, 3], [4, 5, 6]])
+        assert n_obs == 2
+        assert xo_b.shape == (2, 3)
+        np.testing.assert_array_equal(xo_b, [[1, 2, 3], [4, 5, 6]])

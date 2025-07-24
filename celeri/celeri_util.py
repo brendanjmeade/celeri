@@ -33,36 +33,17 @@ def dc3dwrapper_cutde_disp(
         "/", "\\", "V", "L", "okada"
     ] = "/",  # Note: "\\" is a single backslash.
 ):
-    r"""Compute the Okada displacement vector using the cutde library.
+    r"""Compute displacement using cutde, with an Okada option.
 
-    The following should be equivalent up to floating point errors:
+    This function calculates the displacement at observation points due to
+    dislocation on one or more rectangular faults in an elastic half-space.
+    It can use either a triangulation-based method via the `cutde` library
+    or the analytical solution from `okada_wrapper`.
 
-    ```python
-    _, u, _ = okada_wrapper.dc3dwrapper(
-        alpha, xo, depth, dip, strike_width, dip_width, dislocation
-    )
-    u = dc3dwrapper_cutde_disp(
-        alpha, xo, depth, dip, strike_width, dip_width, dislocation
-    )
-    ```
+    The `triangulation` argument controls how each rectangle is discretized
+    into triangles when using `cutde`.
 
-    The `triangulation` argument is used to specify the triangulation of the
-    rectangle. The default is to use two triangles along the diagonal /,
-    but you can also specify a triangulation \\ with the opposite diagonal,
-    or a V-shaped triangulation consisting of three triangles, connecting
-    the midpoint of the bottom edge to all corners, or a Λ-shaped (L for Lambda)
-    triangulation connecting the midpoint of the top edge to all corners.
-
-    The V and L triangulations should be advantageous when the observation point
-    is near to the centerpoint of the rectangle, because either the / or \\
-    triangulations have two opposing edges through the centerpoint, and
-    hence there is a risk of catastrophic cancellation in the calculation,
-    whereas the V and L triangulations have some distance between the centerpoint
-    and the other edges.
-
-    The "okada" option bypasses the cutde triangulation entirely and uses
-    the okada_wrapper library directly. This requires that okada_wrapper
-    has been installed.
+    All input parameters are broadcastable to a common `n_obs` dimension.
 
     An illustration of the triangulations, looking down from above:
 
@@ -84,35 +65,50 @@ def dc3dwrapper_cutde_disp(
     Parameters
     ----------
     alpha : float
-        Material parameter (lambda + mu) / (lambda + 2 * mu)
+        Elastic parameter: (lambda + mu) / (lambda + 2 * mu)
     xo : array_like
-        Observation point(s). Can be:
-        - Single point: [x, y, z] or (3,) array
-        - Multiple points: (N, 3) array or list of N points
-    depth : float
-        Depth of the fault origin
-    dip : float
-        Dip angle in degrees
+        Observation point(s). Shape: (3,) or (n_obs, 3 coordinates)
+    depth : float or array_like
+        Depth of fault origin. Shape: () or (n_obs,)
+    dip : float or array_like
+        Dip angle in degrees. Shape: () or (n_obs,)
     strike_width : array_like
-        [min_strike, max_strike] along-strike extent
+        [min_strike, max_strike] extent. Shape: (2,) or (n_obs, 2)
     dip_width : array_like
-        [min_dip, max_dip] down-dip extent
+        [min_dip, max_dip] extent. Shape: (2,) or (n_obs, 2)
     dislocation : array_like
-        [strike_slip, dip_slip, tensile_slip] slip vector
-    triangulation : str, optional
-        Triangulation pattern: "/", "\\", "V", or "okada"
+        [strike_slip, dip_slip, tensile_slip]. Shape: (3,) or (n_obs, 3 slips)
+    triangulation : {'/', '\\', 'V', 'L', 'okada'}, optional
+        The triangulation method for `cutde` or 'okada' to use the
+        analytical solution.
 
     Returns
     -------
     displacement : numpy.ndarray
-        Displacement vector(s). Shape depends on input format:
-        - 1D-like input ([x,y,z], np.array([x,y,z])): (3,) array
-        - 2D-like input ([[x,y,z]], np.array([[x,y,z]])): (1,3) array
-        - Multiple points ([[x,y,z], [x,y,z], ...]): (N,3) array
+        Displacement vector(s).
+        - If input is 1D-like: (3 displacements,)
+        - If input is 2D-like: (n_obs, 3 displacements)
     """
-    originally_1d, obs_pts = _preprocess_obs_pts(xo)
-    n_obs = obs_pts.shape[0]
-    # obs_pts shape: (n_obs, 3 coordinates)
+    (
+        obs_pts,  # (n_obs, 3 coordinates)
+        depth,  # (n_obs,)
+        dip,  # (n_obs,)
+        strike_width,  # (n_obs, 2)
+        dip_width,  # (n_obs, 2)
+        dislocation,  # (n_obs, 3 slips)
+        originally_1d,
+        n_obs,
+    ) = _preprocess_obs_pts(
+        xo=xo,
+        depth=depth,
+        dip=dip,
+        strike_width=strike_width,
+        dip_width=dip_width,
+        dislocation=dislocation,
+    )
+
+    if n_obs == 0:
+        return np.zeros(3) if originally_1d else np.zeros((0, 3))
 
     if triangulation == "okada":
         from okada_wrapper import dc3dwrapper
@@ -120,222 +116,371 @@ def dc3dwrapper_cutde_disp(
         raw_result = np.array(
             [
                 dc3dwrapper(
-                    alpha, xo, depth, dip, strike_width, dip_width, dislocation
+                    alpha,
+                    obs_pts[i],
+                    depth[i],
+                    dip[i],
+                    strike_width[i],
+                    dip_width[i],
+                    dislocation[i],
                 )[1]
-                for xo in obs_pts
+                for i in range(n_obs)
             ]
-        )
-        if originally_1d:
-            return raw_result[0]
-        else:
-            return raw_result
+        )  # (n_obs, 3 displacements)
+        return raw_result[0] if originally_1d else raw_result
 
-    # Make copies to avoid mutating input parameters
-    strike_width = list(strike_width)
-    dip_width = list(dip_width)
+    if n_obs > 0:
+        # Make copies to avoid mutating input parameters
+        strike_width = np.copy(strike_width)
+        dip_width = np.copy(dip_width)
+        orientation_correction = np.ones(n_obs)
 
-    # Early return for degenerate case
-    if strike_width[0] == strike_width[1] or dip_width[0] == dip_width[1]:
-        # cutde returns nan when two vertices coincide, but the
-        # correct answer is obviously zero.
-        if originally_1d:
-            return np.zeros(3)
-        else:
-            return np.zeros((n_obs, 3))
-    orientation_correction = 1
-    if dip_width[0] > dip_width[1]:
-        dip_width[0], dip_width[1] = dip_width[1], dip_width[0]
-        orientation_correction *= -1
-    if strike_width[0] > strike_width[1]:
-        strike_width[0], strike_width[1] = strike_width[1], strike_width[0]
-        orientation_correction *= -1
+        # Only perform swapping operations if arrays are non-empty
+        if strike_width.size > 0 and dip_width.size > 0:
+            dip_swap_mask = dip_width[:, 0] > dip_width[:, 1]
+            if np.any(dip_swap_mask):
+                dip_width[dip_swap_mask] = dip_width[dip_swap_mask, [1, 0]]
+                orientation_correction[dip_swap_mask] *= -1
 
-    # alpha = (lambda + mu) / (lambda + 2 mu)
-    # poissons_ratio = lambda / 2(lambda + mu)
+            strike_swap_mask = strike_width[:, 0] > strike_width[:, 1]
+            if np.any(strike_swap_mask):
+                strike_width[strike_swap_mask] = strike_width[strike_swap_mask, [1, 0]]
+                orientation_correction[strike_swap_mask] *= -1
+
     poissons_ratio = 1 - 1 / (2 * alpha)
 
-    # Vertices of the rectangle
+    # Calculate vertices for all rectangles
     dip_rad = np.deg2rad(dip)
-    bl = [
-        strike_width[0],
-        dip_width[0] * np.cos(dip_rad),
-        dip_width[0] * np.sin(dip_rad) - depth,
-    ]
-    br = [
-        strike_width[1],
-        dip_width[0] * np.cos(dip_rad),
-        dip_width[0] * np.sin(dip_rad) - depth,
-    ]
-    tr = [
-        strike_width[1],
-        dip_width[1] * np.cos(dip_rad),
-        dip_width[1] * np.sin(dip_rad) - depth,
-    ]
-    tl = [
-        strike_width[0],
-        dip_width[1] * np.cos(dip_rad),
-        dip_width[1] * np.sin(dip_rad) - depth,
-    ]
-    # For uniformity we pad all 2-triangle triangulations with a trivial third triangle.
+    bl = np.c_[
+        strike_width[:, 0],
+        dip_width[:, 0] * np.cos(dip_rad),
+        dip_width[:, 0] * np.sin(dip_rad) - depth,
+    ]  # (n_obs, 3 coordinates)
+    br = np.c_[
+        strike_width[:, 1],
+        dip_width[:, 0] * np.cos(dip_rad),
+        dip_width[:, 0] * np.sin(dip_rad) - depth,
+    ]  # (n_obs, 3 coordinates)
+    tr = np.c_[
+        strike_width[:, 1],
+        dip_width[:, 1] * np.cos(dip_rad),
+        dip_width[:, 1] * np.sin(dip_rad) - depth,
+    ]  # (n_obs, 3 coordinates)
+    tl = np.c_[
+        strike_width[:, 0],
+        dip_width[:, 1] * np.cos(dip_rad),
+        dip_width[:, 1] * np.sin(dip_rad) - depth,
+    ]  # (n_obs, 3 coordinates)
+
+    # Create triangles for each rectangle based on the chosen triangulation
     if triangulation == "/":
-        tris = np.array(
-            [[tr, bl, br], [bl, tr, tl], [tr, tr, tr]]
-        )  # Oriented counterclockwise looking down
+        tris = np.stack(
+            [
+                np.stack([tr, bl, br], axis=1),
+                np.stack([bl, tr, tl], axis=1),
+                np.stack([tr, tr, tr], axis=1),  # Trivial padding triangle
+            ],
+            axis=1,
+        )
     elif triangulation == "\\":
-        tris = np.array(
-            [[br, tl, bl], [tl, br, tr], [tr, tr, tr]]
-        )  # Oriented counterclockwise looking down
+        tris = np.stack(
+            [
+                np.stack([br, tl, bl], axis=1),
+                np.stack([tl, br, tr], axis=1),
+                np.stack([tr, tr, tr], axis=1),
+            ],
+            axis=1,
+        )
     elif triangulation == "V":
-        bm = [(bl[0] + br[0]) / 2, (bl[1] + br[1]) / 2, (bl[2] + br[2]) / 2]
-        tris = np.array(
-            [[tr, bm, br], [bm, tl, bl], [tl, bm, tr]]
-        )  # Oriented counterclockwise looking down
+        bm = (bl + br) / 2
+        tris = np.stack(
+            [
+                np.stack([tr, bm, br], axis=1),
+                np.stack([bm, tl, bl], axis=1),
+                np.stack([tl, bm, tr], axis=1),
+            ],
+            axis=1,
+        )
     elif triangulation == "L":
-        tm = [(tl[0] + tr[0]) / 2, (tl[1] + tr[1]) / 2, (tl[2] + tr[2]) / 2]
-        tris = np.array(
-            [[bl, tm, tl], [tm, br, tr], [br, tm, bl]]
-        )  # Oriented counterclockwise looking down
+        tm = (tl + tr) / 2
+        tris = np.stack(
+            [
+                np.stack([bl, tm, tl], axis=1),
+                np.stack([tm, br, tr], axis=1),
+                np.stack([br, tm, bl], axis=1),
+            ],
+            axis=1,
+        )
     else:
         raise ValueError(f"Invalid triangulation parameter: {triangulation}")
+    # tris shape: (n_obs, 3 triangles, 3 vertices, 3 coordinates)
 
-    slip_vec = np.array(dislocation)  # (3,) with [strike, dip, tensile]
-
-    # Prepare inputs for cutde.halfspace.disp
-    # The disp function expects one observation point for each source triangle.
-    # We have n_obs observation points and 3 triangles, and we want to
-    # calculate the displacement at each observation point from all triangles.
-    # So we repeat the observation points for each triangle and tile the triangles
-    # and slips accordingly.
-
-    # obs_pts shape: (n_obs, 3 coordinates)
-    obs_pts_tiled = np.repeat(obs_pts, 3, axis=0)  # 3 = number of triangles
-    # obs_pts_tiled shape: (n_obs * 3 triangles, 3 coordinates)
-
-    # tris shape: (3 triangles, 3 vertices, 3 coordinates)
-    tris_tiled = np.tile(tris, (n_obs, 1, 1))
-    # tris_tiled shape: (n_obs * 3 triangles, 3 vertices, 3 coordinates)
-
-    # slip_vec shape: (3,) with [strike, dip, tensile]
-    slips_tiled = np.tile(slip_vec, (obs_pts_tiled.shape[0], 1))
-    # slips_tiled shape: (n_obs * 3 triangles, 3 slips)
+    # Tile inputs for cutde: one observation point per source triangle
+    n_total_tris = n_obs * 3
+    obs_pts_tiled = np.repeat(obs_pts, 3, axis=0)  # (n_total_tris, 3 coordinates)
+    slips_tiled = np.repeat(dislocation, 3, axis=0)  # (n_total_tris, 3 slips)
+    tris_reshaped = tris.reshape(
+        n_total_tris, 3, 3
+    )  # (n_total_tris, 3 vertices, 3 coordinates)
+    orientation_tiled = np.repeat(orientation_correction, 3)  # (n_total_tris,)
 
     disp_val = (
         disp_cutde(
             obs_pts=obs_pts_tiled,
-            tris=tris_tiled,
+            tris=tris_reshaped,
             slips=slips_tiled,
             nu=poissons_ratio,
         )
-        * orientation_correction
+        * orientation_tiled[:, np.newaxis]
     )
-    # disp_val shape: (n_obs * 3 triangles, 3 displacements)
+    # disp_val shape: (n_total_tris, 3 displacements)
 
-    # disp_val is a long list of displacements. We need to sum the contributions
-    # from each triangle for each observation point.
-    disp_vec = disp_val.reshape((n_obs, 3, 3)).sum(axis=1)
-    # disp_vec shape: (n_obs, 3 displacements)
-    assert disp_vec.shape == (n_obs, 3)
+    # Sum contributions from each set of 3 triangles for each observation point
+    disp_vec = disp_val.reshape((n_obs, 3, 3)).sum(axis=1)  # (n_obs, 3 displacements)
 
-    # Return format depends on original input format
-    if originally_1d:
-        return disp_vec[0]  # Shape: (3,)
-    else:
-        return disp_vec  # Shape: (N, 3)
+    return disp_vec[0] if originally_1d else disp_vec
 
 
-def _preprocess_obs_pts(xo: list | np.ndarray) -> tuple[bool, np.ndarray]:
-    """Preprocess the observation points.
+def _preprocess_obs_pts(
+    *,
+    xo: list | tuple | np.ndarray,
+    depth: float | np.ndarray,
+    dip: float | np.ndarray,
+    strike_width: list | tuple | np.ndarray,
+    dip_width: list | tuple | np.ndarray,
+    dislocation: list | tuple | np.ndarray,
+) -> tuple[
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    bool,
+    int,
+]:
+    """Preprocess and broadcast fault parameters to a consistent shape.
+
+    This function validates the shapes of all input parameters, determines the
+    number of observations (n_obs), and broadcasts all inputs to match this
+    dimension, which is always at axis=0. It provides detailed error
+    messages for shape mismatches, including hints for suspected transpositions.
 
     Parameters
     ----------
-    xo : list | np.ndarray
-        Observation point(s). Can be:
-        - Single point: [x, y, z] or (3,) array
-        - Multiple points: (N, 3) array or list of N points
+    xo : list | tuple | np.ndarray
+        Observation point(s). Shape: (3,) or (n_obs, 3 coordinates)
+    depth : float | np.ndarray
+        Depth of the fault origin. Shape: () or (n_obs,)
+    dip : float | np.ndarray
+        Dip angle in degrees. Shape: () or (n_obs,)
+    strike_width : list | tuple | np.ndarray
+        [min_strike, max_strike] extent. Shape: (2,) or (n_obs, 2)
+    dip_width : list | tuple | np.ndarray
+        [min_dip, max_dip] extent. Shape: (2,) or (n_obs, 2)
+    dislocation : list | tuple | np.ndarray
+        [strike_slip, dip_slip, tensile_slip] slip vector.
+        Shape: (3 slips,) or (n_obs, 3 slips)
 
     Returns
     -------
-    originally_1d : bool
-        Whether the input was 1D-like.
-    obs_pts : np.ndarray
-        Observation points. Shape: (N, 3)
-
-    Examples
-    --------
-    The empty list is treated as a length-0 2D array of 3-vectors.
-    >>> _preprocess_obs_pts([])
-    (False, array([], shape=(0, 3), dtype=float64))
-
-    A single vector is converted into an array of shape (1, 3).
-    >>> _preprocess_obs_pts([1, 2, 3])
-    (True, array([[1, 2, 3]]))
-
-    A list of vectors is converted into an array of shape (N, 3).
-    >>> _preprocess_obs_pts([[1, 2, 3], [4, 5, 6]])
-    (False, array([[1, 2, 3],
-           [4, 5, 6]]))
+    tuple
+        A tuple containing:
+        - xo_b (np.ndarray): Broadcasted observation points. Shape: (n_obs, 3 coordinates)
+        - depth_b (np.ndarray): Broadcasted depths. Shape: (n_obs,)
+        - dip_b (np.ndarray): Broadcasted dip angles. Shape: (n_obs,)
+        - strike_width_b (np.ndarray): Broadcasted strike widths. Shape: (n_obs, 2)
+        - dip_width_b (np.ndarray): Broadcasted dip widths. Shape: (n_obs, 2)
+        - dislocation_b (np.ndarray): Broadcasted dislocations. Shape: (n_obs, 3 slips)
+        - originally_1d (bool): True if all inputs were 1D-like.
+        - n_obs (int): The number of observations.
     """
-    originally_1d: bool
-    obs_pts: np.ndarray
-    if isinstance(xo, list):
-        if len(xo) == 0:
-            # Empty list of vectors
-            originally_1d = False
-            # Empty array of shape (0, 3)
-            obs_pts = np.array([]).reshape(0, 3)
-            return originally_1d, obs_pts
-    try:
-        obs_pts = np.atleast_2d(xo)
-    except ValueError as e:
-        warnings.warn(
-            "Heterogeneous input types detected. Consider using "
-            "consistent numpy arrays or lists. This will cause "
-            "an error in future versions.",
-            UserWarning,
-            stacklevel=2,
-        )
-        # We only support single heterogeneous input vectors for
-        # backwards compatibility with celeri, e.g.
-        # # xo = [np.array([1]), np.array([2]), 0]
-        originally_1d = True
-        if len(xo) != 3:
-            raise ValueError(
-                f"Heterogeneous input must have exactly 3 elements, got {len(xo)}"
-            ) from e
-        obs_pt = np.concatenate([np.atleast_1d(x) for x in xo])
-        assert obs_pt.shape == (3,)
-        obs_pts = obs_pt.reshape(1, 3)
-        return originally_1d, obs_pts
 
-    assert obs_pts.ndim >= 2
-    if len(obs_pts.shape) > 2:
+    def validate_and_get_n_obs(arr, name, expected_core_shape):
+        """Helper to validate input shapes and determine n_obs."""
+        try:
+            arr = np.array(arr)
+        except ValueError as e:
+            if "inhomogeneous" in str(e) and isinstance(arr, (list, tuple)):
+                # Handle heterogeneous inputs like [np.array([1]), np.array([2]), 3.0]
+                warnings.warn(
+                    "Heterogeneous input types detected. Consider using "
+                    "consistent numpy arrays or lists. This will cause "
+                    "an error in future versions.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+
+                # Check if it's the expected length for a single observation
+                if len(arr) != expected_core_shape[0]:
+                    raise ValueError(
+                        f"Heterogeneous input must have exactly {expected_core_shape[0]} elements, got {len(arr)}"
+                    ) from e
+
+                # Convert heterogeneous input to homogeneous array
+                homogeneous_data = np.concatenate([np.atleast_1d(x) for x in arr])
+                assert homogeneous_data.shape == (expected_core_shape[0],)
+                arr = homogeneous_data.reshape(
+                    1, expected_core_shape[0]
+                )  # Single observation as 2D array
+            else:
+                raise  # Re-raise if not a heterogeneous array issue
+
+        if arr.size == 0:
+            return 0  # Empty input means 0 observations
+
+        if arr.ndim == 0:
+            return 1  # Scalar case
+        if arr.ndim == 1:
+            if arr.shape[0] == expected_core_shape[0]:
+                return 1
+            elif expected_core_shape[0] == 1:  # e.g., depth or dip array
+                return arr.shape[0]
+            else:
+                raise ValueError(
+                    f"Invalid shape for {name}: expected ({expected_core_shape[0]},) "
+                    f"for a single observation, but got {arr.shape}."
+                )
+        if arr.ndim == 2:
+            if arr.shape[1] == expected_core_shape[0]:
+                return arr.shape[0]
+            elif arr.shape[0] == expected_core_shape[0]:
+                raise ValueError(
+                    f"Invalid shape for {name}: got {arr.shape}. "
+                    f"Did you mean to transpose it to have shape ({arr.shape[1]}, {arr.shape[0]})?"
+                )
+            else:
+                raise ValueError(
+                    f"Invalid shape for {name}: expected (n_obs, {expected_core_shape[0]}) "
+                    f"but got {arr.shape}."
+                )
         raise ValueError(
-            f"Got {len(obs_pts.shape)} dimensions, expected 2. Shape: {obs_pts.shape}."
+            f"Invalid number of dimensions for {name}: expected 1 or 2, but got {arr.ndim}."
         )
-    assert obs_pts.ndim == 2
-    if obs_pts.shape[1] != 3:
-        error_message = (
-            f"Got {obs_pts.shape[1]} elements per vector, expected 3. "
-            f"Shape: {obs_pts.shape}."
-        )
-        if obs_pts.shape[0] == 3:
-            error_message += " You probably just need to transpose the input."
-        raise ValueError(error_message)
-    assert obs_pts.shape[1] == 3
-    if obs_pts.shape[0] == 1:
-        # We received a single vector as an input, and now need
-        # to distinguish between 1d and 2d input.
-        first_element_shape = np.atleast_1d(xo[0]).shape
-        if first_element_shape == (1,):
-            originally_1d = True
-        elif first_element_shape == (3,):
-            originally_1d = False
-        else:
-            # This should never happen
-            raise ValueError(  # pragma: no cover
-                f"Got {first_element_shape} shape for first element, "
-                f"expected (1,) or (3,)."
+
+    inputs = {
+        "xo": (xo, (3,)),
+        "depth": (np.atleast_1d(depth), (1,)),
+        "dip": (np.atleast_1d(dip), (1,)),
+        "strike_width": (strike_width, (2,)),
+        "dip_width": (dip_width, (2,)),
+        "dislocation": (dislocation, (3,)),
+    }
+
+    # First pass: validate inputs and store converted arrays
+    converted_arrays = {}
+    n_obs_values = {}
+    for name, (arr, shape) in inputs.items():
+        n_obs_val = validate_and_get_n_obs(arr, name, shape)
+        n_obs_values[name] = n_obs_val
+        # Store the converted array from validate_and_get_n_obs
+        try:
+            converted_arrays[name] = np.array(arr)
+        except ValueError as e:
+            if "inhomogeneous" in str(e) and isinstance(arr, (list, tuple)):
+                # Use the same conversion logic as in validate_and_get_n_obs
+                homogeneous_data = np.concatenate([np.atleast_1d(x) for x in arr])
+                converted_arrays[name] = homogeneous_data.reshape(1, shape[0])
+            else:
+                raise
+
+    # Determine the number of observations.
+    # If any input implies 0 observations, the result is 0 observations.
+    # If there are conflicting observation counts (e.g., 2 and 3), it's an error.
+    if 0 in n_obs_values.values():
+        non_empty_counts = {n for n in n_obs_values.values() if n > 1}
+        if non_empty_counts:
+            raise ValueError(
+                f"Inconsistent number of observations: found empty and non-empty inputs: {n_obs_values}"
             )
+        n_obs = 0
     else:
-        originally_1d = False
-    return originally_1d, obs_pts
+        non_singleton_counts = {n for n in n_obs_values.values() if n > 1}
+        if len(non_singleton_counts) > 1:
+            raise ValueError(
+                f"Inconsistent number of observations: {n_obs_values}. "
+                "All array inputs must have the same length in the first dimension."
+            )
+        n_obs = non_singleton_counts.pop() if non_singleton_counts else 1
+
+    # Determine originally_1d based on the original format of xo before any processing
+    try:
+        xo_array = np.array(xo) if not isinstance(xo, np.ndarray) else xo
+    except ValueError as e:
+        if "inhomogeneous" in str(e) and isinstance(xo, (list, tuple)):
+            # For heterogeneous inputs, treat as 1D-like since they represent a single point
+            originally_1d = True
+        else:
+            raise
+    else:
+        if xo_array.size == 0:
+            originally_1d = False  # Empty inputs are considered 2D-like
+        elif xo_array.ndim == 1:
+            originally_1d = True  # 1D inputs like [1, 2, 3]
+        elif xo_array.ndim == 2 and xo_array.shape[0] == 1:
+            originally_1d = False  # 2D inputs like [[1, 2, 3]] even if single point
+        elif xo_array.ndim == 2 and xo_array.shape[0] > 1:
+            originally_1d = False  # 2D inputs with multiple points
+        else:
+            originally_1d = False  # Default to False for other cases
+
+    if n_obs == 0:
+        # Return explicitly shaped empty arrays
+        xo_b = np.empty((0, 3))
+        depth_b = np.empty((0,))
+        dip_b = np.empty((0,))
+        strike_width_b = np.empty((0, 2))
+        dip_width_b = np.empty((0, 2))
+        dislocation_b = np.empty((0, 3))
+        return (
+            xo_b,
+            depth_b,
+            dip_b,
+            strike_width_b,
+            dip_width_b,
+            dislocation_b,
+            originally_1d,
+            n_obs,
+        )
+
+    def broadcast(arr, name, expected_core_shape):
+        # arr is already converted, no need to call np.array(arr) again
+        if arr.ndim == 0:  # scalar depth/dip
+            return np.broadcast_to(arr, (n_obs,))
+        if arr.ndim == 1:
+            if arr.shape[0] == expected_core_shape[0]:
+                if expected_core_shape[0] > 1:
+                    return np.broadcast_to(arr, (n_obs, expected_core_shape[0]))
+                else:  # it's a scalar-like array([5])
+                    return np.broadcast_to(arr[0], (n_obs,))
+            elif expected_core_shape[0] == 1:  # depth/dip array
+                return arr  # it's already (n_obs,)
+        return arr
+
+    xo_b = broadcast(converted_arrays["xo"], "xo", (3,))
+    depth_b = broadcast(converted_arrays["depth"], "depth", (1,))
+    dip_b = broadcast(converted_arrays["dip"], "dip", (1,))
+    strike_width_b = broadcast(converted_arrays["strike_width"], "strike_width", (2,))
+    dip_width_b = broadcast(converted_arrays["dip_width"], "dip_width", (2,))
+    dislocation_b = broadcast(converted_arrays["dislocation"], "dislocation", (3,))
+
+    # Final shape assertions
+    # Note: np.atleast_2d behavior means we can't do a simple check for n_obs=0
+    if n_obs > 0:
+        assert xo_b.shape == (n_obs, 3), f"xo shape: {xo_b.shape}"
+        assert depth_b.shape == (n_obs,), f"depth shape: {depth_b.shape}"
+        assert dip_b.shape == (n_obs,), f"dip shape: {dip_b.shape}"
+        assert strike_width_b.shape == (n_obs, 2), f"sw shape: {strike_width_b.shape}"
+        assert dip_width_b.shape == (n_obs, 2), f"dw shape: {dip_width_b.shape}"
+        assert dislocation_b.shape == (n_obs, 3), f"disloc shape: {dislocation_b.shape}"
+
+    return (
+        xo_b,
+        depth_b,
+        dip_b,
+        strike_width_b,
+        dip_width_b,
+        dislocation_b,
+        originally_1d,
+        n_obs,
+    )
