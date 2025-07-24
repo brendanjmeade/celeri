@@ -112,6 +112,7 @@ def dc3dwrapper_cutde_disp(
     """
     originally_1d, obs_pts = _preprocess_obs_pts(xo)
     n_obs = obs_pts.shape[0]
+    # obs_pts shape: (n_obs, 3 coordinates)
 
     if triangulation == "okada":
         from okada_wrapper import dc3dwrapper
