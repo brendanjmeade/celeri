@@ -2,7 +2,7 @@ import warnings
 from typing import Literal
 
 import numpy as np
-from cutde.halfspace import disp_matrix
+from cutde.halfspace import disp as disp_cutde
 
 
 def sph2cart(lon, lat, radius):
@@ -196,20 +196,44 @@ def dc3dwrapper_cutde_disp(
     else:
         raise ValueError(f"Invalid triangulation parameter: {triangulation}")
 
-    disp_mat = (
-        disp_matrix(obs_pts=obs_pts, tris=tris, nu=poissons_ratio)
+    n_triangles = tris.shape[0]
+    slip_vec = np.array(dislocation)  # (3,) with [strike, dip, tensile]
+
+    # Prepare inputs for cutde.halfspace.disp
+    # The disp function expects one observation point for each source triangle.
+    # We have n_obs observation points and n_triangles triangles, and we want to
+    # calculate the displacement at each observation point from all triangles.
+    # So we repeat the observation points for each triangle and tile the triangles
+    # and slips accordingly.
+
+    # obs_pts shape: (n_obs, 3 coordinates)
+    obs_pts_tiled = np.repeat(obs_pts, n_triangles, axis=0)
+    # obs_pts_tiled shape: (n_obs * n_triangles, 3 coordinates)
+
+    # tris shape: (n_triangles, 3 vertices, 3 coordinates)
+    tris_tiled = np.tile(tris, (n_obs, 1, 1))
+    # tris_tiled shape: (n_obs * n_triangles, 3 vertices, 3 coordinates)
+
+    # slip_vec shape: (3,) with [strike, dip, tensile]
+    slips_tiled = np.tile(slip_vec, (obs_pts_tiled.shape[0], 1))
+    # slips_tiled shape: (n_obs * n_triangles, 3 slips)
+
+    disp_val = (
+        disp_cutde(
+            obs_pts=obs_pts_tiled,
+            tris=tris_tiled,
+            slips=slips_tiled,
+            nu=poissons_ratio,
+        )
         * orientation_correction
     )
+    # disp_val shape: (n_obs * n_triangles, 3 displacements)
 
-    n_triangles = 3 if triangulation in ["V", "L"] else 2
-    # (n_obs, dim(halfspace) = 3, n_triangles, dim(slip-vector) = 3)
-    assert disp_mat.shape == (n_obs, 3, n_triangles, 3)
-    slip_vec = np.array(dislocation)
-    assert slip_vec.shape == (3,)  # (strike, dip, tensile)
-
-    # Sum over the triangle axis and contract the slip axis with the slip vector.
-    disp_vec = np.einsum("ijkl,l->ij", disp_mat, slip_vec)
-    assert disp_vec.shape == (n_obs, 3)  # 3 = dim(halfspace)
+    # disp_val is a long list of displacements. We need to sum the contributions
+    # from each triangle for each observation point.
+    disp_vec = disp_val.reshape((n_obs, n_triangles, 3)).sum(axis=1)
+    # disp_vec shape: (n_obs, 3 displacements)
+    assert disp_vec.shape == (n_obs, 3)
 
     # Return format depends on original input format
     if originally_1d:
