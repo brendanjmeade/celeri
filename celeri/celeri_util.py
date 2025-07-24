@@ -175,13 +175,14 @@ def dc3dwrapper_cutde_disp(
         dip_width[1] * np.cos(dip_rad),
         dip_width[1] * np.sin(dip_rad) - depth,
     ]
+    # For uniformity we pad all 2-triangle triangulations with a trivial third triangle.
     if triangulation == "/":
         tris = np.array(
-            [[tr, bl, br], [bl, tr, tl]]
+            [[tr, bl, br], [bl, tr, tl], [tr, tr, tr]]
         )  # Oriented counterclockwise looking down
     elif triangulation == "\\":
         tris = np.array(
-            [[br, tl, bl], [tl, br, tr]]
+            [[br, tl, bl], [tl, br, tr], [tr, tr, tr]]
         )  # Oriented counterclockwise looking down
     elif triangulation == "V":
         bm = [(bl[0] + br[0]) / 2, (bl[1] + br[1]) / 2, (bl[2] + br[2]) / 2]
@@ -196,27 +197,26 @@ def dc3dwrapper_cutde_disp(
     else:
         raise ValueError(f"Invalid triangulation parameter: {triangulation}")
 
-    n_triangles = tris.shape[0]
     slip_vec = np.array(dislocation)  # (3,) with [strike, dip, tensile]
 
     # Prepare inputs for cutde.halfspace.disp
     # The disp function expects one observation point for each source triangle.
-    # We have n_obs observation points and n_triangles triangles, and we want to
+    # We have n_obs observation points and 3 triangles, and we want to
     # calculate the displacement at each observation point from all triangles.
     # So we repeat the observation points for each triangle and tile the triangles
     # and slips accordingly.
 
     # obs_pts shape: (n_obs, 3 coordinates)
-    obs_pts_tiled = np.repeat(obs_pts, n_triangles, axis=0)
-    # obs_pts_tiled shape: (n_obs * n_triangles, 3 coordinates)
+    obs_pts_tiled = np.repeat(obs_pts, 3, axis=0)  # 3 = number of triangles
+    # obs_pts_tiled shape: (n_obs * 3 triangles, 3 coordinates)
 
-    # tris shape: (n_triangles, 3 vertices, 3 coordinates)
+    # tris shape: (3 triangles, 3 vertices, 3 coordinates)
     tris_tiled = np.tile(tris, (n_obs, 1, 1))
-    # tris_tiled shape: (n_obs * n_triangles, 3 vertices, 3 coordinates)
+    # tris_tiled shape: (n_obs * 3 triangles, 3 vertices, 3 coordinates)
 
     # slip_vec shape: (3,) with [strike, dip, tensile]
     slips_tiled = np.tile(slip_vec, (obs_pts_tiled.shape[0], 1))
-    # slips_tiled shape: (n_obs * n_triangles, 3 slips)
+    # slips_tiled shape: (n_obs * 3 triangles, 3 slips)
 
     disp_val = (
         disp_cutde(
@@ -227,11 +227,11 @@ def dc3dwrapper_cutde_disp(
         )
         * orientation_correction
     )
-    # disp_val shape: (n_obs * n_triangles, 3 displacements)
+    # disp_val shape: (n_obs * 3 triangles, 3 displacements)
 
     # disp_val is a long list of displacements. We need to sum the contributions
     # from each triangle for each observation point.
-    disp_vec = disp_val.reshape((n_obs, n_triangles, 3)).sum(axis=1)
+    disp_vec = disp_val.reshape((n_obs, 3, 3)).sum(axis=1)
     # disp_vec shape: (n_obs, 3 displacements)
     assert disp_vec.shape == (n_obs, 3)
 
