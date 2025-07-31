@@ -21,6 +21,153 @@ def cart2sph(x, y, z):
     return azimuth, elevation, r
 
 
+def _determine_auto_triangulation(
+    obs_pts, depth, dip, strike_width, dip_width
+) -> list[Literal["/", "\\", "V"]]:
+    r"""Determine the appropriate triangulation for observation points.
+
+    Assumes inputs have already been preprocessed by _preprocess_obs_pts.
+
+    Parameters
+    ----------
+    obs_pts : ndarray, shape (n_obs, 3)
+        Observation points [x, y, z]
+    depth : ndarray, shape (n_obs,)
+        Depth of fault origin
+    dip : ndarray, shape (n_obs,)
+        Dip angle in degrees
+    strike_width : ndarray, shape (n_obs, 2)
+        [min_strike, max_strike] extent
+    dip_width : ndarray, shape (n_obs, 2)
+        [min_dip, max_dip] extent
+
+    Returns
+    -------
+    triangulations : list of Literal["/", "\\", "V"]
+        Triangulation for each observation point: "/", "\\", or "V"
+    """
+    n_obs = obs_pts.shape[0]
+
+    # Calculate rectangle dimensions
+    width = strike_width[:, 1] - strike_width[:, 0]  # Shape: (n_obs,)
+    height = dip_width[:, 1] - dip_width[:, 0]  # Shape: (n_obs,)
+
+    # Characteristic length is minimum of width and height
+    char_length = np.minimum(np.abs(width), np.abs(height))  # Shape: (n_obs,)
+
+    # Initialize result array with default "/"
+    triangulations = np.full(n_obs, "/", dtype="<U1")
+
+    # Mask for non-zero characteristic length (only process these)
+    valid_mask = char_length > 0
+
+    if not np.any(valid_mask):
+        # All have zero characteristic length, return "/"
+        return triangulations.tolist()
+
+    # Work with valid indices only
+    valid_indices = np.where(valid_mask)[0]
+    n_valid = len(valid_indices)
+
+    # Calculate rectangle midpoints in 3D space for valid points
+    dip_rad = np.deg2rad(dip[valid_indices])  # Shape: (n_valid,)
+    strike_mid = (
+        strike_width[valid_indices, 0] + strike_width[valid_indices, 1]
+    ) / 2  # Shape: (n_valid,)
+    dip_mid = (
+        dip_width[valid_indices, 0] + dip_width[valid_indices, 1]
+    ) / 2  # Shape: (n_valid,)
+
+    rect_midpoints = np.column_stack(
+        [
+            strike_mid,
+            dip_mid * np.cos(dip_rad),
+            dip_mid * np.sin(dip_rad) - depth[valid_indices],
+        ]
+    )  # Shape: (n_valid, 3)
+
+    # Vector from rectangle midpoint to observation point
+    rel_vec = obs_pts[valid_indices] - rect_midpoints  # Shape: (n_valid, 3)
+
+    # Normal vectors to the rectangle planes
+    normals = np.column_stack(
+        [np.zeros(n_valid), -np.sin(dip_rad), np.cos(dip_rad)]
+    )  # Shape: (n_valid, 3)
+
+    # Offset in normal direction (vectorized dot product)
+    normal_offset = np.sum(rel_vec * normals, axis=1)  # Shape: (n_valid,)
+
+    # Check normal offset condition: if >= 10% of characteristic length, use "/"
+    far_mask = np.abs(normal_offset) >= 0.1 * char_length[valid_indices]
+    # These stay as "/" (already initialized)
+
+    # For points not far from plane, continue processing
+    close_indices = valid_indices[~far_mask]
+    if len(close_indices) == 0:
+        return triangulations.tolist()
+
+    close_mask_in_valid = ~far_mask
+    n_close = len(close_indices)
+
+    # Project observation points onto the rectangle plane
+    # Strike direction unit vectors (along x-axis)
+    strike_dirs = np.tile([1, 0, 0], (n_close, 1))  # Shape: (n_close, 3)
+
+    # Dip direction unit vectors (perpendicular to strike, in the plane)
+    dip_dirs = np.column_stack(
+        [
+            np.zeros(n_close),
+            np.cos(dip_rad[close_mask_in_valid]),
+            np.sin(dip_rad[close_mask_in_valid]),
+        ]
+    )  # Shape: (n_close, 3)
+
+    # Project relative vectors onto strike and dip directions
+    strike_dot = np.sum(
+        rel_vec[close_mask_in_valid] * strike_dirs, axis=1
+    )  # Shape: (n_close,)
+    dip_dot = np.sum(
+        rel_vec[close_mask_in_valid] * dip_dirs, axis=1
+    )  # Shape: (n_close,)
+
+    # Check central region condition
+    width_close = width[close_indices]
+    height_close = height[close_indices]
+
+    # Only check central region for non-zero width and height
+    nonzero_dims_mask = (width_close != 0) & (height_close != 0)
+
+    if np.any(nonzero_dims_mask):
+        central_mask = np.zeros(n_close, dtype=bool)
+        central_mask[nonzero_dims_mask] = (
+            (strike_dot[nonzero_dims_mask] / width_close[nonzero_dims_mask]) ** 2
+            + (dip_dot[nonzero_dims_mask] / height_close[nonzero_dims_mask]) ** 2
+        ) < 0.05**2
+
+        # Set central region points to "V"
+        triangulations[close_indices[central_mask]] = "V"
+
+        # Update masks for remaining processing
+        remaining_mask = ~central_mask
+        if not np.any(remaining_mask):
+            return triangulations.tolist()
+    else:
+        remaining_mask = np.ones(n_close, dtype=bool)
+
+    # For remaining points, apply XOR logic
+    remaining_indices = close_indices[remaining_mask]
+    if len(remaining_indices) > 0:
+        strike_dot_remaining = strike_dot[remaining_mask]
+        dip_dot_remaining = dip_dot[remaining_mask]
+
+        # XOR logic: use "/" if (strike_dot > 0) XOR (dip_dot > 0), else "\"
+        xor_mask = (strike_dot_remaining > 0) != (dip_dot_remaining > 0)
+        triangulations[remaining_indices[xor_mask]] = "/"
+        triangulations[remaining_indices[~xor_mask]] = "\\"
+
+    return triangulations.tolist()
+
+
 def dc3dwrapper_cutde_disp(
     alpha,
     xo,
@@ -30,7 +177,7 @@ def dc3dwrapper_cutde_disp(
     dip_width,
     dislocation,
     triangulation: Literal[
-        "/", "\\", "V", "L", "okada"
+        "/", "\\", "V", "L", "okada", "auto"
     ] = "/",  # Note: "\\" is a single backslash.
 ):
     r"""Compute displacement using cutde, with an Okada option.
@@ -41,7 +188,9 @@ def dc3dwrapper_cutde_disp(
     or the analytical solution from `okada_wrapper`.
 
     The `triangulation` argument controls how each rectangle is discretized
-    into triangles when using `cutde`.
+    into triangles when using `cutde`. When set to "auto", the triangulation
+    is automatically selected for each observation point based on its position
+    relative to the fault rectangle.
 
     All input parameters are broadcastable to a common `n_obs` dimension.
 
@@ -78,9 +227,11 @@ def dc3dwrapper_cutde_disp(
         [min_dip, max_dip] extent. Shape: (2,) or (n_obs, 2)
     dislocation : array_like
         [strike_slip, dip_slip, tensile_slip]. Shape: (3,) or (n_obs, 3 slips)
-    triangulation : {'/', '\\', 'V', 'L', 'okada'}, optional
+    triangulation : {'/', '\\', 'V', 'L', 'okada', 'auto'}, optional
         The triangulation method for `cutde` or 'okada' to use the
-        analytical solution.
+        analytical solution. When 'auto' is selected, the triangulation
+        is automatically chosen based on the observation point's position
+        relative to each fault rectangle.
 
     Returns
     -------
@@ -128,6 +279,31 @@ def dc3dwrapper_cutde_disp(
             ]
         )  # (n_obs, 3 displacements)
         return raw_result[0] if originally_1d else raw_result
+
+    # Handle auto triangulation mode
+    if triangulation == "auto":
+        # Determine triangulation for all observation points at once (vectorized)
+        auto_triangulations = _determine_auto_triangulation(
+            obs_pts, depth, dip, strike_width, dip_width
+        )
+
+        # Process each observation point with its determined triangulation
+        disp_vec = np.zeros((n_obs, 3))
+        for i in range(n_obs):
+            # Call recursively with the determined triangulation for this single point
+            single_disp = dc3dwrapper_cutde_disp(
+                alpha,
+                obs_pts[i],
+                depth[i],
+                dip[i],
+                strike_width[i],
+                dip_width[i],
+                dislocation[i],
+                triangulation=auto_triangulations[i],  # type: ignore
+            )
+            disp_vec[i] = single_disp
+
+        return disp_vec[0] if originally_1d else disp_vec
 
     if n_obs > 0:
         # Make copies to avoid mutating input parameters

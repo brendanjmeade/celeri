@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from celeri.celeri_util import (
+    _determine_auto_triangulation,
     _preprocess_obs_pts,
     cart2sph,
     dc3dwrapper_cutde_disp,
@@ -57,6 +58,25 @@ TRIANGULATION_TEST_IDS = [
     "V_shape",
     "Λ_shape",
     "okada",
+]
+
+# Separate test cases that include auto mode
+TRIANGULATION_TEST_CASES_WITH_AUTO = [
+    "/",
+    "\\",
+    "V",
+    "L",
+    "okada",
+    "auto",
+]
+
+TRIANGULATION_TEST_IDS_WITH_AUTO = [
+    "forward_slash",
+    "backslash",
+    "V_shape",
+    "Λ_shape",
+    "okada",
+    "auto",
 ]
 
 
@@ -294,6 +314,194 @@ class TestDc3dWrapperCutdeDisp:
                 dislocation,
                 triangulation="invalid",  # type: ignore
             )
+
+    def test_auto_triangulation_basic(self, standard_params):
+        """Test that auto triangulation mode works and produces reasonable results."""
+        dislocation = [1.0, 0.0, 0.0]
+
+        # Test that auto triangulation doesn't crash and returns expected shape
+        u_auto = dc3dwrapper_cutde_disp(
+            standard_params["alpha"],
+            standard_params["obs_point"],
+            standard_params["depth"],
+            standard_params["dip"],
+            standard_params["strike_width"],
+            standard_params["dip_width"],
+            dislocation,
+            triangulation="auto",
+        )
+
+        assert u_auto.shape == (3,), f"Expected shape (3,), got {u_auto.shape}"
+        assert np.all(np.isfinite(u_auto)), (
+            "Auto triangulation produced non-finite values"
+        )
+
+    def test_auto_triangulation_multiple_points(self, standard_params):
+        """Test auto triangulation with multiple observation points."""
+        dislocation = [1.0, 0.0, 0.0]
+
+        # Create multiple observation points at different positions
+        obs_points = [
+            [5.0, 3.0, -1.0],  # Standard point
+            [5.5, 1.0, -1.0],  # Different position
+            [4.0, 4.0, -2.0],  # Another position
+        ]
+
+        u_auto = dc3dwrapper_cutde_disp(
+            standard_params["alpha"],
+            obs_points,
+            standard_params["depth"],
+            standard_params["dip"],
+            standard_params["strike_width"],
+            standard_params["dip_width"],
+            dislocation,
+            triangulation="auto",
+        )
+
+        assert u_auto.shape == (3, 3), f"Expected shape (3, 3), got {u_auto.shape}"
+        assert np.all(np.isfinite(u_auto)), (
+            "Auto triangulation produced non-finite values"
+        )
+
+    def test_auto_triangulation_consistency(self, standard_params):
+        """Test that auto triangulation is deterministic and consistent."""
+        dislocation = [1.0, 0.0, 0.0]
+
+        # Run auto triangulation twice with the same parameters
+        u_auto_1 = dc3dwrapper_cutde_disp(
+            standard_params["alpha"],
+            standard_params["obs_point"],
+            standard_params["depth"],
+            standard_params["dip"],
+            standard_params["strike_width"],
+            standard_params["dip_width"],
+            dislocation,
+            triangulation="auto",
+        )
+
+        u_auto_2 = dc3dwrapper_cutde_disp(
+            standard_params["alpha"],
+            standard_params["obs_point"],
+            standard_params["depth"],
+            standard_params["dip"],
+            standard_params["strike_width"],
+            standard_params["dip_width"],
+            dislocation,
+            triangulation="auto",
+        )
+
+        np.testing.assert_array_equal(
+            u_auto_1, u_auto_2, err_msg="Auto triangulation should be deterministic"
+        )
+
+
+class TestAutoTriangulation:
+    """Test suite for the auto triangulation helper function."""
+
+    def test_far_from_plane_uses_forward_slash(self):
+        """Test that points far from the plane (normal offset >= 10% char length) use '/'."""
+        # Rectangle with char_length = min(5, 4) = 4
+        strike_width = np.array([[3.0, 8.0]])  # width = 5
+        dip_width = np.array([[2.0, 6.0]])  # height = 4
+        depth = np.array([4.0])
+        dip = np.array([30.0])
+
+        # Point far above the plane (normal offset > 0.1 * 4 = 0.4)
+        obs_pt = np.array([[5.5, 4.0, 0.0]])  # Far above surface
+
+        triangulations = _determine_auto_triangulation(
+            obs_pt, depth, dip, strike_width, dip_width
+        )
+        assert triangulations[0] == "/", f"Expected '/', got '{triangulations[0]}'"
+
+    def test_zero_characteristic_length_uses_forward_slash(self):
+        """Test that zero width or height (char_length = 0) uses '/'."""
+        # Degenerate rectangle with zero width
+        strike_width = np.array([[3.0, 3.0]])  # width = 0
+        dip_width = np.array([[2.0, 6.0]])  # height = 4
+        depth = np.array([4.0])
+        dip = np.array([30.0])
+        obs_pt = np.array([[3.0, 4.0, -4.0]])
+
+        triangulations = _determine_auto_triangulation(
+            obs_pt, depth, dip, strike_width, dip_width
+        )
+        assert triangulations[0] == "/", f"Expected '/', got '{triangulations[0]}'"
+
+    def test_central_region_uses_v(self):
+        """Test that points in the central region use 'V'."""
+        strike_width = np.array([[3.0, 8.0]])  # width = 5
+        dip_width = np.array([[2.0, 6.0]])  # height = 4
+        depth = np.array([4.0])
+        dip = np.array([30.0])
+
+        # Point very close to rectangle center
+        dip_rad = np.deg2rad(dip[0])
+        strike_mid = (strike_width[0, 0] + strike_width[0, 1]) / 2  # 5.5
+        dip_mid = (dip_width[0, 0] + dip_width[0, 1]) / 2  # 4.0
+
+        obs_pt = np.array(
+            [
+                [
+                    strike_mid,  # Exactly at strike center
+                    dip_mid * np.cos(dip_rad),  # At dip center projected
+                    dip_mid * np.sin(dip_rad) - depth[0],  # At dip center depth
+                ]
+            ]
+        )
+
+        triangulations = _determine_auto_triangulation(
+            obs_pt, depth, dip, strike_width, dip_width
+        )
+        assert triangulations[0] == "V", f"Expected 'V', got '{triangulations[0]}'"
+
+    def test_xor_logic_for_quadrants(self):
+        r"""Test the XOR logic for selecting '/' vs '\\' in different quadrants."""
+        strike_width = np.array([[3.0, 8.0]])  # width = 5
+        dip_width = np.array([[2.0, 6.0]])  # height = 4
+        depth = np.array([4.0])
+        dip = np.array([30.0])
+
+        # Calculate rectangle center
+        dip_rad = np.deg2rad(dip[0])
+        strike_mid = (strike_width[0, 0] + strike_width[0, 1]) / 2  # 5.5
+        dip_mid = (dip_width[0, 0] + dip_width[0, 1]) / 2  # 4.0
+
+        # Test point in quadrant where strike_dot > 0 and dip_dot > 0 (both positive)
+        # XOR: True XOR True = False, so should use "\"
+        obs_pt_both_pos = np.array(
+            [
+                [
+                    strike_mid + 1.0,  # strike_dot > 0
+                    (dip_mid + 1.0) * np.cos(dip_rad),  # dip_dot > 0
+                    (dip_mid + 1.0) * np.sin(dip_rad) - depth[0],
+                ]
+            ]
+        )
+        triangulations = _determine_auto_triangulation(
+            obs_pt_both_pos, depth, dip, strike_width, dip_width
+        )
+        assert triangulations[0] == "\\", (
+            f"Expected '\\', got '{triangulations[0]}' for both positive quadrant"
+        )
+
+        # Test point in quadrant where strike_dot > 0 and dip_dot < 0 (different signs)
+        # XOR: True XOR False = True, so should use "/"
+        obs_pt_mixed = np.array(
+            [
+                [
+                    strike_mid + 1.0,  # strike_dot > 0
+                    (dip_mid - 1.0) * np.cos(dip_rad),  # dip_dot < 0
+                    (dip_mid - 1.0) * np.sin(dip_rad) - depth[0],
+                ]
+            ]
+        )
+        triangulations = _determine_auto_triangulation(
+            obs_pt_mixed, depth, dip, strike_width, dip_width
+        )
+        assert triangulations[0] == "/", (
+            f"Expected '/', got '{triangulations[0]}' for mixed signs quadrant"
+        )
 
 
 class TestCoordinateConversions:

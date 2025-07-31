@@ -6,8 +6,8 @@ import os
 import pickle
 import shutil
 import timeit
-from typing import Literal
 import warnings
+from typing import Literal
 
 import addict
 import cutde.halfspace as cutde_halfspace
@@ -2196,7 +2196,7 @@ def get_okada_displacements(
     station_lon,
     station_lat,
     algorithm="cutde",
-    triangulation: Literal["/", "\\", "V"] = "/",
+    triangulation: Literal["/", "\\", "V", "auto"] = "/",
 ):
     """Caculate elastic displacements in a homogeneous elastic half-space.
     Inputs are in geographic coordinates and then projected into a local
