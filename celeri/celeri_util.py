@@ -58,56 +58,38 @@ def _determine_auto_triangulation(
     # Initialize result array with default "/"
     triangulations = np.full(n_obs, "/", dtype="<U1")
 
-    # Mask for non-zero characteristic length (only process these)
-    valid_mask = char_length > 0
-
-    if not np.any(valid_mask):
-        # All have zero characteristic length, return "/"
-        return triangulations.tolist()
-
-    # Work with valid indices only
-    valid_indices = np.where(valid_mask)[0]
-    n_valid = len(valid_indices)
-
     # Calculate rectangle midpoints in 3D space for valid points
-    dip_rad = np.deg2rad(dip[valid_indices])  # Shape: (n_valid,)
-    strike_mid = (
-        strike_width[valid_indices, 0] + strike_width[valid_indices, 1]
-    ) / 2  # Shape: (n_valid,)
-    dip_mid = (
-        dip_width[valid_indices, 0] + dip_width[valid_indices, 1]
-    ) / 2  # Shape: (n_valid,)
+    dip_rad = np.deg2rad(dip)  # Shape: (n_obs,)
+    strike_mid = (strike_width[:, 0] + strike_width[:, 1]) / 2  # Shape: (n_obs,)
+    dip_mid = (dip_width[:, 0] + dip_width[:, 1]) / 2  # Shape: (n_obs,)
 
     rect_midpoints = np.column_stack(
         [
             strike_mid,
             dip_mid * np.cos(dip_rad),
-            dip_mid * np.sin(dip_rad) - depth[valid_indices],
+            dip_mid * np.sin(dip_rad) - depth,
         ]
-    )  # Shape: (n_valid, 3)
+    )  # Shape: (n_obs, 3)
 
     # Vector from rectangle midpoint to observation point
-    rel_vec = obs_pts[valid_indices] - rect_midpoints  # Shape: (n_valid, 3)
+    rel_vec = obs_pts - rect_midpoints  # Shape: (n_obs, 3)
 
     # Normal vectors to the rectangle planes
     normals = np.column_stack(
-        [np.zeros(n_valid), -np.sin(dip_rad), np.cos(dip_rad)]
-    )  # Shape: (n_valid, 3)
+        [np.zeros(n_obs), -np.sin(dip_rad), np.cos(dip_rad)]
+    )  # Shape: (n_obs, 3)
 
     # Offset in normal direction (vectorized dot product)
-    normal_offset = np.sum(rel_vec * normals, axis=1)  # Shape: (n_valid,)
+    normal_offset = np.sum(rel_vec * normals, axis=1)  # Shape: (n_obs,)
 
-    # Check normal offset condition: if >= 10% of characteristic length, use "/"
-    far_mask = np.abs(normal_offset) >= 0.1 * char_length[valid_indices]
-    # These stay as "/" (already initialized)
+    # Check normal offset condition: un less < 10% of characteristic length, use "/"
+    close_mask = np.abs(normal_offset) < 0.1 * char_length  # Shape: (n_obs,)
+    close_indices = np.where(close_mask)[0]
 
-    # For points not far from plane, continue processing
-    close_indices = valid_indices[~far_mask]
-    if len(close_indices) == 0:
-        return triangulations.tolist()
-
-    close_mask_in_valid = ~far_mask
+    # For points not close to the plane, continue processing
     n_close = len(close_indices)
+    if n_close == 0:
+        return triangulations.tolist()
 
     # Project observation points onto the rectangle plane
     # Strike direction unit vectors (along x-axis)
@@ -117,53 +99,71 @@ def _determine_auto_triangulation(
     dip_dirs = np.column_stack(
         [
             np.zeros(n_close),
-            np.cos(dip_rad[close_mask_in_valid]),
-            np.sin(dip_rad[close_mask_in_valid]),
+            np.cos(dip_rad[close_indices]),
+            np.sin(dip_rad[close_indices]),
         ]
     )  # Shape: (n_close, 3)
 
     # Project relative vectors onto strike and dip directions
-    strike_dot = np.sum(
-        rel_vec[close_mask_in_valid] * strike_dirs, axis=1
-    )  # Shape: (n_close,)
-    dip_dot = np.sum(
-        rel_vec[close_mask_in_valid] * dip_dirs, axis=1
-    )  # Shape: (n_close,)
+    strike_dot = np.sum(rel_vec[close_mask] * strike_dirs, axis=1)  # Shape: (n_close,)
+    dip_dot = np.sum(rel_vec[close_mask] * dip_dirs, axis=1)  # Shape: (n_close,)
+
+    # Check if the projected point is close to the interior of the rectangle.
+    # The threshold for the interior is 0.5, so setting 0.6 gives a small margin.
+    close_mask2 = np.abs(strike_dot) < 0.6 * width[close_indices]
+    close_mask2 &= np.abs(dip_dot) < 0.6 * height[close_indices]
+    # Shape: (n_close,)
+    close_indices2 = np.where(close_mask2)[0]
+    n_close2 = len(close_indices2)
 
     # Check central region condition
-    width_close = width[close_indices]
-    height_close = height[close_indices]
+    width_close = width[close_indices2]
+    height_close = height[close_indices2]
 
-    # Only check central region for non-zero width and height
-    nonzero_dims_mask = (width_close != 0) & (height_close != 0)
+    if n_close2 > 0:
+        central_mask = np.zeros(n_close2, dtype=bool)
+        # central_mask = (
+        #     (strike_dot[close_indices2] / width_close) ** 2
+        #     + (dip_dot[close_indices2] / height_close) ** 2
+        # ) < 0.1**2
 
-    if np.any(nonzero_dims_mask):
-        central_mask = np.zeros(n_close, dtype=bool)
-        central_mask[nonzero_dims_mask] = (
-            (strike_dot[nonzero_dims_mask] / width_close[nonzero_dims_mask]) ** 2
-            + (dip_dot[nonzero_dims_mask] / height_close[nonzero_dims_mask]) ** 2
-        ) < 0.05**2
+        # Equivalent to above commented out, but without the division
+        central_mask = (
+            (strike_dot[close_indices2] * height_close) ** 2
+            + (dip_dot[close_indices2] * width_close) ** 2
+        ) < (0.1 * width_close * height_close) ** 2
 
         # Set central region points to "V"
-        triangulations[close_indices[central_mask]] = "V"
+        central_global_indices = close_indices[close_indices2[central_mask]]
+        triangulations[central_global_indices] = "V"
 
         # Update masks for remaining processing
         remaining_mask = ~central_mask
         if not np.any(remaining_mask):
             return triangulations.tolist()
+
+        # For remaining points, apply XOR logic
+        remaining_indices2 = close_indices2[remaining_mask]
+        remaining_global_indices = close_indices[remaining_indices2]
+
+        if len(remaining_global_indices) > 0:
+            strike_dot_remaining = strike_dot[remaining_indices2]
+            dip_dot_remaining = dip_dot[remaining_indices2]
+
+            # XOR logic: use "/" if (strike_dot > 0) XOR (dip_dot > 0), else "\"
+            xor_mask = (strike_dot_remaining > 0) != (dip_dot_remaining > 0)
+            triangulations[remaining_global_indices[xor_mask]] = "/"
+            triangulations[remaining_global_indices[~xor_mask]] = "\\"
     else:
-        remaining_mask = np.ones(n_close, dtype=bool)
+        # No points in bounds, process all close points
+        if len(close_indices) > 0:
+            strike_dot_remaining = strike_dot
+            dip_dot_remaining = dip_dot
 
-    # For remaining points, apply XOR logic
-    remaining_indices = close_indices[remaining_mask]
-    if len(remaining_indices) > 0:
-        strike_dot_remaining = strike_dot[remaining_mask]
-        dip_dot_remaining = dip_dot[remaining_mask]
-
-        # XOR logic: use "/" if (strike_dot > 0) XOR (dip_dot > 0), else "\"
-        xor_mask = (strike_dot_remaining > 0) != (dip_dot_remaining > 0)
-        triangulations[remaining_indices[xor_mask]] = "/"
-        triangulations[remaining_indices[~xor_mask]] = "\\"
+            # XOR logic: use "/" if (strike_dot > 0) XOR (dip_dot > 0), else "\"
+            xor_mask = (strike_dot_remaining > 0) != (dip_dot_remaining > 0)
+            triangulations[close_indices[xor_mask]] = "/"
+            triangulations[close_indices[~xor_mask]] = "\\"
 
     return triangulations.tolist()
 
