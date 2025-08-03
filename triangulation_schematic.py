@@ -9,11 +9,45 @@ from interior edge singularities.
 Output: triangulation_schematic.svg
 """
 
+import io
+import re
+
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.lines import Line2D
 from matplotlib.patches import Circle, Rectangle
+
+
+def make_svg_deterministic(svg_content):
+    """Make SVG content deterministic by replacing random IDs with sequential ones."""
+    # Find all unique IDs in the SVG
+    id_pattern = r'id="([^"]+)"'
+    url_pattern = r"url\(#([^)]+)\)"
+    xlink_pattern = r'xlink:href="#([^"]+)"'
+
+    # Collect all unique IDs
+    ids = set()
+    for match in re.finditer(id_pattern, svg_content):
+        ids.add(match.group(1))
+    for match in re.finditer(url_pattern, svg_content):
+        ids.add(match.group(1))
+    for match in re.finditer(xlink_pattern, svg_content):
+        ids.add(match.group(1))
+
+    # Create deterministic mapping
+    id_mapping = {}
+    for i, old_id in enumerate(sorted(ids)):
+        id_mapping[old_id] = f"id_{i:03d}"
+
+    # Replace all occurrences
+    result = svg_content
+    for old_id, new_id in id_mapping.items():
+        result = result.replace(f'id="{old_id}"', f'id="{new_id}"')
+        result = result.replace(f"url(#{old_id})", f"url(#{new_id})")
+        result = result.replace(f'xlink:href="#{old_id}"', f'xlink:href="#{new_id}"')
+
+    return result
 
 
 def create_triangulation_schematic():
@@ -98,8 +132,8 @@ def create_triangulation_schematic():
 
     ax.set_xlim(-0.7, 0.7)
     ax.set_ylim(-0.7, 0.7)
-    ax.set_xlabel("strike direction relative midpoint normalized to width", fontsize=12)
-    ax.set_ylabel("dip direction relative midpoint normalized to height", fontsize=12)
+    ax.set_xlabel("$r$ = (strike distance) / width", fontsize=12)
+    ax.set_ylabel("$s$ = (dip distance) / height", fontsize=12)
     ax.set_title("Triangulation Selection Strategy", fontsize=14, fontweight="bold")
     ax.set_aspect("equal")
 
@@ -109,9 +143,9 @@ def create_triangulation_schematic():
 
     ax.grid(True, alpha=0.6, linewidth=1.2)
 
-    # Center reference lines
-    ax.axhline(0, color="gray", linestyle=":", alpha=0.8, linewidth=edge_width)
-    ax.axvline(0, color="gray", linestyle=":", alpha=0.8, linewidth=edge_width)
+    # # Center reference lines
+    # ax.axhline(0, color="gray", linestyle=":", alpha=0.8, linewidth=edge_width)
+    # ax.axvline(0, color="gray", linestyle=":", alpha=0.8, linewidth=edge_width)
 
     # Rectangle outline for the fault boundary
     rect_outline = Rectangle(
@@ -182,16 +216,35 @@ def main():
     # Create the figure
     fig = create_triangulation_schematic()
 
-    # Save as SVG
-    output_file = "triangulation_schematic.svg"
+    # Save to a string buffer to ensure a trailing newline
+    svg_buffer = io.StringIO()
     fig.savefig(
-        output_file,
+        svg_buffer,
         format="svg",
         dpi=400,
         bbox_inches="tight",
         facecolor="white",
         edgecolor="none",
+        metadata={"Date": None},
     )
+
+    svg_content = svg_buffer.getvalue()
+
+    # Make IDs deterministic for reproducible output
+    svg_content = make_svg_deterministic(svg_content)
+
+    # Strip trailing whitespace from each line
+    lines = svg_content.splitlines()
+    stripped_lines = [line.rstrip() for line in lines]
+    svg_content = "\n".join(stripped_lines)
+
+    if not svg_content.endswith("\n"):
+        svg_content += "\n"
+
+    # Write to file
+    output_file = "triangulation_schematic.svg"
+    with open(output_file, "w", encoding="utf-8") as f:
+        f.write(svg_content)
 
     print(f"✅ Schematic saved as {output_file}")
     # Optionally display the figure
