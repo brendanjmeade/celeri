@@ -143,7 +143,6 @@ def test_minimize_coupling():
             mesh_params.coupling_constraints_ds = [-10, 1]  # type: ignore
             mesh_params.coupling_constraints_ss = [-10, 1]  # type: ignore
 
-
     model = build_model(config)
     try:
         estimation = solve_sqp2(
