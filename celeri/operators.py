@@ -2,7 +2,7 @@ import hashlib
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
-from typing import Any
+from typing import Any, overload
 
 import addict
 import h5py
@@ -322,6 +322,56 @@ class Operators:
     global_float_block_rotation: np.ndarray
     tde: TdeOperators | None
     eigen: EigenOperators | None
+
+    @overload
+    def kinematic_slip_rate(
+        self, parameters: np.ndarray, mesh_idx: int, smooth: bool
+    ) -> np.ndarray:
+        pass
+
+    @overload
+    def kinematic_slip_rate(
+        self, parameters: np.ndarray, mesh_idx: None, smooth: bool
+    ) -> dict[int, np.ndarray]:
+        pass
+
+    def kinematic_slip_rate(self, parameters, mesh_idx, smooth: bool):
+        """Get the kinematic slip rates for a given mesh.
+
+        Args:
+            parameters: The model parameters to compute the slip rate from,
+                as returned by `Operators.data_vector` or `Estimation.data_vector.
+            mesh_idx: Index of the mesh to get the kinematic slip rate for.
+                If None, return the kinematic slip rate for all meshes.
+            smooth: Whether to apply smoothing to the slip rate.
+
+        Returns:
+            The kinematic slip rate as a numpy array.
+        """
+        if self.tde is None:
+            raise ValueError("TDE operators are not set up.")
+        if mesh_idx is None:
+            return {
+                idx: self.kinematic_slip_rate(parameters, mesh_idx=idx, smooth=smooth)
+                for idx in self.model.segment_mesh_indices
+            }
+        if mesh_idx not in self.rotation_to_tri_slip_rate:
+            raise ValueError(f"No kinematic velocities for mesh {mesh_idx}.")
+        slip_rate = (
+            self.rotation_to_tri_slip_rate[mesh_idx]
+            @ parameters[0 : 3 * self.index.n_blocks]
+        )
+        if smooth:
+            if mesh_idx not in self.smoothing_matrix:
+                raise ValueError(f"No smoothing matrix for mesh {mesh_idx}.")
+            if self.eigen is None:
+                raise ValueError("Eigen operators are not set up.")
+            smoothing_matrix = self.eigen.linear_gaussian_smoothing[mesh_idx]
+            # Second dimension is for strike slip and dip slip
+            slip_rate_ = slip_rate.reshape((smoothing_matrix.shape[-1], 2))
+            slip_rate_smooth = smoothing_matrix @ slip_rate_
+            slip_rate = slip_rate_smooth.ravel()
+        return slip_rate
 
     # TODO: Maybe we can make it possible to always access
     # operators without tde or eigen, even if the operators
