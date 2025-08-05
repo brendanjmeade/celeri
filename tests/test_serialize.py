@@ -268,7 +268,8 @@ def test_estimation_serialization(config_file, temp_dir):
 
     if original_estimation.tde_rates is not None:
         assert deserialized_estimation.tde_rates is not None
-        np.testing.assert_allclose(
-            original_estimation.tde_rates,
-            deserialized_estimation.tde_rates,
-        )
+        for mesh_idx in original_estimation.tde_rates:
+            np.testing.assert_allclose(
+                original_estimation.tde_rates[mesh_idx],
+                deserialized_estimation.tde_rates[mesh_idx],
+            )

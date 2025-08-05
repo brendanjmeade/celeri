@@ -216,44 +216,44 @@ class Estimation:
         return None
 
     @cached_property
-    def tde_rates(self) -> np.ndarray | None:
+    def tde_rates(self) -> dict[int, np.ndarray] | None:
         index = self.index
         if index.tde is None:
             return None
 
         if index.eigen is None:
-            return self.state_vector[
-                3 * index.n_blocks : 3 * index.n_blocks + 2 * index.n_tde_total
-            ]
+            return {
+                mesh_idx: self.state_vector[
+                    index.tde.start_tde_col[mesh_idx] : index.tde.end_tde_col[mesh_idx]
+                ]
+                for mesh_idx in range(len(self.model.meshes))
+            }
 
         assert self.operators.eigen is not None
 
-        tde_rates = np.zeros(2 * index.n_tde_total)
-        for i in range(index.n_meshes):
-            # Temporary indices for easier reading
-            start_idx = index.tde.start_tde_col[i] - 3 * index.n_blocks
-            end_idx = index.tde.end_tde_col[i] - 3 * index.n_blocks
-
-            # Calcuate estimated TDE rates for the current mesh
-            tde_rates[start_idx:end_idx] = (
-                self.operators.eigen.eigenvectors_to_tde_slip[i]
+        tde_rates = {}
+        for mesh_idx in range(index.n_meshes):
+            tde_rates[mesh_idx] = (
+                self.operators.eigen.eigenvectors_to_tde_slip[mesh_idx]
                 @ self.state_vector[
-                    index.eigen.start_col_eigen[i] : index.eigen.end_col_eigen[i]
+                    index.eigen.start_col_eigen[mesh_idx] : index.eigen.end_col_eigen[
+                        mesh_idx
+                    ]
                 ]
             )
         return tde_rates
 
     @property
-    def tde_strike_slip_rates(self) -> np.ndarray | None:
+    def tde_strike_slip_rates(self) -> dict[int, np.ndarray] | None:
         if (rates := self.tde_rates) is None:
             return None
-        return rates[0::2]
+        return {key: val[0::2] for key, val in rates.items()}
 
     @property
-    def tde_dip_slip_rates(self) -> np.ndarray | None:
+    def tde_dip_slip_rates(self) -> dict[int, np.ndarray] | None:
         if (rates := self.tde_rates) is None:
             return None
-        return rates[1::2]
+        return {key: val[1::2] for key, val in rates.items()}
 
     @property
     def slip_rates(self) -> np.ndarray:
@@ -444,39 +444,76 @@ class Estimation:
         return vel[1::2]
 
     @property
-    def tde_tensile_slip_rates(self) -> np.ndarray:
-        # TODO
-        return np.zeros(self.index.n_tde_total)
+    def tde_kinematic_smooth(self) -> dict[int, np.ndarray]:
+        return self.operators.kinematic_slip_rate(
+            self.state_vector, mesh_idx=None, smooth=True
+        )
 
     @property
-    def tde_strike_slip_rates_kinematic(self) -> np.ndarray:
-        # TODO
-        return np.zeros(self.index.n_tde_total)
+    def tde_kinematic(self) -> dict[int, np.ndarray]:
+        return self.operators.kinematic_slip_rate(
+            self.state_vector, mesh_idx=None, smooth=False
+        )
 
     @property
-    def tde_dip_slip_rates_kinematic(self) -> np.ndarray:
-        # TODO
-        return np.zeros(self.index.n_tde_total)
+    def tde_strike_slip_rates_kinematic(self) -> dict[int, np.ndarray]:
+        return {key: val[0::2] for key, val in self.tde_kinematic.items()}
 
     @property
-    def tde_tensile_slip_rates_kinematic(self) -> np.ndarray:
-        # TODO
-        return np.zeros(self.index.n_tde_total)
+    def tde_strike_slip_rates_kinematic_smooth(self) -> dict[int, np.ndarray]:
+        return {key: val[0::2] for key, val in self.tde_kinematic_smooth.items()}
 
     @property
-    def tde_strike_slip_rates_coupling(self) -> np.ndarray:
-        # TODO
-        return np.zeros(self.index.n_tde_total)
+    def tde_dip_slip_rates_kinematic(self) -> dict[int, np.ndarray]:
+        return {key: val[1::2] for key, val in self.tde_kinematic.items()}
 
     @property
-    def tde_dip_slip_rates_coupling(self) -> np.ndarray:
-        # TODO
-        return np.zeros(self.index.n_tde_total)
+    def tde_dip_slip_rates_kinematic_smooth(self) -> dict[int, np.ndarray]:
+        return {key: val[1::2] for key, val in self.tde_kinematic_smooth.items()}
 
     @property
-    def tde_tensile_slip_rates_coupling(self) -> np.ndarray:
-        # TODO
-        return np.zeros(self.index.n_tde_total)
+    def tde_strike_slip_rates_coupling(self) -> dict[int, np.ndarray] | None:
+        kinematic = self.tde_strike_slip_rates_kinematic
+        elastic = self.tde_strike_slip_rates
+        if elastic is None:
+            return None
+        rates = {}
+        for mesh_idx in kinematic:
+            rates[mesh_idx] = elastic[mesh_idx] / kinematic[mesh_idx]
+        return rates
+
+    @property
+    def tde_strike_slip_rates_coupling_smooth(self) -> dict[int, np.ndarray] | None:
+        kinematic = self.tde_strike_slip_rates_kinematic_smooth
+        elastic = self.tde_strike_slip_rates
+        if elastic is None:
+            return None
+        rates = {}
+        for mesh_idx in kinematic:
+            rates[mesh_idx] = elastic[mesh_idx] / kinematic[mesh_idx]
+        return rates
+
+    @property
+    def tde_dip_slip_rates_coupling(self) -> dict[int, np.ndarray] | None:
+        kinematic = self.tde_dip_slip_rates_kinematic
+        elastic = self.tde_dip_slip_rates
+        if elastic is None:
+            return None
+        rates = {}
+        for mesh_idx in kinematic:
+            rates[mesh_idx] = elastic[mesh_idx] / kinematic[mesh_idx]
+        return rates
+
+    @property
+    def tde_dip_slip_rates_coupling_smooth(self) -> dict[int, np.ndarray] | None:
+        kinematic = self.tde_dip_slip_rates_kinematic_smooth
+        elastic = self.tde_dip_slip_rates
+        if elastic is None:
+            return None
+        rates = {}
+        for mesh_idx in kinematic:
+            rates[mesh_idx] = elastic[mesh_idx] / kinematic[mesh_idx]
+        return rates
 
     @property
     def eigenvalues(self) -> np.ndarray | None:

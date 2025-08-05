@@ -579,11 +579,18 @@ def plot_estimation_summary(
             plt.title("TDE slip (strike-slip)")
             common_plot_elements(segment, lon_range, lat_range)
             # plot_meshes(meshes, estimation.tde_strike_slip_rates, plt.gca())
-            fill_value = estimation.tde_strike_slip_rates
-            assert fill_value is not None
-            fill_value_range = (float(np.min(fill_value)), float(np.max(fill_value)))
+            fill_value_dict = estimation.tde_strike_slip_rates
+            assert fill_value_dict is not None
+            fill_value_range = (0, 0)
+            for mesh_idx in fill_value_dict:
+                fill_value_range = (
+                    min(fill_value_range[0], float(np.min(fill_value_dict[mesh_idx]))),
+                    max(fill_value_range[1], float(np.max(fill_value_dict[mesh_idx]))),
+                )
+
             ax = plt.gca()
             for i in range(len(meshes)):
+                fill_value = fill_value_dict[i]
                 x_coords = meshes[i].points[:, 0]
                 y_coords = meshes[i].points[:, 1]
                 vertex_array = np.asarray(meshes[i].verts)
@@ -593,15 +600,7 @@ def plot_estimation_summary(
                 pc = matplotlib.collections.PolyCollection(
                     verts, edgecolor="none", cmap="rainbow"
                 )
-                if i == 0:
-                    tde_slip_component_start = 0
-                    tde_slip_component_end = meshes[i].n_tde
-                else:
-                    tde_slip_component_start = tde_slip_component_end
-                    tde_slip_component_end = tde_slip_component_start + meshes[i].n_tde
-                pc.set_array(
-                    fill_value[tde_slip_component_start:tde_slip_component_end]
-                )
+                pc.set_array(fill_value)
                 pc.set_clim(fill_value_range)
                 ax.add_collection(pc)
                 # ax.autoscale()
@@ -622,11 +621,17 @@ def plot_estimation_summary(
             plt.title("TDE slip (dip-slip)")
             common_plot_elements(segment, lon_range, lat_range)
             # plot_meshes(meshes, estimation.tde_dip_slip_rates, plt.gca())
-            fill_value = estimation.tde_dip_slip_rates
-            assert fill_value is not None
-            fill_value_range = (float(np.min(fill_value)), float(np.max(fill_value)))
+            fill_value_dict = estimation.tde_dip_slip_rates
+            assert fill_value_dict is not None
+            fill_value_range = (0, 0)
+            for mesh_idx in fill_value_dict:
+                fill_value_range = (
+                    min(fill_value_range[0], float(np.min(fill_value_dict[mesh_idx]))),
+                    max(fill_value_range[1], float(np.max(fill_value_dict[mesh_idx]))),
+                )
             ax = plt.gca()
             for i in range(len(meshes)):
+                fill_value = fill_value_dict[i]
                 x_coords = meshes[i].points[:, 0]
                 y_coords = meshes[i].points[:, 1]
                 vertex_array = np.asarray(meshes[i].verts)
@@ -636,15 +641,7 @@ def plot_estimation_summary(
                 pc = matplotlib.collections.PolyCollection(
                     verts, edgecolor="none", cmap="rainbow"
                 )
-                if i == 0:
-                    tde_slip_component_start = 0
-                    tde_slip_component_end = meshes[i].n_tde
-                else:
-                    tde_slip_component_start = tde_slip_component_end
-                    tde_slip_component_end = tde_slip_component_start + meshes[i].n_tde
-                pc.set_array(
-                    fill_value[tde_slip_component_start:tde_slip_component_end]
-                )
+                pc.set_array(fill_value)
                 pc.set_clim(fill_value_range)
                 ax.add_collection(pc)
                 # ax.autoscale()
