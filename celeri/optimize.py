@@ -943,7 +943,6 @@ def _tighten_kinematic_bounds(
 @dataclass
 class MinimizerTrace:
     model: Model
-    operators: Operators
     params: list[np.ndarray]
     params_raw: list[np.ndarray]
     slip_rates: list[list[SlipRate]]
@@ -972,7 +971,6 @@ class MinimizerTrace:
         self.total_time = 0.0
         self.start_time = time.time()
         self.last_update_time = time.time()
-        self.out_of_bounds = []
         self.minimizer = minimizer
 
     def print_last_progress(self):

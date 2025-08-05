@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import typing
-from dataclasses import asdict
+from dataclasses import fields
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -55,12 +55,14 @@ def dataclass_to_disk(
 
     # Save the arrays as zarr file
     data_file = output_dir / "arrays.zarr"
-    data = asdict(obj)
+    data = {
+        field.name: getattr(obj, field.name)
+        for field in fields(obj)
+        if field.name not in skip
+    }
     store = zarr.open_group(str(data_file), mode="w")
     remaining = {}
     for name, value in data.items():
-        if name in skip:
-            continue
         if isinstance(value, np.ndarray):
             array_store = store.create_array(name, shape=value.shape, dtype=value.dtype)
             array_store[...] = value
