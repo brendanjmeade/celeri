@@ -865,6 +865,18 @@ def _tighten_kinematic_bounds(
             assert limits.kinematic_lower is None and limits.kinematic_upper is None
             return
 
+        # No coupling bounds defined, so no need to tighten
+        if (
+            limits.coupling_bounds.lower is None
+            and limits.coupling_bounds.upper is None
+        ):
+            return
+
+        if limits.kinematic_lower is None or limits.kinematic_upper is None:
+            raise ValueError(
+                "Invalid coupling bounds. Must have both lower and upper bounds or neither."
+            )
+
         upper = limits.kinematic_upper.copy()
         lower = limits.kinematic_lower.copy()
 
