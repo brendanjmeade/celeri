@@ -3,7 +3,7 @@
 
 import argparse
 import json
-import os
+from pathlib import Path
 
 import addict
 import meshio
@@ -134,29 +134,31 @@ def snap_segments(segment, meshes):
 def make_default_segment(length):
     """Create a default segment Dict of specified length"""
     default_segment = pd.DataFrame(
-        columns=[
-            "name",
-            "lon1",
-            "lat1",
-            "lon2",
-            "lat2",
-            "dip",
-            "locking_depth",
-            "locking_depth_flag",
-            "dip_sig",
-            "dip_flag",
-            "ss_rate",
-            "ss_rate_sig",
-            "ss_rate_flag",
-            "ds_rate",
-            "ds_rate_sig",
-            "ds_rate_flag",
-            "ts_rate",
-            "ts_rate_sig",
-            "ts_rate_flag",
-            "mesh_file_index",
-            "mesh_flag",
-        ]
+        columns=pd.Index(
+            [
+                "name",
+                "lon1",
+                "lat1",
+                "lon2",
+                "lat2",
+                "dip",
+                "locking_depth",
+                "locking_depth_flag",
+                "dip_sig",
+                "dip_flag",
+                "ss_rate",
+                "ss_rate_sig",
+                "ss_rate_flag",
+                "ds_rate",
+                "ds_rate_sig",
+                "ds_rate_flag",
+                "ts_rate",
+                "ts_rate_sig",
+                "ts_rate_flag",
+                "mesh_file_index",
+                "mesh_flag",
+            ]
+        )
     )
     # Set everything to zeros, then we'll fill in a few specific values
     length_vec = range(length)
@@ -174,12 +176,12 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "segment_file_name",
-        type=str,
+        type=Path,
         help="Name of segment file.",
     )
     parser.add_argument(
         "mesh_parameters_file_name",
-        type=str,
+        type=Path,
         help="Name of mesh parameter file.",
     )
     args = addict.Dict(vars(parser.parse_args()))
@@ -191,7 +193,7 @@ def main():
 
     # Read mesh data - List of dictionary version
     meshes = []
-    with open(args.mesh_parameters_file_name) as f:
+    with args.mesh_parameters_file_name.open() as f:
         mesh_param = json.load(f)
         logger.success(f"Read: {args.mesh_parameters_file_name}")
 
@@ -279,8 +281,8 @@ def main():
         celeri.get_mesh_perimeter(meshes)
 
         new_segment = snap_segments(segment, meshes)
-        segpath = os.path.abspath(args.segment_file_name)
-        new_segment_file_name = segpath[:-4] + "_snapped.csv"
+        segpath = args.segment_file_name.resolve()
+        new_segment_file_name = segpath.with_name(segpath.stem + "_snapped.csv")
         new_segment.to_csv(new_segment_file_name)
         logger.success(f"Wrote: {new_segment_file_name}")
 

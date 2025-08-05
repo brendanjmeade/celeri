@@ -157,8 +157,6 @@ ignore = [
     "D415",  # ends-in-punctuation (redundant with D400 ends-in-period)
     "D417",  # Missing argument descriptions in the docstring
     "E501",  # line-too-long
-    "PTH",   # pathlib
-    "E722",  # do not use bare except
     "BLE001",  # bare except
     "PERF203", # try-except-in-loop
     # The following list is recommended to disable these when using ruff's formatter.
