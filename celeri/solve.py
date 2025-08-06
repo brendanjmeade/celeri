@@ -133,14 +133,20 @@ class Estimation:
                 "lat3": meshes[i].lat3,
                 "dep3": meshes[i].dep3,
                 "mesh_idx": i * np.ones_like(meshes[i].lon1).astype(int),
+                "strike_slip_rate": self.tde_strike_slip_rates[i],
+                "dip_slip_rate": self.tde_dip_slip_rates[i],
+                "strike_slip_rate_kinematic": self.tde_strike_slip_rates_kinematic_smooth[
+                    i
+                ],
+                "dip_slip_rate_kinematic": self.tde_dip_slip_rates_kinematic_smooth[i],
             }
             this_mesh_output = pd.DataFrame(this_mesh_output)
             # mesh_outputs = mesh_outputs.append(this_mesh_output)
             mesh_outputs = pd.concat([mesh_outputs, this_mesh_output])
 
         # Append slip rates
-        mesh_outputs["strike_slip_rate"] = self.tde_strike_slip_rates
-        mesh_outputs["dip_slip_rate"] = self.tde_dip_slip_rates
+        # mesh_outputs["strike_slip_rate"] = self.tde_strike_slip_rates
+        # mesh_outputs["dip_slip_rate"] = self.tde_dip_slip_rates
         return mesh_outputs
 
     @cached_property
