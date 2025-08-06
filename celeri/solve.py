@@ -139,6 +139,8 @@ class Estimation:
                     i
                 ],
                 "dip_slip_rate_kinematic": self.tde_dip_slip_rates_kinematic_smooth[i],
+                "strike_slip_coupling": self.tde_strike_slip_rates_coupling_smooth[i],
+                "dip_slip_coupling": self.tde_dip_slip_rates_coupling_smooth[i],
             }
             this_mesh_output = pd.DataFrame(this_mesh_output)
             # mesh_outputs = mesh_outputs.append(this_mesh_output)
