@@ -1,23 +1,21 @@
 #!/usr/bin/env python3
 
-import os
-import sys
-import datetime
-import glob
-import papermill
 import argparse
 import csv
+import datetime
 import logging
-from pathlib import Path
+import os
+import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Dict, List, Optional, Tuple
+from pathlib import Path
+
+import papermill
 
 
 def setup_logging(log_dir: str) -> None:
     """Configure logging for the application."""
     logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s'
+        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
     )
     # Ensure log directory exists
     Path(log_dir).mkdir(exist_ok=True)
@@ -32,16 +30,19 @@ def parse_args() -> argparse.Namespace:
         "notebooks",
         nargs="*",
         help="Specific notebook files to run (*.ipynb). If none provided, all notebooks in current directory will be run.",
+        type=Path,
     )
     parser.add_argument(
         "--log-dir",
         default="notebook_run_logs",
         help="Directory to store logs (default: notebook_run_logs)",
+        type=Path,
     )
     parser.add_argument(
         "--output-csv",
         default="notebook_results.csv",
         help="Path for the CSV results file (default: notebook_results.csv)",
+        type=Path,
     )
     parser.add_argument(
         "--kernel",
@@ -69,18 +70,18 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def get_notebooks(args: argparse.Namespace) -> List[str]:
+def get_notebooks(args: argparse.Namespace) -> list[Path]:
     """Get the list of notebooks to run based on arguments."""
     if args.notebooks:
-        notebooks = args.notebooks
+        notebooks = [Path(notebook) for notebook in args.notebooks]
         # Check if provided notebooks exist
         for notebook in notebooks:
-            if not os.path.exists(notebook):
+            if not notebook.exists():
                 logging.error(f"Notebook {notebook} not found")
                 sys.exit(1)
     else:
         # Get all .ipynb files in the current directory
-        notebooks = glob.glob("*.ipynb")
+        notebooks = list(Path.cwd().glob("*.ipynb"))
 
     # Filter out excluded notebooks
     if args.exclude:
@@ -97,9 +98,11 @@ def get_notebooks(args: argparse.Namespace) -> List[str]:
     return notebooks
 
 
-def execute_notebook(notebook: str, args: argparse.Namespace, timestamp: str) -> Tuple[str, str, Optional[str]]:
+def execute_notebook(
+    notebook: str, args: argparse.Namespace, timestamp: str
+) -> tuple[str, str, str | None]:
     """Execute a single notebook and return its result."""
-    log_file = f"{args.log_dir}/{notebook}_{timestamp}.log"
+    log_file = Path(args.log_dir) / f"{notebook}_{timestamp}.log"
     logging.info(f"Running {notebook}...")
 
     try:
@@ -107,7 +110,7 @@ def execute_notebook(notebook: str, args: argparse.Namespace, timestamp: str) ->
         output_path = os.devnull
 
         # Capture standard output to prevent papermill progress bars from cluttering parallel output
-        with open(log_file, "w") as log:
+        with log_file.open("w") as log:
             # Disable progress bar in parallel mode to avoid messy output
             show_progress = args.parallel <= 1
 
@@ -134,14 +137,15 @@ def execute_notebook(notebook: str, args: argparse.Namespace, timestamp: str) ->
             logging.error(f"{notebook} failed: {error_msg}")
 
         # Extract error message
-        with open(log_file, "a") as log:
+        with log_file.open("a") as log:
             log.write(f"\nError: {error_msg}\n")
 
     return notebook, status, error_msg
 
-def write_results_to_csv(results: Dict[str, Dict[str, str]], csv_path: str) -> None:
+
+def write_results_to_csv(results: dict[str, dict[str, str]], csv_path: Path) -> None:
     """Write results to CSV file with additional metadata."""
-    with open(csv_path, "w", newline='') as f:
+    with csv_path.open("w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["Notebook", "Status", "Error"])
         for notebook, data in results.items():

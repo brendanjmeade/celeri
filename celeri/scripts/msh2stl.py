@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import argparse
-import os
+from pathlib import Path
 
 import gmsh
 import numpy as np
@@ -11,7 +11,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="Convert MSH file to STL with vertical scaling"
     )
-    parser.add_argument("input_file", help="Input MSH file path")
+    parser.add_argument("input_file", help="Input MSH file path", type=Path)
     parser.add_argument(
         "--vertical_scale_factor",
         type=float,
@@ -21,8 +21,8 @@ def main():
     args = parser.parse_args()
 
     # Get input and generate output filenames
-    input_file = args.input_file
-    output_file = os.path.splitext(input_file)[0] + "_scaled.stl"
+    input_file = Path(args.input_file)
+    output_file = input_file.with_name(f"{input_file.stem}_scaled.stl")
 
     gmsh.initialize()
     gmsh.open(input_file)

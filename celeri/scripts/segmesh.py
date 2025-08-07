@@ -3,7 +3,6 @@
 
 import argparse
 import json
-import os
 from pathlib import Path
 
 import gmsh
@@ -24,7 +23,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "config_file_name",
-        type=str,
+        type=Path,
         help="Name of config file.",
     )
 
@@ -40,11 +39,9 @@ def main():
     model = celeri.build_model(args["config_file_name"])
 
     # Get mesh directory
-    mesh_dir = os.path.dirname(model.meshes[0].file_name)
+    mesh_dir = model.meshes[0].file_name.parent
     # Get stem of segment file name
-    seg_file_stem = os.path.splitext(os.path.basename(model.config.segment_file_name))[
-        0
-    ]
+    seg_file_stem = model.config.segment_file_name.stem
     n_meshes = len(model.meshes)  # Number of preexisting meshes
     # Identify meshes that replace segments
     # First catch segments that have their mesh_flag = 1 but no mesh
@@ -110,7 +107,7 @@ def main():
         # This results in a more straightforward assignment of block labels to mesh elements
         unique_mesh_idx = np.arange(np.shape(sm_block_labels_unique)[1])
         # Allocate space to hold indices of segmeshes
-        segmesh_file_index = [None] * len(unique_mesh_idx)
+        segmesh_file_index: list[int | None] = [None] * len(unique_mesh_idx)
 
         # Loop through unique meshes and find indices of ordered coordinates
         for i in range(len(unique_mesh_idx)):
@@ -190,9 +187,7 @@ def main():
             # Top coordinates are ordered block coordinates with zero depths appended
             top_coords = np.hstack((ordered_coords, np.zeros((len(ordered_coords), 1))))
             # Use top and bottom coordinates to make a mesh
-            filename = (
-                mesh_dir + "/" + seg_file_stem + "_segmesh" + str(unique_mesh_idx[i])
-            )
+            filename = mesh_dir / f"{seg_file_stem}_segmesh{unique_mesh_idx[i]}.msh"
 
             # Combined coordinates making a continuous perimeter loop
             all_coords = np.vstack((top_coords, np.flipud(bot_coords)))
@@ -265,7 +260,7 @@ def main():
             for j in range(len(nodetags)):
                 gmsh.model.mesh.setNode(nodetags[j], nodecoords[3 * j : 3 * j + 3], [])
             # Write the mesh for later reading in celeri
-            gmsh.write(filename + ".msh")
+            gmsh.write(filename)
             # gmsh.write(filename + ".geo_unrolled")
             gmsh.finalize()
 
@@ -283,20 +278,16 @@ def main():
 
             # Print status
             print(
-                "Segment(s) "
-                + np.array2string(this_seg_mesh_idx)
-                + " meshed as "
-                + filename
-                + ".msh"
+                f"Segment(s) {np.array2string(this_seg_mesh_idx)} meshed as {filename}"
             )
 
     # Updating mesh parameters and config
 
     # Assign default parameters to newly created meshes
     for j in range(len(unique_mesh_idx)):
-        filename = mesh_dir + "/" + seg_file_stem + "_segmesh" + str(unique_mesh_idx[j])
+        filename = mesh_dir / f"{seg_file_stem}_segmesh{unique_mesh_idx[j]}.msh"
         new_entry = celeri.MeshConfig(file_name=model.config.mesh_parameters_file_name)
-        new_entry.mesh_filename = Path(filename + ".msh")
+        new_entry.mesh_filename = filename
         model.config.mesh_params.append(new_entry)
 
     # Reorder mesh_param list so that standalone meshes are placed last
@@ -306,29 +297,27 @@ def main():
 
     model.config.mesh_params = [model.config.mesh_params[i] for i in mesh_reorder_index]
     # Write updated mesh_param json
-    new_mesh_param_name = (
-        os.path.splitext(os.path.normpath(model.config.mesh_parameters_file_name))[0]
-        + "_segmesh.json"
+    new_mesh_param_name = model.config.mesh_parameters_file_name.with_name(
+        model.config.mesh_parameters_file_name.stem + "_segmesh.json"
     )
 
     data = [
         mesh_config.model_dump(mode="json") for mesh_config in model.config.mesh_params
     ]
-    with open(new_mesh_param_name, "w") as mf:
+    with new_mesh_param_name.open("w") as mf:
         json.dump(data, mf, indent=4)
 
     # Write updated segment csv
-    new_segment_file_name = (
-        os.path.splitext(os.path.normpath(model.config.segment_file_name))[0]
-        + "_segmesh.csv"
+    new_segment_file_name = model.config.segment_file_name.with_name(
+        model.config.segment_file_name.stem + "_segmesh.csv"
     )
     model.segment.to_csv(new_segment_file_name)
 
     # Write updated config json
-    new_config_file_name = (
-        os.path.splitext(os.path.normpath(args["config_file_name"]))[0]
-        + "_segmesh.json"
+    new_config_file_name = Path(args["config_file_name"]).with_name(
+        Path(args["config_file_name"]).stem + "_segmesh.json"
     )
+
     # Reference new segment file, with mesh options set to reflect new meshes
     model.config.segment_file_name = Path(new_segment_file_name)
     # Reference new mesh parameter file, including newly created meshes
@@ -336,7 +325,7 @@ def main():
     # Strip mesh params from config, because if we need to edit params, we want to do so in one place (*mesh_params_segmesh.json)
     delattr(model.config, "mesh_params")
 
-    with open(new_config_file_name, "w") as cf:
+    with new_config_file_name.open("w") as cf:
         cf.write(model.config.model_dump_json(indent=4))
 
     # # Visualize meshes
