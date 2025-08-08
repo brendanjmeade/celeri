@@ -4,8 +4,10 @@ import typing
 from dataclasses import dataclass, field
 from typing import Any
 
+import cartopy.io.shapereader as shpreader
 import matplotlib
 import matplotlib.collections
+import matplotlib.collections as mc
 import matplotlib.lines as mlines
 import matplotlib.patches as mpatches
 import matplotlib.path
@@ -16,6 +18,14 @@ import scipy.io
 from loguru import logger
 from matplotlib import cm
 from matplotlib.colors import Normalize
+from shapely.geometry import (
+    GeometryCollection,
+    LineString,
+    MultiLineString,
+    MultiPolygon,
+    Polygon,
+    box,
+)
 
 from celeri.constants import EPS
 from celeri.model import Model
@@ -1577,3 +1587,62 @@ def plot_tde_boundary_condition_labels(meshes, mesh_idx):
     plt.gca().set_aspect("equal")
     plt.title(f"{meshes[mesh_idx].file_name}, {mesh_idx=}")
     plt.show()
+
+
+def plot_land(lon_min, lat_min, lon_max, lat_max):
+    """Plot filled gray land within the given extent using plt."""
+    extent_box = box(lon_min, lat_min, lon_max, lat_max)
+
+    land_shp = shpreader.natural_earth(
+        resolution="10m", category="physical", name="land"
+    )
+    reader = shpreader.Reader(land_shp)
+
+    for geom in reader.geometries():
+        if not geom.intersects(extent_box):
+            continue
+        clipped = geom.intersection(extent_box)
+        if isinstance(clipped, Polygon):
+            patch = mpatches.Polygon(
+                clipped.exterior.coords, facecolor="lightgray", edgecolor="none"
+            )
+            plt.gca().add_patch(patch)
+        elif isinstance(clipped, MultiPolygon):
+            for part in clipped.geoms:
+                patch = mpatches.Polygon(
+                    part.exterior.coords, facecolor="lightgray", edgecolor="none"
+                )
+                plt.gca().add_patch(patch)
+
+
+def plot_coastlines(lon_min, lat_min, lon_max, lat_max):
+    """Plot coastlines as black lines within the given extent using plt."""
+    extent_box = box(lon_min, lat_min, lon_max, lat_max)
+
+    coast_shp = shpreader.natural_earth(
+        resolution="10m", category="physical", name="coastline"
+    )
+    reader = shpreader.Reader(coast_shp)
+
+    coastlines = []
+
+    for geom in reader.geometries():
+        if not geom.intersects(extent_box):
+            continue
+        clipped = geom.intersection(extent_box)
+
+        # Recursively extract line coordinates
+        def extract_lines(g):
+            if isinstance(g, LineString):
+                coastlines.append(list(g.coords))
+            elif isinstance(g, MultiLineString):
+                for part in g.geoms:
+                    extract_lines(part)
+            elif isinstance(g, GeometryCollection):
+                for part in g.geoms:
+                    extract_lines(part)
+
+        extract_lines(clipped)
+
+    line_collection = mc.LineCollection(coastlines, colors="black", linewidths=0.5)
+    plt.gca().add_collection(line_collection)
