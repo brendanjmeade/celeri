@@ -14,7 +14,6 @@ import matplotlib.path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import scipy.io
 from loguru import logger
 from matplotlib import cm
 from matplotlib.colors import Normalize
@@ -962,7 +961,6 @@ def get_default_plotting_options(config, estimation, station):
     p : dictionary
 
     The returned dictionary includes the following keys and their default values:
-        - WORLD_BOUNDARIES: Data loaded from "WorldHiVectors.mat".
         - figsize_vectors: (12, 6) - Default figure size for vector plots.
         - fontsize: 16 - Default font size.
         - lon_range: - Inferred from config.
@@ -1035,34 +1033,6 @@ def get_default_plotting_options(config, estimation, station):
     p.arrow_magnitude_max = 0.35 * vel_scale
     p.arrow_colormap = cm.plasma  # type: ignore
     p.arrow_scale_default = vel_scale
-
-    # Read coastlines and trim to within map boundaries
-    WORLD_BOUNDARIES = scipy.io.loadmat("WorldHiVectors.mat")
-
-    # Buffer around map frame
-    shift = 5
-    # Use matplotlib path tool to make a rectangle
-    maprect = matplotlib.path.Path(
-        [
-            (p.lon_range[0] - shift, p.lat_range[0] - shift),
-            (p.lon_range[1] + shift, p.lat_range[0] - shift),
-            (p.lon_range[1] + shift, p.lat_range[1] + shift),
-            (p.lon_range[0] - shift, p.lat_range[1] + shift),
-        ]
-    )
-    lon = WORLD_BOUNDARIES["lon"]
-    lat = WORLD_BOUNDARIES["lat"]
-    coastpoints = np.array((lon[:, 0], lat[:, 0])).T
-
-    # Find coast points within rectangle
-    coast_idx = maprect.contains_points(coastpoints)
-
-    # Make sure NaNs that separate land bodies are intact
-    coast_idx[np.isnan(lon[:, 0])] = True
-
-    # Add coordinates to dict
-    p.coast_lon = coastpoints[coast_idx, 0]
-    p.coast_lat = coastpoints[coast_idx, 1]
 
     return p
 
