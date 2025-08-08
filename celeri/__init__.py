@@ -59,10 +59,12 @@ from celeri.optimize_sqp import (
 from celeri.output import write_output
 from celeri.plot import (
     get_default_plotting_options,
+    plot_coastlines,
     plot_common_elements,
     plot_estimation_summary,
     plot_fault_geometry,
     plot_input_summary,
+    plot_land,
     plot_matrix_abs_log,
     plot_mesh_mode,
     plot_meshes,
@@ -148,6 +150,7 @@ __all__ = [
     "lsqlin_qp",
     "merge_geodetic_data",
     "parse_args",
+    "plot_coastlines",
     "plot_common_elements",
     "plot_coupling",
     "plot_coupling_evolution",
@@ -155,6 +158,7 @@ __all__ = [
     "plot_fault_geometry",
     "plot_input_summary",
     "plot_iterative_convergence",
+    "plot_land",
     "plot_matrix_abs_log",
     "plot_mesh_mode",
     "plot_meshes",
