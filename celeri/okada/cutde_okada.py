@@ -1,8 +1,10 @@
 import warnings
-from typing import Literal
+from typing import Literal, TypeAlias
 
 import numpy as np
 from cutde.halfspace import disp as disp_cutde
+
+TriangulationTypes: TypeAlias = Literal["/", "\\", "V", "L", "okada", "auto"]
 
 
 def _determine_auto_triangulation(
@@ -162,9 +164,7 @@ def dc3dwrapper_cutde_disp(
     strike_width,
     dip_width,
     dislocation,
-    triangulation: Literal[
-        "/", "\\", "V", "L", "okada", "auto"
-    ] = "/",  # Note: "\\" is a single backslash.
+    triangulation: TriangulationTypes = "auto",  # Note: "\\" is a single backslash.
 ):
     r"""Compute displacement using cutde, with an Okada option.
 
