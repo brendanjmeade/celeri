@@ -151,104 +151,106 @@ def get_segment_station_operator_okada(segment, station, config):
     vu(station N)
 
     """
-    if not station.empty:
-        okada_segment_operator = np.ones((3 * len(station), 3 * len(segment)))
-        # Loop through each segment and calculate displacements for each slip component
-        for i in tqdm(
-            range(len(segment)),
-            desc="Calculating Okada partials for segments",
-            colour="cyan",
-        ):
-            (
-                u_east_strike_slip,
-                u_north_strike_slip,
-                u_up_strike_slip,
-            ) = get_okada_displacements(
-                segment.lon1[i],
-                segment.lat1[i],
-                segment.lon2[i],
-                segment.lat2[i],
-                segment.locking_depth[i],
-                segment.dip[i],
-                segment.azimuth[i],
-                config.material_lambda,
-                config.material_mu,
-                1,
-                0,
-                0,
-                station.lon,
-                station.lat,
-            )
-            (
-                u_east_dip_slip,
-                u_north_dip_slip,
-                u_up_dip_slip,
-            ) = get_okada_displacements(
-                segment.lon1[i],
-                segment.lat1[i],
-                segment.lon2[i],
-                segment.lat2[i],
-                segment.locking_depth[i],
-                segment.dip[i],
-                segment.azimuth[i],
-                config.material_lambda,
-                config.material_mu,
-                0,
-                1,
-                0,
-                station.lon,
-                station.lat,
-            )
-            (
-                u_east_tensile_slip,
-                u_north_tensile_slip,
-                u_up_tensile_slip,
-            ) = get_okada_displacements(
-                segment.lon1[i],
-                segment.lat1[i],
-                segment.lon2[i],
-                segment.lat2[i],
-                segment.locking_depth[i],
-                segment.dip[i],
-                segment.azimuth[i],
-                config.material_lambda,
-                config.material_mu,
-                0,
-                0,
-                1,
-                station.lon,
-                station.lat,
-            )
-            segment_column_start_idx = 3 * i
-            okada_segment_operator[0::3, segment_column_start_idx] = np.squeeze(
-                u_east_strike_slip
-            )
-            okada_segment_operator[1::3, segment_column_start_idx] = np.squeeze(
-                u_north_strike_slip
-            )
-            okada_segment_operator[2::3, segment_column_start_idx] = np.squeeze(
-                u_up_strike_slip
-            )
-            okada_segment_operator[0::3, segment_column_start_idx + 1] = np.squeeze(
-                u_east_dip_slip
-            )
-            okada_segment_operator[1::3, segment_column_start_idx + 1] = np.squeeze(
-                u_north_dip_slip
-            )
-            okada_segment_operator[2::3, segment_column_start_idx + 1] = np.squeeze(
-                u_up_dip_slip
-            )
-            okada_segment_operator[0::3, segment_column_start_idx + 2] = np.squeeze(
-                u_east_tensile_slip
-            )
-            okada_segment_operator[1::3, segment_column_start_idx + 2] = np.squeeze(
-                u_north_tensile_slip
-            )
-            okada_segment_operator[2::3, segment_column_start_idx + 2] = np.squeeze(
-                u_up_tensile_slip
-            )
-    else:
-        okada_segment_operator = np.empty(1)
+    if station.empty:
+        # TODO: Shouldn't this return an array of shape (0, 3 * n_segments)?
+        # Currently this returns an array of shape (1,) with an uninitialized value,
+        # so this seems wrong.
+        return np.empty(1)
+    okada_segment_operator = np.ones((3 * len(station), 3 * len(segment)))
+    # Loop through each segment and calculate displacements for each slip component
+    for i in tqdm(
+        range(len(segment)),
+        desc="Calculating Okada partials for segments",
+        colour="cyan",
+    ):
+        (
+            u_east_strike_slip,
+            u_north_strike_slip,
+            u_up_strike_slip,
+        ) = get_okada_displacements(
+            segment.lon1[i],
+            segment.lat1[i],
+            segment.lon2[i],
+            segment.lat2[i],
+            segment.locking_depth[i],
+            segment.dip[i],
+            segment.azimuth[i],
+            config.material_lambda,
+            config.material_mu,
+            1,
+            0,
+            0,
+            station.lon,
+            station.lat,
+        )
+        (
+            u_east_dip_slip,
+            u_north_dip_slip,
+            u_up_dip_slip,
+        ) = get_okada_displacements(
+            segment.lon1[i],
+            segment.lat1[i],
+            segment.lon2[i],
+            segment.lat2[i],
+            segment.locking_depth[i],
+            segment.dip[i],
+            segment.azimuth[i],
+            config.material_lambda,
+            config.material_mu,
+            0,
+            1,
+            0,
+            station.lon,
+            station.lat,
+        )
+        (
+            u_east_tensile_slip,
+            u_north_tensile_slip,
+            u_up_tensile_slip,
+        ) = get_okada_displacements(
+            segment.lon1[i],
+            segment.lat1[i],
+            segment.lon2[i],
+            segment.lat2[i],
+            segment.locking_depth[i],
+            segment.dip[i],
+            segment.azimuth[i],
+            config.material_lambda,
+            config.material_mu,
+            0,
+            0,
+            1,
+            station.lon,
+            station.lat,
+        )
+        segment_column_start_idx = 3 * i
+        okada_segment_operator[0::3, segment_column_start_idx] = np.squeeze(
+            u_east_strike_slip
+        )
+        okada_segment_operator[1::3, segment_column_start_idx] = np.squeeze(
+            u_north_strike_slip
+        )
+        okada_segment_operator[2::3, segment_column_start_idx] = np.squeeze(
+            u_up_strike_slip
+        )
+        okada_segment_operator[0::3, segment_column_start_idx + 1] = np.squeeze(
+            u_east_dip_slip
+        )
+        okada_segment_operator[1::3, segment_column_start_idx + 1] = np.squeeze(
+            u_north_dip_slip
+        )
+        okada_segment_operator[2::3, segment_column_start_idx + 1] = np.squeeze(
+            u_up_dip_slip
+        )
+        okada_segment_operator[0::3, segment_column_start_idx + 2] = np.squeeze(
+            u_east_tensile_slip
+        )
+        okada_segment_operator[1::3, segment_column_start_idx + 2] = np.squeeze(
+            u_north_tensile_slip
+        )
+        okada_segment_operator[2::3, segment_column_start_idx + 2] = np.squeeze(
+            u_up_tensile_slip
+        )
     return okada_segment_operator
 
 
