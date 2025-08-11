@@ -158,7 +158,7 @@ def get_segment_station_operator_okada(segment, station, config):
         return np.empty(1)
     n_segments = len(segment)
     n_stations = len(station)
-    okada_segment_operator = np.ones((3 * n_stations, 3 * n_segments))
+    okada_segment_operator = np.full((3 * n_stations, 3 * n_segments), np.nan)
     # Loop through each segment and calculate displacements for each slip component
     for i in tqdm(
         range(n_segments), desc="Calculating Okada partials for segments", colour="cyan"
