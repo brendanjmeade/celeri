@@ -156,12 +156,12 @@ def get_segment_station_operator_okada(segment, station, config):
         # Currently this returns an array of shape (1,) with an uninitialized value,
         # so this seems wrong.
         return np.empty(1)
-    okada_segment_operator = np.ones((3 * len(station), 3 * len(segment)))
+    n_segments = len(segment)
+    n_stations = len(station)
+    okada_segment_operator = np.ones((3 * n_stations, 3 * n_segments))
     # Loop through each segment and calculate displacements for each slip component
     for i in tqdm(
-        range(len(segment)),
-        desc="Calculating Okada partials for segments",
-        colour="cyan",
+        range(n_segments), desc="Calculating Okada partials for segments", colour="cyan"
     ):
         (
             u_east_strike_slip,
