@@ -18,7 +18,6 @@ dependencies = [
     "gmsh",
     "h5py",
     "ipython",
-    "ismember",
     "loguru",
     "matplotlib",
     "meshio",
