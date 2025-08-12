@@ -156,6 +156,68 @@ def _determine_auto_triangulation(
     return triangulations.tolist()
 
 
+def _build_tris_for(
+    triangulation: Literal["/", "\\", "V", "L"],
+    bl: np.ndarray,
+    br: np.ndarray,
+    tr: np.ndarray,
+    tl: np.ndarray,
+) -> np.ndarray:
+    r"""Build triangle sets for a given triangulation.
+
+    Parameters
+    ----------
+    triangulation : Literal['/', '\\', 'V', 'L']
+        Triangulation scheme to use.
+    bl, br, tr, tl : np.ndarray, shape (n_obs, 3)
+        Bottom-left, bottom-right, top-right, top-left vertices for each observation.
+
+    Returns
+    -------
+    np.ndarray
+        Triangles array with shape (n_obs, 3 triangles, 3 vertices, 3 coordinates).
+    """
+    if triangulation == "/":
+        return np.stack(
+            [
+                np.stack([tr, bl, br], axis=1),
+                np.stack([bl, tr, tl], axis=1),
+                np.stack([tr, tr, tr], axis=1),
+            ],
+            axis=1,
+        )
+    if triangulation == "\\":
+        return np.stack(
+            [
+                np.stack([br, tl, bl], axis=1),
+                np.stack([tl, br, tr], axis=1),
+                np.stack([tr, tr, tr], axis=1),
+            ],
+            axis=1,
+        )
+    if triangulation == "V":
+        bm = (bl + br) / 2
+        return np.stack(
+            [
+                np.stack([tr, bm, br], axis=1),
+                np.stack([bm, tl, bl], axis=1),
+                np.stack([tl, bm, tr], axis=1),
+            ],
+            axis=1,
+        )
+    if triangulation == "L":
+        tm = (tl + tr) / 2
+        return np.stack(
+            [
+                np.stack([bl, tm, tl], axis=1),
+                np.stack([tm, br, tr], axis=1),
+                np.stack([br, tm, bl], axis=1),
+            ],
+            axis=1,
+        )
+    raise ValueError(f"Invalid triangulation parameter: {triangulation}")
+
+
 def dc3dwrapper_cutde_disp(
     alpha,
     xo,
@@ -336,46 +398,7 @@ def dc3dwrapper_cutde_disp(
     ]  # (n_obs, 3 coordinates)
 
     # Create triangles for each rectangle based on the chosen triangulation
-    if triangulation == "/":
-        tris = np.stack(
-            [
-                np.stack([tr, bl, br], axis=1),
-                np.stack([bl, tr, tl], axis=1),
-                np.stack([tr, tr, tr], axis=1),  # Trivial padding triangle
-            ],
-            axis=1,
-        )
-    elif triangulation == "\\":
-        tris = np.stack(
-            [
-                np.stack([br, tl, bl], axis=1),
-                np.stack([tl, br, tr], axis=1),
-                np.stack([tr, tr, tr], axis=1),
-            ],
-            axis=1,
-        )
-    elif triangulation == "V":
-        bm = (bl + br) / 2
-        tris = np.stack(
-            [
-                np.stack([tr, bm, br], axis=1),
-                np.stack([bm, tl, bl], axis=1),
-                np.stack([tl, bm, tr], axis=1),
-            ],
-            axis=1,
-        )
-    elif triangulation == "L":
-        tm = (tl + tr) / 2
-        tris = np.stack(
-            [
-                np.stack([bl, tm, tl], axis=1),
-                np.stack([tm, br, tr], axis=1),
-                np.stack([br, tm, bl], axis=1),
-            ],
-            axis=1,
-        )
-    else:
-        raise ValueError(f"Invalid triangulation parameter: {triangulation}")
+    tris = _build_tris_for(triangulation, bl, br, tr, tl)
     # tris shape: (n_obs, 3 triangles, 3 vertices, 3 coordinates)
 
     # Tile inputs for cutde: one observation point per source triangle
