@@ -212,7 +212,7 @@ def get_okada_displacements(
     tensile_slip,
     station_lon,
     station_lat,
-    triangulation: TriangulationTypes = "/",
+    triangulation: TriangulationTypes = "auto",
 ):
     """Caculate elastic displacements in a homogeneous elastic half-space.
     Inputs are in geographic coordinates and then projected into a local
