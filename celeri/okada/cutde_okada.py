@@ -291,11 +291,12 @@ def dc3dwrapper_cutde_disp(
 
         return disp_vec[0] if originally_1d else disp_vec
 
+    orientation_correction = np.ones(n_obs)
+
     if n_obs > 0:
         # Make copies to avoid mutating input parameters
         strike_width = np.copy(strike_width)
         dip_width = np.copy(dip_width)
-        orientation_correction = np.ones(n_obs)
 
         # Only perform swapping operations if arrays are non-empty
         if strike_width.size > 0 and dip_width.size > 0:
