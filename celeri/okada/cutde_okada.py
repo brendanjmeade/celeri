@@ -328,31 +328,6 @@ def dc3dwrapper_cutde_disp(
         )  # (n_obs, 3 displacements)
         return raw_result[0] if originally_1d else raw_result
 
-    # Handle auto triangulation mode
-    if triangulation == "auto":
-        # Determine triangulation for all observation points at once (vectorized)
-        auto_triangulations = _determine_auto_triangulation(
-            obs_pts, depth, dip, strike_width, dip_width
-        )
-
-        # Process each observation point with its determined triangulation
-        disp_vec = np.zeros((n_obs, 3))
-        for i in range(n_obs):
-            # Call recursively with the determined triangulation for this single point
-            single_disp = dc3dwrapper_cutde_disp(
-                alpha,
-                obs_pts[i],
-                depth[i],
-                dip[i],
-                strike_width[i],
-                dip_width[i],
-                dislocation[i],
-                triangulation=auto_triangulations[i],  # type: ignore
-            )
-            disp_vec[i] = single_disp
-
-        return disp_vec[0] if originally_1d else disp_vec
-
     orientation_correction = np.ones(n_obs)
 
     if n_obs > 0:
@@ -398,7 +373,25 @@ def dc3dwrapper_cutde_disp(
     ]  # (n_obs, 3 coordinates)
 
     # Create triangles for each rectangle based on the chosen triangulation
-    tris = _build_tris_for(triangulation, bl, br, tr, tl)
+    if triangulation == "auto":
+        auto_triangulations = _determine_auto_triangulation(
+            obs_pts, depth, dip, strike_width, dip_width
+        )
+        auto_arr = np.asarray(auto_triangulations)
+        # Map to indices: '/' -> 0, '\\' -> 1, 'V' -> 2
+        variant_idx = np.zeros(n_obs, dtype=int)
+        variant_idx[auto_arr == "\\"] = 1
+        variant_idx[auto_arr == "V"] = 2
+
+        tris_slash = _build_tris_for("/", bl, br, tr, tl)
+        tris_back = _build_tris_for("\\", bl, br, tr, tl)
+        tris_v = _build_tris_for("V", bl, br, tr, tl)
+
+        tris_all = np.stack([tris_slash, tris_back, tris_v], axis=0)
+        # Select per observation according to variant_idx
+        tris = tris_all[variant_idx, np.arange(n_obs)]
+    else:
+        tris = _build_tris_for(triangulation, bl, br, tr, tl)
     # tris shape: (n_obs, 3 triangles, 3 vertices, 3 coordinates)
 
     # Tile inputs for cutde: one observation point per source triangle
