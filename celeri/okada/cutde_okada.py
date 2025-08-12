@@ -9,7 +9,7 @@ TriangulationTypes: TypeAlias = Literal["/", "\\", "V", "L", "okada", "auto"]
 
 def _determine_auto_triangulation(
     obs_pts, depth, dip, strike_width, dip_width
-) -> list[Literal["/", "\\", "V"]]:
+) -> np.ndarray:
     r"""Determine the appropriate triangulation for observation points.
 
     Assumes inputs have already been preprocessed by _preprocess_obs_pts.
@@ -31,7 +31,7 @@ def _determine_auto_triangulation(
 
     Returns
     -------
-    triangulations : list of Literal["/", "\\", "V"]
+    triangulations : np.ndarray of shape (n_obs,)
         Triangulation for each observation point: "/", "\\", or "V"
     """
     n_obs = obs_pts.shape[0]
@@ -77,7 +77,7 @@ def _determine_auto_triangulation(
     # For points not close to the plane, continue processing
     n_close = len(close_indices)
     if n_close == 0:
-        return triangulations.tolist()
+        return triangulations
 
     # Project observation points onto the rectangle plane
     # Strike direction unit vectors (along x-axis)
@@ -128,7 +128,7 @@ def _determine_auto_triangulation(
         # Update masks for remaining processing
         remaining_mask = ~central_mask
         if not np.any(remaining_mask):
-            return triangulations.tolist()
+            return triangulations
 
         # For remaining points, apply XOR logic
         remaining_indices2 = close_indices2[remaining_mask]
@@ -153,7 +153,7 @@ def _determine_auto_triangulation(
             triangulations[close_indices[xor_mask]] = "/"
             triangulations[close_indices[~xor_mask]] = "\\"
 
-    return triangulations.tolist()
+    return triangulations
 
 
 def _build_tris_for(
@@ -374,10 +374,9 @@ def dc3dwrapper_cutde_disp(
 
     # Create triangles for each rectangle based on the chosen triangulation
     if triangulation == "auto":
-        auto_triangulations = _determine_auto_triangulation(
+        auto_arr = _determine_auto_triangulation(
             obs_pts, depth, dip, strike_width, dip_width
         )
-        auto_arr = np.asarray(auto_triangulations)
         # Map to indices: '/' -> 0, '\\' -> 1, 'V' -> 2
         variant_idx = np.zeros(n_obs, dtype=int)
         variant_idx[auto_arr == "\\"] = 1
