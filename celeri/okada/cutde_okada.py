@@ -31,8 +31,8 @@ def _determine_auto_triangulation(
 
     Returns
     -------
-    triangulations : np.ndarray of shape (n_obs,)
-        Triangulation for each observation point: "/", "\\", or "V"
+    triangulations : np.ndarray of shape (n_obs,), dtype=int
+        Encoded triangulation per observation: 0 for '/', 1 for '\\', 2 for 'V'.
     """
     n_obs = obs_pts.shape[0]
 
@@ -43,8 +43,8 @@ def _determine_auto_triangulation(
     # Characteristic length is minimum of width and height
     char_length = np.minimum(np.abs(width), np.abs(height))  # Shape: (n_obs,)
 
-    # Initialize result array with default "/"
-    triangulations = np.full(n_obs, "/", dtype="<U1")
+    # Initialize result array with default '/' (encoded as 0)
+    triangulations = np.zeros(n_obs, dtype=np.int8)
 
     # Calculate rectangle midpoints in 3D space for valid points
     dip_rad = np.deg2rad(dip)  # Shape: (n_obs,)
@@ -121,9 +121,9 @@ def _determine_auto_triangulation(
             + (dip_dot[close_indices2] * width_close) ** 2
         ) < (0.1 * width_close * height_close) ** 2
 
-        # Set central region points to "V"
+        # Set central region points to 'V' (2)
         central_global_indices = close_indices[close_indices2[central_mask]]
-        triangulations[central_global_indices] = "V"
+        triangulations[central_global_indices] = 2
 
         # Update masks for remaining processing
         remaining_mask = ~central_mask
@@ -138,20 +138,20 @@ def _determine_auto_triangulation(
             strike_dot_remaining = strike_dot[remaining_indices2]
             dip_dot_remaining = dip_dot[remaining_indices2]
 
-            # XOR logic: use "/" if (strike_dot > 0) XOR (dip_dot > 0), else "\"
+            # XOR logic: '/' if (strike_dot > 0) XOR (dip_dot > 0), else '\\'
             xor_mask = (strike_dot_remaining > 0) != (dip_dot_remaining > 0)
-            triangulations[remaining_global_indices[xor_mask]] = "/"
-            triangulations[remaining_global_indices[~xor_mask]] = "\\"
+            triangulations[remaining_global_indices[xor_mask]] = 0
+            triangulations[remaining_global_indices[~xor_mask]] = 1
     else:
         # No points in bounds, process all close points
         if len(close_indices) > 0:
             strike_dot_remaining = strike_dot
             dip_dot_remaining = dip_dot
 
-            # XOR logic: use "/" if (strike_dot > 0) XOR (dip_dot > 0), else "\"
+            # XOR logic: '/' if (strike_dot > 0) XOR (dip_dot > 0), else '\\'
             xor_mask = (strike_dot_remaining > 0) != (dip_dot_remaining > 0)
-            triangulations[close_indices[xor_mask]] = "/"
-            triangulations[close_indices[~xor_mask]] = "\\"
+            triangulations[close_indices[xor_mask]] = 0
+            triangulations[close_indices[~xor_mask]] = 1
 
     return triangulations
 
@@ -374,13 +374,10 @@ def dc3dwrapper_cutde_disp(
 
     # Create triangles for each rectangle based on the chosen triangulation
     if triangulation == "auto":
-        auto_arr = _determine_auto_triangulation(
+        # variant_idx: 0 for '/', 1 for '\\', 2 for 'V'
+        variant_idx = _determine_auto_triangulation(
             obs_pts, depth, dip, strike_width, dip_width
         )
-        # Map to indices: '/' -> 0, '\\' -> 1, 'V' -> 2
-        variant_idx = np.zeros(n_obs, dtype=int)
-        variant_idx[auto_arr == "\\"] = 1
-        variant_idx[auto_arr == "V"] = 2
 
         tris_slash = _build_tris_for("/", bl, br, tr, tl)
         tris_back = _build_tris_for("\\", bl, br, tr, tl)

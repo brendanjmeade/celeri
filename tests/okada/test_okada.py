@@ -410,7 +410,7 @@ class TestAutoTriangulation:
         triangulations = _determine_auto_triangulation(
             obs_pt, depth, dip, strike_width, dip_width
         )
-        assert triangulations[0] == "/", f"Expected '/', got '{triangulations[0]}'"
+        assert triangulations[0] == 0, f"Expected 0 ('/'), got '{triangulations[0]}'"
 
     def test_zero_characteristic_length_uses_forward_slash(self):
         """Test that zero width or height (char_length = 0) uses '/'."""
@@ -424,7 +424,7 @@ class TestAutoTriangulation:
         triangulations = _determine_auto_triangulation(
             obs_pt, depth, dip, strike_width, dip_width
         )
-        assert triangulations[0] == "/", f"Expected '/', got '{triangulations[0]}'"
+        assert triangulations[0] == 0, f"Expected 0 ('/'), got '{triangulations[0]}'"
 
     def test_central_region_uses_v(self):
         """Test that points in the central region use 'V'."""
@@ -451,7 +451,7 @@ class TestAutoTriangulation:
         triangulations = _determine_auto_triangulation(
             obs_pt, depth, dip, strike_width, dip_width
         )
-        assert triangulations[0] == "V", f"Expected 'V', got '{triangulations[0]}'"
+        assert triangulations[0] == 2, f"Expected 2 ('V'), got '{triangulations[0]}'"
 
     def test_xor_logic_for_quadrants(self):
         r"""Test the XOR logic for selecting '/' vs '\\' in different quadrants."""
@@ -479,8 +479,8 @@ class TestAutoTriangulation:
         triangulations = _determine_auto_triangulation(
             obs_pt_both_pos, depth, dip, strike_width, dip_width
         )
-        assert triangulations[0] == "\\", (
-            f"Expected '\\', got '{triangulations[0]}' for both positive quadrant"
+        assert triangulations[0] == 1, (
+            f"Expected 1 ('\\'), got '{triangulations[0]}' for both positive quadrant"
         )
 
         # Test point in quadrant where strike_dot > 0 and dip_dot < 0 (different signs)
@@ -497,8 +497,8 @@ class TestAutoTriangulation:
         triangulations = _determine_auto_triangulation(
             obs_pt_mixed, depth, dip, strike_width, dip_width
         )
-        assert triangulations[0] == "/", (
-            f"Expected '/', got '{triangulations[0]}' for mixed signs quadrant"
+        assert triangulations[0] == 0, (
+            f"Expected 0 ('/'), got '{triangulations[0]}' for mixed signs quadrant"
         )
 
 
