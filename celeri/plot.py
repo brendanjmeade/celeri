@@ -4,18 +4,27 @@ import typing
 from dataclasses import dataclass, field
 from typing import Any
 
+import cartopy.io.shapereader as shpreader
 import matplotlib
 import matplotlib.collections
+import matplotlib.collections as mc
 import matplotlib.lines as mlines
 import matplotlib.patches as mpatches
 import matplotlib.path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import scipy.io
 from loguru import logger
 from matplotlib import cm
 from matplotlib.colors import Normalize
+from shapely.geometry import (
+    GeometryCollection,
+    LineString,
+    MultiLineString,
+    MultiPolygon,
+    Polygon,
+    box,
+)
 
 from celeri.constants import EPS
 from celeri.model import Model
@@ -952,7 +961,6 @@ def get_default_plotting_options(config, estimation, station):
     p : dictionary
 
     The returned dictionary includes the following keys and their default values:
-        - WORLD_BOUNDARIES: Data loaded from "WorldHiVectors.mat".
         - figsize_vectors: (12, 6) - Default figure size for vector plots.
         - fontsize: 16 - Default font size.
         - lon_range: - Inferred from config.
@@ -1025,34 +1033,6 @@ def get_default_plotting_options(config, estimation, station):
     p.arrow_magnitude_max = 0.35 * vel_scale
     p.arrow_colormap = cm.plasma  # type: ignore
     p.arrow_scale_default = vel_scale
-
-    # Read coastlines and trim to within map boundaries
-    WORLD_BOUNDARIES = scipy.io.loadmat("WorldHiVectors.mat")
-
-    # Buffer around map frame
-    shift = 5
-    # Use matplotlib path tool to make a rectangle
-    maprect = matplotlib.path.Path(
-        [
-            (p.lon_range[0] - shift, p.lat_range[0] - shift),
-            (p.lon_range[1] + shift, p.lat_range[0] - shift),
-            (p.lon_range[1] + shift, p.lat_range[1] + shift),
-            (p.lon_range[0] - shift, p.lat_range[1] + shift),
-        ]
-    )
-    lon = WORLD_BOUNDARIES["lon"]
-    lat = WORLD_BOUNDARIES["lat"]
-    coastpoints = np.array((lon[:, 0], lat[:, 0])).T
-
-    # Find coast points within rectangle
-    coast_idx = maprect.contains_points(coastpoints)
-
-    # Make sure NaNs that separate land bodies are intact
-    coast_idx[np.isnan(lon[:, 0])] = True
-
-    # Add coordinates to dict
-    p.coast_lon = coastpoints[coast_idx, 0]
-    p.coast_lat = coastpoints[coast_idx, 1]
 
     return p
 
@@ -1577,3 +1557,62 @@ def plot_tde_boundary_condition_labels(meshes, mesh_idx):
     plt.gca().set_aspect("equal")
     plt.title(f"{meshes[mesh_idx].file_name}, {mesh_idx=}")
     plt.show()
+
+
+def plot_land(lon_min, lat_min, lon_max, lat_max):
+    """Plot filled gray land within the given extent using plt."""
+    extent_box = box(lon_min, lat_min, lon_max, lat_max)
+
+    land_shp = shpreader.natural_earth(
+        resolution="10m", category="physical", name="land"
+    )
+    reader = shpreader.Reader(land_shp)
+
+    for geom in reader.geometries():
+        if not geom.intersects(extent_box):
+            continue
+        clipped = geom.intersection(extent_box)
+        if isinstance(clipped, Polygon):
+            patch = mpatches.Polygon(
+                clipped.exterior.coords, facecolor="lightgray", edgecolor="none"
+            )
+            plt.gca().add_patch(patch)
+        elif isinstance(clipped, MultiPolygon):
+            for part in clipped.geoms:
+                patch = mpatches.Polygon(
+                    part.exterior.coords, facecolor="lightgray", edgecolor="none"
+                )
+                plt.gca().add_patch(patch)
+
+
+def plot_coastlines(lon_min, lat_min, lon_max, lat_max):
+    """Plot coastlines as black lines within the given extent using plt."""
+    extent_box = box(lon_min, lat_min, lon_max, lat_max)
+
+    coast_shp = shpreader.natural_earth(
+        resolution="10m", category="physical", name="coastline"
+    )
+    reader = shpreader.Reader(coast_shp)
+
+    coastlines = []
+
+    for geom in reader.geometries():
+        if not geom.intersects(extent_box):
+            continue
+        clipped = geom.intersection(extent_box)
+
+        # Recursively extract line coordinates
+        def extract_lines(g):
+            if isinstance(g, LineString):
+                coastlines.append(list(g.coords))
+            elif isinstance(g, MultiLineString):
+                for part in g.geoms:
+                    extract_lines(part)
+            elif isinstance(g, GeometryCollection):
+                for part in g.geoms:
+                    extract_lines(part)
+
+        extract_lines(clipped)
+
+    line_collection = mc.LineCollection(coastlines, colors="black", linewidths=0.5)
+    plt.gca().add_collection(line_collection)
