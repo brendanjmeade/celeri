@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-import IPython
 from loguru import logger
 
 import celeri
@@ -17,6 +16,9 @@ def main():
     logger = celeri.get_logger(config)
     celeri.process_args(config, args)
     model = celeri.build_model(config)
+
+    if config.repl:
+        import IPython
 
     if config.solve_type == "dense":
         # Classic dense solve
