@@ -6026,8 +6026,8 @@ packages:
   timestamp: 1752907619396
 - pypi: .
   name: celeri
-  version: 0.0.2.post1.dev375+g01fd64516
-  sha256: b328526ac3338951e6855d3916b1eebef0090a7e3d824e79f8c34a630b38bd89
+  version: 0.0.2.post1.dev377+g7e4821d.d20250813
+  sha256: 5c3c8906907f066210fc7312c2ccddbb1d8a281806e69e7192f06013c83a97ff
   requires_dist:
   - addict
   - cutde
