@@ -47,6 +47,8 @@ celeri-snap-segments = "celeri.scripts.snap_segments:main"
 celeri-segmesh = "celeri.scripts.segmesh:main"
 celeri-msh2stl = "celeri.scripts.msh2stl:main"
 celeri-stl2msh = "celeri.scripts.stl2msh:main"
+celeri-forward = "celeri.scripts.celeri_forward:main"
+celeri-create-grid-station = "celeri.scripts.create_grid_station:main"
 
 
 [project.urls]
