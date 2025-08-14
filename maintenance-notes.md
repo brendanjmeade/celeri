@@ -31,3 +31,7 @@ If nothing has been published to PyPI yet, you can redo the same version:
 1. Delete the failed GitHub release from [Releases](https://github.com/brendanjmeade/celeri/releases).
 2. **IMPORTANT**: Delete the corresponding `vX.Y.Z` [tag](https://github.com/brendanjmeade/celeri/tags).
 3. Start again from [Cutting a new release](#cutting-a-new-release).
+
+## Updating dependencies
+
+TODO
