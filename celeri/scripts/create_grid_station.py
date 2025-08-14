@@ -2,7 +2,6 @@
 
 import argparse
 import uuid
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -44,7 +43,6 @@ def parse_args():
 
 def create_grid_stations(lon_min, lon_max, lat_min, lat_max, n_points):
     """Create a grid of station coordinates within the specified bounding box."""
-
     # Generate the grid coordinates
     lons = np.linspace(lon_min, lon_max, n_points)
     lats = np.linspace(lat_min, lat_max, n_points)
@@ -91,7 +89,7 @@ def main():
         )
 
     # Log the parameters
-    logger.info(f"Creating grid with bounding box:")
+    logger.info("Creating grid with bounding box:")
     logger.info(f"  Longitude: {args.lon_min} to {args.lon_max}")
     logger.info(f"  Latitude: {args.lat_min} to {args.lat_max}")
     logger.info(
