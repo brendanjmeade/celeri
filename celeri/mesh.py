@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, TypeVar, cast
@@ -384,7 +386,15 @@ class Mesh:
         # Standalone reader for a single .msh file
         mesh = {}
         filename = config.mesh_filename
-        meshobj = meshio.read(filename)
+
+        # Suppress meshio's stdout output (it prints a newline)
+        old_stdout = sys.stdout
+        sys.stdout = open(os.devnull, "w")
+        try:
+            meshobj = meshio.read(filename)
+        finally:
+            sys.stdout.close()
+            sys.stdout = old_stdout
         points = cast(np.ndarray, meshobj.points)
         mesh["points"] = points
         verts = meshio.CellBlock("triangle", meshobj.get_cells_type("triangle")).data
@@ -485,7 +495,6 @@ class Mesh:
         _compute_mesh_perimeter(mesh)
 
         logger.success(f"Read: {filename}")
-
         # Convert dict to Mesh dataclass
         return cls(**mesh)
 

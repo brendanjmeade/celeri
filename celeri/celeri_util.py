@@ -8,6 +8,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pyproj
 from loguru import logger
+from rich.console import Console
+from rich.table import Table
+from rich.text import Text
+import sys
 from scipy.spatial.distance import cdist
 
 if TYPE_CHECKING:
@@ -52,32 +56,87 @@ def triangle_normal(triangles):
 
 def get_logger(config: Config):
     # Create logger
-    logger.remove()  # Remove any existing loggers includeing default stderr
-
-    # Define the custom format
-    log_format = (
-        "<level>{level}</level>: "
-        "<level>{message}</level> - "
-        "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - "
-        "<green>{time:YYYY-MM-DD HH:mm:ss}</green>"
-    )
-
-    # Configure the logger with the custom format
-    # logger.remove()  # Remove default logger configuration
-    logger.add(lambda msg: print(msg, end=""), format=log_format, colorize=True)
-
-    # logger.add(
-    #     sys.stdout,
-    #     # format="[{level}] {message}",
-    #     # format="<cyan>[{level}]</cyan> <green>{message}</green>",
-    #     colorize=True,
-    # )
-    # logger.add(config.run_name + ".log")
+    logger.remove()  # Remove any existing loggers including default stderr
+    
+    # Initialize Rich console
+    console = Console()
+    
+    def rich_sink(message):
+        """Custom sink for loguru that uses rich for formatting with proper indentation"""
+        record = message.record
+        
+        # Level colors
+        level_styles = {
+            "TRACE": "dim white",
+            "DEBUG": "cyan",
+            "INFO": "blue", 
+            "SUCCESS": "bold green",
+            "WARNING": "bold yellow",
+            "ERROR": "bold red",
+            "CRITICAL": "bold white on red"
+        }
+        
+        level = record["level"].name
+        style = level_styles.get(level, "white")
+        
+        # Create the level badge (exactly 10 chars wide, left-aligned)
+        level_text = f"{level:<10}"
+        
+        # Create the message content
+        time_str = record["time"].strftime("%Y-%m-%d %H:%M:%S")
+        location = f"{record['name']}:{record['function']}:{record['line']}"
+        message_str = str(record["message"]).rstrip()  # Remove any trailing whitespace/newlines
+        
+        # For ERROR and CRITICAL levels, include exception info if available
+        if level in ["ERROR", "CRITICAL"] and record["exception"]:
+            exc_type = record["exception"].type
+            exc_value = record["exception"].value
+            exc_traceback = record["exception"].traceback
+            
+            # Format the exception with full traceback if available
+            if exc_traceback:
+                import traceback as tb
+                tb_lines = ''.join(tb.format_exception(exc_type, exc_value, exc_traceback))
+                # Indent the traceback for better readability
+                tb_indented = '\n           '.join(tb_lines.split('\n'))
+                full_text = f"{message_str} - {location} - {time_str}\n           {tb_indented}"
+            else:
+                full_text = f"{message_str} - {location} - {time_str}\n           {exc_type.__name__ if exc_type else 'Unknown'}: {exc_value}"
+        else:
+            # Format with proper indentation for wrapped lines
+            full_text = f"{message_str} - {location} - {time_str}"
+        
+        # Create text with level prefix
+        prefix = Text(level_text, style=style)
+        content = Text(full_text, style="white")
+        
+        # Print with hanging indent using a grid table
+        table = Table.grid(padding=0, expand=True)
+        table.add_column(width=11, no_wrap=True)  # 10 chars + 1 space
+        table.add_column(ratio=1)
+        
+        table.add_row(
+            prefix + " ",
+            content
+        )
+        
+        # Use file handle and suppress automatic newline
+        console.file = sys.stderr  # Ensure we're writing to stderr like default logger
+        console.print(table, crop=False, end="")
+    
+    # Add the rich sink for console output with backtrace for errors
+    logger.add(rich_sink, colorize=True, backtrace=True, diagnose=True)
+    
+    # Add file logging with simple format (no colors in file)
+    file_format = "{level: <10} | {time:YYYY-MM-DD HH:mm:ss} | {name}:{function}:{line} | {message}"
     logger.add(
         (config.output_path / config.run_name).with_suffix(".log"),
-        format=log_format,
-        colorize=True,
+        format=file_format,
+        colorize=False,  # No color codes in log file
+        backtrace=True,  # Include traceback in log file
+        diagnose=True,   # Include variable values in errors
     )
+    
     logger.info("RUN_NAME: " + config.run_name)
     logger.info(f"Write log file: {config.output_path}/{config.run_name}.log")
     return logger
