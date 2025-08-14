@@ -2,6 +2,7 @@
 
 import argparse
 import uuid
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -106,7 +107,7 @@ def main():
     output_filename = f"{uuid_str}_station.csv"
 
     # Write to CSV with trailing comma to match celeri format
-    with open(output_filename, "w") as f:
+    with Path(output_filename).open("w") as f:
         # Write header with trailing comma
         f.write(",".join(station_df.columns) + ",\n")
         # Write data rows with trailing comma

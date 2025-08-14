@@ -389,7 +389,7 @@ class Mesh:
 
         # Suppress meshio's stdout output (it prints a newline)
         old_stdout = sys.stdout
-        sys.stdout = open(os.devnull, "w")
+        sys.stdout = Path(os.devnull).open("w")
         try:
             meshobj = meshio.read(filename)
         finally:
