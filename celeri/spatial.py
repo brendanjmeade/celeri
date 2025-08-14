@@ -3,7 +3,6 @@ import warnings
 
 import cutde.halfspace as cutde_halfspace
 import numpy as np
-import okada_wrapper
 import scipy
 from scipy.sparse import csr_matrix
 from tqdm import tqdm
@@ -17,6 +16,7 @@ from celeri.celeri_util import (
     sph2cart,
 )
 from celeri.constants import GEOID, KM2M, RADIUS_EARTH
+from celeri.okada.cutde_okada import TriangulationTypes, dc3dwrapper_cutde_disp
 
 
 def get_rotation_to_velocities_partials(station, n_blocks):
@@ -151,19 +151,21 @@ def get_segment_station_operator_okada(segment, station, config):
     vu(station N)
 
     """
-    if not station.empty:
-        okada_segment_operator = np.ones((3 * len(station), 3 * len(segment)))
-        # Loop through each segment and calculate displacements for each slip component
-        for i in tqdm(
-            range(len(segment)),
-            desc="Calculating Okada partials for segments",
-            colour="cyan",
-        ):
-            (
-                u_east_strike_slip,
-                u_north_strike_slip,
-                u_up_strike_slip,
-            ) = get_okada_displacements(
+    if station.empty:
+        # TODO: Shouldn't this return an array of shape (0, 3 * n_segments)?
+        # Currently this returns an array of shape (1,) with an uninitialized value,
+        # so this seems wrong.
+        return np.empty(1)
+    n_segments = len(segment)
+    n_stations = len(station)
+    okada_segment_operator = np.full((3 * n_stations, 3 * n_segments), np.nan)
+    # Loop through each segment and calculate displacements for each slip component
+    for i in tqdm(
+        range(n_segments), desc="Calculating Okada partials for segments", colour="cyan"
+    ):
+        for slip_type in ["strike", "dip", "tensile"]:
+            # Each `u` has shape (n_stations, )
+            u_east, u_north, u_up = get_okada_displacements(
                 segment.lon1[i],
                 segment.lat1[i],
                 segment.lon2[i],
@@ -173,82 +175,25 @@ def get_segment_station_operator_okada(segment, station, config):
                 segment.azimuth[i],
                 config.material_lambda,
                 config.material_mu,
-                1,
-                0,
-                0,
+                1 if slip_type == "strike" else 0,
+                1 if slip_type == "dip" else 0,
+                1 if slip_type == "tensile" else 0,
                 station.lon,
                 station.lat,
             )
-            (
-                u_east_dip_slip,
-                u_north_dip_slip,
-                u_up_dip_slip,
-            ) = get_okada_displacements(
-                segment.lon1[i],
-                segment.lat1[i],
-                segment.lon2[i],
-                segment.lat2[i],
-                segment.locking_depth[i],
-                segment.dip[i],
-                segment.azimuth[i],
-                config.material_lambda,
-                config.material_mu,
-                0,
-                1,
-                0,
-                station.lon,
-                station.lat,
-            )
-            (
-                u_east_tensile_slip,
-                u_north_tensile_slip,
-                u_up_tensile_slip,
-            ) = get_okada_displacements(
-                segment.lon1[i],
-                segment.lat1[i],
-                segment.lon2[i],
-                segment.lat2[i],
-                segment.locking_depth[i],
-                segment.dip[i],
-                segment.azimuth[i],
-                config.material_lambda,
-                config.material_mu,
-                0,
-                0,
-                1,
-                station.lon,
-                station.lat,
-            )
-            segment_column_start_idx = 3 * i
-            okada_segment_operator[0::3, segment_column_start_idx] = np.squeeze(
-                u_east_strike_slip
-            )
-            okada_segment_operator[1::3, segment_column_start_idx] = np.squeeze(
-                u_north_strike_slip
-            )
-            okada_segment_operator[2::3, segment_column_start_idx] = np.squeeze(
-                u_up_strike_slip
-            )
-            okada_segment_operator[0::3, segment_column_start_idx + 1] = np.squeeze(
-                u_east_dip_slip
-            )
-            okada_segment_operator[1::3, segment_column_start_idx + 1] = np.squeeze(
-                u_north_dip_slip
-            )
-            okada_segment_operator[2::3, segment_column_start_idx + 1] = np.squeeze(
-                u_up_dip_slip
-            )
-            okada_segment_operator[0::3, segment_column_start_idx + 2] = np.squeeze(
-                u_east_tensile_slip
-            )
-            okada_segment_operator[1::3, segment_column_start_idx + 2] = np.squeeze(
-                u_north_tensile_slip
-            )
-            okada_segment_operator[2::3, segment_column_start_idx + 2] = np.squeeze(
-                u_up_tensile_slip
-            )
-    else:
-        okada_segment_operator = np.empty(1)
+            if slip_type == "strike":
+                col_idx = 3 * i
+            elif slip_type == "dip":
+                col_idx = 3 * i + 1
+            elif slip_type == "tensile":
+                col_idx = 3 * i + 2
+            else:
+                raise ValueError(f"Invalid slip type: {slip_type}")
+            # The i::3 notation sets an offset of i and a skip of 3 so that
+            # east/north/up displacements are interleaved.
+            okada_segment_operator[0::3, col_idx] = np.squeeze(u_east)
+            okada_segment_operator[1::3, col_idx] = np.squeeze(u_north)
+            okada_segment_operator[2::3, col_idx] = np.squeeze(u_up)
     return okada_segment_operator
 
 
@@ -267,13 +212,13 @@ def get_okada_displacements(
     tensile_slip,
     station_lon,
     station_lat,
+    triangulation: TriangulationTypes = "auto",
 ):
     """Caculate elastic displacements in a homogeneous elastic half-space.
     Inputs are in geographic coordinates and then projected into a local
     xy-plane using a oblique Mercator projection that is tangent and parallel
-    to the trace of the fault segment.  The elastic calculation is the
-    original Okada 1992 Fortran code acceccesed through T. Ben Thompson's
-    okada_wrapper: https://github.com/tbenthompson/okada_wrapper.
+    to the trace of the fault segment.  The elastic calculation breaks each
+    rectangle into triangles and uses T. Ben Thompson's cutde library for TDEs.
     """
     # TODO(Brendan): Previous version might have changed the value inplace?
     # If segment_locking_depth is a reference to a pandas Series.
@@ -319,42 +264,42 @@ def get_okada_displacements(
             [np.sin(segment_strike), np.cos(segment_strike)],
         ]
     )
-    station_x_rotated, station_y_rotated = np.hsplit(
-        np.einsum("ij,kj->ik", np.dstack((station_x, station_y))[0], rotation_matrix.T),
-        2,
+    station_xy_rotated = np.einsum(
+        "ij,kj->ik",
+        np.dstack((station_x, station_y))[0],
+        rotation_matrix.T,
     )
+    station_x_rotated, station_y_rotated = np.hsplit(station_xy_rotated, 2)
 
     # Shift station y coordinates by surface projection of locking depth
     # y_shift will be positive for dips <90 and negative for dips > 90
     y_shift = np.cos(np.deg2rad(segment_dip)) * segment_up_dip_width
     station_y_rotated += y_shift
+    station_z_rotated = np.zeros_like(station_x_rotated)
+    obs_pts = np.concat(
+        [station_x_rotated, station_y_rotated, station_z_rotated], axis=1
+    )
 
     # Elastic displacements from Okada 1992
     alpha = (material_lambda + material_mu) / (material_lambda + 2 * material_mu)
-    u_x = np.zeros_like(station_x)
-    u_y = np.zeros_like(station_x)
-    u_up = np.zeros_like(station_x)
-    for i in range(len(station_x)):
-        _, u, _ = okada_wrapper.dc3dwrapper(
-            alpha,  # (lambda + mu) / (lambda + 2 * mu)
-            [
-                station_x_rotated[i].item(),
-                station_y_rotated[i].item(),
-                0,
-            ],  # (meters) observation point
-            segment_locking_depth,  # (meters) depth of the fault origin
-            segment_dip,  # (degrees) the dip-angle of the rectangular dislocation surface
-            [
-                -segment_length / 2,
-                segment_length / 2,
-            ],  # (meters) the along-strike range of the surface (al1,al2 in the original)
-            [
-                0,
-                segment_up_dip_width,
-            ],  # (meters) along-dip range of the surface (aw1, aw2 in the original)
-            [strike_slip, dip_slip, tensile_slip],
-        )  # (meters) strike-slip, dip-slip, tensile-slip
-        u_x[i], u_y[i], u_up[i] = u
+
+    u = dc3dwrapper_cutde_disp(
+        alpha,  # (lambda + mu) / (lambda + 2 * mu)
+        obs_pts,  # (meters) observation point
+        segment_locking_depth,  # (meters) depth of the fault origin
+        segment_dip,  # (degrees) the dip-angle of the rectangular dislocation surface
+        [
+            -segment_length / 2,
+            segment_length / 2,
+        ],  # (meters) the along-strike range of the surface (al1,al2 in the original)
+        [
+            0,
+            segment_up_dip_width,
+        ],  # (meters) along-dip range of the surface (aw1, aw2 in the original)
+        [strike_slip, dip_slip, tensile_slip],
+        triangulation=triangulation,
+    )  # (meters) strike-slip, dip-slip, tensile-slip
+    u_x, u_y, u_up = u.T
 
     # Un-rotate displacement to account for projected fault strike
     # u_east, u_north = np.hsplit(
