@@ -5,7 +5,7 @@ import cutde.halfspace as cutde_halfspace
 import numpy as np
 import scipy
 from scipy.sparse import csr_matrix
-from tqdm import tqdm
+from rich.progress import track
 
 from celeri.celeri_util import (
     cartesian_vector_to_spherical_vector,
@@ -160,9 +160,7 @@ def get_segment_station_operator_okada(segment, station, config):
     n_stations = len(station)
     okada_segment_operator = np.full((3 * n_stations, 3 * n_segments), np.nan)
     # Loop through each segment and calculate displacements for each slip component
-    for i in tqdm(
-        range(n_segments), desc="Calculating Okada partials for segments", colour="cyan"
-    ):
+    for i in track(range(len(segment)), description="Rectangular segment elastic"):
         for slip_type in ["strike", "dip", "tensile"]:
             # Each `u` has shape (n_stations, )
             u_east, u_north, u_up = get_okada_displacements(
@@ -467,12 +465,7 @@ def get_tde_to_velocities(meshes, station, config):
         if not station.empty:
             tri_operator = np.zeros((3 * len(station), 3 * n_tris))
 
-            # Loop through each segment and calculate displacements for each slip component
-            for i in tqdm(
-                range(n_tris),
-                desc="Calculating cutde partials for triangles",
-                colour="green",
-            ):
+            for i in track(range(n_tris), description="Meshed surface elastic     "):
                 (
                     vel_east_strike_slip,
                     vel_north_strike_slip,
@@ -560,11 +553,7 @@ def get_tde_to_velocities_single_mesh(meshes, station, config, mesh_idx):
             tri_operator = np.zeros((3 * len(station), 3 * n_tris))
 
             # Loop through each segment and calculate displacements for each slip component
-            for i in tqdm(
-                range(n_tris),
-                desc="Calculating cutde partials for triangles",
-                colour="green",
-            ):
+            for i in track(range(n_tris), description="Meshed surface elastic     "):
                 (
                     vel_east_strike_slip,
                     vel_north_strike_slip,
