@@ -6026,26 +6026,34 @@ packages:
   timestamp: 1752907619396
 - pypi: ./
   name: celeri
-  version: 0.0.2.post1.dev398+g3ea74f1
-  sha256: d570b1bbbdde00094b7a1f32ed13b92a82258cd10567823cb6ec71894ec72e10
+  version: 0.0.2.post1.dev406+g24f3679
+  sha256: 7a00014e5597c3744d524508b885310ef78b82aa3ec890907a03e8be834ddeb7
   requires_dist:
   - addict
+  - cartopy
+  - colorcet
   - cutde>=25.7.24
   - cvxopt
+  - cvxpy
   - gmsh
   - h5py
+  - ipykernel
   - ipython
-  - ismember
   - loguru
   - matplotlib
   - meshio
   - numpy
   - pandas
+  - papermill
+  - pydantic
   - pyproj
   - pytest
   - scipy
+  - shapely
   - spherical-geometry
   - tqdm
+  - xarray
+  - zarr
   requires_python: '>=3.11'
   editable: true
 - conda: https://conda.anaconda.org/conda-forge/noarch/certifi-2025.8.3-pyhd8ed1ab_0.conda
