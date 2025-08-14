@@ -74,6 +74,13 @@ project_name/
 # Contributing
 If you wish to submit a PR then please run `pre-commit install` to install the [pre-commit](https://pre-commit.com/) hooks.
 
+# Maintenance notes
+
+See [maintenance-notes.md](maintenance-notes.md) for current best practices for maintaining this repository, in particular:
+
+* [Cutting a new release](maintenance-notes.md#cutting-a-new-release)
+* [Updating dependencies](maintenance-notes.md#updating-dependencies)
+
 # Other earthquake cycle kinematics software
 We think celeri is pretty great, but there are other alternatives worth considering:
 - Jack Loveless' and Brendan Meade's Matlab-based [Blocks](https://github.com/jploveless/Blocks)
