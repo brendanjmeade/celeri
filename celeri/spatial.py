@@ -4,8 +4,8 @@ import warnings
 import cutde.halfspace as cutde_halfspace
 import numpy as np
 import scipy
-from scipy.sparse import csr_matrix
 from rich.progress import track
+from scipy.sparse import csr_matrix
 
 from celeri.celeri_util import (
     cartesian_vector_to_spherical_vector,
