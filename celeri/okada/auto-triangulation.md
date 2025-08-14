@@ -10,9 +10,9 @@ The primary principle of the algorithm is to ensure **spatial separation** betwe
 
 The algorithm chooses between three triangulation patterns, each defined by its interior edges:
 
-*   **Forward slash (/)**: A single interior edge runs diagonally from the top-right to the bottom-left corner.
-*   **Backslash (\\)**: A single interior edge runs diagonally from the top-left to the bottom-right corner.
-*   **V-pattern**: Two interior edges run from the bottom midpoint to the top corners, forming a 'V'.
+- **Forward slash (/)**: A single interior edge runs diagonally from the top-right to the bottom-left corner.
+- **Backslash (\\)**: A single interior edge runs diagonally from the top-left to the bottom-right corner.
+- **V-pattern**: Two interior edges run from the bottom midpoint to the top corners, forming a 'V'.
 
 ![Triangulation Selection Strategy](figures/triangulation_schematic.svg)
 
@@ -22,20 +22,20 @@ The algorithm chooses between three triangulation patterns, each defined by its 
 
 The triangulation choice is purely geometric and follows a three-stage process. The logic is based on a normalized coordinate system \((r,s)\) where the rectangle's midpoint is at (0,0) and its edges are at \(r=\pm 0.5\) and \(s=\pm 0.5\).
 
-1.  **Distance to the Plane**
+1. **Distance to the Plane**
     If the perpendicular distance from the observation point to the rectangle's plane exceeds **10%** of the smaller of the rectangle’s width or height, the **slash (/) triangulation** is always used. In this regime, numerical artifacts from interior edges are negligible.
 
-2.  **Projection into the Rectangle**
+2. **Projection into the Rectangle**
     For observation points closer than the 10% threshold, the point is projected onto the rectangle's plane to find its normalized coordinates \((r,s)\).
 
-3.  **Region-Based Triangulation**
+3. **Region-Based Triangulation**
     The projected point is then classified using the colored regions shown in *Figure 1*:
 
-    *   **Outermost Band**: If either \(|r|>0.6\) or \(|s|>0.6\), the **slash (/) triangulation** is used as the standard default, since these observation points are already well-separated from the rectangle's interior.
+    - **Outermost Band**: If either \(|r|>0.6\) or \(|s|>0.6\), the **slash (/) triangulation** is used as the standard default, since these observation points are already well-separated from the rectangle's interior.
 
-    *   **Central Disk**: Points inside the circle of radius **0.1** (the green disk) receive the **V triangulation**. This is critical for the central region where neither of the simple diagonal triangulations can avoid placing an interior edge near the observation point.
+    - **Central Disk**: Points inside the circle of radius **0.1** (the green disk) receive the **V triangulation**. This is critical for the central region where neither of the simple diagonal triangulations can avoid placing an interior edge near the observation point.
 
-    *   **Intermediate Quadrants**: The remaining area is divided into four quadrants. Points in the top-right and bottom-left quadrants use the **backslash (\\) triangulation**; points in the top-left and bottom-right quadrants use the **slash (/) triangulation**. This ensures that the diagonal interior edge is kept on the opposite side of the observation point.
+    - **Intermediate Quadrants**: The remaining area is divided into four quadrants. Points in the top-right and bottom-left quadrants use the **backslash (\\) triangulation**; points in the top-left and bottom-right quadrants use the **slash (/) triangulation**. This ensures that the diagonal interior edge is kept on the opposite side of the observation point.
 
 ## Implementation and Performance
 
