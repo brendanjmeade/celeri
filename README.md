@@ -3,11 +3,11 @@
 `celeri` is a Python-based package designed to image earthquake cycle activity, including spatial slip deficit/fault coupling across geometrically complex fault systems at large scales. It features:
 
 - Friendly [Jupyter notebook examples](https://github.com/brendanjmeade/celeri/blob/main/notebooks/celeri_dense.ipynb)
-- GUI model building with [`celeri_ui`](https://brendanjmeade.github.io/celeri_ui/)
+- GUI-based model building with [`celeri_ui`](https://brendanjmeade.github.io/celeri_ui/)
 - Graphical comparisons of model results with [`result_manager`](https://github.com/brendanjmeade/result_manager)
 - 3D visualization of model results with [`parsli`](https://github.com/brendanjmeade/parsli)
 - Fast and automated block closure on the sphere
-- Small memory footprint (via distance weighted eigenmodes)
+- Small memory footprint (via distance-weighted eigenmodes)
 - Blazingly fast elastic calculations (via [Ben Thompson's](https://github.com/tbenthompson) [cutde](https://github.com/tbenthompson/cutde))
 - Easy IO with standard file types (`.csv`, `.json`, `.hdf5`, `.pkl`)
 
@@ -37,7 +37,7 @@ To run notebooks from VSCode:
 3. Navigate to the notebook you'd like to run.
 4. Click on the Python environment selector near the upper right-hand corner of the VSCode window.
 5. Select the "default" shell.
-6. Run notebook.
+6. Run the notebook.
 
 ## Folder structure and file locations for applications
 
@@ -93,6 +93,6 @@ See [maintenance-notes.md](maintenance-notes.md) for current best practices for 
 
 We think celeri is pretty great, but there are other alternatives worth considering:
 
-- Jack Loveless' and Brendan Meade's Matlab-based [Blocks](https://github.com/jploveless/Blocks)
+- Jack Loveless' and Brendan Meade's MATLAB-based [Blocks](https://github.com/jploveless/Blocks)
 - Rob McCaffrey's Fortran-based [TDEFNODE](https://robmccaffrey.github.io/TDEFNODE/TDEFNODE.html)
 - Richard Styron's Julia-based [Oiler](https://github.com/cossatot/Oiler)
