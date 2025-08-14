@@ -78,10 +78,6 @@ project_name/
 
 ![alt text](https://github.com/user-attachments/assets/d9762dce-eb82-4236-87be-d2b76e2516a4)
 
-## Contributing
-
-If you wish to submit a PR then please run `pre-commit install` to install the [pre-commit](https://pre-commit.com/) hooks.
-
 ## Maintenance notes
 
 See [maintenance-notes.md](maintenance-notes.md) for current best practices for maintaining this repository, in particular:
