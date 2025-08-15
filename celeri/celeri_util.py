@@ -68,11 +68,11 @@ def get_logger(config: Config):
         # Level colors
         level_styles = {
             "TRACE": "dim white",
-            "DEBUG": "cyan",
+            "DEBUG": "white",
             "INFO": "blue",
-            "SUCCESS": "bold green",
-            "WARNING": "bold yellow",
-            "ERROR": "bold red",
+            "SUCCESS": "cyan",
+            "WARNING": "yellow",
+            "ERROR": "red",
             "CRITICAL": "bold white on red",
         }
 
