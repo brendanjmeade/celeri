@@ -6,7 +6,7 @@ import celeri
 import celeri.optimize
 
 
-@logger.catch
+@logger.catch(reraise=True)
 def main():
     # Process arguments
     args = celeri.parse_args()
