@@ -117,6 +117,8 @@ class Estimation:
 
     @cached_property
     def mesh_estimate(self) -> pd.DataFrame | None:
+        if self.operators.tde is None or self.operators.eigen is None:
+            return None
         if self.tde_strike_slip_rates is None or self.tde_dip_slip_rates is None:
             return None
         meshes = self.model.meshes
@@ -135,12 +137,18 @@ class Estimation:
                 "mesh_idx": i * np.ones_like(meshes[i].lon1).astype(int),
                 "strike_slip_rate": self.tde_strike_slip_rates[i],
                 "dip_slip_rate": self.tde_dip_slip_rates[i],
-                "strike_slip_rate_kinematic": self.tde_strike_slip_rates_kinematic_smooth[
-                    i
-                ],
-                "dip_slip_rate_kinematic": self.tde_dip_slip_rates_kinematic_smooth[i],
-                "strike_slip_coupling": self.tde_strike_slip_rates_coupling_smooth[i],
-                "dip_slip_coupling": self.tde_dip_slip_rates_coupling_smooth[i],
+                "strike_slip_rate_kinematic": self.tde_strike_slip_rates_kinematic_smooth.get(
+                    i, None
+                ),
+                "dip_slip_rate_kinematic": self.tde_dip_slip_rates_kinematic_smooth.get(
+                    i, None
+                ),
+                "strike_slip_coupling": None
+                if self.tde_strike_slip_rates_coupling_smooth is None
+                else self.tde_strike_slip_rates_coupling_smooth.get(i, None),
+                "dip_slip_coupling": None
+                if self.tde_dip_slip_rates_coupling_smooth is None
+                else self.tde_dip_slip_rates_coupling_smooth.get(i, None),
             }
             this_mesh_output = pd.DataFrame(this_mesh_output)
             # mesh_outputs = mesh_outputs.append(this_mesh_output)

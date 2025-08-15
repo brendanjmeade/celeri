@@ -52,50 +52,50 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--repl",
-        type=int,
-        default=0,
+        type=bool,
+        default=False,
         required=False,
         help="Flag for dropping into REPL (0 | 1)",
     )
     parser.add_argument(
         "--pickle_save",
-        type=int,
-        default=0,
+        type=bool,
+        default=False,
         required=False,
         help="Flag for saving major data structures in pickle file (0 | 1)",
     )
     parser.add_argument(
         "--plot_input_summary",
-        type=int,
-        default=0,
+        type=bool,
+        default=False,
         required=False,
         help="Flag for saving summary plot of input data (0 | 1)",
     )
     parser.add_argument(
         "--plot_estimation_summary",
-        type=int,
-        default=0,
+        type=bool,
+        default=False,
         required=False,
         help="Flag for saving summary plot of model results (0 | 1)",
     )
     parser.add_argument(
         "--save_elastic",
-        type=int,
-        default=0,
+        type=bool,
+        default=False,
         required=False,
         help="Flag for saving elastic calculations (0 | 1)",
     )
     parser.add_argument(
         "--reuse_elastic",
-        type=int,
-        default=0,
+        type=bool,
+        default=False,
         required=False,
         help="Flag for reusing elastic calculations (0 | 1)",
     )
     parser.add_argument(
         "--snap_segments",
-        type=int,
-        default=0,
+        type=bool,
+        default=False,
         required=False,
         help="Flag for snapping segments (0 | 1)",
     )

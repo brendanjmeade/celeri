@@ -7,6 +7,14 @@ from celeri.celeri_util import get_newest_run_folder, read_run
 
 
 @pytest.mark.parametrize(
+    "config_file",
+    [
+        "./tests/test_japan_config.json",
+        "./data/config/japan_config.json",
+        "./data/config/wna_config.json",
+    ],
+)
+@pytest.mark.parametrize(
     "solve_type",
     [
         "dense",
@@ -15,12 +23,16 @@ from celeri.celeri_util import get_newest_run_folder, read_run
         "qp2",
     ],
 )
-def test_celeri_solve(solve_type):
+def test_celeri_solve(config_file, solve_type):
+    if solve_type == "qp":
+        if "tests" not in config_file:
+            # Those are very slow
+            pytest.skip()
     subprocess.check_call(
         [
             "python",
             "celeri/scripts/celeri_solve.py",
-            "./tests/test_japan_config.json",
+            config_file,
             "--solve_type",
             solve_type,
         ],
