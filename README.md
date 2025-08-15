@@ -2,13 +2,15 @@
 
 `celeri` is a Python-based package designed to image earthquake cycle activity, including spatial slip deficit/fault coupling across geometrically complex fault systems at large scales. It features:
 
-- Friendly [Jupyter notebook examples](https://github.com/brendanjmeade/celeri/blob/main/notebooks/celeri_dense.ipynb)
 - GUI-based model building with [`celeri_ui`](https://brendanjmeade.github.io/celeri_ui/)
 - Graphical comparisons of model results with [`result_manager`](https://github.com/brendanjmeade/result_manager)
 - 3D visualization of model results with [`parsli`](https://github.com/brendanjmeade/parsli)
 - Fast and automated block closure on the sphere
-- Small memory footprint (via distance-weighted eigenmodes)
-- Blazingly fast elastic calculations (via [Ben Thompson's](https://github.com/tbenthompson) [cutde](https://github.com/tbenthompson/cutde))
+- Large aperture models with locally optimized sphere flattening
+- Implicity smoothing and small memory footprint via distance-weighted eigenmodes
+- Slip rate and coupling bounded solves via [sequential quadratic programming] (https://agupubs.onlinelibrary.wiley.com/doi/10.1029/2025EA004229)
+- MCMC uncertainty estimates
+- Blazingly fast elastic calculations via [Ben Thompson's](https://github.com/tbenthompson) [cutde](https://github.com/tbenthompson/cutde)
 - Easy IO with standard file types (`.csv`, `.json`, `.hdf5`, `.pkl`)
 
 ## Getting started
@@ -38,6 +40,43 @@ To run notebooks from VSCode:
 4. Click on the Python environment selector near the upper right-hand corner of the VSCode window.
 5. Select the "default" shell.
 6. Run the notebook.
+
+## Command line work flow
+#### `celeri_solve.py`
+- Estimate model parameters.
+- A `*_config.json` file is a required argument.
+- Call as:
+
+```bash
+python celeri_solve.py <my_config.json>
+```
+
+- This will create a folder in in the `runs` directory that contains all output files.  New folders are created automatically for each run and are sequentially numbered.
+
+
+#### `celeri_forward.py`
+- Predict surface velocities from model parameters constrained by previous `celeri_solve.py` run.
+- `celeri_forward.py` is batched , so that it never creates large matrices.
+- Call as:
+
+```bash
+python celeri_forward.py <path to output folder> <station file for forward model predictions>
+```
+
+- If you want to run `celeri_forward.py`, you probably want some gridded locations for model evaluation. That's what `create_grid_station.py` is for: Call as:
+
+```bash
+python create_grid_station.py <lon_min> <lat_min> <lon_max> <lat_max> --n_points=<number of grid points>
+```
+
+- where:
+   - `lon_min`: Minimum longitude
+   - `lat_min`: Minimum latitude
+   - `lon_max`: Maximum longitude
+   - `lat_max`: Maximum latitude
+   - `--n_points=<number of grid points>`: Optional. The default value is 100.
+- This produces a station file (named `<UUID>_station.csv`) that can be passed to `celeri_forward.py`.
+
 
 ## Folder structure and file locations for applications
 
@@ -87,7 +126,7 @@ See [maintenance-notes.md](maintenance-notes.md) for current best practices for 
 
 ## Other earthquake cycle kinematics software
 
-We think celeri is pretty great, but there are other alternatives worth considering:
+We think celeri is pretty great, but there are other great kinematic modeling:
 
 - Jack Loveless' and Brendan Meade's MATLAB-based [Blocks](https://github.com/jploveless/Blocks)
 - Rob McCaffrey's Fortran-based [TDEFNODE](https://robmccaffrey.github.io/TDEFNODE/TDEFNODE.html)
