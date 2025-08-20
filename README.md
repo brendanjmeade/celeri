@@ -41,34 +41,34 @@ To run notebooks from VSCode:
 5. Select the "default" shell.
 6. Run the notebook.
 
-## Command line work flow
+## Command line workflow
 
-### `celeri_solve.py`
+### `celeri-solve`
 
 - Estimate model parameters.
 - A `*_config.json` file is a required argument.
-- Call as:
+- With the Python environment activated, run:
 
 ```bash
-python celeri_solve.py <my_config.json>
+celeri-solve <my_config.json>
 ```
 
-- This will create a folder in in the `runs` directory that contains all output files.  New folders are created automatically for each run and are sequentially numbered.
+- This will create a folder in in the `runs/` directory that contains all output files.  New folders are created automatically for each run and are sequentially numbered.
 
-### `celeri_forward.py`
+### `celeri-forward`
 
-- Predict surface velocities from model parameters constrained by previous `celeri_solve.py` run.
-- `celeri_forward.py` is batched , so that it never creates large matrices.
-- Call as:
+- Predict surface velocities from model parameters constrained by previous `celeri-solve` run.
+- `celeri-forward` is batched so that it never creates large matrices.
+- With the Python environment activated, run:
 
 ```bash
-python celeri_forward.py <path to output folder> <station file for forward model predictions>
+celeri-forward <path to output folder> <station file for forward model predictions>
 ```
 
-- If you want to run `celeri_forward.py`, you probably want some gridded locations for model evaluation. That's what `create_grid_station.py` is for: Call as:
+- If you want to run `celeri-forward`, you probably want some gridded locations for model evaluation. That's what `create-grid-station` is for: Call as:
 
 ```bash
-python create_grid_station.py <lon_min> <lat_min> <lon_max> <lat_max> --n_points=<number of grid points>
+create-grid-station <lon_min> <lat_min> <lon_max> <lat_max> --n_points=<number of grid points>
 ```
 
 - where:
@@ -77,7 +77,7 @@ python create_grid_station.py <lon_min> <lat_min> <lon_max> <lat_max> --n_points
   - `lon_max`: Maximum longitude
   - `lat_max`: Maximum latitude
   - `--n_points=<number of grid points>`: Optional. The default value is 100.
-- This produces a station file (named `<UUID>_station.csv`) that can be passed to `celeri_forward.py`.
+- This produces a station file (named `<UUID>_station.csv`) that can be passed to `celeri-forward`.
 
 ## Folder structure and file locations for applications
 
