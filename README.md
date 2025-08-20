@@ -8,7 +8,7 @@
 - Fast and automated block closure on the sphere
 - Large aperture models with locally optimized sphere flattening
 - Implicity smoothing and small memory footprint via distance-weighted eigenmodes
-- Slip rate and coupling bounded solves via [sequential quadratic programming] (https://agupubs.onlinelibrary.wiley.com/doi/10.1029/2025EA004229)
+- Slip rate and coupling bounded solves via [sequential quadratic programming](https://agupubs.onlinelibrary.wiley.com/doi/10.1029/2025EA004229)
 - MCMC uncertainty estimates
 - Blazingly fast elastic calculations via [Ben Thompson's](https://github.com/tbenthompson) [cutde](https://github.com/tbenthompson/cutde)
 - Easy IO with standard file types (`.csv`, `.json`, `.hdf5`, `.pkl`)
@@ -42,7 +42,9 @@ To run notebooks from VSCode:
 6. Run the notebook.
 
 ## Command line work flow
-#### `celeri_solve.py`
+
+### `celeri_solve.py`
+
 - Estimate model parameters.
 - A `*_config.json` file is a required argument.
 - Call as:
@@ -53,8 +55,8 @@ python celeri_solve.py <my_config.json>
 
 - This will create a folder in in the `runs` directory that contains all output files.  New folders are created automatically for each run and are sequentially numbered.
 
+### `celeri_forward.py`
 
-#### `celeri_forward.py`
 - Predict surface velocities from model parameters constrained by previous `celeri_solve.py` run.
 - `celeri_forward.py` is batched , so that it never creates large matrices.
 - Call as:
@@ -70,13 +72,12 @@ python create_grid_station.py <lon_min> <lat_min> <lon_max> <lat_max> --n_points
 ```
 
 - where:
-   - `lon_min`: Minimum longitude
-   - `lat_min`: Minimum latitude
-   - `lon_max`: Maximum longitude
-   - `lat_max`: Maximum latitude
-   - `--n_points=<number of grid points>`: Optional. The default value is 100.
+  - `lon_min`: Minimum longitude
+  - `lat_min`: Minimum latitude
+  - `lon_max`: Maximum longitude
+  - `lat_max`: Maximum latitude
+  - `--n_points=<number of grid points>`: Optional. The default value is 100.
 - This produces a station file (named `<UUID>_station.csv`) that can be passed to `celeri_forward.py`.
-
 
 ## Folder structure and file locations for applications
 
