@@ -132,6 +132,25 @@ project_name/
 
 ![alt text](https://github.com/user-attachments/assets/d9762dce-eb82-4236-87be-d2b76e2516a4)
 
+### Contributing to `celeri`
+
+In order to contribute a GitHub pull request, you'll need to:
+
+1. Set up your Python environment for development
+2. Set up your local Git clone for contributions
+
+If you've installed using pixi as described [above](#installation), your environment is already development-ready. Otherwise, you'll need to ensure `celeri` has been pip-installed in editable mode as per the [alternative installation instructions](alternative-installation.md#installing-for-development).
+
+To reconfigure your local Git clone for contributions, you'll need to [fork the repository](https://github.com/brendanjmeade/celeri/fork) and reconfigure your remotes:
+
+```bash
+# After forking the repository to your GitHub account:
+git remote rename origin upstream
+git remote add origin https://github.com/YOUR_USERNAME/celeri.git
+```
+
+Replace `YOUR_USERNAME` with your GitHub username.
+
 ## Maintenance notes
 
 See [maintenance-notes.md](maintenance-notes.md) for current best practices for maintaining this repository, in particular:
