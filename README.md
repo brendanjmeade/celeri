@@ -15,31 +15,43 @@
 
 ## Getting started
 
-To set up a development conda environment, install [pixi](https://pixi.sh/) and run the following command in the `celeri` folder.
+`celeri` can be run from the command line or from a Jupyter notebook.
+
+A [project folder structure](#folder-structure-and-file-locations-for-applications) containing a `data/` directory, such as the one provided with this repository, is required to use `celeri`.
+
+After [installation](#installation), you can use `celeri-solve` or [other commands](#command-line-workflow) from the command line:
 
 ```bash
-pixi shell
+cd data/config
+celeri-solve some_config.json
 ```
 
-Alternatively, run the following commands in the `celeri` folder.
+You can also run `celeri` from a Jupyter notebook, such as those provided in the `notebooks/` directory.
+
+To run notebooks from VS Code:
+
+1. Ensure that `celeri` is [installed](#installation).
+2. Start VS Code, and ensure that the Jupyter extension is installed.
+3. Open the project folder (e.g. a clone of this repository).
+4. Open to the notebook you'd like to run.
+5. Click on the Python environment selector near the upper right-hand corner of the VS Code window.
+6. If using pixi, select the "default" shell. Otherwise, select the environment in which you installed `celeri`.
+7. Run the notebook.
+
+## Installation
+
+The simplest way to install `celeri` is to use [pixi](https://pixi.sh/).
 
 ```bash
-conda config --prepend channels conda-forge
-conda env create
-conda activate celeri
-pip install --no-use-pep517 -e .
+# Create a clone of this repository into the celeri/ directory
+git clone https://github.com/brendanjmeade/celeri.git
+cd celeri
+pixi shell  # Installs and activates the pre-configured celeri "default" environment
 ```
 
-From here, you can launch model runs with `celeri_solve`.
+Note that `pixi` is project-centric, so the commands only apply if you're within the project directory.
 
-To run notebooks from VSCode:
-
-1. cd to the `celeri` folder.
-2. Use  `code .` to start VSCode from the command line.
-3. Navigate to the notebook you'd like to run.
-4. Click on the Python environment selector near the upper right-hand corner of the VSCode window.
-5. Select the "default" shell.
-6. Run the notebook.
+For details about how to use `pixi` in other configurations, or how to install `celeri` with other tools such as `conda`, `pip`, or `uv`, see [alternative-installation.md](alternative-installation.md).
 
 ## Command line workflow
 
