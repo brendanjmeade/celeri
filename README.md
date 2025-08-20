@@ -35,8 +35,10 @@ To run notebooks from VS Code:
 3. Open the project folder (e.g. a clone of this repository).
 4. Open to the notebook you'd like to run.
 5. Click on the Python environment selector near the upper right-hand corner of the VS Code window.
-6. If using pixi, select the "default" shell. Otherwise, select the environment in which you installed `celeri`.
+6. If using pixi, select the "default" kernel. Otherwise, select the environment in which you installed `celeri`.
 7. Run the notebook.
+
+If VS Code does not show an option for the "default" kernel, ensure that your Jupyter extension is up to date. You may need to restart VS Code after running `pixi shell` for the first time.
 
 ## Installation
 
