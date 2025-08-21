@@ -100,36 +100,16 @@ class Config(BaseModel):
         return self.output_path.name
 
     @classmethod
-    def from_file(cls, file_path: Path | str) -> Config:
+    def from_file(cls, file_name: Path | str) -> Config:
         """Read config from a JSON file and return a Config instance.
 
         Args:
-            file_path: Path to the JSON config file
+            file_name: Path to the JSON config file
 
         Returns:
             Config: A validated Config instance
         """
-        file_path = Path(file_path)
-        with file_path.open("r") as file:
-            config_data = json.load(file)
-
-        base_runs_folder = config_data.get("base_runs_folder", None)
-        if base_runs_folder is None:
-            raise ValueError("`base_runs_folder` missing in config")
-        base_runs_folder = (file_path.parent / Path(base_runs_folder)).resolve()
-        config_data["output_path"] = _get_output_path(base_runs_folder)
-
-        mesh_parameters_file_name = config_data.get("mesh_parameters_file_name", None)
-        if mesh_parameters_file_name is None:
-            mesh_params = []
-        else:
-            mesh_params = MeshConfig.from_file(
-                file_path.parent / mesh_parameters_file_name
-            )
-        config_data["mesh_params"] = mesh_params
-        config_data["file_name"] = file_path.resolve()
-
-        return Config.model_validate(config_data)
+        return get_config(file_name)
 
     @model_validator(mode="after")
     def relative_paths(self) -> Config:
@@ -181,13 +161,31 @@ def _get_output_path(base: Path) -> Path:
         )
 
 
-def get_config(config_file_name) -> Config:
-    """Get the configuration from a JSON file.
+def get_config(file_name: Path | str) -> Config:
+    """Read config from a JSON file and return a Config instance.
 
     Args:
-        config_file_name (str): Path to the JSON file.
+        config_file_name: Path to the JSON config file
 
     Returns:
-        Config: A Config object with the loaded configuration.
+        Config: A validated Config instance
     """
-    return Config.from_file(config_file_name)
+    file_path = Path(file_name)
+    with file_path.open("r") as file:
+        config_data = json.load(file)
+
+    base_runs_folder = config_data.get("base_runs_folder", None)
+    if base_runs_folder is None:
+        raise ValueError("`base_runs_folder` missing in config")
+    base_runs_folder = (file_path.parent / Path(base_runs_folder)).resolve()
+    config_data["output_path"] = _get_output_path(base_runs_folder)
+
+    mesh_parameters_file_name = config_data.get("mesh_parameters_file_name", None)
+    if mesh_parameters_file_name is None:
+        mesh_params = []
+    else:
+        mesh_params = MeshConfig.from_file(file_path.parent / mesh_parameters_file_name)
+    config_data["mesh_params"] = mesh_params
+    config_data["file_name"] = file_path.resolve()
+
+    return Config.model_validate(config_data)
