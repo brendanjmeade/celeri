@@ -13,34 +13,44 @@ class Config(BaseModel):
     # Forbid extra fields when reading from JSON
     model_config = ConfigDict(extra="forbid")
 
-    # Location of the config file itself.
-    # Typically, this class is constructed via `get_config`, which will
-    # automatically populate this field.
-    # If this object is instead created directly, this field will default to
-    # `None`, in which case relative paths will be resolved relative to the
-    # current working directory.
     file_name: Path | None
+    """Location of the config file itself.
 
-    # Base directory for runs
+    Typically, this class is constructed via `get_config`, which will
+    automatically populate this field. If this object is instead created
+    directly, this field will default to `None`, in which case relative paths
+    will be resolved relative to the current working directory.
+    """
+
     base_runs_folder: Path
-    # Where to store the output of estimation runs (subdir of base_runs_folder)
+    """Base directory for runs."""
+
     output_path: Path
-    # Location of the file containing the blocks
+    """Where to store the output of estimation runs (subdir of base_runs_folder)"""
+
     block_file_name: Path
-    # Location of the file containing the station data
+    """Location of the file containing the blocks"""
+
     station_file_name: Path
-    # Location of the file containing the segments
+    """Location of the file containing the station data"""
+
     segment_file_name: Path
-    # Location of the file containing the mogi data (empty for no Mogi sources)
+    """Location of the file containing the segments"""
+
     mogi_file_name: Path | None = None
-    # Location of the sar data (empty for no SAR data)
+    """Location of the file containing the mogi data (empty for no Mogi sources)"""
+
     sar_file_name: Path | None = None
-    # Location of the mesh parameters file
+    """Location of the sar data (empty for no SAR data)"""
+
     mesh_parameters_file_name: Path
-    # Mesh specific parameters for each of the meshes
+    """Location of the mesh parameters file"""
+
     mesh_params: list[MeshConfig]
-    # Location of a hdf5 file to cache elastic operators
+    """Mesh specific parameters for each of the meshes"""
+
     elastic_operator_cache_dir: Path | None = None
+    """Location of a hdf5 file to cache elastic operators"""
 
     # Weights for various constraints and parameters in penalized linear inversion
     block_constraint_weight: float = 1e24
@@ -86,10 +96,9 @@ class Config(BaseModel):
     strain_method: int = 1
     tri_con_weight: int = 1000000
 
-    # Always report data uncertainties as one.
     unit_sigmas: bool = False
+    """Always report data uncertainties as one."""
 
-    # Parameters for SQP solver
     iterative_coupling_bounds_total_percentage_satisfied_target: float | None = None
     iterative_coupling_bounds_max_iter: int | None = None
 
