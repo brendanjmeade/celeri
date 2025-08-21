@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Self
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
@@ -112,7 +113,7 @@ class Config(BaseModel):
         return get_config(file_name)
 
     @model_validator(mode="after")
-    def relative_paths(self) -> Config:
+    def relative_paths(self) -> Self:
         """Convert relative paths to absolute paths based on the config file location."""
         if self.file_name is not None:
             base_dir = self.file_name.parent
