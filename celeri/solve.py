@@ -127,17 +127,23 @@ class Estimation:
         mesh_outputs_list = []
         for i in range(len(meshes)):
             # Get values, using zeros as default when None
-            strike_slip_rate_kinematic = self.tde_strike_slip_rates_kinematic_smooth.get(i, None)
-            dip_slip_rate_kinematic = self.tde_dip_slip_rates_kinematic_smooth.get(i, None)
-            
+            strike_slip_rate_kinematic = (
+                self.tde_strike_slip_rates_kinematic_smooth.get(i, None)
+            )
+            dip_slip_rate_kinematic = self.tde_dip_slip_rates_kinematic_smooth.get(
+                i, None
+            )
+
             strike_slip_coupling = None
             if self.tde_strike_slip_rates_coupling_smooth is not None:
-                strike_slip_coupling = self.tde_strike_slip_rates_coupling_smooth.get(i, None)
-            
+                strike_slip_coupling = self.tde_strike_slip_rates_coupling_smooth.get(
+                    i, None
+                )
+
             dip_slip_coupling = None
             if self.tde_dip_slip_rates_coupling_smooth is not None:
                 dip_slip_coupling = self.tde_dip_slip_rates_coupling_smooth.get(i, None)
-            
+
             # Create arrays of zeros with appropriate length if values are None
             n_elements = len(meshes[i].lon1)
             if strike_slip_rate_kinematic is None:
@@ -148,7 +154,7 @@ class Estimation:
                 strike_slip_coupling = np.zeros(n_elements)
             if dip_slip_coupling is None:
                 dip_slip_coupling = np.zeros(n_elements)
-            
+
             this_mesh_output = {
                 "lon1": meshes[i].lon1,
                 "lat1": meshes[i].lat1,
@@ -167,10 +173,10 @@ class Estimation:
                 "strike_slip_coupling": strike_slip_coupling,
                 "dip_slip_coupling": dip_slip_coupling,
             }
-            
+
             this_mesh_output = pd.DataFrame(this_mesh_output)
             mesh_outputs_list.append(this_mesh_output)
-        
+
         # Concatenate all DataFrames at once, or return empty DataFrame if no meshes
         if mesh_outputs_list:
             mesh_outputs = pd.concat(mesh_outputs_list, ignore_index=True)
