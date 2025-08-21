@@ -1,5 +1,13 @@
 # Quasi-static imaging of earthquake cycle kinematics
 
+[![GitHub stars](https://img.shields.io/github/stars/brendanjmeade/celeri?style=social)](https://github.com/brendanjmeade/celeri)
+[![Tests](https://github.com/brendanjmeade/celeri/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/brendanjmeade/celeri/actions/workflows/test.yml)
+[![Release pipeline](https://github.com/brendanjmeade/celeri/actions/workflows/release.yaml/badge.svg?branch=main)](https://github.com/brendanjmeade/celeri/actions/workflows/release.yaml)
+[![conda-forge](https://img.shields.io/conda/vn/conda-forge/celeri.svg)](https://prefix.dev/channels/conda-forge/packages/celeri)
+[![PyPI version](https://img.shields.io/pypi/v/celeri.svg)](https://pypi.org/project/celeri/)
+[![pixi](https://img.shields.io/badge/pixi-project-4E54E9?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iOTYiIGhlaWdodD0iOTYiIHZpZXdCb3g9IjAgMCA5NiA5NiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iOTYiIGhlaWdodD0iOTYiIHJ4PSIxNiIgZmlsbD0iI0ZGRiIvPjxwYXRoIGQ9Ik00OS45OTkgMTkuMzMzTDUwIDc2LjY2N0M2NS4yNCA3Mi43MzIgNzYuNjY3IDU5LjQ3MSA3Ni42NjcgNDMuMzMzQzc2LjY2NyAyNy4xOTUgNjUuMjQgMTMuOTM0IDUwIDEwTDUwIDYuNjY3MjNFQzMwLjIxNCAxMS4xMjIgMTYuNjY3IDI3LjE5NCAxNi42NjcgNDMuMzMzQzE2LjY2NyA1OS40NzEgMzAuMjE0IDcyLjczMiA1MCA3Ni42NjdMNDkuOTk5IDE5LjMzM1oiIGZpbGw9IiM0RTU0RTkiLz48L3N2Zz4=)](https://pixi.sh)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 `celeri` is a Python-based package designed to image earthquake cycle activity, including spatial slip deficit/fault coupling across geometrically complex fault systems at large scales. It features:
 
 - GUI-based model building with [`celeri_ui`](https://brendanjmeade.github.io/celeri_ui/)
