@@ -28,6 +28,7 @@ dependencies = [
     "numpy",
     "pandas",
     "papermill",
+    "pyarrow",
     "pydantic",
     "pyproj",
     "pytest",
