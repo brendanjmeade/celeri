@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Self
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
@@ -12,31 +13,44 @@ class Config(BaseModel):
     # Forbid extra fields when reading from JSON
     model_config = ConfigDict(extra="forbid")
 
-    # Location of the config file itself
-    # All other paths in this configuration are relative to this file,
-    # or relative to the current working directory if this is None.
     file_name: Path | None
+    """Location of the config file itself.
 
-    # Base directory for runs
+    Typically, this class is constructed via `get_config`, which will
+    automatically populate this field. If this object is instead created
+    directly, this field will default to `None`, in which case relative paths
+    will be resolved relative to the current working directory.
+    """
+
     base_runs_folder: Path
-    # Where to store the output of estimation runs (subdir of base_runs_folder)
+    """Base directory for runs."""
+
     output_path: Path
-    # Location of the file containing the blocks
+    """Where to store the output of estimation runs (subdir of base_runs_folder)"""
+
     block_file_name: Path
-    # Location of the file containing the station data
+    """Location of the file containing the blocks"""
+
     station_file_name: Path
-    # Location of the file containing the segments
+    """Location of the file containing the station data"""
+
     segment_file_name: Path
-    # Location of the file containing the mogi data (empty for no Mogi sources)
+    """Location of the file containing the segments"""
+
     mogi_file_name: Path | None = None
-    # Location of the sar data (empty for no SAR data)
+    """Location of the file containing the mogi data (empty for no Mogi sources)"""
+
     sar_file_name: Path | None = None
-    # Location of the mesh parameters file
+    """Location of the sar data (empty for no SAR data)"""
+
     mesh_parameters_file_name: Path
-    # Mesh specific parameters for each of the meshes
+    """Location of the mesh parameters file"""
+
     mesh_params: list[MeshConfig]
-    # Location of a hdf5 file to cache elastic operators
+    """Mesh specific parameters for each of the meshes"""
+
     elastic_operator_cache_dir: Path | None = None
+    """Location of a hdf5 file to cache elastic operators"""
 
     # Weights for various constraints and parameters in penalized linear inversion
     block_constraint_weight: float = 1e24
@@ -82,10 +96,9 @@ class Config(BaseModel):
     strain_method: int = 1
     tri_con_weight: int = 1000000
 
-    # Always report data uncertainties as one.
     unit_sigmas: bool = False
+    """Always report data uncertainties as one."""
 
-    # Parameters for SQP solver
     iterative_coupling_bounds_total_percentage_satisfied_target: float | None = None
     iterative_coupling_bounds_max_iter: int | None = None
 
@@ -97,39 +110,19 @@ class Config(BaseModel):
         return self.output_path.name
 
     @classmethod
-    def from_file(cls, file_path: Path | str) -> Config:
+    def from_file(cls, file_name: Path | str) -> Config:
         """Read config from a JSON file and return a Config instance.
 
         Args:
-            file_path: Path to the JSON config file
+            file_name: Path to the JSON config file
 
         Returns:
             Config: A validated Config instance
         """
-        file_path = Path(file_path)
-        with file_path.open("r") as file:
-            config_data = json.load(file)
-
-        base_runs_folder = config_data.get("base_runs_folder", None)
-        if base_runs_folder is None:
-            raise ValueError("`base_runs_folder` missing in config")
-        base_runs_folder = (file_path.parent / Path(base_runs_folder)).resolve()
-        config_data["output_path"] = _get_output_path(base_runs_folder)
-
-        mesh_parameters_file_name = config_data.get("mesh_parameters_file_name", None)
-        if mesh_parameters_file_name is None:
-            mesh_params = []
-        else:
-            mesh_params = MeshConfig.from_file(
-                file_path.parent / mesh_parameters_file_name
-            )
-        config_data["mesh_params"] = mesh_params
-        config_data["file_name"] = file_path.resolve()
-
-        return Config.model_validate(config_data)
+        return get_config(file_name)
 
     @model_validator(mode="after")
-    def relative_paths(self) -> Config:
+    def relative_paths(self) -> Self:
         """Convert relative paths to absolute paths based on the config file location."""
         if self.file_name is not None:
             base_dir = self.file_name.parent
@@ -178,13 +171,31 @@ def _get_output_path(base: Path) -> Path:
         )
 
 
-def get_config(config_file_name) -> Config:
-    """Get the configuration from a JSON file.
+def get_config(file_name: Path | str) -> Config:
+    """Read config from a JSON file and return a Config instance.
 
     Args:
-        config_file_name (str): Path to the JSON file.
+        file_name: Path to the JSON config file
 
     Returns:
-        Config: A Config object with the loaded configuration.
+        Config: A validated Config instance
     """
-    return Config.from_file(config_file_name)
+    file_path = Path(file_name)
+    with file_path.open("r") as file:
+        config_data = json.load(file)
+
+    base_runs_folder = config_data.get("base_runs_folder", None)
+    if base_runs_folder is None:
+        raise ValueError("`base_runs_folder` missing in config")
+    base_runs_folder = (file_path.parent / Path(base_runs_folder)).resolve()
+    config_data["output_path"] = _get_output_path(base_runs_folder)
+
+    mesh_parameters_file_name = config_data.get("mesh_parameters_file_name", None)
+    if mesh_parameters_file_name is None:
+        mesh_params = []
+    else:
+        mesh_params = MeshConfig.from_file(file_path.parent / mesh_parameters_file_name)
+    config_data["mesh_params"] = mesh_params
+    config_data["file_name"] = file_path.resolve()
+
+    return Config.model_validate(config_data)
