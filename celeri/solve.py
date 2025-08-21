@@ -605,6 +605,7 @@ class Estimation:
                 )
             import arviz
             import xarray as xr
+
             mcmc_trace = xr.open_datatree(output_dir / "mcmc_trace.zarr")
             mcmc_trace = arviz.from_datatree(mcmc_trace)
         else:

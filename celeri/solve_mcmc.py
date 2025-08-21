@@ -103,7 +103,7 @@ def _model_mesh(model: Model, key: int, mesh: Mesh, rotation, operators: Operato
             @ elastic
         )
         elastic_velocities.append(elastic_velocity)
-    return sum(elastic_velocities)
+    return -sum(elastic_velocities)
 
 
 def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
@@ -145,6 +145,10 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
         rotation = pm.Deterministic("rotation", scale * raw, dims="rotation_param")
 
         rotation_velocity = operators.rotation_to_velocities.copy(order="F") @ rotation
+        rotation_okada_velocity = (
+            -operators.rotation_to_slip_rate_to_okada_to_velocities.copy(order="F")
+            @ rotation
+        )
 
         # mogi
         raw = pm.Normal("mogi_raw", dims="mogi_param")
@@ -164,6 +168,7 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
         mu = (
             block_strain_rate_velocity
             + rotation_velocity
+            + rotation_okada_velocity
             + mogi_velocity
             + elastic_velocity
         )
@@ -227,7 +232,9 @@ def solve_mcmc(
     trace = nutpie.sample(compiled, **kwargs)
 
     operators_tde = build_operators(model, tde=True, eigen=False)
-    state_vector = _state_vector_from_draw(model, operators_tde, trace.mean(["chain", "draw"]))
+    state_vector = _state_vector_from_draw(
+        model, operators_tde, trace.mean(["chain", "draw"])
+    )
     estimation = build_estimation(model, operators_tde, state_vector)
     estimation.mcmc_trace = trace
     return estimation
