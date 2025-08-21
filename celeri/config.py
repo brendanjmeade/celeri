@@ -175,7 +175,7 @@ def get_config(file_name: Path | str) -> Config:
     """Read config from a JSON file and return a Config instance.
 
     Args:
-        config_file_name: Path to the JSON config file
+        file_name: Path to the JSON config file
 
     Returns:
         Config: A validated Config instance
