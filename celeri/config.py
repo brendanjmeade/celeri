@@ -12,9 +12,12 @@ class Config(BaseModel):
     # Forbid extra fields when reading from JSON
     model_config = ConfigDict(extra="forbid")
 
-    # Location of the config file itself
-    # All other paths in this configuration are relative to this file,
-    # or relative to the current working directory if this is None.
+    # Location of the config file itself.
+    # Typically, this class is constructed via `get_config`, which will
+    # automatically populate this field.
+    # If this object is instead created directly, this field will default to
+    # `None`, in which case relative paths will be resolved relative to the
+    # current working directory.
     file_name: Path | None
 
     # Base directory for runs
