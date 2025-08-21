@@ -77,6 +77,8 @@ celeri-solve <my_config.json>
 
 - This will create a folder in the `runs/` directory that contains all output files.  New folders are created automatically for each run and are sequentially numbered.
 
+- All relative paths in `*_config.json` are resolved relative to the directory containing the config file. Absolute paths are used as-is.
+
 ### `celeri-forward`
 
 - Predict surface velocities from model parameters constrained by previous `celeri-solve` run.
