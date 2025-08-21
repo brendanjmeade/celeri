@@ -136,6 +136,22 @@ class SlipRate:
         )
         return oob1 + oob2, total1 + total2
 
+    def out_of_bounds_detailed(
+        self, *, smooth_kinematic: bool, tol: float = 1e-8, limits: SlipRateLimit
+    ) -> tuple[tuple[int, int], tuple[int, int]]:
+        """Count slip rates that violate coupling constraints with detailed output."""
+        oob1, total1 = self.strike_slip.out_of_bounds_coupling(
+            smooth_kinematic=smooth_kinematic,
+            tol=tol,
+            coupling_bounds=limits.strike_slip.coupling_bounds,
+        )
+        oob2, total2 = self.dip_slip.out_of_bounds_coupling(
+            smooth_kinematic=smooth_kinematic,
+            tol=tol,
+            coupling_bounds=limits.dip_slip.coupling_bounds,
+        )
+        return (oob1, total1), (oob2, total2)
+
     def constraint_loss(
         self, *, smooth_kinematic: bool, limits: SlipRateLimit
     ) -> float:
@@ -606,6 +622,22 @@ class Minimizer:
             total += total_mesh
         return oob, total
 
+    def out_of_bounds_detailed(
+        self, *, tol: float = 1e-8
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Count slip rates that violate coupling constraints with detailed output."""
+        oob = np.zeros((len(self.model.meshes), 2), dtype=int)
+        total = np.zeros((len(self.model.meshes), 2), dtype=int)
+        for idx, _ in enumerate(self.model.meshes):
+            oob_mesh, total_mesh = self.slip_rate[idx].out_of_bounds_detailed(
+                smooth_kinematic=self.smooth_kinematic,
+                tol=tol,
+                limits=self.slip_rate_limits[idx],
+            )
+            oob[idx] = oob_mesh
+            total[idx] = total_mesh
+        return oob, total
+
     def constraint_loss(self) -> float:
         loss = 0.0
         for idx, _ in enumerate(self.model.meshes):
@@ -951,6 +983,7 @@ class MinimizerTrace:
     objective_norm2: list[float]
     nonconvex_constraint_loss: list[float]
     out_of_bounds: list[int]
+    out_of_bounds_detailed: list[np.ndarray]
     iter_time: list[float]
     total_time: float
     start_time: float
@@ -967,6 +1000,7 @@ class MinimizerTrace:
         self.objective_norm2 = []
         self.nonconvex_constraint_loss = []
         self.out_of_bounds = []
+        self.out_of_bounds_detailed = []
         self.iter_time = []
         self.total_time = 0.0
         self.start_time = time.time()
@@ -1009,12 +1043,15 @@ class MinimizerTrace:
         self.last_update_time = current_time
 
         self.out_of_bounds.append(self.minimizer.out_of_bounds()[0])
+        self.out_of_bounds_detailed.append(
+            self.minimizer.out_of_bounds_detailed()[0]
+        )
         self.nonconvex_constraint_loss.append(self.minimizer.constraint_loss())
 
     def to_estimation(self) -> Estimation:
         """Convert the minimizer trace to an estimation object."""
         estimation = self.minimizer.to_estimation()
-        estimation.n_out_of_bounds_trace = np.array(self.out_of_bounds)
+        estimation.n_out_of_bounds_trace = np.array(self.out_of_bounds_detailed)[:, :, 0].T
         estimation.trace = self
         return estimation
 
