@@ -3,6 +3,7 @@
 # confusing.
 from __future__ import annotations
 
+import importlib.util
 import timeit
 from dataclasses import dataclass
 from functools import cached_property
@@ -44,6 +45,7 @@ class Estimation:
     state_covariance_matrix: np.ndarray | None
     n_out_of_bounds_trace: np.ndarray | None = None
     trace: Any | None = None
+    mcmc_trace: Any | None = None
 
     @property
     def model(self) -> Model:
@@ -560,12 +562,28 @@ class Estimation:
             self.index.eigen.start_col_eigen[0] : self.index.eigen.end_col_eigen[-1]
         ]
 
+    def mcmc_draw(self, draw: int, chain: int):
+        """Get the MCMC draw for a specific chain and draw number."""
+        if self.mcmc_trace is None:
+            raise ValueError("MCMC trace is not available.")
+
+        from celeri.solve_mcmc import _state_vector_from_draw
+
+        draw = self.mcmc_trace.sel(draw=draw, chain=chain)
+        state_vector = _state_vector_from_draw(self.model, self.operators, draw)
+        estimation = build_estimation(self.model, self.operators, state_vector)
+        estimation.mcmc_trace = self.mcmc_trace
+        return estimation
+
     def to_disk(self, output_dir: str | Path) -> None:
         output_dir = Path(output_dir)
 
         self.operators.to_disk(output_dir / "operators")
+
+        if self.mcmc_trace is not None:
+            self.mcmc_trace.to_datatree().to_zarr(output_dir / "mcmc_trace.zarr")
         # We skip saving the trace, it shouldn't be needed later
-        dataclass_to_disk(self, output_dir, skip={"operators", "trace"})
+        dataclass_to_disk(self, output_dir, skip={"operators", "trace", "mcmc_trace"})
 
     @classmethod
     def from_disk(cls, output_dir: str | Path) -> Estimation:
@@ -573,7 +591,20 @@ class Estimation:
 
         operators = Operators.from_disk(output_dir / "operators")
 
-        extra = {"operators": operators}
+        if (output_dir / "mcmc_trace.zarr").exists():
+            if importlib.util.find_spec("arviz") is None:
+                raise ImportError(
+                    "arviz is required to load MCMC traces. "
+                    "Please install it with `pip install arviz`."
+                )
+            import arviz
+            import xarray as xr
+            mcmc_trace = xr.open_datatree(output_dir / "mcmc_trace.zarr")
+            mcmc_trace = arviz.from_datatree(mcmc_trace)
+        else:
+            mcmc_trace = None
+
+        extra = {"operators": operators, "mcmc_trace": mcmc_trace}
         return dataclass_from_disk(cls, output_dir, extra=extra)
 
 

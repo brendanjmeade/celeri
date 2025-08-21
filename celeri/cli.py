@@ -7,19 +7,19 @@ from celeri.config import Config
 
 def str2bool(v):
     """Convert string to boolean for argparse.
-    
+
     Accepts: 1, 0, true, false, yes, no (case insensitive)
     """
     if v is None:
         return None
     if isinstance(v, bool):
         return v
-    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+    if v.lower() in ("yes", "true", "t", "y", "1"):
         return True
-    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+    elif v.lower() in ("no", "false", "f", "n", "0"):
         return False
     else:
-        raise argparse.ArgumentTypeError(f'Boolean value expected, got: {v}')
+        raise argparse.ArgumentTypeError(f"Boolean value expected, got: {v}")
 
 
 def parse_args() -> argparse.Namespace:
@@ -137,6 +137,20 @@ def parse_args() -> argparse.Namespace:
         required=False,
         help="Interative solver type (lsqr | lsmr)",
     )
+    parser.add_argument(
+        "--mcmc-tune",
+        type=int,
+        default=None,
+        required=False,
+        help="Number of MCMC tuning iterations",
+    )
+    parser.add_argument(
+        "--mcmc-draws",
+        type=int,
+        default=None,
+        required=False,
+        help="Number of MCMC samples to draw",
+    )
 
     return parser.parse_args()
 
@@ -147,11 +161,11 @@ def process_args(config: Config, args: argparse.Namespace):
             args_val = getattr(args, key)
             if args_val is not None:
                 original_val = getattr(config, key)
-                
+
                 # Handle boolean comparison - config may have 1/0 while args has True/False
-                if isinstance(args_val, bool) and isinstance(original_val, (int, float)):
+                if isinstance(args_val, bool) and isinstance(original_val, int | float):
                     original_val = bool(original_val)
-                
+
                 # Only log if the value is actually being changed
                 if original_val != args_val:
                     logger.warning(f"ORIGINAL: config.{key}: {original_val}")
