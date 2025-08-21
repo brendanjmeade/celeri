@@ -164,7 +164,7 @@ Replace `YOUR_USERNAME` with your GitHub username.
 See [maintenance-notes.md](maintenance-notes.md) for current best practices for maintaining this repository, in particular:
 
 - [Cutting a new release](maintenance-notes.md#cutting-a-new-release)
-- [Updating dependencies](maintenance-notes.md#updating-dependencies)
+- [Updating dependencies](maintenance-notes.md#updating-existing-dependencies)
 
 ## Other earthquake cycle kinematics software
 
