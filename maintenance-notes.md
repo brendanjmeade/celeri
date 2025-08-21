@@ -34,11 +34,11 @@ If nothing has been published to PyPI yet, you can redo the same version:
 
 ## Modifying dependencies
 
-Dependency requirements are specified in both `pixi.toml` and `pyproject.toml`. The former defines the conda-forge requirements, while the latter defines the PyPI requirements. Usually package names are the same on conda-forge and PyPI, but occasionally they differ. The easiest way to search for conda-forge packages is <prefix.dev>, while PyPI packages are indexed on <pypi.org>.
+Dependency requirements are specified in both `pixi.toml` and `pyproject.toml`. The former defines the conda-forge requirements, while the latter defines the PyPI requirements. Usually package names are the same on conda-forge and PyPI, but occasionally they differ. The easiest way to search for conda-forge packages is [prefix.dev](https://prefix.dev), while PyPI packages are indexed on [pypi.org](https://pypi.org).
 
 Specific package versions that satisfy the requirements for each platform (Linux, macOS, Windows) are specified in `pixi.lock`. This file is managed by `pixi` and should never be manually edited. After updating **either `pixi.toml` or `pyproject.toml`, you must run `pixi install` to update both your environment and the lockfile**. Also, this lockfile **must be committed to Git** to ensure that the environment is reproducible, otherwise tests in PRs will fail. See [Committing the lockfile and avoiding merge conflicts](#committing-the-lockfile-and-avoiding-merge-conflicts) for more details.
 
-### Updatinng existing dependencies
+### Updating existing dependencies
 
 To update a single package to the latest version, either adjust the corresponding constraint in `pixi.toml` or run
 

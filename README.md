@@ -7,7 +7,7 @@
 - 3D visualization of model results with [`parsli`](https://github.com/brendanjmeade/parsli)
 - Fast and automated block closure on the sphere
 - Large aperture models with locally optimized sphere flattening
-- Implicity smoothing and small memory footprint via distance-weighted eigenmodes
+- Implicit smoothing and a small memory footprint via distance-weighted eigenmodes
 - Slip rate and coupling bounded solves via [sequential quadratic programming](https://agupubs.onlinelibrary.wiley.com/doi/10.1029/2025EA004229)
 - MCMC uncertainty estimates
 - Blazingly fast elastic calculations via [Ben Thompson's](https://github.com/tbenthompson) [cutde](https://github.com/tbenthompson/cutde)
@@ -33,7 +33,7 @@ To run notebooks from VS Code:
 1. Ensure that `celeri` is [installed](#installation).
 2. Start VS Code, and ensure that the Jupyter extension is installed.
 3. Open the project folder (e.g. a clone of this repository).
-4. Open to the notebook you'd like to run.
+4. Open the notebook you'd like to run.
 5. Click on the Python environment selector near the upper right-hand corner of the VS Code window.
 6. If using pixi, select the "default" kernel. Otherwise, select the environment in which you installed `celeri`.
 7. Run the notebook.
@@ -67,7 +67,7 @@ For details about how to use `pixi` in other configurations, or how to install `
 celeri-solve <my_config.json>
 ```
 
-- This will create a folder in in the `runs/` directory that contains all output files.  New folders are created automatically for each run and are sequentially numbered.
+- This will create a folder in the `runs/` directory that contains all output files.  New folders are created automatically for each run and are sequentially numbered.
 
 ### `celeri-forward`
 
@@ -79,7 +79,7 @@ celeri-solve <my_config.json>
 celeri-forward <path to output folder> <station file for forward model predictions>
 ```
 
-- If you want to run `celeri-forward`, you probably want some gridded locations for model evaluation. That's what `create-grid-station` is for: Call as:
+- If you plan to run `celeri-forward`, you may want gridded locations for model evaluation. Use `create-grid-station`:
 
 ```bash
 create-grid-station <lon_min> <lat_min> <lon_max> <lat_max> --n_points=<number of grid points>
@@ -160,7 +160,7 @@ See [maintenance-notes.md](maintenance-notes.md) for current best practices for 
 
 ## Other earthquake cycle kinematics software
 
-We think celeri is pretty great, but there are other great kinematic modeling:
+We think celeri is pretty great, but there are other great kinematic modeling tools:
 
 - Jack Loveless' and Brendan Meade's MATLAB-based [Blocks](https://github.com/jploveless/Blocks)
 - Rob McCaffrey's Fortran-based [TDEFNODE](https://robmccaffrey.github.io/TDEFNODE/TDEFNODE.html)
