@@ -260,7 +260,7 @@ def main():
             for j in range(len(nodetags)):
                 gmsh.model.mesh.setNode(nodetags[j], nodecoords[3 * j : 3 * j + 3], [])
             # Write the mesh for later reading in celeri
-            gmsh.write(filename)
+            gmsh.write(str(filename))
             # gmsh.write(filename + ".geo_unrolled")
             gmsh.finalize()
 
