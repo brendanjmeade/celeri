@@ -34,11 +34,11 @@ There are two main sources for the `celeri` package: conda-forge and PyPI. Depen
 
 In order to provide the most robust experience for installing `celeri` and its dependencies, we recommend installing the [conda-forge package](https://prefix.dev/channels/conda-forge/packages/celeri).
 
-### Pixi
+### pixi
 
-[Pixi](https://pixi.sh/) is a flexible tool for managing conda-based projects. Please refer to the [README](README.md) for typical installation and usage.
+[pixi](https://pixi.sh/) is a flexible tool for managing conda-based projects. Please refer to the [README](README.md) for typical installation and usage.
 
-#### Pixi with global command-line installation
+#### pixi with global command-line installation
 
 If you just want to use `celeri` from the command line, you can install it globally:
 
@@ -48,7 +48,7 @@ pixi global install celeri
 
 Then the `celeri-*` commands can be used without first running `pixi shell`.
 
-#### Pixi with a different project
+#### pixi with a different project
 
 If you want to use `celeri` in a project that's not a clone of this repository, then you must initialize the project directory for pixi and install `celeri`:
 
@@ -63,7 +63,7 @@ Inside this activated shell, you can run `celeri-solve` and other commands as us
 
 After running `pixi shell`, you will be able to select the project's "default" environment in VS Code.
 
-### Conda or mamba
+### conda or mamba
 
 With [conda](https://docs.anaconda.com/miniconda/) or [mamba](https://mamba.readthedocs.io/en/latest/), you can create a new environment with `celeri` and its dependencies:
 

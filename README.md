@@ -9,9 +9,9 @@
 - Large aperture models with locally optimized sphere flattening
 - Implicit smoothing and a small memory footprint via distance-weighted eigenmodes
 - Slip rate and coupling bounded solves via [sequential quadratic programming](https://agupubs.onlinelibrary.wiley.com/doi/10.1029/2025EA004229)
-- MCMC uncertainty estimates
+- Markov chain Monte Carlo (MCMC) uncertainty estimates
 - Blazingly fast elastic calculations via [Ben Thompson's](https://github.com/tbenthompson) [cutde](https://github.com/tbenthompson/cutde)
-- Easy IO with standard file types (`.csv`, `.json`, `.hdf5`, `.pkl`)
+- Easy I/O with standard file types (`.csv`, `.json`, `.hdf5`, `.pkl`)
 
 ## Getting started
 
@@ -28,7 +28,7 @@ celeri-solve some_config.json
 
 You can also run `celeri` from a Jupyter notebook, such as those provided in the `notebooks/` directory.
 
-To run notebooks from VS Code:
+To run notebooks from Visual Studio Code:
 
 1. Ensure that `celeri` is [installed](#installation).
 2. Start VS Code, and ensure that the Jupyter extension is installed.

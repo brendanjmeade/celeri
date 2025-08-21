@@ -4,7 +4,7 @@ This document captures current best practices for maintaining this repository.
 
 ## Cutting a new release
 
-- **Versioning is tag-driven**: The package version is derived from Git tags via `hatch-vcs`. Tags must match `vX.Y.Z` (see semantic versioning at [semantic versioning](https://semver.org/)).
+- **Versioning is tag-driven**: The package version is derived from Git tags via `hatch-vcs`. Tags must match `vX.Y.Z` (see [Semantic Versioning](https://semver.org/)).
 
 1. Open [Releases](https://github.com/brendanjmeade/celeri/releases) and click [Draft a new release](https://github.com/brendanjmeade/celeri/releases/new).
 2. Click "Tag: Select tag" and enter `vX.Y.Z` according to the desired version number. Click "+ Create new tag on publish" to accept the tag.
@@ -23,7 +23,7 @@ You can edit release notes at any time, even after publishing.
 
 #### Failure in the release workflow
 
-- If it looks transient (e.g., temporary credentials), retry the job.
+- Retry the job if that might fix the problem.
 - If a code change is required, you must create a new release because releases are tied to specific commits.
 
 If nothing has been published to PyPI yet, you can redo the same version:
