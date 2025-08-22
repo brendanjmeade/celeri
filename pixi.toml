@@ -49,6 +49,12 @@ pyarrow = ">=20.0.0"
 cartopy = ">=0.25.0"
 shapely = ">=2.1.1"
 
+[target.linux-64.dependencies]
+libblas = { version = "*", build = "*_mkl" }
+
+[target.osx-arm64.dependencies]
+libblas = { version = "*", build = "*_newaccelerate" }
+
 [feature.dev.dependencies]
 pre-commit = "*"
 ruff = "*"
@@ -65,3 +71,6 @@ python = "3.11.*"
 [environments]
 default = ["dev"]
 py311 = ["py311"]
+
+[system-requirements]
+macos = "13.3"
