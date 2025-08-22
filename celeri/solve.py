@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import timeit
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import cached_property
 from pathlib import Path
 from typing import Any
@@ -577,9 +577,7 @@ class Estimation:
 
         draw = self.mcmc_trace.sel(draw=draw, chain=chain)
         state_vector = _state_vector_from_draw(self.model, self.operators, draw)
-        estimation = build_estimation(self.model, self.operators, state_vector)
-        estimation.mcmc_trace = self.mcmc_trace
-        return estimation
+        return replace(self, state_vector=state_vector)
 
     def to_disk(self, output_dir: str | Path) -> None:
         output_dir = Path(output_dir)

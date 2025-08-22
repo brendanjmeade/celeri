@@ -1043,15 +1043,15 @@ class MinimizerTrace:
         self.last_update_time = current_time
 
         self.out_of_bounds.append(self.minimizer.out_of_bounds()[0])
-        self.out_of_bounds_detailed.append(
-            self.minimizer.out_of_bounds_detailed()[0]
-        )
+        self.out_of_bounds_detailed.append(self.minimizer.out_of_bounds_detailed()[0])
         self.nonconvex_constraint_loss.append(self.minimizer.constraint_loss())
 
     def to_estimation(self) -> Estimation:
         """Convert the minimizer trace to an estimation object."""
         estimation = self.minimizer.to_estimation()
-        estimation.n_out_of_bounds_trace = np.array(self.out_of_bounds_detailed)[:, :, 0].T
+        estimation.n_out_of_bounds_trace = np.array(self.out_of_bounds_detailed)[
+            :, :, 0
+        ].T
         estimation.trace = self
         return estimation
 

@@ -1,10 +1,9 @@
 import importlib.util
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import pandas as pd
 
-from celeri.mesh import Mesh
 from celeri.model import Model
 from celeri.operators import Operators, build_operators
 from celeri.solve import Estimation, build_estimation
@@ -18,92 +17,223 @@ else:
     from pymc import Model as PymcModel
 
 
-def _model_mesh(model: Model, key: int, mesh: Mesh, rotation, operators: Operators):
+DIRECTION_IDX = {
+    "strike_slip": slice(None, None, 2),
+    "dip_slip": slice(1, None, 2),
+}
+
+
+def _constrain_field(values, lower: float | None, upper: float | None):
+    """Use a sigmoid or softplus to constrain values to a range."""
+    import pymc as pm
+
+    if lower is not None and upper is not None:
+        scale = upper - lower
+        return pm.math.sigmoid(values) * scale + lower
+    if lower is not None:
+        return pm.math.softplus(values) + lower
+    if upper is not None:
+        return upper - pm.math.softplus(-values)
+    return values
+
+
+def _clean_operator(operator: np.ndarray):
+    return operator.copy(order="F").astype("d")
+
+
+def _get_eigen_modes(
+    model: Model,
+    mesh: int,
+    kind: Literal["strike_slip", "dip_slip"],
+    operators: Operators,
+    out_idx: slice,
+):
+    """Get the eigenmodes and station velocity operator for a mesh and slip type."""
+    assert operators.eigen is not None
+
+    if kind == "strike_slip":
+        n_eigs = model.meshes[mesh].config.n_modes_strike_slip
+        start_idx = 0
+    else:
+        n_eigs = model.meshes[mesh].config.n_modes_dip_slip
+        start_idx = model.meshes[mesh].config.n_modes_strike_slip
+
+    eigenvectors = operators.eigen.eigenvectors_to_tde_slip[mesh][
+        out_idx, start_idx : start_idx + n_eigs
+    ]
+    to_velocity = operators.eigen.eigen_to_velocities[mesh][
+        :, start_idx : start_idx + n_eigs
+    ]
+    return _clean_operator(eigenvectors), _clean_operator(to_velocity)
+
+
+def _coupling_component(
+    model: Model,
+    mesh: int,
+    kind: Literal["strike_slip", "dip_slip"],
+    rotation,
+    operators: Operators,
+    lower: float | None,
+    upper: float | None,
+):
+    """Model elastic slip rate as coupling * kinematic slip rate.
+
+    Return the resulting elastic velocity at the station locations.
+    """
+    assert operators.eigen is not None
+    assert operators.tde is not None
+
+    import pymc as pm
+
+    idx = DIRECTION_IDX[kind]
+
+    if mesh not in operators.rotation_to_tri_slip_rate:
+        raise ValueError(
+            f"Mesh {mesh} does not have well defined kinematic slip rates. "
+            "Coupling constraints cannot be used."
+        )
+
+    operator = _clean_operator(operators.rotation_to_tri_slip_rate[mesh][idx, :])
+    kinematic = operator @ rotation
+    pm.Deterministic(f"kinematic_{mesh}_{kind}", kinematic)
+
+    eigenvectors, _ = _get_eigen_modes(
+        model,
+        mesh,
+        kind,
+        operators,
+        out_idx=idx,
+    )
+    n_eigs = eigenvectors.shape[1]
+    coefs = pm.Normal(f"coupling_coefs_{mesh}_{kind}", mu=0, sigma=10, shape=n_eigs)
+
+    coupling_field = eigenvectors @ coefs
+    coupling_field = _constrain_field(coupling_field, lower, upper)
+    pm.Deterministic(f"coupling_{mesh}_{kind}", coupling_field)
+    elastic = kinematic * coupling_field
+    pm.Deterministic(f"elastic_{mesh}_{kind}", elastic)
+
+    to_station = operators.tde.tde_to_velocities[mesh][:, idx.start : None : 3]
+    to_station = _clean_operator(to_station)
+    elastic_velocity = -to_station @ elastic
+    return elastic_velocity
+
+
+def _elastic_component(
+    model: Model,
+    mesh: int,
+    kind: Literal["strike_slip", "dip_slip"],
+    rotation,
+    operators: Operators,
+    lower: float | None,
+    upper: float | None,
+):
+    """Model elastic slip rate as a linear combination of eigenmodes.
+
+    Return the resulting elastic velocity at the station locations.
+    """
     assert operators.eigen is not None
     assert operators.tde is not None
 
     import pymc as pm
     import pytensor.tensor as pt
 
-    indices = {
-        "strike_slip": slice(None, None, 2),
-        "dip_slip": slice(1, None, 2),
-    }
+    idx = DIRECTION_IDX[kind]
 
-    elastic_velocities = []
+    scale = 0.0
+    for op in operators.eigen.eigen_to_velocities.values():
+        scale += (op**2).mean()
 
-    for name, idx in indices.items():
-        if name == "strike_slip":
-            coupling_limit = mesh.config.coupling_constraints_ss
+    scale = scale / len(operators.eigen.eigen_to_velocities)
+    scale = 1 / np.sqrt(scale)
+
+    eigenvectors, to_velocity = _get_eigen_modes(
+        model,
+        mesh,
+        kind,
+        operators,
+        out_idx=idx,
+    )
+    n_eigs = eigenvectors.shape[1]
+
+    raw = pm.Normal(f"elastic_eigen_raw_{mesh}_{kind}", shape=n_eigs)
+    param = pm.Deterministic(f"elastic_eigen_{mesh}_{kind}", scale * raw)
+    elastic = _constrain_field(eigenvectors @ param, lower, upper)
+    pm.Deterministic(f"elastic_{mesh}_{kind}", elastic)
+
+    # Compute elastic velocity at stations. The operator already
+    # includes a negative sign.
+    if lower is None and upper is None:
+        elastic_velocity = to_velocity @ param
+        # We need to return a station velocity for all three components,
+        # not just north and east.
+        elastic_velocity = pt.concatenate(
+            [
+                elastic_velocity.reshape((len(model.station), 2)),
+                np.zeros((len(model.station), 1)),
+            ],
+            axis=-1,
+        ).ravel()
+    else:
+        to_station = operators.tde.tde_to_velocities[mesh][:, idx.start : None : 3]
+        to_station = _clean_operator(to_station)
+        elastic_velocity = -to_station @ elastic
+
+    return elastic_velocity
+
+
+def _mesh_component(
+    model: Model,
+    mesh: int,
+    rotation,
+    operators: Operators,
+):
+    rates = []
+
+    for kind in ["strike_slip", "dip_slip"]:
+        if kind == "strike_slip":
+            coupling_limit = model.meshes[mesh].config.coupling_constraints_ss
+            rate_limit = model.meshes[mesh].config.elastic_constraints_ss
         else:
-            coupling_limit = mesh.config.coupling_constraints_ds
+            coupling_limit = model.meshes[mesh].config.coupling_constraints_ds
+            rate_limit = model.meshes[mesh].config.elastic_constraints_ds
 
-        if coupling_limit.lower is None:
-            scale = 0.0
-            for op in operators.eigen.eigen_to_velocities.values():
-                scale += (op**2).mean()
+        has_rate_limit = rate_limit.lower is not None or rate_limit.upper is not None
+        has_coupling_limit = (
+            coupling_limit.lower is not None or coupling_limit.upper is not None
+        )
 
-            scale = scale / len(operators.eigen.eigen_to_velocities)
-            scale = 1 / np.sqrt(scale)
-
-            # TODO split dip slip and strike slip
-            if name == "dip_slip":
-                continue
-
-            operator = operators.eigen.eigen_to_velocities[key]
-            raw = pm.Normal(f"elastic_eigen_raw_{key}_{name}", shape=operator.shape[-1])
-            param = pm.Deterministic(f"elastic_eigen_{key}_{name}", scale * raw)
-            velocity = operator.copy(order="F") @ param
-            elastic_velocities.append(
-                pt.concatenate(
-                    [
-                        velocity.reshape((len(model.station), 2)),
-                        np.zeros((len(model.station), 1)),
-                    ],
-                    axis=-1,
-                ).ravel(),
-            )
-            # TODO handle lower and upper elastic bound
-            pm.Deterministic(
-                f"elastic_{key}_{name}",
-                operators.eigen.eigenvectors_to_tde_slip[key].copy(order="F") @ param,
-            )
-            continue
-        if coupling_limit.upper is None:
+        if has_rate_limit and has_coupling_limit:
             raise ValueError(
-                "Must provide either both lower and upper bounds "
-                f"for coupling constraints for mesh {key} {name} or none."
+                "Cannot have both rate and coupling constraints "
+                f"for mesh {mesh} {kind}."
             )
 
-        operator = operators.rotation_to_tri_slip_rate[key]
-        kinematic = (operator.copy(order="F") @ rotation)[idx]
-        pm.Deterministic(f"kinematic_{key}_{name}", kinematic)
-        n_coefs = operators.eigen.eigenvectors_to_tde_slip[key][idx].shape[1] // 2
-        coefs = pm.Normal(f"coupling_coefs_{key}_{name}", mu=0, sigma=10, shape=n_coefs)
-        lower = coupling_limit.lower
-        upper = coupling_limit.upper
-        coupling_field = (
-            pm.math.sigmoid(
-                operators.eigen.eigenvectors_to_tde_slip[key][::2, :n_coefs].copy(
-                    order="F"
+        if has_coupling_limit:
+            rates.append(
+                _coupling_component(
+                    model,
+                    mesh,
+                    kind,
+                    rotation,
+                    operators,
+                    lower=coupling_limit.lower,
+                    upper=coupling_limit.upper,
                 )
-                @ coefs
             )
-            * (upper - lower)
-            + lower
-        )
-        pm.Deterministic(f"coupling_{key}_{name}", coupling_field)
-        elastic = kinematic * coupling_field
-        pm.Deterministic(f"elastic_{key}_{name}", elastic)
-
-        elastic_velocity = (
-            operators.tde.tde_to_velocities[key][:, slice(idx.start, None, 3)].copy(
-                order="F"
+        else:
+            rates.append(
+                _elastic_component(
+                    model,
+                    mesh,
+                    kind,
+                    rotation,
+                    operators,
+                    lower=rate_limit.lower,
+                    upper=rate_limit.upper,
+                )
             )
-            @ elastic
-        )
-        elastic_velocities.append(elastic_velocity)
-    return -sum(elastic_velocities)
+    return sum(rates)
 
 
 def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
@@ -158,10 +288,8 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
         mogi_velocity = operators.mogi_to_velocities.copy(order="F") @ mogi
 
         elastic_velocities = []
-        for key, mesh in enumerate(model.meshes):
-            elastic_velocities.append(
-                _model_mesh(model, key, mesh, rotation, operators)
-            )
+        for key, _ in enumerate(model.meshes):
+            elastic_velocities.append(_mesh_component(model, key, rotation, operators))
 
         elastic_velocity = sum(elastic_velocities)
 
