@@ -91,7 +91,7 @@ def get_logger(config: Config):
 
         # Format the location/timestamp line
         location_line = f"- {location} - {time_str}"
-        
+
         # For ERROR and CRITICAL levels, include exception info if available
         if level in ["ERROR", "CRITICAL"] and record["exception"]:
             exc_type = record["exception"].type
@@ -102,7 +102,7 @@ def get_logger(config: Config):
             content = Text(message_str, style="white")
             content.append("\n")
             content.append(location_line, style="dim white")
-            
+
             # Format the exception with full traceback if available
             if exc_traceback:
                 import traceback as tb
@@ -114,7 +114,10 @@ def get_logger(config: Config):
                 content.append(tb_lines, style="dim white")
             else:
                 content.append("\n")
-                content.append(f"{exc_type.__name__ if exc_type else 'Unknown'}: {exc_value}", style="dim white")
+                content.append(
+                    f"{exc_type.__name__ if exc_type else 'Unknown'}: {exc_value}",
+                    style="dim white",
+                )
         else:
             # Build normal message with white message and gray location/timestamp
             content = Text(message_str, style="white")
