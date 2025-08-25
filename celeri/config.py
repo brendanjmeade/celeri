@@ -102,6 +102,10 @@ class Config(BaseModel):
     iterative_coupling_bounds_total_percentage_satisfied_target: float | None = None
     iterative_coupling_bounds_max_iter: int | None = None
 
+    # Parameters of mcmc
+    mcmc_tune: int | None = None
+    mcmc_draws: int | None = None
+
     # Only in tsts/global_config.json?
     mesh_file_names: list[Path] | None = None
 

@@ -699,36 +699,73 @@ def plot_matrix_abs_log(matrix):
     plt.show()
 
 
-def plot_meshes(meshes: list, fill_value: np.ndarray, ax):
+def plot_meshes(
+    meshes: list,
+    fill_value: np.ndarray,
+    ax,
+    *,
+    label="slip (mm/yr)",
+    vmin=None,
+    vmax=None,
+    cmap="rainbow",
+    center=None,
+):
+    import matplotlib.colors as colors
+
+    if not ax:
+        ax = plt.gca()
+
+    if vmin is None:
+        vmin = np.min(fill_value)
+    if vmax is None:
+        vmax = np.max(fill_value)
+
+    # Create a collection for each mesh
+    collection_list = []
+    # Track the starting index in fill_value for each mesh
+    fill_index = 0
+
+    if center is not None:
+        norm = colors.TwoSlopeNorm(vmin=vmin, vcenter=center, vmax=vmax)
+    else:
+        norm = colors.Normalize(vmin=vmin, vmax=vmax)
+
     for i in range(len(meshes)):
         x_coords = meshes[i].points[:, 0]
         y_coords = meshes[i].points[:, 1]
         vertex_array = np.asarray(meshes[i].verts)
 
-        if not ax:
-            ax = plt.gca()
         xy = np.c_[x_coords, y_coords]
         verts = xy[vertex_array]
         pc = matplotlib.collections.PolyCollection(
-            verts, edgecolor="none", cmap="rainbow"
+            # verts, edgecolor="none", cmap="rainbow"
+            verts,
+            edgecolor="none",
+            cmap=cmap,
+            norm=norm,
         )
-        if i == 0:
-            fill_start = 0
-            fill_end = meshes[i].n_tde
-        else:
-            fill_start = fill_end
-            fill_end = fill_start + meshes[i].n_tde
-        pc.set_array(fill_value[fill_start:fill_end])
+
+        # Get the values for this mesh and update the index
+        mesh_values = fill_value[fill_index : fill_index + meshes[i].n_tde]
+        fill_index += meshes[i].n_tde
+
+        pc.set_array(mesh_values)
+        pc.set_clim(vmin, vmax)  # Set the color limits for all collections
         ax.add_collection(pc)
-        ax.autoscale()
-        plt.colorbar(pc, label="slip (mm/yr)")
+        collection_list.append(pc)
 
         # Add mesh edge
         x_edge = x_coords[meshes[i].ordered_edge_nodes[:, 0]]
         y_edge = y_coords[meshes[i].ordered_edge_nodes[:, 0]]
         x_edge = np.append(x_edge, x_coords[meshes[0].ordered_edge_nodes[0, 0]])
         y_edge = np.append(y_edge, y_coords[meshes[0].ordered_edge_nodes[0, 0]])
-        plt.plot(x_edge, y_edge, color="black", linewidth=1)
+        ax.plot(x_edge, y_edge, color="black", linewidth=1)
+
+    # Create a single colorbar for all collections
+    if collection_list:
+        plt.colorbar(collection_list[0], label=label, ax=ax)
+
+    ax.autoscale()
 
 
 def plot_segment_displacements(

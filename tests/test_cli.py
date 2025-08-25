@@ -21,6 +21,7 @@ from celeri.celeri_util import get_newest_run_folder, read_run
         "dense_no_meshes",
         "qp",
         "qp2",
+        "mcmc",
     ],
 )
 def test_celeri_solve(config_file, solve_type):
@@ -35,6 +36,10 @@ def test_celeri_solve(config_file, solve_type):
             config_file,
             "--solve_type",
             solve_type,
+            "--mcmc-tune",
+            "5",
+            "--mcmc-draws",
+            "5",
         ],
     )
 

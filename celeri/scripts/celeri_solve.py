@@ -35,6 +35,10 @@ def main():
         # Bounded solve
         logger.info("Quadratic programming with KL modes")
         estimation = celeri.optimize.solve_sqp2(model)
+    elif config.solve_type == "mcmc":
+        # MCMC solve
+        logger.info("MCMC solve")
+        estimation = celeri.solve_mcmc(model)
     else:
         raise ValueError(f"Unknown solve type: {config.solve_type}")
 
