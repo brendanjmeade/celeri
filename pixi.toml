@@ -38,6 +38,9 @@ tqdm = ">=4.67.1"
 polars = ">=1.27.1"
 ipykernel = ">=6.29.5"
 seaborn = ">=0.13.2"
+nutpie = ">=0.15.2"
+pymc = ">=5.25.1"
+numba = ">=0.61.2"
 papermill = ">=2.6.0"
 python-gmsh = ">=4.13.1"
 zarr = ">=3.0.0"
@@ -45,6 +48,12 @@ pydantic = ">=2.11.6"
 pyarrow = ">=20.0.0"
 cartopy = ">=0.25.0"
 shapely = ">=2.1.1"
+
+[target.linux-64.dependencies]
+libblas = { version = "*", build = "*_mkl" }
+
+[target.osx-arm64.dependencies]
+libblas = { version = "*", build = "*_newaccelerate" }
 
 [feature.dev.dependencies]
 pre-commit = "*"
@@ -62,3 +71,6 @@ python = "3.11.*"
 [environments]
 default = ["dev"]
 py311 = ["py311"]
+
+[system-requirements]
+macos = "13.3"

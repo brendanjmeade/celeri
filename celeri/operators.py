@@ -359,7 +359,7 @@ class Operators:
             raise ValueError(f"No kinematic velocities for mesh {mesh_idx}.")
         slip_rate = (
             self.rotation_to_tri_slip_rate[mesh_idx]
-            @ parameters[0 : 3 * self.index.n_blocks]
+            @ parameters[self.index.start_block_col : self.index.end_block_col]
         )
         if smooth:
             if mesh_idx not in self.smoothing_matrix:

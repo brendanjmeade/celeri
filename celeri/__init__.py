@@ -82,8 +82,10 @@ from celeri.solve import (
     assemble_and_solve_dense,
     build_and_solve_dense,
     build_and_solve_dense_no_meshes,
+    build_estimation,
     lsqlin_qp,
 )
+from celeri.solve_mcmc import solve_mcmc
 from celeri.spatial import (
     get_okada_displacements,
     get_shared_sides,
@@ -111,6 +113,7 @@ __all__ = [
     "assign_block_labels",
     "build_and_solve_dense",
     "build_and_solve_dense_no_meshes",
+    "build_estimation",
     "build_model",
     "build_operators",
     "create_output_folder",
@@ -176,6 +179,7 @@ __all__ = [
     "process_station",
     "read_data",
     "read_run",
+    "solve_mcmc",
     "solve_sqp",
     "solve_sqp2",
     "station_row_keep",

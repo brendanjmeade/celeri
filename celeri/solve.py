@@ -3,8 +3,9 @@
 # confusing.
 from __future__ import annotations
 
+import importlib.util
 import timeit
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import cached_property
 from pathlib import Path
 from typing import Any
@@ -44,6 +45,7 @@ class Estimation:
     state_covariance_matrix: np.ndarray | None
     n_out_of_bounds_trace: np.ndarray | None = None
     trace: Any | None = None
+    mcmc_trace: Any | None = None
 
     @property
     def model(self) -> Model:
@@ -125,17 +127,23 @@ class Estimation:
         mesh_outputs_list = []
         for i in range(len(meshes)):
             # Get values, using zeros as default when None
-            strike_slip_rate_kinematic = self.tde_strike_slip_rates_kinematic_smooth.get(i, None)
-            dip_slip_rate_kinematic = self.tde_dip_slip_rates_kinematic_smooth.get(i, None)
-            
+            strike_slip_rate_kinematic = (
+                self.tde_strike_slip_rates_kinematic_smooth.get(i, None)
+            )
+            dip_slip_rate_kinematic = self.tde_dip_slip_rates_kinematic_smooth.get(
+                i, None
+            )
+
             strike_slip_coupling = None
             if self.tde_strike_slip_rates_coupling_smooth is not None:
-                strike_slip_coupling = self.tde_strike_slip_rates_coupling_smooth.get(i, None)
-            
+                strike_slip_coupling = self.tde_strike_slip_rates_coupling_smooth.get(
+                    i, None
+                )
+
             dip_slip_coupling = None
             if self.tde_dip_slip_rates_coupling_smooth is not None:
                 dip_slip_coupling = self.tde_dip_slip_rates_coupling_smooth.get(i, None)
-            
+
             # Create arrays of zeros with appropriate length if values are None
             n_elements = len(meshes[i].lon1)
             if strike_slip_rate_kinematic is None:
@@ -146,7 +154,7 @@ class Estimation:
                 strike_slip_coupling = np.zeros(n_elements)
             if dip_slip_coupling is None:
                 dip_slip_coupling = np.zeros(n_elements)
-            
+
             this_mesh_output = {
                 "lon1": meshes[i].lon1,
                 "lat1": meshes[i].lat1,
@@ -165,10 +173,10 @@ class Estimation:
                 "strike_slip_coupling": strike_slip_coupling,
                 "dip_slip_coupling": dip_slip_coupling,
             }
-            
+
             this_mesh_output = pd.DataFrame(this_mesh_output)
             mesh_outputs_list.append(this_mesh_output)
-        
+
         # Concatenate all DataFrames at once, or return empty DataFrame if no meshes
         if mesh_outputs_list:
             mesh_outputs = pd.concat(mesh_outputs_list, ignore_index=True)
@@ -560,12 +568,26 @@ class Estimation:
             self.index.eigen.start_col_eigen[0] : self.index.eigen.end_col_eigen[-1]
         ]
 
+    def mcmc_draw(self, draw: int, chain: int):
+        """Get the MCMC draw for a specific chain and draw number."""
+        if self.mcmc_trace is None:
+            raise ValueError("MCMC trace is not available.")
+
+        from celeri.solve_mcmc import _state_vector_from_draw
+
+        draw = self.mcmc_trace.sel(draw=draw, chain=chain)
+        state_vector = _state_vector_from_draw(self.model, self.operators, draw)
+        return replace(self, state_vector=state_vector)
+
     def to_disk(self, output_dir: str | Path) -> None:
         output_dir = Path(output_dir)
 
         self.operators.to_disk(output_dir / "operators")
+
+        if self.mcmc_trace is not None:
+            self.mcmc_trace.to_datatree().to_zarr(output_dir / "mcmc_trace.zarr")
         # We skip saving the trace, it shouldn't be needed later
-        dataclass_to_disk(self, output_dir, skip={"operators", "trace"})
+        dataclass_to_disk(self, output_dir, skip={"operators", "trace", "mcmc_trace"})
 
     @classmethod
     def from_disk(cls, output_dir: str | Path) -> Estimation:
@@ -573,7 +595,21 @@ class Estimation:
 
         operators = Operators.from_disk(output_dir / "operators")
 
-        extra = {"operators": operators}
+        if (output_dir / "mcmc_trace.zarr").exists():
+            if importlib.util.find_spec("arviz") is None:
+                raise ImportError(
+                    "arviz is required to load MCMC traces. "
+                    "Please install it with `pip install arviz`."
+                )
+            import arviz
+            import xarray as xr
+
+            mcmc_trace = xr.open_datatree(output_dir / "mcmc_trace.zarr")
+            mcmc_trace = arviz.from_datatree(mcmc_trace)
+        else:
+            mcmc_trace = None
+
+        extra = {"operators": operators, "mcmc_trace": mcmc_trace}
         return dataclass_from_disk(cls, output_dir, extra=extra)
 
 
