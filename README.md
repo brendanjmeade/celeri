@@ -79,7 +79,7 @@ celeri-solve <my_config.json>
 
 - All relative paths in `*_config.json` are resolved relative to the directory containing the config file. Absolute paths are used as-is.
 
-- NOTE: In the current release several warnings/errors will be thrown but they do not .  These result from: https://github.com/numpy/numpy/issues/28687.  These are patched in numpy 2.3 and will go away once Numba releases with https://github.com/numba/numba/pull/10110 merged.
+- **NOTE: In the current release several warnings/errors will be thrown but they do not .  These result from: https://github.com/numpy/numpy/issues/28687.  These are patched in numpy 2.3 and will go away once Numba releases with https://github.com/numba/numba/pull/10110 merged.**
 
 ### `celeri-forward`
 
