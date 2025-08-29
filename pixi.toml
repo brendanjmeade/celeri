@@ -21,6 +21,7 @@ gmsh = ">=4.13.1,<5"
 h5py = ">=3.13.0"
 ipympl = ">=0.9.7"
 jupyterlab = ">=4.4.0"
+loguru = ">=0.7.2"
 lxml = ">=5.3.2"
 matplotlib = ">=3.9.4"
 meshio = ">=5.3.5"
@@ -62,7 +63,6 @@ ruff = "*"
 [pypi-dependencies]
 okada-wrapper = ">=24.6.15"
 celeri = { path = ".", editable = true }
-loguru = ">=0.7.2"
 
 [feature.py311.dependencies]
 python = "3.11.*"
