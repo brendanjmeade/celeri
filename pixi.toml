@@ -7,6 +7,9 @@ name = "celeri"
 platforms = ["linux-64", "osx-64", "osx-arm64", "win-64"]
 channels = ["conda-forge"]
 
+[tasks]
+pixi-global-install-shim-hack = "python -m celeri.scripts.pixi_global_install_shim_hack"
+
 [dependencies]
 addict = ">=2.4.0"
 colorcet = ">=3.1.0"
