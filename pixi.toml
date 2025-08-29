@@ -60,7 +60,6 @@ pre-commit = "*"
 ruff = "*"
 
 [pypi-dependencies]
-ismember = ">=1.0.4"
 okada-wrapper = ">=24.6.15"
 celeri = { path = ".", editable = true }
 loguru = ">=0.7.2"
