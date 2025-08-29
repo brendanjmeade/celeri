@@ -59,7 +59,16 @@ cd celeri
 pixi shell  # Installs and activates the pre-configured celeri "default" environment
 ```
 
-Note that `pixi` is project-centric, so the commands only apply if you're within the project directory.
+Note that `pixi` is project-centric, so `pixi` commands only apply if you're within the project directory.
+
+Pixi's support for global project installs is currently very preliminary.
+In the meantime, running the following command will create shims for all your favorite celeri commands like `celeri-solve` so you can run them from anywhere:
+
+```bash
+pixi run pixi-global-install-shim-hack
+```
+
+You can remove these shims by adding the `--remove` flag to this command.
 
 For details about how to use `pixi` in other configurations, or how to install `celeri` with other tools such as `conda`, `pip`, or `uv`, see [alternative-installation.md](alternative-installation.md).
 
