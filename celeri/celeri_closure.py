@@ -248,6 +248,23 @@ def _debug_plot_polygons_and_error(
                 zorder=30,
             )
 
+            # Annotate traversal order along the in-progress path
+            try:
+                nsteps = len(cur_edges)
+            except Exception:
+                nsteps = 0
+            if vs_cur.shape[0] >= 2 and nsteps > 0:
+                for j_step in range(min(nsteps, vs_cur.shape[0]-1)):
+                    mx = 0.5*(vs_cur[j_step, 0] + vs_cur[j_step+1, 0])
+                    my = 0.5*(vs_cur[j_step, 1] + vs_cur[j_step+1, 1])
+                    ax.text(
+                        mx, my, str(j_step+1),
+                        color='black', fontsize=7,
+                        ha='center', va='center', zorder=31,
+                        bbox=dict(facecolor='white', edgecolor='none', alpha=0.6, boxstyle='round,pad=0.15')
+                    )
+
+
     # Offending half-edge and its endpoints
     try:
         v1_idx, v2_idx = closure.edge_idx_to_vertex_idx[err_half_edge_idx // 2]
