@@ -1,4 +1,6 @@
 from dataclasses import dataclass
+import os
+import time
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -170,6 +172,152 @@ def find_longitude_interval(lon):
             "surprising error that suggests a malformed polygon."
         )
     return final_interval, inverse
+
+
+def _vertices_from_half_edges(closure, half_edge_list):
+    """Return Nx2 array of (lon, lat) for a sequence of half-edges.
+
+    The order follows the traversal convention used later in this file:
+    for each half-edge, append the second vertex in the oriented pair.
+    """
+    seq = []
+    for he in half_edge_list:
+        v1_idx, v2_idx = closure.edge_idx_to_vertex_idx[he // 2]
+        if he % 2 == 0:
+            v2_idx, v1_idx = v1_idx, v2_idx
+        seq.append(closure.vertices[v2_idx])
+    if len(seq) > 0:
+        seq.append(seq[0])
+    return np.array(seq) if len(seq) > 0 else np.empty((0, 2))
+
+
+def _debug_plot_polygons_and_error(
+    closure, polygon_edge_idxs, err_half_edge_idx, reason=""
+):
+    """Plot completed polygons, the current in-progress path, and the offending half-edge.
+
+    - Completed polygons: blue lines
+    - Current path (last in polygon_edge_idxs): orange line
+    - Offending half-edge: red line with endpoints marked and annotated
+    - All vertices: small grey dots
+
+    Saves a PNG under ./debug_plots and also shows a non-blocking window.
+    """
+    os.makedirs("debug_plots", exist_ok=True)
+
+    fig, ax = plt.subplots(figsize=(9, 9))
+
+    # Plot all vertices for context
+    ax.scatter(
+        closure.vertices[:, 0],
+        closure.vertices[:, 1],
+        s=6,
+        color="0.5",
+        alpha=0.6,
+        label="All vertices",
+        zorder=10,
+    )
+
+    # Completed polygons (all but the last path being traced)
+    for i, poly_edges in enumerate(polygon_edge_idxs[:-1]):
+        vs = _vertices_from_half_edges(closure, poly_edges)
+        if vs.size > 0:
+            ax.plot(
+                vs[:, 0],
+                vs[:, 1],
+                "-",
+                color="tab:blue",
+                linewidth=1.0,
+                alpha=0.9,
+                label="Completed polygons" if i == 0 else "",
+                zorder=20,
+            )
+
+    # Current in-progress path
+    if len(polygon_edge_idxs) > 0:
+        cur_edges = polygon_edge_idxs[-1]
+        vs_cur = _vertices_from_half_edges(closure, cur_edges)
+        if vs_cur.size > 0:
+            ax.plot(
+                vs_cur[:, 0],
+                vs_cur[:, 1],
+                "-",
+                color="orange",
+                linewidth=2.0,
+                label="In-progress path",
+                zorder=30,
+            )
+
+    # Offending half-edge and its endpoints
+    try:
+        v1_idx, v2_idx = closure.edge_idx_to_vertex_idx[err_half_edge_idx // 2]
+        if err_half_edge_idx % 2 == 0:
+            v2_idx, v1_idx = v1_idx, v2_idx
+        p1 = closure.vertices[v1_idx]
+        p2 = closure.vertices[v2_idx]
+
+        ax.plot(
+            [p1[0], p2[0]],
+            [p1[1], p2[1]],
+            "-",
+            color="red",
+            linewidth=2.0,
+            label=f"Offending half-edge {err_half_edge_idx}",
+            zorder=40,
+        )
+        ax.plot(p1[0], p1[1], marker="x", color="red", ms=8, zorder=45)
+        ax.plot(p2[0], p2[1], marker="x", color="red", ms=8, zorder=45)
+        ax.text(
+            p1[0],
+            p1[1],
+            f"v={v1_idx}\n({p1[0]:.6f},{p1[1]:.6f})",
+            color="red",
+            fontsize=7,
+            ha="left",
+            va="bottom",
+            zorder=50,
+        )
+        ax.text(
+            p2[0],
+            p2[1],
+            f"v={v2_idx}\n({p2[0]:.6f},{p2[1]:.6f})",
+            color="red",
+            fontsize=7,
+            ha="right",
+            va="top",
+            zorder=50,
+        )
+    except Exception as _:
+        # Be resilient to any plotting lookups failing; still show what we can.
+        pass
+
+    ax.set_aspect("equal", adjustable="box")
+    ax.grid(True, alpha=0.3)
+    ttl = "Closure Debug"
+    if reason:
+        ttl += f" — {reason}"
+    ax.set_title(ttl)
+    ax.set_xlabel("Longitude")
+    ax.set_ylabel("Latitude")
+
+    # Deduplicate legend labels
+    handles, labels = ax.get_legend_handles_labels()
+    seen = set()
+    unique = [
+        (h, l) for h, l in zip(handles, labels) if not (l in seen or seen.add(l)) and l
+    ]
+    if unique:
+        ax.legend(*zip(*unique), fontsize=8)
+
+    ts = int(time.time())
+    out_path = os.path.join("debug_plots", f"closure_debug_{ts}.png")
+    try:
+        fig.savefig(out_path, dpi=300)
+        print(f"Saved closure debug plot to {out_path}")
+    except Exception as _:
+        pass
+    plt.show(block=True)
+    plt.pause(0.1)
 
 
 @dataclass
@@ -521,26 +669,50 @@ def decompose_segments_into_graph(np_segments):
 def traverse_polygons(closure, right_half_edge):
     # Which polygon lies to the right of the half edge.
     right_polygon = np.full(closure.n_edges() * 2, -1, dtype=int)
+    # print(f"{len(right_polygon)}")
 
     polygon_edge_idxs = []
 
     for half_edge_idx in range(2 * closure.n_edges()):
+        print(f"{half_edge_idx=}")
         # If this half edge is already in a polygon, skip it.
         if right_polygon[half_edge_idx] >= 0:
             continue
 
         # Follow a new polygon around its loop by indexing the right_half_edge array.
         polygon_idx = len(polygon_edge_idxs)
+        print(f"{polygon_idx=}")
+
         polygon_edge_idxs.append([half_edge_idx])
+
+        print(" ")
+        print(f"{polygon_edge_idxs=}")
+        print(" ")
 
         next_idx = right_half_edge[half_edge_idx]
         while next_idx != half_edge_idx:
             # Step 1) Check that we don't have errors!
             if next_idx in polygon_edge_idxs[-1]:
+                _debug_plot_polygons_and_error(
+                    closure,
+                    polygon_edge_idxs,
+                    next_idx,
+                    reason="unexpected loop found in polygon traversal",
+                )
                 raise Exception(
                     "Geometry problem: unexpected loop found in polygon traversal."
                 )
             if right_polygon[next_idx] != -1:
+                print(f"{closure=}")
+                print(f"{right_polygon=}")
+                print(f"{len(right_polygon)=}")
+                print(f"{next_idx=}")
+                _debug_plot_polygons_and_error(
+                    closure,
+                    polygon_edge_idxs,
+                    next_idx,
+                    reason="next half-edge already assigned",
+                )
                 raise Exception("Geometry problem: write a better error message here")
 
             # Step 2) Record the half edge
