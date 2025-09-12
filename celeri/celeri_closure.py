@@ -207,6 +207,51 @@ def _debug_plot_polygons_and_error(
 
     fig, ax = plt.subplots(figsize=(9, 9))
 
+    # Plot all line segments first as thin black lines for context
+    try:
+        for e in range(closure.n_edges()):
+            v1_idx, v2_idx = closure.edge_idx_to_vertex_idx[e]
+            p1 = closure.vertices[v1_idx]
+            p2 = closure.vertices[v2_idx]
+            ax.plot(
+                [p1[0], p2[0]],
+                [p1[1], p2[1]],
+                "-",
+                color="black",
+                linewidth=0.5,
+                zorder=5,
+                label="All segments" if e == 0 else "",
+            )
+
+            # Add original segment index at midpoint in blue
+            # try:
+            #     dx = p2[0] - p1[0]
+            #     if dx > 180:
+            #         dx -= 360
+            #     elif dx < -180:
+            #         dx += 360
+            #     mx = p1[0] + 0.5 * dx
+            #     if mx < 0:
+            #         mx += 360
+            #     elif mx >= 360:
+            #         mx -= 360
+            #     my = 0.5 * (p1[1] + p2[1])
+            #     ax.text(
+            #         mx,
+            #         my,
+            #         str(e),
+            #         color="blue",
+            #         fontsize=8,
+            #         ha="center",
+            #         va="center",
+            #         zorder=12,
+            #     )
+            # except Exception:
+            #     pass
+    except Exception:
+        # Be resilient if any attributes are missing during early failures
+        pass
+
     # Plot all vertices for context
     ax.scatter(
         closure.vertices[:, 0],
@@ -254,16 +299,25 @@ def _debug_plot_polygons_and_error(
             except Exception:
                 nsteps = 0
             if vs_cur.shape[0] >= 2 and nsteps > 0:
-                for j_step in range(min(nsteps, vs_cur.shape[0]-1)):
-                    mx = 0.5*(vs_cur[j_step, 0] + vs_cur[j_step+1, 0])
-                    my = 0.5*(vs_cur[j_step, 1] + vs_cur[j_step+1, 1])
+                for j_step in range(min(nsteps, vs_cur.shape[0] - 1)):
+                    mx = 0.5 * (vs_cur[j_step, 0] + vs_cur[j_step + 1, 0])
+                    my = 0.5 * (vs_cur[j_step, 1] + vs_cur[j_step + 1, 1])
                     ax.text(
-                        mx, my, str(j_step+1),
-                        color='black', fontsize=7,
-                        ha='center', va='center', zorder=31,
-                        bbox=dict(facecolor='white', edgecolor='none', alpha=0.6, boxstyle='round,pad=0.15')
+                        mx,
+                        my,
+                        str(j_step + 1),
+                        color="black",
+                        fontsize=10,
+                        ha="center",
+                        va="center",
+                        zorder=31,
+                        bbox=dict(
+                            facecolor="white",
+                            edgecolor="none",
+                            alpha=0.6,
+                            boxstyle="round,pad=0.15",
+                        ),
                     )
-
 
     # Offending half-edge and its endpoints
     try:
