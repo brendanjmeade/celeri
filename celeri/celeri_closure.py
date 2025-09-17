@@ -740,26 +740,17 @@ def decompose_segments_into_graph(np_segments):
 def traverse_polygons(closure, right_half_edge):
     # Which polygon lies to the right of the half edge.
     right_polygon = np.full(closure.n_edges() * 2, -1, dtype=int)
-    # print(f"{len(right_polygon)}")
 
     polygon_edge_idxs = []
 
     for half_edge_idx in range(2 * closure.n_edges()):
-        print(f"{half_edge_idx=}")
         # If this half edge is already in a polygon, skip it.
         if right_polygon[half_edge_idx] >= 0:
             continue
 
         # Follow a new polygon around its loop by indexing the right_half_edge array.
         polygon_idx = len(polygon_edge_idxs)
-        print(f"{polygon_idx=}")
-
         polygon_edge_idxs.append([half_edge_idx])
-
-        print(" ")
-        print(f"{polygon_edge_idxs=}")
-        print(" ")
-
         next_idx = right_half_edge[half_edge_idx]
         while next_idx != half_edge_idx:
             # Step 1) Check that we don't have errors!
@@ -774,10 +765,6 @@ def traverse_polygons(closure, right_half_edge):
                     "Geometry problem: unexpected loop found in polygon traversal."
                 )
             if right_polygon[next_idx] != -1:
-                print(f"{closure=}")
-                print(f"{right_polygon=}")
-                print(f"{len(right_polygon)=}")
-                print(f"{next_idx=}")
                 _debug_plot_polygons_and_error(
                     closure,
                     polygon_edge_idxs,
