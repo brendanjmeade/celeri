@@ -12,6 +12,8 @@ from celeri.celeri_util import polygon_area, sph2cart
 from celeri.config import Config, get_config
 from celeri.constants import GEOID, RADIUS_EARTH
 from celeri.mesh import Mesh
+import matplotlib.pyplot as plt
+from matplotlib.patches import Polygon as MatplotlibPolygon
 
 
 @dataclass
@@ -594,10 +596,148 @@ def assign_block_labels(segment, station, block, mogi, sar):
     # Find relative areas of each block to identify an external block
     block["area_steradians"] = -1 * np.ones(len(block))
     block["area_plate_carree"] = -1 * np.ones(len(block))
+
+    # Debug: Check if number of blocks matches
+    if closure.n_polygons() != len(block):
+        logger.warning(
+            f"Mismatch: {closure.n_polygons()} polygons but {len(block)} blocks in input file"
+        )
+
+    # Track polygons without interior points
+    polygons_without_points = []
+
     for i in range(closure.n_polygons()):
         vs = closure.polygons[i].vertices
-        block.area_steradians.values[i] = closure.polygons[i].area_steradians
-        block.area_plate_carree.values[i] = polygon_area(vs[:, 0], vs[:, 1])
+
+        # Check if ANY interior point from the block dataframe is inside this polygon
+        points_in_polygon = []
+
+        # Check ALL interior points to see if any fall within this polygon
+        for j in range(len(block)):
+            test_label = closure.assign_points(
+                np.array([block.interior_lon.iloc[j]]),
+                np.array([block.interior_lat.iloc[j]]),
+            )[0]
+            if test_label == i:
+                points_in_polygon.append(j)
+
+        point_found = len(points_in_polygon) > 0
+
+        if point_found:
+            logger.info(
+                f"Polygon {i} contains interior point(s) from block(s): {points_in_polygon}"
+            )
+
+        if not point_found:
+            logger.warning(
+                f"Polygon {i} has no interior point from the block dataframe"
+            )
+            # print(f"Polygon {i} vertices (lon, lat):")
+            # for vertex_idx, vertex in enumerate(vs):
+            #     print(f"  Vertex {vertex_idx}: ({vertex[0]:.6f}, {vertex[1]:.6f})")
+
+            polygons_without_points.append((i, vs))
+
+            # # Create a plot for this polygon
+            # fig, ax = plt.subplots(1, 1, figsize=(10, 8))
+
+            # # Plot the polygon
+            # polygon_patch = MatplotlibPolygon(
+            #     vs[:, :2],  # lon, lat coordinates
+            #     fill=False,
+            #     edgecolor='red',
+            #     linewidth=2,
+            #     label=f'Polygon {i}'
+            # )
+            # ax.add_patch(polygon_patch)
+
+            # # Plot all interior points from the block dataframe
+            # if not block.empty:
+            #     # Check which points are actually in this polygon
+            #     points_in_this_polygon = []
+            #     for idx in range(len(block)):
+            #         test_label = closure.assign_points(
+            #             np.array([block.interior_lon.iloc[idx]]),
+            #             np.array([block.interior_lat.iloc[idx]])
+            #         )[0]
+            #         if test_label == i:
+            #             points_in_this_polygon.append(idx)
+
+            #     # Plot all points in gray
+            #     ax.scatter(
+            #         block.interior_lon,
+            #         block.interior_lat,
+            #         c='lightgray',
+            #         s=30,
+            #         marker='o',
+            #         alpha=0.5,
+            #         label='Block interior points',
+            #         zorder=3
+            #     )
+
+            #     # Annotate all points with their block indices
+            #     for idx in range(len(block)):
+            #         color = 'green' if idx in points_in_this_polygon else 'gray'
+            #         fontweight = 'bold' if idx in points_in_this_polygon else 'normal'
+            #         ax.annotate(
+            #             f'{idx}',
+            #             (block.interior_lon.iloc[idx], block.interior_lat.iloc[idx]),
+            #             fontsize=8,
+            #             ha='right',
+            #             color=color,
+            #             fontweight=fontweight
+            #         )
+
+            #     # Highlight points that ARE actually in this polygon (should never reach this code since point_found would be True)
+            #     if points_in_this_polygon:
+            #         logger.error(f"ERROR: Polygon {i} contains points {points_in_this_polygon} but was flagged as empty!")
+            #         for idx in points_in_this_polygon:
+            #             ax.scatter(
+            #                 block.interior_lon.iloc[idx],
+            #                 block.interior_lat.iloc[idx],
+            #                 c='green',
+            #                 s=80,
+            #                 marker='o',
+            #                 zorder=5
+            #             )
+
+            # # Set plot properties
+            # ax.set_xlabel('Longitude')
+            # ax.set_ylabel('Latitude')
+            # ax.set_title(f'Polygon {i} - No interior points found in this polygon')
+            # ax.legend(loc='best', fontsize=8)
+            # ax.grid(True, alpha=0.3)
+            # ax.set_aspect('equal', adjustable='box')
+
+            # # Set axis limits with some padding
+            # lon_min, lon_max = vs[:, 0].min(), vs[:, 0].max()
+            # lat_min, lat_max = vs[:, 1].min(), vs[:, 1].max()
+            # lon_range = lon_max - lon_min
+            # lat_range = lat_max - lat_min
+            # padding = max(lon_range, lat_range) * 0.1
+            # ax.set_xlim(lon_min - padding, lon_max + padding)
+            # ax.set_ylim(lat_min - padding, lat_max + padding)
+
+            # plt.savefig(f'debug_polygon_{i}_no_interior_point.png', dpi=150, bbox_inches='tight')
+            # plt.show()
+            # print(f"  -> Plot saved as 'debug_polygon_{i}_no_interior_point.png'\n")
+
+        # Only assign areas if we have corresponding block data
+        if i < len(block):
+            block.area_steradians.values[i] = closure.polygons[i].area_steradians
+            block.area_plate_carree.values[i] = polygon_area(vs[:, 0], vs[:, 1])
+
+    if polygons_without_points:
+        print(
+            f"\n=== SUMMARY: {len(polygons_without_points)} polygon(s) without interior points ==="
+        )
+        print("These polygons have no interior points from the block dataframe.")
+        print("This typically means:")
+        print("  1. You have more polygons than blocks in your input file, OR")
+        print("  2. Some blocks have interior points placed in the wrong polygon")
+        print(
+            "You should add or correct interior_lon and interior_lat values in your block input file."
+        )
 
     # Assign block labels points to block interior points
     block["block_label"] = closure.assign_points(
