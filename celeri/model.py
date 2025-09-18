@@ -612,7 +612,7 @@ def assign_block_labels(segment, station, block, mogi, sar):
 
     # Debug: Check if number of blocks matches
     if closure.n_polygons() != len(block):
-        logger.warning(
+        logger.error(
             f"Mismatch: {closure.n_polygons()} polygons but {len(block)} blocks in input file"
         )
     else:
