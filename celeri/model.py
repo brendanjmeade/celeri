@@ -12,6 +12,9 @@ from celeri.celeri_util import polygon_area, sph2cart
 from celeri.config import Config, get_config
 from celeri.constants import GEOID, RADIUS_EARTH
 from celeri.mesh import Mesh
+import matplotlib.pyplot as plt
+from matplotlib.patches import Polygon as MatplotlibPolygon
+from matplotlib import path
 
 
 @dataclass
@@ -566,6 +569,18 @@ def snap_segments(segment, meshes):
     return new_segment
 
 
+def inpolygon(xq, yq, xv, yv):
+    """Check if points (xq, yq) are inside polygon (xv, yv) using matplotlib."""
+    shape = xq.shape
+    xq = xq.reshape(-1)
+    yq = yq.reshape(-1)
+    xv = xv.reshape(-1)
+    yv = yv.reshape(-1)
+    q = [(xq[i], yq[i]) for i in range(xq.shape[0])]
+    p = path.Path([(xv[i], yv[i]) for i in range(xv.shape[0])])
+    return p.contains_points(q).reshape(shape)
+
+
 def assign_block_labels(segment, station, block, mogi, sar):
     """Ben Thompson's implementation of the half edge approach to the
     block labeling problem and east/west assignment.
@@ -594,10 +609,92 @@ def assign_block_labels(segment, station, block, mogi, sar):
     # Find relative areas of each block to identify an external block
     block["area_steradians"] = -1 * np.ones(len(block))
     block["area_plate_carree"] = -1 * np.ones(len(block))
+
+    # Debug: Check if number of blocks matches
+    if closure.n_polygons() != len(block):
+        logger.error(
+            f"Mismatch: {closure.n_polygons()} polygons but {len(block)} blocks in input file"
+        )
+    else:
+        logger.info(
+            f"Closed blocks: {closure.n_polygons()}, equal to block file blocks: {len(block)}"
+        )
+
+    # Also test with matplotlib path for comparison
+    logger.info("Testing for existence of interior points")
     for i in range(closure.n_polygons()):
         vs = closure.polygons[i].vertices
-        block.area_steradians.values[i] = closure.polygons[i].area_steradians
-        block.area_plate_carree.values[i] = polygon_area(vs[:, 0], vs[:, 1])
+        contained = inpolygon(
+            block.interior_lon.to_numpy(),
+            block.interior_lat.to_numpy(),
+            vs[:, 0],
+            vs[:, 1],
+        )
+
+        # Case 1: No interior points
+        if np.sum(contained) == 0:
+            logger.warning(f"Polygon {i = } has no interior point")
+            logger.warning(f"{block.interior_lon.to_numpy() = }")
+            logger.warning(f"{block.interior_lat.to_numpy() = }")
+            logger.warning(f"{vs[:, 0] = }")
+            logger.warning(f"{vs[:, 1] = }")
+
+            # Debug figure
+            plt.figure()
+            plt.title(f"polygon {i = }")
+            for j in range(len(segment)):
+                plt.plot(
+                    [segment.lon1[j], segment.lon2[j]],
+                    [segment.lat1[j], segment.lat2[j]],
+                    "-k",
+                )
+            plt.plot(vs[:, 0], vs[:, 1], "-r")
+            plt.plot(block.interior_lon.to_numpy(), block.interior_lat.to_numpy(), ".b")
+            lon_min, lon_max = vs[:, 0].min(), vs[:, 0].max()
+            lat_min, lat_max = vs[:, 1].min(), vs[:, 1].max()
+            lon_range = lon_max - lon_min
+            lat_range = lat_max - lat_min
+            padding = max(lon_range, lat_range) * 0.1
+            plt.xlim(lon_min - padding, lon_max + padding)
+            plt.ylim(lat_min - padding, lat_max + padding)
+            plt.show()
+
+        # Case 2: One interior point.  Nothing to do
+
+        # Case 3: More than one interior point.
+        # The first condition checks for more than one interior point
+        # The second conditional is to ensure that we're not pickup up all the interior
+        # points intside the exterior block
+        if np.sum(contained) > 1 and np.sum(contained) < np.round(len(block) / 2):
+            logger.warning(
+                f"Polygon {i = } has has {np.sum(contained)} interior points"
+            )
+            logger.warning(f"{block.interior_lon.to_numpy() = }")
+            logger.warning(f"{block.interior_lat.to_numpy() = }")
+            logger.warning(f"{vs[:, 0] = }")
+            logger.warning(f"{vs[:, 1] = }")
+
+            # Debug figure
+            plt.figure()
+            plt.title(f"polygon {i = }")
+            for j in range(len(segment)):
+                plt.plot(
+                    [segment.lon1[j], segment.lon2[j]],
+                    [segment.lat1[j], segment.lat2[j]],
+                    "-k",
+                )
+            for j in range(len(vs[:, 0])):
+                plt.text(vs[j, 0], vs[j, 1], f"{j}", fontsize=6)
+            plt.plot(vs[:, 0], vs[:, 1], "-r")
+            plt.plot(block.interior_lon.to_numpy(), block.interior_lat.to_numpy(), ".b")
+            lon_min, lon_max = vs[:, 0].min(), vs[:, 0].max()
+            lat_min, lat_max = vs[:, 1].min(), vs[:, 1].max()
+            lon_range = lon_max - lon_min
+            lat_range = lat_max - lat_min
+            padding = max(lon_range, lat_range) * 0.1
+            plt.xlim(lon_min - padding, lon_max + padding)
+            plt.ylim(lat_min - padding, lat_max + padding)
+            plt.show()
 
     # Assign block labels points to block interior points
     block["block_label"] = closure.assign_points(
