@@ -615,6 +615,10 @@ def assign_block_labels(segment, station, block, mogi, sar):
         logger.warning(
             f"Mismatch: {closure.n_polygons()} polygons but {len(block)} blocks in input file"
         )
+    else:
+        logger.info(
+            f"Closed blocks: {closure.n_polygons()}, equal to block file blocks: {len(block)}"
+        )
 
     # Also test with matplotlib path for comparison
     logger.info("Testing for existence of interior points")
@@ -638,7 +642,13 @@ def assign_block_labels(segment, station, block, mogi, sar):
             # Debug figure
             plt.figure()
             plt.title(f"polygon {i = }")
-            plt.plot(vs[:, 0], vs[:, 1], "-k")
+            for j in range(len(segment)):
+                plt.plot(
+                    [segment.lon1[j], segment.lon2[j]],
+                    [segment.lat1[j], segment.lat2[j]],
+                    "-k",
+                )
+            plt.plot(vs[:, 0], vs[:, 1], "-r")
             plt.plot(block.interior_lon.to_numpy(), block.interior_lat.to_numpy(), ".b")
             lon_min, lon_max = vs[:, 0].min(), vs[:, 0].max()
             lat_min, lat_max = vs[:, 1].min(), vs[:, 1].max()
@@ -667,7 +677,15 @@ def assign_block_labels(segment, station, block, mogi, sar):
             # Debug figure
             plt.figure()
             plt.title(f"polygon {i = }")
-            plt.plot(vs[:, 0], vs[:, 1], "-k")
+            for j in range(len(segment)):
+                plt.plot(
+                    [segment.lon1[j], segment.lon2[j]],
+                    [segment.lat1[j], segment.lat2[j]],
+                    "-k",
+                )
+            for j in range(len(vs[:, 0])):
+                plt.text(vs[j, 0], vs[j, 1], f"{j}", fontsize=6)
+            plt.plot(vs[:, 0], vs[:, 1], "-r")
             plt.plot(block.interior_lon.to_numpy(), block.interior_lat.to_numpy(), ".b")
             lon_min, lon_max = vs[:, 0].min(), vs[:, 0].max()
             lat_min, lat_max = vs[:, 1].min(), vs[:, 1].max()
