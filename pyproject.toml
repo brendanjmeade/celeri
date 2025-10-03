@@ -63,6 +63,9 @@ celeri-create-grid-station = "celeri.scripts.create_grid_station:main"
 celeri-create-bel-mesh = "celeri.scripts.create_bel_mesh:main"
 celeri-check-fix-segments = "celeri.scripts.celeri_check_fix_segments:main"
 celeri-remove-vels-segment-collocated = "celeri.scripts.celeri_remove_vels_segment_collocated:main"
+celeri-report-segment-priors = "celeri.scripts.celeri_report_segment_priors:main"
+celeri-reweight-stations = "celeri.scripts.celeri-reweight-stations:main"
+celeri-check-segment-block-integrity = "celeri.scripts.celeri_check_segment_block_integrity:main"
 
 [project.urls]
 Homepage = "https://github.com/brendanjmeade/celeri"
