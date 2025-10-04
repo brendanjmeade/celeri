@@ -1203,6 +1203,7 @@ def solve_sqp2(
         "solver": "CLARABEL",
         "ignore_dpp": True,
         "warm_start": False,
+        "verbose": True,
     }
 
     if solve_kwargs is not None:
