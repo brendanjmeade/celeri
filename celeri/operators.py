@@ -896,9 +896,6 @@ def _store_tde_slip_rate_constraints(model: Model, operators: _OperatorBuilder):
             sum_constraint_columns > 0, :
         ]
         operators.tde_slip_rate_constraints[i] = tde_slip_rate_constraints
-        # Total number of slip constraints:
-        # 2 for each element that has coupling constrained (top, bottom, side, specified indices)
-        # 1 for each additional slip component that is constrained (specified indices)
 
         # TODO: Number of total constraints is determined by just finding 1 in the
         # constraint array. This could cause an error when the index Dict is constructed,

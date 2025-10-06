@@ -318,7 +318,89 @@ def _compute_mesh_perimeter(mesh: dict):
 
 @dataclass
 class Mesh:
-    """Represents a triangular mesh for fault modeling."""
+    """Triangular mesh for fault modeling.
+
+        Parameters
+        ----------
+        points: np.ndarray
+            The coordinates of the vertices of the mesh.
+        verts: np.ndarray
+            The indices of the vertices composing each triangle of the mesh.
+        lon1: np.ndarray
+            The longitude of the vertex 1 of each triangle of the mesh.
+        lat1: np.ndarray
+            The latitude of the vertex 1 of each triangle of the mesh.
+        dep1: np.ndarray
+            The depth of the vertex 1 of each triangle of the mesh.
+        lon2: np.ndarray
+            The longitude of the vertex 2 of each triangle of the mesh.
+        lat2: np.ndarray
+            The latitude of the vertex 2 of each triangle of the mesh.
+        dep2: np.ndarray
+            The depth of the vertex 2 of each triangle of the mesh.
+        lon3: np.ndarray
+            The longitude of the vertex 3 of each triangle of the mesh.
+        lat3: np.ndarray
+            The latitude of the vertex 3 of each triangle of the mesh.
+        dep3: np.ndarray
+            The depth of the vertex 3 of each triangle of the mesh.
+        centroids: np.ndarray
+            The centroids of the triangles.
+        x_centroid: np.ndarray
+            The x-coordinates of the centroids of the triangles.
+        y_centroid: np.ndarray
+            The y-coordinates of the centroids of the triangles.
+        z_centroid: np.ndarray
+            The z-coordinates of the centroids of the triangles.
+        nv: np.ndarray
+            Normal vectors of the triangles.
+        strike: np.ndarray
+            Magnitude of the strike slip on each triangle.
+        dip: np.ndarray
+            Magnitude of the dip slip on each triangle.
+        dip_flag: np.ndarray
+            Bool indicating the presence of dip slip on each triangle.
+        n_tde: int
+            The number of triangular elements constituting the mesh.
+        areas: np.ndarray
+            The surface areas of the triangles.
+        ordered_edge_nodes: np.ndarray
+            The edges constituting the perimeter of the mesh.
+        side_elements: np.ndarray
+            Bool indicating the presence of side elements on each triangle.
+        bot_elements: np.ndarray
+            Bool indicating if each triangle is a bottom element. Each triangle along the edge of the mesh will
+            naturally have two vertices which compose the outer edge that actually belongs to the perimeter of the mesh,
+            and a third "interior" vertex. A bottom element is defined as an edge triangle such that the depth
+            difference between the interior vertex and the midpoint of the outer edge is more negative than the depth
+            difference between the other two vertices.
+        top_elements: np.ndarray
+            Bool indicating top elements, the opposite of bottom elements.
+        side_elements: np.ndarray
+            Bool indicating edge triangles which are neither top nor bottom elements.
+        config: MeshConfig
+            Configuration of the mesh.
+        share: np.ndarray
+            Array of shape (n_tde, 3) indicating the indices of the up to 3 triangles sharing a side with 
+            each of the n_tde triangles.
+        n_tde_constraints: int
+            Total number of slip rateconstraints on the TDEs; equal to 2 * the number of TDEs with coupling 
+            constraints (top, bottom, side, specified indices) + the number of additional slip components (specified indices)
+        top_slip_idx: np.ndarray
+            Indices of the top TDEs which have constraints on their slip rates.
+        coup_idx: np.ndarray
+            Indices of the TDEs which have constraints on their coupling.
+        ss_slip_idx: np.ndarray
+            Indices of the TDEs which have constraints on their strike slip slip rates.
+        ds_slip_idx: np.ndarray
+            Indices of the TDEs which have constraints on their dip slip slip rates.
+        east_labels: np.ndarray
+            Block indices on the eastern fault block of the TDEs.
+        west_labels: np.ndarray
+            Block indices on the western fault block of the TDEs.
+        closest_segment_idx: np.ndarray
+            Indices of the segment with midpoint closest to each TDE's centroid.
+    """
 
     points: np.ndarray
     verts: np.ndarray
