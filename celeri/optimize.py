@@ -1256,15 +1256,16 @@ def solve_sqp2(
         )
 
     # Log warning if the last iteration includes an error
-    if all_warnings[-1]["iteration"] == num_iter:
-        logger.warning(f"SQP iterations: f{all_warnings[-1]['message']}")
-    elif len(all_warnings) == 0:
-        logger.info("SQP iterations: Ran with no warnings")
+    if all_warnings:
+        if all_warnings[-1]["iteration"] == num_iter:
+            logger.warning(f"SQP iteration: f{all_warnings[-1]['message']}")
+        else:
+            iterations_with_warnings = [d["iteration"] for d in all_warnings]
+            logger.info(
+                f"SQP iteration: Warnings in iterations {iterations_with_warnings} of {num_iter + 1} total iterations"
+            )
     else:
-        iterations_with_warnings = [d["iteration"] for d in all_warnings]
-        logger.info(
-            f"SQP iterations: Warnings in iterations {iterations_with_warnings} of {num_iter + 1} total iterations"
-        )
+        logger.info("SQP iteration: Ran with no warnings")
 
     return trace.to_estimation()
 
