@@ -1258,7 +1258,7 @@ def solve_sqp2(
     # Log warning if the last iteration includes an error
     if all_warnings:
         if all_warnings[-1]["iteration"] == num_iter:
-            logger.warning(f"SQP iteration: f{all_warnings[-1]['message']}")
+            logger.warning(f"SQP iteration: {all_warnings[-1]['message']}")
         else:
             iterations_with_warnings = [d["iteration"] for d in all_warnings]
             logger.info(
