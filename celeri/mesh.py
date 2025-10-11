@@ -38,20 +38,54 @@ class ScalarBound(BaseModel):
             return {"lower": lower, "upper": upper}
         return data
 
-
 class MeshConfig(BaseModel):
+    """
+    Configuration for the mesh.
+
+    Attributes
+    ----------
+    file_name : Path
+        The path to the mesh configuration file itself. All other paths in this
+        configuration are relative to this file.
+    mesh_filename : Path, optional
+        The path to the mesh file, if any.
+    smoothing_weight : float
+        Weight for Laplacian smoothing of slip rates.
+    n_modes_strike_slip : int
+        Number of eigenmodes to use for strike- and dip-slips.
+    n_modes_dip_slip : int
+        Number of eigenmodes to use for dip-slip.
+    top_slip_rate_constraint : Literal[0, 1, 2]
+        Constraints for slip rates on the top boundary of the mesh.
+    bot_slip_rate_constraint : Literal[0, 1, 2]
+        Constraints for slip rates on the bottom boundary of the mesh.
+    side_slip_rate_constraint : Literal[0, 1, 2]
+        Constraints for slip rates on the side boundary of the mesh.
+    top_slip_rate_weight : float
+        Weight for top boundary zero-slip constraint loss during optimization.
+    bot_slip_rate_weight : float
+        Weight for bottom boundary zero-slip constraint loss during optimization.
+    side_slip_rate_weight : float
+        Weight for side boundary zero-slip constraint loss during optimization.
+    eigenmode_slip_rate_constraint_weight : float
+        Weight for TDE modes boundary conditions if TDE eigenmodes are used.
+    a_priori_slip_filename : Path, optional
+        Filename for fixed slip rates, not currently used.
+    coupling_constraints_ss : ScalarBound
+        Tuple containing the constrained upper and lower bounds for the coupling on the mesh for strike-slip.
+    coupling_constraints_ds : ScalarBound
+        Tuple containing the constrained upper and lower bounds for the coupling on the mesh for dip-slip.
+    elastic_constraints_ss : ScalarBound
+        Tuple containing the constrained upper and lower bounds for the elastic rates on the mesh for strike-slip.
+    elastic_constraints_ds : ScalarBound
+        Tuple containing the constrained upper and lower bounds for the elastic rates on the mesh for dip-slip.
+    """
     # Forbid extra fields when reading from JSON
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
-    # The path to the mesh configuration file itself.
-    # All other paths in this configuration are relative to this file.
     file_name: Path
-
     mesh_filename: Path | None = None
-
-    # Weight for Laplacian smooting of slip rates (TODO unit?)
     smoothing_weight: float = 1.0
-    # Number of eigenmodes to use for strike-slip and dip-slip
     n_modes_strike_slip: int = 10
     n_modes_dip_slip: int = 10
 
@@ -64,7 +98,6 @@ class MeshConfig(BaseModel):
     bot_slip_rate_constraint: Literal[0, 1, 2] = 0
     side_slip_rate_constraint: Literal[0, 1, 2] = 0
 
-    # Weight for zero-slip constraint loss during optimization.
     # This will not be used if the elastic velocities are
     # computed using the TDE eigenmodes.
     top_slip_rate_weight: float = 1.0
@@ -263,9 +296,6 @@ def _compute_mesh_edge_elements(mesh: dict):
     # Assign in to meshes dict
     mesh["top_elements"] = tops
 
-    # Bottom elements are those where the depth difference between the non-edge node
-    # and the mean of the edge nodes is more negative than the depth difference between
-    # the edge nodes themselves
     bot1 = side_1_depths[:, 2] - np.mean(side_1_depths[:, 0:2], 1) < -np.abs(
         side_1_depths[:, 0] - side_1_depths[:, 1]
     )
