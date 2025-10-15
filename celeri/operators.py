@@ -134,6 +134,64 @@ class EigenIndex:
 
 @dataclass
 class Index:
+    """
+    Index of the full dense linear operators comprising the forward model.
+
+    Attributes:
+        n_blocks : int 
+            The number of blocks in the model.
+        n_segments : int 
+            The number of segments in the model.
+        n_stations : int 
+            The number of stations in the model.
+        n_meshes : int 
+            The number of meshes in the model.
+        n_mogis : int 
+            The number of Mogi sources in the model.
+        vertical_velocities : np.ndarray 
+            The vertical velocities of the stations.
+        n_block_constraints : int 
+            The number of block constraints in the model.
+        station_row_keep_index : np.ndarray
+            The indices comprising the horizontal (spherical plane) vector components acting on the stations, for assigning 
+            horizontal-only forces in the full operator, e.g. block strain. Length is (2 * n_stations). Created using `celeri.utils.get_keep_index_12`.
+        start_station_row : int 
+            The starting index of the station rows in the full operator.
+        end_station_row : int 
+            The ending index of the station rows in the full operator.
+        start_block_col : int 
+            The starting index of the block columns in the full operator.
+        end_block_col : int 
+            The ending index of the block columns in the full operator.
+        start_block_constraints_row : int 
+            The starting index of the block constraints rows in the full operator.
+        end_block_constraints_row : int 
+            The ending index of the block constraints rows in the full operator.
+        n_slip_rate_constraints : int 
+            The number of slip rate constraints in the model.
+        start_slip_rate_constraints_row : int 
+            The starting index of the slip rate constraints rows in the full operator.
+        end_slip_rate_constraints_row : int 
+            The ending index of the slip rate constraints rows in the full operator.
+        n_strain_blocks : int 
+            The number of strain blocks in the model.
+        n_block_strain_components : int 
+            The number of block strain components in the model.
+        start_block_strain_col : int 
+            The starting index of the block strain columns in the full operator.
+        end_block_strain_col : int 
+            The ending index of the block strain columns in the full operator.
+        start_mogi_col : int 
+            The starting index of the Mogi columns in the full operator.
+        end_mogi_col : int 
+            The ending index of the Mogi columns in the full operator.
+        slip_rate_bounds : np.ndarray 
+            The indices of the slip rate bounds in the model.
+        tde : TdeIndex | None 
+            The TDE index.
+        eigen : EigenIndex | None 
+            The Eigen index.
+    """
     n_blocks: int
     n_segments: int
     n_stations: int
