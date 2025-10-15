@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+import warnings
 from collections import namedtuple
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -10,6 +11,7 @@ import cvxopt
 import cvxpy as cp
 import matplotlib.pyplot as plt
 import numpy as np
+from loguru import logger
 from scipy import linalg, sparse
 
 from celeri.mesh import ScalarBound
@@ -1203,6 +1205,7 @@ def solve_sqp2(
         "solver": "CLARABEL",
         "ignore_dpp": True,
         "warm_start": False,
+        "verbose": False,
     }
 
     if solve_kwargs is not None:
@@ -1210,13 +1213,34 @@ def solve_sqp2(
 
     solver = default_solve_kwargs.pop("solver")
 
-    for _num_iter in range(max_iter):
-        _custom_solve(
-            minimizer.cp_problem,
-            solver=solver,
-            objective=objective,
-            **default_solve_kwargs,
-        )
+    # Storage for all warnings across loop iterations
+    all_warnings = []
+
+    # Intializing this so that warnings check will run even with no iteration case
+    num_iter = 0
+    for num_iter in range(max_iter):
+        # QP solve in context manager to capture warnings
+        with warnings.catch_warnings(record=True) as caught_warnings:
+            warnings.simplefilter("always")
+            _custom_solve(
+                minimizer.cp_problem,
+                solver=solver,
+                objective=objective,
+                **default_solve_kwargs,
+            )
+
+        # Store warnings from this iteration (with iteration info)
+        for warning in caught_warnings:
+            all_warnings.append(  # noqa: PERF401
+                {
+                    "iteration": num_iter,
+                    "message": str(warning.message),
+                    "category": warning.category.__name__,
+                    "filename": warning.filename,
+                    "lineno": warning.lineno,
+                }
+            )
+
         trace.store_current()
         if verbose:
             trace.print_last_progress()
@@ -1230,6 +1254,18 @@ def solve_sqp2(
             factor=reduction_factor,
             tighten_all=True,
         )
+
+    # Log warning if the last iteration includes an error
+    if all_warnings:
+        if all_warnings[-1]["iteration"] == num_iter:
+            logger.warning(f"SQP iteration: {all_warnings[-1]['message']}")
+        else:
+            iterations_with_warnings = [d["iteration"] for d in all_warnings]
+            logger.info(
+                f"SQP iteration: Warnings in iterations {iterations_with_warnings} of {num_iter + 1} total iterations"
+            )
+    else:
+        logger.info("SQP iteration: Ran with no warnings")
 
     return trace.to_estimation()
 
