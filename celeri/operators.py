@@ -305,6 +305,49 @@ class EigenOperators:
 
 @dataclass
 class Operators:
+    """
+    Linear operators comprising the forward model.
+
+    Attributes:
+        model : Model 
+            The model.
+        index : Index 
+            Indices to access different parts of the full dense operator.
+        assembly : Assembly 
+            Contains data, sigma, and index dictionaries.
+        rotation_to_velocities : np.ndarray 
+            Maps rotational vectors to velocities.
+        block_motion_constraints : np.ndarray 
+            Constraints on block motions.
+        slip_rate_constraints : np.ndarray 
+            Limitations on slip rates.
+        rotation_to_slip_rate : np.ndarray 
+            Maps rotations to slip rates.
+        block_strain_rate_to_velocities : np.ndarray 
+            Computes the components of the predicted velocities on the stations due to the homogenous block strain rates. 
+            Has shape (3 * n_stations, 3 * n_strain_blocks).
+        mogi_to_velocities : np.ndarray 
+            Computes the components of the predicted velocities on the stations due to the Mogi sources. 
+            Has shape (3 * n_stations, n_mogis).
+        slip_rate_to_okada_to_velocities : np.ndarray 
+            Okada model slip rate to velocity mapping.
+        rotation_to_tri_slip_rate : dict[int, np.ndarray] 
+            Rotation to triangular slip rate mapping.
+        rotation_to_slip_rate_to_okada_to_velocities : np.ndarray 
+            Rotation to slip rate to Okada velocities transformation.
+        smoothing_matrix (dict[int, csr_matrix]): 
+            Smoothing matrices for various meshes.
+        global_float_block_rotation (np.ndarray): 
+            Global rotation operator for the block.
+        tde (TdeOperators | None): 
+            TDE-related operators.
+        eigen (EigenOperators | None): 
+            Operators related to eigenmodes for TDEs.
+
+    Methods:
+        kinematic_slip_rate(parameters: np.ndarray, mesh_idx: Optional[int], smooth: bool) -> Union[np.ndarray, dict[int, np.ndarray]]:
+            Computes the kinematic slip rates for specified meshes with optional smoothing.
+    """
     model: Model
     index: Index
     assembly: Assembly
@@ -560,7 +603,7 @@ class _OperatorBuilder:
 
 def build_operators(model: Model, *, eigen: bool = True, tde: bool = True) -> Operators:
     if eigen and not tde:
-        raise ValueError("eigen openrators require tde")
+        raise ValueError("eigen operators require tde")
     assembly = Assembly(data=addict.Dict(), sigma=addict.Dict(), index=addict.Dict())
     operators = _OperatorBuilder(model)
     operators.assembly = assembly

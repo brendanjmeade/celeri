@@ -72,7 +72,8 @@ class MeshConfig(BaseModel):
     a_priori_slip_filename : Path, optional
         Filename for fixed slip rates, not currently used.
     coupling_constraints_ss : ScalarBound
-        Tuple containing the constrained upper and lower bounds for the coupling on the mesh for strike-slip.
+        Tuple containing the constrained upper and lower bounds for the coupling on the mesh for strike-slip. The
+        coupling is the ratio of elastic to kinematic slip rates.
     coupling_constraints_ds : ScalarBound
         Tuple containing the constrained upper and lower bounds for the coupling on the mesh for dip-slip.
     elastic_constraints_ss : ScalarBound

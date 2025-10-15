@@ -23,6 +23,16 @@ class Model:
 
     Stores indices, meshes, operators, and various data components needed
     for solving interseismic coupling and fault slip rate problems.
+
+    Attributes:
+        meshes: list[Mesh]
+        segment: pd.DataFrame
+        block: pd.DataFrame
+        station: pd.DataFrame
+        mogi: pd.DataFrame
+        config: Config
+        closure: BlockClosureResult
+        sar: pd.DataFrame
     """
 
     meshes: list[Mesh]
