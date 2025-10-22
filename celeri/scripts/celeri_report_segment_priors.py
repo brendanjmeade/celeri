@@ -111,8 +111,30 @@ def main():
                         f"*** STOP: MIN > MAX *** Hard tensile-slip bounds , min: {df.ts_rate_bound_min[i]}, max: {df.ts_rate_bound_max[i]} (mm/yr)"
                     )
 
+            # Check for tensile-slip constraints on dipping fault
+            if df.dip[i] != 90.0:
+                if df.ts_rate_flag[i] != 0:
+                    raise SystemExit(
+                        "*** STOP: SOFT TENSILE-SLIP CONSTRAINT ON NON-VERTICAL FAULT ***"
+                    )
+                if df.ts_rate_bound_flag[i] != 0:
+                    raise SystemExit(
+                        "*** STOP: HARD TENSILE-SLIP CONSTRAINT ON NON-VERTICAL FAULT ***"
+                    )
+
+            # Check for dip-slip constraints on a vertical fault
+            if df.dip[i] == 90.0:
+                if df.ds_rate_flag[i] != 0:
+                    raise SystemExit(
+                        "*** STOP: SOFT DIP-SLIP CONSTRAINT ON VERTICAL FAULT ***"
+                    )
+                if df.ds_rate_bound_flag[i] != 0:
+                    raise SystemExit(
+                        "*** STOP: HARD DIP-SLIP CONSTRAINT ON VERTICAL FAULT ***"
+                    )
+
     print(f"\nFound {n_segs_with_prior} of {len(df)} segments with priors")
-    print(f"Found {n_min_max_errors} segments where min >= max")
+    print(f"\nFound {n_min_max_errors} segments where min >= max\n")
 
     # Plot
     if plot_flag == 1:
