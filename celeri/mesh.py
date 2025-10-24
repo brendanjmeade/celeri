@@ -415,7 +415,7 @@ class Mesh:
             Array of shape (n_tde, 3) indicating the indices of the up to 3 triangles sharing a side with 
             each of the n_tde triangles.
         n_tde_constraints: int
-            Total number of slip rateconstraints on the TDEs; equal to 2 * the number of TDEs with coupling 
+            Total number of slip rate constraints on the TDEs; equal to 2 * the number of TDEs with coupling 
             constraints (top, bottom, side, specified indices) + the number of additional slip components (specified indices)
         top_slip_idx: np.ndarray
             Indices of the top TDEs which have constraints on their slip rates.
