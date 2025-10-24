@@ -12,7 +12,7 @@ matplotlib_inline.backend_inline.set_matplotlib_formats("retina")
 
 
 # %% Read model config
-config_file_name = "./data/config/wna_config.json"
+config_file_name = "./data/config/wna_config_constraints.json"
 model = celeri.build_model(config_file_name)
 
 # %% Plot some diagnostics
