@@ -877,24 +877,36 @@ def get_strain_rate_displacements(
     strain_rate_lat_lat,
     strain_rate_lon_lat,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Calculate displacements due to three strain rate components.
-    Equations are from Savage (2001) and expressed concisely in McCaffrey (2005)
-    In McCaffrey (2005) these are the two unnumbered equations at the bottom
-    of page 2.
+    """Calculate displacements due to three block strain rate components.
+    Equations are from Savage (2001) and expressed concisely in McCaffrey (2005):
+    https://www.researchgate.net/publication/251436956_Block_kinematics_of_the_Pacific-North_America_plate_boundary_in_the_southwestern_US_from_inversion_of_GPS_seismological_and_geologic_data
+    See the two unnumbered equations at the bottom of page 2:
+
+    u_east = ε_λλ * R_E * (λ_obs - λ_c) * sin(φ_c) + ε_λφ * R_E * (φ_obs - φ_c)
+    u_north = ε_λφ * R_E * (λ_obs - λ_c) * sin(φ_c) + ε_φφ * R_E * (φ_obs - φ_c)
+    u_up = 0
+
+    u_up is zero, since strain is assumed to be strain on the spherical plane.
+
+    Returns a tuple [u_east, u_north, u_up], where each is a np.ndarray of shape 
+    (n_obs,), where n_obs is the number of stations on the block.
     """
+    
     centroid_lon = np.deg2rad(centroid_lon)
     centroid_lat = latitude_to_colatitude(centroid_lat)
     centroid_lat = np.deg2rad(centroid_lat)
     lon_obs = np.deg2rad(lon_obs)
     lat_obs = latitude_to_colatitude(lat_obs)
     lat_obs = np.deg2rad(lat_obs)
-    # Calculate displacements from homogeneous strain
+
     u_up = np.zeros(
         lon_obs.size
-    )  # Always zero here because we're assuming plane strain on the sphere
+    )
+
     u_east = strain_rate_lon_lon * (
         RADIUS_EARTH * (lon_obs - centroid_lon) * np.sin(centroid_lat)
     ) + strain_rate_lon_lat * (RADIUS_EARTH * (lat_obs - centroid_lat))
+
     u_north = strain_rate_lon_lat * (
         RADIUS_EARTH * (lon_obs - centroid_lon) * np.sin(centroid_lat)
     ) + strain_rate_lat_lat * (RADIUS_EARTH * (lat_obs - centroid_lat))
@@ -902,26 +914,33 @@ def get_strain_rate_displacements(
 
 
 def get_block_strain_rate_to_velocities_partials(
-    block, station, segment
+    blocks, stations, segment
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Calculate strain partial derivatives assuming a strain centroid at the center of each block."""
-    strain_rate_block_idx = np.where(block.strain_rate_flag.to_numpy() > 0)[0]
+    """
+    Calculate strain partial derivatives w.r.t. the block strain rate components ε_λλ, ε_φφ, and ε_λφ, assuming 
+    a strain centroid on each block.
+
+    Returns a tuple [block_strain_rate_operator, strain_rate_block_idx], where block_strain_rate_operator is a 
+    np.ndarray of shape (3 * number_of_stations, 3 * number_of_strain_blocks) and strain_rate_block_idx, with the 
+    indices of the blocks that have strain rates estimated.
+    """
+
+    strain_rate_block_idx = np.where(blocks.strain_rate_flag.to_numpy() > 0)[0]
     # Allocate space. Zero width, if no blocks should have strain estimated, helps with indexing
     block_strain_rate_operator = np.zeros(
-        (3 * len(station), 3 * strain_rate_block_idx.size)
+        (3 * len(stations), 3 * strain_rate_block_idx.size)
     )
     if strain_rate_block_idx.size > 0:
         for i in range(strain_rate_block_idx.size):
-            # Find centroid of current block
+
             block_centroid_lon, block_centroid_lat = get_block_centroid(
                 segment, strain_rate_block_idx[i]
             )
-            # Find stations on current block
-            station_idx = np.where(station.block_label == strain_rate_block_idx[i])[0]
-            stations_block_lon = station.lon[station_idx].to_numpy()
-            stations_block_lat = station.lat[station_idx].to_numpy()
 
-            # Calculate partials for each component of strain rate
+            station_idx = np.where(stations.block_label == strain_rate_block_idx[i])[0]
+            stations_block_lon = stations.lon[station_idx].to_numpy()
+            stations_block_lat = stations.lat[station_idx].to_numpy()
+
             (
                 vel_east_lon_lon,
                 vel_north_lon_lon,
