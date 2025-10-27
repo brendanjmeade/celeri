@@ -84,9 +84,13 @@ class MeshConfig(BaseModel):
     # Forbid extra fields when reading from JSON
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
+    # The path to the mesh configuration file itself.
+    # All other paths in this configuration are relative to this file.
     file_name: Path
     mesh_filename: Path | None = None
+    # Weight for Laplacian smooting of slip rates (TODO unit?)
     smoothing_weight: float = 1.0
+    # Number of eigenmodes to use for strike-slip and dip-slip
     n_modes_strike_slip: int = 10
     n_modes_dip_slip: int = 10
 
@@ -99,6 +103,7 @@ class MeshConfig(BaseModel):
     bot_slip_rate_constraint: Literal[0, 1, 2] = 0
     side_slip_rate_constraint: Literal[0, 1, 2] = 0
 
+    # Weight for zero-slip constraint loss during optimization.
     # This will not be used if the elastic velocities are
     # computed using the TDE eigenmodes.
     top_slip_rate_weight: float = 1.0
@@ -297,6 +302,9 @@ def _compute_mesh_edge_elements(mesh: dict):
     # Assign in to meshes dict
     mesh["top_elements"] = tops
 
+    # Bottom elements are those where the depth difference between the non-edge node
+    # and the mean of the edge nodes is more negative than the depth difference between
+    # the edge nodes themselves
     bot1 = side_1_depths[:, 2] - np.mean(side_1_depths[:, 0:2], 1) < -np.abs(
         side_1_depths[:, 0] - side_1_depths[:, 1]
     )

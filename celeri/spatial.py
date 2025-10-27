@@ -899,9 +899,10 @@ def get_strain_rate_displacements(
     lat_obs = latitude_to_colatitude(lat_obs)
     lat_obs = np.deg2rad(lat_obs)
 
+    # Calculate displacements from homogeneous strain
     u_up = np.zeros(
         lon_obs.size
-    )
+    ) # Always zero here because we're assuming plane strain on the sphere
 
     u_east = strain_rate_lon_lon * (
         RADIUS_EARTH * (lon_obs - centroid_lon) * np.sin(centroid_lat)
@@ -932,7 +933,7 @@ def get_block_strain_rate_to_velocities_partials(
     )
     if strain_rate_block_idx.size > 0:
         for i in range(strain_rate_block_idx.size):
-
+            # Find centroid of current block
             block_centroid_lon, block_centroid_lat = get_block_centroid(
                 segment, strain_rate_block_idx[i]
             )
