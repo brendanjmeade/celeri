@@ -174,7 +174,17 @@ class Config(BaseModel):
 
     # Parameters of mcmc
     mcmc_tune: int | None = 1000
+    """Number of tuning steps in MCMC before sampling."""
+
     mcmc_draws: int | None = None
+    """Number of MCMC samples to draw after tuning."""
+
+    mcmc_chains: int = 1
+    """Number of parallel MCMC chains to run."""
+
+    mcmc_backend: Literal["numba", "jax"] = "numba"
+    """Backend to use for MCMC computations."""
+
     mcmc_station_velocity_method: McmcStationVelocityMethod = "project_to_eigen"
     """Method for computing station velocities from slip rates in MCMC.
 
@@ -183,6 +193,7 @@ class Config(BaseModel):
     - "low_rank": Low rank approximation of TDE-to-station operator via SVD
     - "project_to_eigen": Project slip rates onto eigenbasis before computing velocities (default)
     """
+
     mcmc_station_weighting: McmcStationWeighting | None = "voronoi"
     """Method for weighting station observations in MCMC likelihood.
 

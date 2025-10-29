@@ -660,13 +660,13 @@ def solve_mcmc(
 
     compiled = nutpie.compile_pymc_model(
         pymc_model,
-        backend="numba",
+        backend=model.config.mcmc_backend,
     )
     kwargs = {
         "low_rank_modified_mass_matrix": True,
         "mass_matrix_eigval_cutoff": 1.5,
         "mass_matrix_gamma": 1e-6,
-        "chains": 1,
+        "chains": model.config.mcmc_chains,
         "draws": model.config.mcmc_draws,
         "tune": model.config.mcmc_tune,
         "store_unconstrained": True,
