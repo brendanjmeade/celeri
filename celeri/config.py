@@ -2,11 +2,20 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from celeri.mesh import MeshConfig
+
+Sqp2Objective = Literal[
+    "expanded_norm2",
+    "sum_of_squares",
+    "qr_sum_of_squares",
+    "svd_sum_of_squares",
+    "norm2",
+    "norm1",
+]
 
 
 class Config(BaseModel):
@@ -114,6 +123,9 @@ class Config(BaseModel):
     We can interpret this as a measurment error of the slip rate bound
     itself.
     """
+
+    sqp2_objective: Sqp2Objective = "qr_sum_of_squares"
+    """Objective function to use in `solve_sqp2`."""
 
     global_elastic_cutoff_distance: int = 2000000
     global_elastic_cutoff_distance_flag: int = 0

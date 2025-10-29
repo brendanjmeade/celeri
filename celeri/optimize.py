@@ -5,7 +5,7 @@ import warnings
 from collections import namedtuple
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Literal, cast
+from typing import cast
 
 import cvxopt
 import cvxpy as cp
@@ -14,6 +14,7 @@ import numpy as np
 from loguru import logger
 from scipy import linalg, sparse
 
+from celeri.config import Sqp2Objective
 from celeri.mesh import ScalarBound
 from celeri.model import Model
 from celeri.operators import (
@@ -691,16 +692,6 @@ class Minimizer:
         return loss
 
 
-Objective = Literal[
-    "expanded_norm2",
-    "sum_of_squares",
-    "qr_sum_of_squares",
-    "svd_sum_of_squares",
-    "norm2",
-    "norm1",
-]
-
-
 def build_cvxpy_problem(
     model: Model,
     *,
@@ -709,7 +700,7 @@ def build_cvxpy_problem(
     velocity_limits: list[SlipRateLimit] | None = None,
     smooth_kinematic: bool = True,
     slip_rate_reduction: float | None = None,
-    objective: Objective = "qr_sum_of_squares",
+    objective: Sqp2Objective = "qr_sum_of_squares",
     rescale_parameters: bool = True,
     rescale_constraints: bool = True,
     operators: Operators | None = None,
@@ -1255,7 +1246,7 @@ def _custom_cvxopt_solve(problem: cp.Problem, **kwargs):
     problem.unpack_results(sol, chain, inverse_data)  # type: ignore
 
 
-def _custom_solve(problem: cp.Problem, solver: str, objective: Objective, **kwargs):
+def _custom_solve(problem: cp.Problem, solver: str, objective: Sqp2Objective, **kwargs):
     if solver == "CUSTOM_CVXOPT":
         if objective not in [
             "expanded_norm2",
@@ -1291,7 +1282,7 @@ def solve_sqp2(
     verbose: bool = False,
     rescale_parameters: bool = True,
     rescale_constraints: bool = True,
-    objective: Objective = "qr_sum_of_squares",
+    objective: Sqp2Objective | None = None,
     operators: Operators | None = None,
 ) -> Estimation:
     """Iteratively solve a constrained optimization problem for fault slip rates.
@@ -1315,6 +1306,9 @@ def solve_sqp2(
         An Estimation object containing the optimization results.
     """
     limits = SlipRateLimit.from_model(model)
+
+    if objective is None:
+        objective = model.config.sqp2_objective
 
     minimizer = build_cvxpy_problem(
         model,
@@ -1399,7 +1393,7 @@ def solve_sqp2(
 def benchmark_solve(
     model: Model,
     *,
-    objective: Objective,
+    objective: Sqp2Objective,
     rescale_parameters: bool,
     rescale_constraints: bool,
     solver: str,
