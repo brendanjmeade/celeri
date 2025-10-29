@@ -196,7 +196,7 @@ class Config(BaseModel):
     standard unweighted likelihood or if your network has uniform spatial coverage.
     """
 
-    mcmc_station_effective_area: float = 50_000**2
+    mcmc_station_effective_area: float = 10_000**2
     """Effective area (in m²) for station likelihood weighting in MCMC.
 
     This parameter controls how station observations are weighted in the likelihood
