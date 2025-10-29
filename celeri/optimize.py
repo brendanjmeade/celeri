@@ -903,7 +903,7 @@ def build_cvxpy_problem(
     A_hat_ = A_hat / A_scale[:, None]
     b_hat = b / A_scale
 
-    if len(b) > 0:
+    if len(b) > 0 and model.config.segment_slip_rate_hard_bounds:
         constraint = adapt_operator(A_hat_) @ params_raw <= b_hat
         constraints.append(constraint)
 
@@ -913,6 +913,45 @@ def build_cvxpy_problem(
     gamma = model.config.segment_slip_rate_regularization
     if gamma != 0.0:
         objective_val = objective_val + gamma * cp.sum_squares(segment_slip_rate)
+
+    segment_slip_rate = segment_slip_rate.reshape((-1, 3), order="C")
+    # Add segment slip rate bounds
+    for comp, bound_flag_attr, lower_attr, upper_attr in [
+        (
+            "strike_slip",
+            "ss_rate_bound_flag",
+            "ss_rate_bound_min",
+            "ss_rate_bound_max",
+        ),
+        (
+            "dip_slip",
+            "ds_rate_bound_flag",
+            "ds_rate_bound_min",
+            "ds_rate_bound_max",
+        ),
+        (
+            "tensile_slip",
+            "ts_rate_bound_flag",
+            "ts_rate_bound_min",
+            "ts_rate_bound_max",
+        ),
+    ]:
+        bound_flags = getattr(model.segment, bound_flag_attr).values
+        if np.any(bound_flags):
+            lower_bounds = getattr(model.segment, lower_attr).values[bound_flags == 1]
+            upper_bounds = getattr(model.segment, upper_attr).values[bound_flags == 1]
+            bound_sig = model.config.segment_slip_rate_bound_weight
+
+            comp_idx = {"strike_slip": 0, "dip_slip": 1, "tensile_slip": 2}[comp]
+            slip_rates_comp = segment_slip_rate[:, comp_idx][bound_flags == 1]
+            if lower_bounds.size > 0:
+                objective_val = objective_val + bound_sig * cp.sum_squares(
+                    cp.pos(lower_bounds - slip_rates_comp)
+                )
+            if upper_bounds.size > 0:
+                objective_val = objective_val + bound_sig * cp.sum_squares(
+                    cp.pos(slip_rates_comp - upper_bounds)
+                )
 
     cp_problem = cp.Problem(cp.Minimize(objective_val), constraints)
 

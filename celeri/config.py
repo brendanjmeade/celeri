@@ -80,6 +80,41 @@ class Config(BaseModel):
     Reasonable values might be in the range of 0.01 to 10.
     """
 
+    segment_slip_rate_bound_weight: float = 100.0
+    """Weight for enforcing slip rate bounds at segments.
+
+    This is used in `solve_sqp2` to enforce slip rate bounds softly.
+    """
+
+    segment_slip_rate_hard_bounds: bool = True
+    """Enforce hard slip rate bounds at segments.
+
+    This should be disabled when using soft slip rate bounds
+    via `segment_slip_rate_bound_sigma`.
+
+    The mcmc solver does not support hard bounds.
+    """
+
+    segment_slip_rate_regularization_sigma: float = 15.0
+    """Like `segment_slip_rate_regularization`, but for use in `solve_mcmc`.
+
+    The regularization is implemented as a Gaussian prior with this
+    standard deviation in mm/yr.
+    """
+
+    segment_slip_rate_bound_sigma: float = 3.0
+    """Standard deviation for slip rate bounds at segments in mm/yr.
+
+    This is used in `solve_mcmc` to implement soft slip rate bounds.
+
+    Hard slip rate bounds are implemented as a censored normal likelihood
+    with this standard deviation. Small values approach hard bounds,
+    while larger values allow more violation of the bounds.
+
+    We can interpret this as a measurment error of the slip rate bound
+    itself.
+    """
+
     global_elastic_cutoff_distance: int = 2000000
     global_elastic_cutoff_distance_flag: int = 0
 
