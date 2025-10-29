@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import pandas as pd
+from loguru import logger
 from scipy import linalg, spatial
 
 from celeri.constants import RADIUS_EARTH
@@ -166,7 +167,6 @@ def _coupling_component(
     assert operators.tde is not None
 
     import pymc as pm
-    import pytensor.tensor as pt
 
     idx = DIRECTION_IDX[kind]
 
@@ -362,7 +362,9 @@ def _add_rotation_component(operators: Operators):
     u, s, vh = linalg.svd(B, full_matrices=False)
     raw = pm.StudentT("rotation_raw", sigma=20, nu=4, dims="rotation_param")
 
-    rotation = pm.Deterministic("rotation", vh.T @ (raw / scale), dims="rotation_param")
+    rotation = pm.Deterministic(
+        "rotation", _operator_mult(vh.T, raw / scale), dims="rotation_param"
+    )
 
     rotation_velocity = _operator_mult(operators.rotation_to_velocities, rotation)
     rotation_okada_velocity = _operator_mult(
@@ -408,25 +410,59 @@ def _add_station_velocity_likelihood(model: Model, mu):
     def random(weight, mu, sigma, rng=None, size=None):
         return lh_dist(nu=6, mu=mu, sigma=sigma, rng=rng, size=size)
 
-    EFFECTIVE_AREA = 50000**2
+    if model.config.mcmc_station_weighting is None:
+        logger.info(f"Using unweighted station likelihood ({len(data)} stations)")
+        pm.StudentT(
+            "station_velocity",
+            mu=mu,
+            sigma=sigma,
+            observed=data,
+            dims=("station", "xy"),
+            nu=6,
+        )
+    elif model.config.mcmc_station_weighting == "voronoi":
+        effective_area = model.config.mcmc_station_effective_area
 
-    voroni = spatial.SphericalVoronoi(
-        model.station[["x", "y", "z"]].values, RADIUS_EARTH
-    )
-    areas = voroni.calculate_areas()
-    areas = np.minimum(EFFECTIVE_AREA, areas)
-    weight = areas / EFFECTIVE_AREA
+        voroni = spatial.SphericalVoronoi(
+            model.station[["x", "y", "z"]].values, RADIUS_EARTH
+        )
+        areas = voroni.calculate_areas()
 
-    pm.CustomDist(
-        "station_velocity",
-        weight[:, None],
-        mu,
-        sigma,
-        logp=lh,
-        random=random,
-        observed=data,
-        dims=("station", "xy"),
-    )
+        areas_clipped = np.minimum(effective_area, areas)
+        weight = areas_clipped / effective_area
+
+        # Log diagnostics about the weighting
+        effective_n = (weight.sum() ** 2) / (weight**2).sum()
+        logger.info("Station weighting diagnostics:")
+        logger.info(f"  Number of stations: {len(weight)}")
+        logger.info(
+            f"  Effective area threshold: {np.sqrt(effective_area) / 1000:.1f} km "
+            f"x {np.sqrt(effective_area) / 1000:.1f} km"
+        )
+        logger.info(f"  Weight range: [{weight.min():.3f}, {weight.max():.3f}]")
+        logger.info(
+            f"  Effective sample size: {effective_n:.1f} (vs {len(weight)} stations)"
+        )
+        logger.info(
+            "  Stations at full weight (area >= threshold): "
+            f"{(areas >= effective_area).sum()}"
+        )
+
+        pm.CustomDist(
+            "station_velocity",
+            weight[:, None],
+            mu,
+            sigma,
+            logp=lh,
+            random=random,
+            observed=data,
+            dims=("station", "xy"),
+        )
+    else:
+        raise ValueError(
+            f"Unknown mcmc_station_weighting: {model.config.mcmc_station_weighting}. "
+            "Must be None or 'voronoi'."
+        )
 
 
 def _add_segment_constraints(model: Model, operators: Operators, rotation):
