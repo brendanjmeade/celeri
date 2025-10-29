@@ -302,14 +302,19 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
         )
 
         # block rotation
-        A = operators.rotation_to_velocities - operators.rotation_to_slip_rate_to_okada_to_velocities
+        A = (
+            operators.rotation_to_velocities
+            - operators.rotation_to_slip_rate_to_okada_to_velocities
+        )
         scale = 1e6
         B = A / scale
         u, s, vh = linalg.svd(B, full_matrices=False)
         raw = pm.Normal("rotation_raw", sigma=20, dims="rotation_param")
 
-        #scale = 1 / np.sqrt((operators.rotation_to_velocities**2).mean())
-        rotation = pm.Deterministic("rotation", vh.T @ (raw / scale), dims="rotation_param")
+        # scale = 1 / np.sqrt((operators.rotation_to_velocities**2).mean())
+        rotation = pm.Deterministic(
+            "rotation", vh.T @ (raw / scale), dims="rotation_param"
+        )
 
         rotation_velocity = _operator_mult(operators.rotation_to_velocities, rotation)
         rotation_okada_velocity = _operator_mult(
@@ -391,13 +396,15 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
         segment_rates = segment_rates.reshape((-1, 3))
         gamma = model.config.segment_slip_rate_regularization_sigma
         if gamma is not None:
-            for i, dir in enumerate(["ss", "ds", "ts"]):
+            for i, kind in enumerate(["ss", "ds", "ts"]):
                 pm.StudentT(
-                    f"segment_slip_rate_regularization_{dir}",
-                    mu=segment_rates[(model.segment[f"{dir}_rate_flag"] == 2).values, i],
+                    f"segment_slip_rate_regularization_{kind}",
+                    mu=segment_rates[
+                        (model.segment[f"{kind}_rate_flag"] == 2).values, i
+                    ],
                     sigma=gamma,
                     nu=5,
-                    observed=np.zeros((model.segment[f"{dir}_rate_flag"] == 2).sum()),
+                    observed=np.zeros((model.segment[f"{kind}_rate_flag"] == 2).sum()),
                 )
 
         pm.Deterministic(
@@ -531,7 +538,8 @@ def solve_mcmc(
     pymc_model = _build_pymc_model(model, operators)
 
     compiled = nutpie.compile_pymc_model(
-        pymc_model, backend="numba",
+        pymc_model,
+        backend="numba",
     )
     kwargs = {
         "low_rank_modified_mass_matrix": True,
