@@ -1,6 +1,6 @@
-from dataclasses import dataclass
 import os
 import time
+from dataclasses import dataclass
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -375,10 +375,12 @@ def _debug_plot_polygons_and_error(
     handles, labels = ax.get_legend_handles_labels()
     seen = set()
     unique = [
-        (h, l) for h, l in zip(handles, labels) if not (l in seen or seen.add(l)) and l
+        (h, l)
+        for h, l in zip(handles, labels, strict=False)
+        if not (l in seen or seen.add(l)) and l
     ]
     if unique:
-        ax.legend(*zip(*unique), fontsize=8)
+        ax.legend(*zip(*unique, strict=False), fontsize=8)
 
     ts = int(time.time())
     out_path = os.path.join("debug_plots", f"closure_debug_{ts}.png")

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 
-import sys
 import os
+import sys
+
+import matplotlib.pyplot as plt
 import pandas as pd
 from shapely.geometry import LineString, Point
-from shapely.ops import unary_union
-import matplotlib.pyplot as plt
 
 
 def main():
@@ -145,7 +145,7 @@ def main():
 
         # Save and show the plot
         plt.savefig("segments_with_nearby_stations.png", dpi=300, bbox_inches="tight")
-        print(f"\nPlot saved as 'segments_with_nearby_stations.png'")
+        print("\nPlot saved as 'segments_with_nearby_stations.png'")
         plt.show()
     else:
         print("\nNo matching segments found - no plot created")

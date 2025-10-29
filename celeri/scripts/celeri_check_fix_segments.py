@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Comprehensive segment checking and fixing tool for Celeri input files.
+"""Comprehensive segment checking and fixing tool for Celeri input files.
 
 This script checks fault segment files for various issues and optionally fixes them:
 - Zero-degree dips (converted to 90 degrees)
@@ -13,17 +12,16 @@ Usage:
     python celeri_check_fix_segments.py segment_file.csv [options]
 """
 
-import sys
 import argparse
-import pandas as pd
-import numpy as np
-from pathlib import Path
-from collections import Counter, defaultdict
-import matplotlib.pyplot as plt
-import matplotlib
+import sys
 import uuid
-import warnings
-from typing import Tuple, Dict, List, Optional
+from collections import defaultdict
+from pathlib import Path
+
+import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 
 # Earth radius for distance calculations
 EARTH_RADIUS_KM = 6371.0088
@@ -33,11 +31,10 @@ class SegmentChecker:
     """Class to handle all segment checking operations."""
 
     def __init__(self, df: pd.DataFrame, tolerance: float = 1e-5):
-        """
-        Initialize the segment checker.
+        """Initialize the segment checker.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         df : pd.DataFrame
             Dataframe with segment data
         tolerance : float
@@ -48,8 +45,7 @@ class SegmentChecker:
         self.issues = {}
 
     def haversine_length_km(self, lon1, lat1, lon2, lat2):
-        """
-        Vectorized great-circle distance between two lon/lat arrays (degrees).
+        """Vectorized great-circle distance between two lon/lat arrays (degrees).
 
         Returns distance in kilometers using the haversine formula.
         """
@@ -65,16 +61,20 @@ class SegmentChecker:
 
         sin_dlat_2 = np.sin(dlat / 2.0)
         sin_dlon_2 = np.sin(dlon / 2.0)
-        a = (sin_dlat_2 * sin_dlat_2 +
-             np.cos(lat1r) * np.cos(lat2r) * sin_dlon_2 * sin_dlon_2)
+        a = (
+            sin_dlat_2 * sin_dlat_2
+            + np.cos(lat1r) * np.cos(lat2r) * sin_dlon_2 * sin_dlon_2
+        )
         c = 2.0 * np.arcsin(np.minimum(1.0, np.sqrt(a)))
         return EARTH_RADIUS_KM * c
 
     def compute_segment_lengths(self):
         """Add a 'length_km' column to the DataFrame."""
         self.df["length_km"] = self.haversine_length_km(
-            self.df["lon1"].values, self.df["lat1"].values,
-            self.df["lon2"].values, self.df["lat2"].values
+            self.df["lon1"].values,
+            self.df["lat1"].values,
+            self.df["lon2"].values,
+            self.df["lat2"].values,
         )
         return self.df
 
@@ -94,18 +94,22 @@ class SegmentChecker:
 
         # Collect all endpoints with their segment index
         for idx, row in self.df.iterrows():
-            endpoints.append({
-                "lon": row["lon1"],
-                "lat": row["lat1"],
-                "segment_idx": idx,
-                "endpoint": "start"
-            })
-            endpoints.append({
-                "lon": row["lon2"],
-                "lat": row["lat2"],
-                "segment_idx": idx,
-                "endpoint": "end"
-            })
+            endpoints.append(
+                {
+                    "lon": row["lon1"],
+                    "lat": row["lat1"],
+                    "segment_idx": idx,
+                    "endpoint": "start",
+                }
+            )
+            endpoints.append(
+                {
+                    "lon": row["lon2"],
+                    "lat": row["lat2"],
+                    "segment_idx": idx,
+                    "endpoint": "end",
+                }
+            )
 
         # Create DataFrame of all endpoints
         ep_df = pd.DataFrame(endpoints)
@@ -122,28 +126,29 @@ class SegmentChecker:
 
         # Get details of terminating endpoints
         terminating_list = []
-        for (lon_r, lat_r), count in terminating_points.items():
+        for lon_r, lat_r in terminating_points.keys():
             mask = (ep_df["lon_round"] == lon_r) & (ep_df["lat_round"] == lat_r)
             matching = ep_df[mask]
 
             for _, ep in matching.iterrows():
-                terminating_list.append({
-                    "lon": ep["lon"],
-                    "lat": ep["lat"],
-                    "segment_idx": ep["segment_idx"],
-                    "endpoint_type": ep["endpoint"],
-                    "segment_name": self.df.iloc[ep["segment_idx"]].get(
-                        "name", f"seg_{ep['segment_idx']}"
-                    )
-                })
+                terminating_list.append(
+                    {
+                        "lon": ep["lon"],
+                        "lat": ep["lat"],
+                        "segment_idx": ep["segment_idx"],
+                        "endpoint_type": ep["endpoint"],
+                        "segment_name": self.df.iloc[ep["segment_idx"]].get(
+                            "name", f"seg_{ep['segment_idx']}"
+                        ),
+                    }
+                )
 
         terminating_df = pd.DataFrame(terminating_list)
         self.issues["terminating_endpoints"] = terminating_df
         return terminating_df
 
-    def check_duplicate_segments(self) -> Tuple[pd.DataFrame, pd.DataFrame]:
-        """
-        Check for two types of duplicate segments:
+    def check_duplicate_segments(self) -> tuple[pd.DataFrame, pd.DataFrame]:
+        """Check for two types of duplicate segments:
         1. Degenerate segments where start == end
         2. Segments with same endpoint pairs (order-insensitive)
         """
@@ -154,16 +159,18 @@ class SegmentChecker:
             lat_diff = abs(row["lat1"] - row["lat2"])
 
             if lon_diff <= self.tolerance and lat_diff <= self.tolerance:
-                degenerate.append({
-                    "segment_idx": idx,
-                    "segment_name": row.get("name", f"seg_{idx}"),
-                    "lon1": row["lon1"],
-                    "lat1": row["lat1"],
-                    "lon2": row["lon2"],
-                    "lat2": row["lat2"],
-                    "lon_diff": lon_diff,
-                    "lat_diff": lat_diff
-                })
+                degenerate.append(
+                    {
+                        "segment_idx": idx,
+                        "segment_name": row.get("name", f"seg_{idx}"),
+                        "lon1": row["lon1"],
+                        "lat1": row["lat1"],
+                        "lon2": row["lon2"],
+                        "lat2": row["lat2"],
+                        "lon_diff": lon_diff,
+                        "lat_diff": lat_diff,
+                    }
+                )
 
         degenerate_df = pd.DataFrame(degenerate)
 
@@ -173,10 +180,14 @@ class SegmentChecker:
 
         for idx, row in self.df.iterrows():
             # Discretize endpoints
-            a = (int(round(row["lon1"] / self.tolerance)),
-                 int(round(row["lat1"] / self.tolerance)))
-            b = (int(round(row["lon2"] / self.tolerance)),
-                 int(round(row["lat2"] / self.tolerance)))
+            a = (
+                round(row["lon1"] / self.tolerance),
+                round(row["lat1"] / self.tolerance),
+            )
+            b = (
+                round(row["lon2"] / self.tolerance),
+                round(row["lat2"] / self.tolerance),
+            )
 
             # Order-insensitive key
             key = tuple(sorted((a, b)))
@@ -186,7 +197,7 @@ class SegmentChecker:
                 (ax, ay), (bx, by) = key
                 key_to_coords[key] = (
                     (ax * self.tolerance, ay * self.tolerance),
-                    (bx * self.tolerance, by * self.tolerance)
+                    (bx * self.tolerance, by * self.tolerance),
                 )
 
         # Build records for duplicate groups
@@ -199,20 +210,22 @@ class SegmentChecker:
             (lonA, latA), (lonB, latB) = key_to_coords[key]
             for idx in idxs:
                 row = self.df.iloc[idx]
-                records.append({
-                    "group_id": group_id,
-                    "group_lonA": lonA,
-                    "group_latA": latA,
-                    "group_lonB": lonB,
-                    "group_latB": latB,
-                    "group_size": len(idxs),
-                    "segment_idx": idx,
-                    "segment_name": row.get("name", f"seg_{idx}"),
-                    "lon1": row["lon1"],
-                    "lat1": row["lat1"],
-                    "lon2": row["lon2"],
-                    "lat2": row["lat2"]
-                })
+                records.append(
+                    {
+                        "group_id": group_id,
+                        "group_lonA": lonA,
+                        "group_latA": latA,
+                        "group_lonB": lonB,
+                        "group_latB": latB,
+                        "group_size": len(idxs),
+                        "segment_idx": idx,
+                        "segment_name": row.get("name", f"seg_{idx}"),
+                        "lon1": row["lon1"],
+                        "lat1": row["lat1"],
+                        "lon2": row["lon2"],
+                        "lat2": row["lat2"],
+                    }
+                )
             group_id += 1
 
         endpoint_dup_df = pd.DataFrame(records)
@@ -222,12 +235,11 @@ class SegmentChecker:
 
         return degenerate_df, endpoint_dup_df
 
-    def check_axis_aligned_segments(self) -> Tuple[pd.DataFrame, pd.DataFrame]:
-        """
-        Identify perfectly vertical and horizontal segments.
+    def check_axis_aligned_segments(self) -> tuple[pd.DataFrame, pd.DataFrame]:
+        """Identify perfectly vertical and horizontal segments.
 
-        Returns:
-        --------
+        Returns
+        -------
         (vertical_df, horizontal_df)
         """
         vertical, horizontal = [], []
@@ -237,26 +249,30 @@ class SegmentChecker:
             lat_diff = abs(row["lat1"] - row["lat2"])
 
             if lon_diff <= self.tolerance:
-                vertical.append({
-                    "segment_idx": idx,
-                    "segment_name": row.get("name", f"seg_{idx}"),
-                    "lon1": row["lon1"],
-                    "lat1": row["lat1"],
-                    "lon2": row["lon2"],
-                    "lat2": row["lat2"],
-                    "lon_diff": lon_diff
-                })
+                vertical.append(
+                    {
+                        "segment_idx": idx,
+                        "segment_name": row.get("name", f"seg_{idx}"),
+                        "lon1": row["lon1"],
+                        "lat1": row["lat1"],
+                        "lon2": row["lon2"],
+                        "lat2": row["lat2"],
+                        "lon_diff": lon_diff,
+                    }
+                )
 
             if lat_diff <= self.tolerance:
-                horizontal.append({
-                    "segment_idx": idx,
-                    "segment_name": row.get("name", f"seg_{idx}"),
-                    "lon1": row["lon1"],
-                    "lat1": row["lat1"],
-                    "lon2": row["lon2"],
-                    "lat2": row["lat2"],
-                    "lat_diff": lat_diff
-                })
+                horizontal.append(
+                    {
+                        "segment_idx": idx,
+                        "segment_name": row.get("name", f"seg_{idx}"),
+                        "lon1": row["lon1"],
+                        "lat1": row["lat1"],
+                        "lon2": row["lon2"],
+                        "lat2": row["lat2"],
+                        "lat_diff": lat_diff,
+                    }
+                )
 
         vertical_df = pd.DataFrame(vertical)
         horizontal_df = pd.DataFrame(horizontal)
@@ -274,21 +290,23 @@ class SegmentChecker:
         short = []
         for idx, row in self.df.iterrows():
             if row["length_km"] <= threshold_km:
-                short.append({
-                    "segment_idx": idx,
-                    "segment_name": row.get("name", f"seg_{idx}"),
-                    "lon1": row["lon1"],
-                    "lat1": row["lat1"],
-                    "lon2": row["lon2"],
-                    "lat2": row["lat2"],
-                    "length_km": row["length_km"]
-                })
+                short.append(
+                    {
+                        "segment_idx": idx,
+                        "segment_name": row.get("name", f"seg_{idx}"),
+                        "lon1": row["lon1"],
+                        "lat1": row["lat1"],
+                        "lon2": row["lon2"],
+                        "lat2": row["lat2"],
+                        "length_km": row["length_km"],
+                    }
+                )
 
         short_df = pd.DataFrame(short)
         self.issues["short_segments"] = short_df
         return short_df
 
-    def run_all_checks(self, short_threshold_km: float = 0.01) -> Dict:
+    def run_all_checks(self, short_threshold_km: float = 0.01) -> dict:
         """Run all checks and return results."""
         print("\n" + "=" * 80)
         print("RUNNING SEGMENT CHECKS")
@@ -305,7 +323,7 @@ class SegmentChecker:
         self.compute_segment_lengths()
         if len(self.df) > 0:
             lengths = self.df["length_km"].values
-            print(f"\nSegment length statistics (km):")
+            print("\nSegment length statistics (km):")
             print(f"  min={np.nanmin(lengths):.6f}")
             print(f"  median={np.nanmedian(lengths):.3f}")
             print(f"  max={np.nanmax(lengths):.1f}")
@@ -313,7 +331,9 @@ class SegmentChecker:
         # Check for short segments
         short_df = self.check_short_segments(threshold_km=short_threshold_km)
         if len(short_df) > 0:
-            print(f"\n✗ Found {len(short_df)} very short segments (≤{short_threshold_km} km)")
+            print(
+                f"\n✗ Found {len(short_df)} very short segments (≤{short_threshold_km} km)"
+            )
         else:
             print(f"\n✓ No very short segments (≤{short_threshold_km} km)")
 
@@ -325,8 +345,12 @@ class SegmentChecker:
             print("\n✓ No degenerate segments")
 
         if len(endpoint_dup_df) > 0:
-            n_groups = endpoint_dup_df["group_id"].nunique() if len(endpoint_dup_df) > 0 else 0
-            print(f"\n✗ Found {len(endpoint_dup_df)} segments in {n_groups} duplicate groups")
+            n_groups = (
+                endpoint_dup_df["group_id"].nunique() if len(endpoint_dup_df) > 0 else 0
+            )
+            print(
+                f"\n✗ Found {len(endpoint_dup_df)} segments in {n_groups} duplicate groups"
+            )
         else:
             print("\n✓ No duplicate endpoint pairs")
 
@@ -378,16 +402,18 @@ class SegmentFixer:
         return False
 
     def fix_axis_aligned_segments(self, perturbation: float = 0.001) -> bool:
-        """
-        Perturb axis-aligned segments while maintaining connectivity.
-        """
+        """Perturb axis-aligned segments while maintaining connectivity."""
         # Build connectivity map
         connectivity = defaultdict(list)
         for idx, row in self.df.iterrows():
-            key1 = (round(row["lon1"] / self.tolerance) * self.tolerance,
-                   round(row["lat1"] / self.tolerance) * self.tolerance)
-            key2 = (round(row["lon2"] / self.tolerance) * self.tolerance,
-                   round(row["lat2"] / self.tolerance) * self.tolerance)
+            key1 = (
+                round(row["lon1"] / self.tolerance) * self.tolerance,
+                round(row["lat1"] / self.tolerance) * self.tolerance,
+            )
+            key2 = (
+                round(row["lon2"] / self.tolerance) * self.tolerance,
+                round(row["lat2"] / self.tolerance) * self.tolerance,
+            )
             connectivity[key1].append((idx, "start"))
             connectivity[key2].append((idx, "end"))
 
@@ -400,8 +426,10 @@ class SegmentFixer:
         for idx, row in self.df.iterrows():
             lon_diff = abs(row["lon1"] - row["lon2"])
             if lon_diff <= self.tolerance:
-                endpoint_key = (round(row["lon2"] / self.tolerance) * self.tolerance,
-                               round(row["lat2"] / self.tolerance) * self.tolerance)
+                endpoint_key = (
+                    round(row["lon2"] / self.tolerance) * self.tolerance,
+                    round(row["lat2"] / self.tolerance) * self.tolerance,
+                )
 
                 if endpoint_key not in perturbed_endpoints:
                     new_lon = row["lon2"] + perturbation
@@ -419,8 +447,10 @@ class SegmentFixer:
         for idx, row in self.df.iterrows():
             lat_diff = abs(row["lat1"] - row["lat2"])
             if lat_diff <= self.tolerance:
-                endpoint_key = (round(row["lon2"] / self.tolerance) * self.tolerance,
-                               round(row["lat2"] / self.tolerance) * self.tolerance)
+                endpoint_key = (
+                    round(row["lon2"] / self.tolerance) * self.tolerance,
+                    round(row["lat2"] / self.tolerance) * self.tolerance,
+                )
 
                 if endpoint_key not in perturbed_endpoints:
                     new_lat = row["lat2"] + perturbation
@@ -451,8 +481,12 @@ class SegmentFixer:
             return True
         return False
 
-    def apply_fixes(self, fix_dips: bool = True, fix_aligned: bool = False,
-                    perturbation: float = 0.001) -> pd.DataFrame:
+    def apply_fixes(
+        self,
+        fix_dips: bool = True,
+        fix_aligned: bool = False,
+        perturbation: float = 0.001,
+    ) -> pd.DataFrame:
         """Apply requested fixes to the segments."""
         print("\n" + "=" * 80)
         print("APPLYING FIXES")
@@ -480,17 +514,16 @@ class SegmentFixer:
         return self.df
 
 
-def plot_segment_issues(df: pd.DataFrame, issues: Dict, output_file: Optional[str] = None):
+def plot_segment_issues(df: pd.DataFrame, issues: dict, output_file: str | None = None):
     """Create visualization of segment issues."""
-
     # Set up matplotlib backend
     if output_file:
-        matplotlib.use('Agg')  # Non-interactive for file output
+        matplotlib.use("Agg")  # Non-interactive for file output
     else:
         try:
-            matplotlib.use('TkAgg')  # Interactive
+            matplotlib.use("TkAgg")  # Interactive
         except:
-            matplotlib.use('Qt5Agg')  # Fallback
+            matplotlib.use("Qt5Agg")  # Fallback
 
     # Create figure with subplots
     fig, axes = plt.subplots(2, 2, figsize=(16, 12))
@@ -504,43 +537,63 @@ def plot_segment_issues(df: pd.DataFrame, issues: Dict, output_file: Optional[st
         "All Segments",
         "Terminating Endpoints",
         "Problematic Segments",
-        "Segment Length Distribution"
+        "Segment Length Distribution",
     ]
 
-    for ax, title in zip(axes, titles):
+    for ax, title in zip(axes, titles, strict=False):
         ax.set_title(title, fontsize=FONTSIZE + 2)
         ax.set_xlabel("Longitude", fontsize=FONTSIZE)
         ax.set_ylabel("Latitude", fontsize=FONTSIZE)
-        ax.set_aspect('equal')
+        ax.set_aspect("equal")
         ax.grid(True, alpha=0.3)
 
     # Plot 1: All segments
     ax = axes[0]
     for i in range(len(df)):
-        ax.plot([df.lon1.values[i], df.lon2.values[i]],
-                [df.lat1.values[i], df.lat2.values[i]],
-                '-', color='tab:blue', linewidth=LINEWIDTH, alpha=0.5)
+        ax.plot(
+            [df.lon1.values[i], df.lon2.values[i]],
+            [df.lat1.values[i], df.lat2.values[i]],
+            "-",
+            color="tab:blue",
+            linewidth=LINEWIDTH,
+            alpha=0.5,
+        )
 
     # Plot 2: Terminating endpoints
     ax = axes[1]
     for i in range(len(df)):
-        ax.plot([df.lon1.values[i], df.lon2.values[i]],
-                [df.lat1.values[i], df.lat2.values[i]],
-                '-', color='lightgray', linewidth=LINEWIDTH, alpha=0.3)
+        ax.plot(
+            [df.lon1.values[i], df.lon2.values[i]],
+            [df.lat1.values[i], df.lat2.values[i]],
+            "-",
+            color="lightgray",
+            linewidth=LINEWIDTH,
+            alpha=0.3,
+        )
 
     if "terminating_endpoints" in issues and len(issues["terminating_endpoints"]) > 0:
         term_df = issues["terminating_endpoints"]
-        ax.scatter(term_df["lon"].values, term_df["lat"].values,
-                  color='red', s=20, zorder=100,
-                  label=f'{len(term_df)} terminating endpoints')
+        ax.scatter(
+            term_df["lon"].values,
+            term_df["lat"].values,
+            color="red",
+            s=20,
+            zorder=100,
+            label=f"{len(term_df)} terminating endpoints",
+        )
         ax.legend(fontsize=FONTSIZE)
 
     # Plot 3: Problematic segments
     ax = axes[2]
     for i in range(len(df)):
-        ax.plot([df.lon1.values[i], df.lon2.values[i]],
-                [df.lat1.values[i], df.lat2.values[i]],
-                '-', color='lightgray', linewidth=LINEWIDTH, alpha=0.3)
+        ax.plot(
+            [df.lon1.values[i], df.lon2.values[i]],
+            [df.lat1.values[i], df.lat2.values[i]],
+            "-",
+            color="lightgray",
+            linewidth=LINEWIDTH,
+            alpha=0.3,
+        )
 
     legend_items = []
 
@@ -548,71 +601,104 @@ def plot_segment_issues(df: pd.DataFrame, issues: Dict, output_file: Optional[st
     if "vertical_segments" in issues and len(issues["vertical_segments"]) > 0:
         for _, seg in issues["vertical_segments"].iterrows():
             idx = seg["segment_idx"]
-            ax.plot([df.lon1.values[idx], df.lon2.values[idx]],
-                   [df.lat1.values[idx], df.lat2.values[idx]],
-                   '-', color='red', linewidth=2, alpha=0.8)
-        legend_items.append(f'{len(issues["vertical_segments"])} vertical')
+            ax.plot(
+                [df.lon1.values[idx], df.lon2.values[idx]],
+                [df.lat1.values[idx], df.lat2.values[idx]],
+                "-",
+                color="red",
+                linewidth=2,
+                alpha=0.8,
+            )
+        legend_items.append(f"{len(issues['vertical_segments'])} vertical")
 
     if "horizontal_segments" in issues and len(issues["horizontal_segments"]) > 0:
         for _, seg in issues["horizontal_segments"].iterrows():
             idx = seg["segment_idx"]
-            ax.plot([df.lon1.values[idx], df.lon2.values[idx]],
-                   [df.lat1.values[idx], df.lat2.values[idx]],
-                   '--', color='red', linewidth=2, alpha=0.8)
-        legend_items.append(f'{len(issues["horizontal_segments"])} horizontal')
+            ax.plot(
+                [df.lon1.values[idx], df.lon2.values[idx]],
+                [df.lat1.values[idx], df.lat2.values[idx]],
+                "--",
+                color="red",
+                linewidth=2,
+                alpha=0.8,
+            )
+        legend_items.append(f"{len(issues['horizontal_segments'])} horizontal")
 
     if "short_segments" in issues and len(issues["short_segments"]) > 0:
         for _, seg in issues["short_segments"].iterrows():
             idx = seg["segment_idx"]
-            ax.plot([df.lon1.values[idx], df.lon2.values[idx]],
-                   [df.lat1.values[idx], df.lat2.values[idx]],
-                   '-', color='orange', linewidth=2, alpha=0.8)
-        legend_items.append(f'{len(issues["short_segments"])} very short')
+            ax.plot(
+                [df.lon1.values[idx], df.lon2.values[idx]],
+                [df.lat1.values[idx], df.lat2.values[idx]],
+                "-",
+                color="orange",
+                linewidth=2,
+                alpha=0.8,
+            )
+        legend_items.append(f"{len(issues['short_segments'])} very short")
 
     if "degenerate_segments" in issues and len(issues["degenerate_segments"]) > 0:
         for _, seg in issues["degenerate_segments"].iterrows():
-            ax.plot(seg["lon1"], seg["lat1"], 'o', color='purple',
-                   markersize=8, markeredgecolor='darkpurple')
-        legend_items.append(f'{len(issues["degenerate_segments"])} degenerate')
+            ax.plot(
+                seg["lon1"],
+                seg["lat1"],
+                "o",
+                color="purple",
+                markersize=8,
+                markeredgecolor="darkpurple",
+            )
+        legend_items.append(f"{len(issues['degenerate_segments'])} degenerate")
 
     if legend_items:
-        ax.text(0.02, 0.98, '\n'.join(legend_items),
-                transform=ax.transAxes, fontsize=FONTSIZE,
-                verticalalignment='top',
-                bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+        ax.text(
+            0.02,
+            0.98,
+            "\n".join(legend_items),
+            transform=ax.transAxes,
+            fontsize=FONTSIZE,
+            verticalalignment="top",
+            bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.8),
+        )
 
     # Plot 4: Length distribution histogram
     ax = axes[3]
     if "length_km" in df.columns:
         lengths = df["length_km"].values
-        ax.hist(lengths, bins=50, color='tab:blue', alpha=0.7, edgecolor='black')
+        ax.hist(lengths, bins=50, color="tab:blue", alpha=0.7, edgecolor="black")
         ax.set_xlabel("Segment Length (km)", fontsize=FONTSIZE)
         ax.set_ylabel("Count", fontsize=FONTSIZE)
         ax.set_title("Segment Length Distribution", fontsize=FONTSIZE + 2)
         ax.grid(True, alpha=0.3)
 
         # Add statistics
-        stats_text = (f"Min: {np.min(lengths):.3f} km\n"
-                     f"Median: {np.median(lengths):.1f} km\n"
-                     f"Max: {np.max(lengths):.0f} km\n"
-                     f"Total: {len(lengths)} segments")
-        ax.text(0.70, 0.95, stats_text, transform=ax.transAxes,
-                fontsize=FONTSIZE, verticalalignment='top',
-                bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+        stats_text = (
+            f"Min: {np.min(lengths):.3f} km\n"
+            f"Median: {np.median(lengths):.1f} km\n"
+            f"Max: {np.max(lengths):.0f} km\n"
+            f"Total: {len(lengths)} segments"
+        )
+        ax.text(
+            0.70,
+            0.95,
+            stats_text,
+            transform=ax.transAxes,
+            fontsize=FONTSIZE,
+            verticalalignment="top",
+            bbox=dict(boxstyle="round", facecolor="white", alpha=0.8),
+        )
 
     plt.tight_layout()
 
     if output_file:
-        plt.savefig(output_file, dpi=300, bbox_inches='tight')
+        plt.savefig(output_file, dpi=300, bbox_inches="tight")
         print(f"\nPlot saved to: {output_file}")
     else:
         plt.show(block=False)
         plt.pause(0.1)
 
 
-def print_detailed_report(issues: Dict, verbose: bool = False):
+def print_detailed_report(issues: dict, verbose: bool = False):
     """Print detailed report of all issues found."""
-
     print("\n" + "=" * 80)
     print("DETAILED ISSUE REPORT")
     print("=" * 80)
@@ -642,7 +728,9 @@ def print_detailed_report(issues: Dict, verbose: bool = False):
         print("-" * 40)
         if verbose:
             for _, row in df.iterrows():
-                print(f"  {row['segment_name']}: ({row['lon1']:.6f}, {row['lat1']:.6f})")
+                print(
+                    f"  {row['segment_name']}: ({row['lon1']:.6f}, {row['lat1']:.6f})"
+                )
 
     # Duplicate endpoint pairs
     if "endpoint_duplicates" in issues and len(issues["endpoint_duplicates"]) > 0:
@@ -688,7 +776,9 @@ def print_detailed_report(issues: Dict, verbose: bool = False):
                 seg_name = seg_endpoints.iloc[0]["segment_name"]
                 print(f"    • {seg_name}:")
                 for _, ep in seg_endpoints.iterrows():
-                    print(f"      - {ep['endpoint_type']} at ({ep['lon']:.6f}, {ep['lat']:.6f})")
+                    print(
+                        f"      - {ep['endpoint_type']} at ({ep['lon']:.6f}, {ep['lat']:.6f})"
+                    )
 
     print("\n" + "=" * 80)
 
@@ -711,41 +801,62 @@ Examples:
 
   # Verbose output with custom tolerance
   python celeri_check_fix_segments.py segments.csv --verbose --tolerance 1e-4
-        """
+        """,
     )
 
     # Required arguments
-    parser.add_argument("csv_file",
-                       help="Path to CSV file containing segments")
+    parser.add_argument("csv_file", help="Path to CSV file containing segments")
 
     # Fix options
     fix_group = parser.add_argument_group("fixing options")
-    fix_group.add_argument("--fix-dips", action="store_true",
-                          help="Fix zero-degree dips (convert to 90 degrees)")
-    fix_group.add_argument("--fix-aligned", action="store_true",
-                          help="Fix axis-aligned segments by perturbation")
-    fix_group.add_argument("--fix-all", action="store_true",
-                          help="Apply all available fixes")
-    fix_group.add_argument("--perturbation", type=float, default=0.001,
-                          help="Perturbation amount for fixing aligned segments (default: 0.001 degrees)")
+    fix_group.add_argument(
+        "--fix-dips",
+        action="store_true",
+        help="Fix zero-degree dips (convert to 90 degrees)",
+    )
+    fix_group.add_argument(
+        "--fix-aligned",
+        action="store_true",
+        help="Fix axis-aligned segments by perturbation",
+    )
+    fix_group.add_argument(
+        "--fix-all", action="store_true", help="Apply all available fixes"
+    )
+    fix_group.add_argument(
+        "--perturbation",
+        type=float,
+        default=0.001,
+        help="Perturbation amount for fixing aligned segments (default: 0.001 degrees)",
+    )
 
     # Check options
     check_group = parser.add_argument_group("checking options")
-    check_group.add_argument("--tolerance", type=float, default=1e-5,
-                            help="Tolerance in degrees for point matching (default: 1e-5)")
-    check_group.add_argument("--short-threshold", type=float, default=0.01,
-                            help="Threshold in km for short segments (default: 0.01)")
+    check_group.add_argument(
+        "--tolerance",
+        type=float,
+        default=1e-5,
+        help="Tolerance in degrees for point matching (default: 1e-5)",
+    )
+    check_group.add_argument(
+        "--short-threshold",
+        type=float,
+        default=0.01,
+        help="Threshold in km for short segments (default: 0.01)",
+    )
 
     # Output options
     output_group = parser.add_argument_group("output options")
     output_group.add_argument("--output", help="Output CSV file for fixed segments")
-    output_group.add_argument("--plot", action="store_true",
-                             help="Display interactive plot of issues")
+    output_group.add_argument(
+        "--plot", action="store_true", help="Display interactive plot of issues"
+    )
     output_group.add_argument("--plot-file", help="Save plot to file")
-    output_group.add_argument("--verbose", action="store_true",
-                             help="Print detailed information about issues")
-    output_group.add_argument("--quiet", action="store_true",
-                             help="Suppress most output")
+    output_group.add_argument(
+        "--verbose", action="store_true", help="Print detailed information about issues"
+    )
+    output_group.add_argument(
+        "--quiet", action="store_true", help="Suppress most output"
+    )
 
     args = parser.parse_args()
 
@@ -789,7 +900,7 @@ Examples:
         df_fixed = fixer.apply_fixes(
             fix_dips=args.fix_all or args.fix_dips,
             fix_aligned=args.fix_all or args.fix_aligned,
-            perturbation=args.perturbation
+            perturbation=args.perturbation,
         )
         need_output = len(fixer.fixes_applied) > 0
 
@@ -799,7 +910,7 @@ Examples:
             print("VERIFYING FIXES")
             print("=" * 80)
             checker_fixed = SegmentChecker(df_fixed, tolerance=args.tolerance)
-            issues_fixed = checker_fixed.run_all_checks(short_threshold_km=args.short_threshold)
+            checker_fixed.run_all_checks(short_threshold_km=args.short_threshold)
 
     # Save output if fixes were applied
     if need_output:
