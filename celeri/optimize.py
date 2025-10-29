@@ -907,6 +907,13 @@ def build_cvxpy_problem(
         constraint = adapt_operator(A_hat_) @ params_raw <= b_hat
         constraints.append(constraint)
 
+    segment_slip_rate = (
+        operators.rotation_to_slip_rate @ params[: operators.index.n_blocks * 3]
+    )
+    gamma = model.config.segment_slip_rate_regularization
+    if gamma != 0.0:
+        objective_val = objective_val + gamma * cp.sum_squares(segment_slip_rate)
+
     cp_problem = cp.Problem(cp.Minimize(objective_val), constraints)
 
     return Minimizer(
