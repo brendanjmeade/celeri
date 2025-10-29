@@ -423,7 +423,7 @@ class SegmentFixer:
         n_horizontal_fixed = 0
 
         # Fix vertical segments
-        for idx, row in self.df.iterrows():
+        for _, row in self.df.iterrows():
             lon_diff = abs(row["lon1"] - row["lon2"])
             if lon_diff <= self.tolerance:
                 endpoint_key = (
@@ -444,7 +444,7 @@ class SegmentFixer:
                     n_vertical_fixed += 1
 
         # Fix horizontal segments
-        for idx, row in self.df.iterrows():
+        for _, row in self.df.iterrows():
             lat_diff = abs(row["lat1"] - row["lat2"])
             if lat_diff <= self.tolerance:
                 endpoint_key = (
@@ -522,11 +522,11 @@ def plot_segment_issues(df: pd.DataFrame, issues: dict, output_file: str | None 
     else:
         try:
             matplotlib.use("TkAgg")  # Interactive
-        except:
+        except Exception:
             matplotlib.use("Qt5Agg")  # Fallback
 
     # Create figure with subplots
-    fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+    _, axes = plt.subplots(2, 2, figsize=(16, 12))
     axes = axes.flatten()
 
     # Common plot settings

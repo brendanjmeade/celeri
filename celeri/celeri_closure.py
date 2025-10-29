@@ -1,6 +1,6 @@
-import os
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -203,7 +203,8 @@ def _debug_plot_polygons_and_error(
 
     Saves a PNG under ./debug_plots and also shows a non-blocking window.
     """
-    os.makedirs("debug_plots", exist_ok=True)
+    base_path = Path("./debug_plots")
+    base_path.mkdir(exist_ok=True)
 
     fig, ax = plt.subplots(figsize=(9, 9))
 
@@ -373,17 +374,21 @@ def _debug_plot_polygons_and_error(
 
     # Deduplicate legend labels
     handles, labels = ax.get_legend_handles_labels()
-    seen = set()
-    unique = [
-        (h, l)
-        for h, l in zip(handles, labels, strict=False)
-        if not (l in seen or seen.add(l)) and l
-    ]
-    if unique:
-        ax.legend(*zip(*unique, strict=False), fontsize=8)
+    seen_labels = set()
+    unique_handles = []
+    unique_labels = []
+
+    for handle, label in zip(handles, labels, strict=True):
+        if label and label not in seen_labels:
+            seen_labels.add(label)
+            unique_handles.append(handle)
+            unique_labels.append(label)
+
+    if unique_handles:
+        ax.legend(unique_handles, unique_labels, fontsize=8)
 
     ts = int(time.time())
-    out_path = os.path.join("debug_plots", f"closure_debug_{ts}.png")
+    out_path = base_path / f"closure_debug_{ts}.png"
     try:
         fig.savefig(out_path, dpi=300)
         print(f"Saved closure debug plot to {out_path}")

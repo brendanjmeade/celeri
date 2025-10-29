@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
-import os
 import sys
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -109,7 +109,8 @@ def main():
     filtered_station_df = station_df.drop(index=list(matching_station_indices))
 
     # Create output filename
-    base_name = os.path.splitext(station_file)[0]
+    station_path = Path(station_file)
+    base_name = station_path.stem
     output_file = f"{base_name}_near_segment_removed_{buffer_distance}.csv"
 
     # Write the filtered dataframe to CSV without index
