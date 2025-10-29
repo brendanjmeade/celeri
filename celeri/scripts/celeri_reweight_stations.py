@@ -6,6 +6,7 @@ allowing for more balanced influence of data points in spatial estimation proced
 """
 
 import warnings
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -285,13 +286,11 @@ def main():
     args = parser.parse_args()
 
     # File paths
-    station_file = args.input
+    station_file = Path(args.input)
     # Create output filename based on input
-    import os
-
-    base_name = os.path.basename(station_file).replace(".csv", "")
-    output_dir = os.path.dirname(station_file)
-    output_file = os.path.join(output_dir, f"{base_name}_reweighted.csv")
+    base_name = station_file.stem
+    output_dir = station_file.parent
+    output_file = output_dir / f"{base_name}_reweighted.csv"
 
     print("=" * 60)
     print("Station Density Weighting Tool")
