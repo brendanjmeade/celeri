@@ -1,5 +1,4 @@
 import hashlib
-import json
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
@@ -14,7 +13,6 @@ from loguru import logger
 from pandas import DataFrame
 from scipy import spatial
 from scipy.sparse import csr_matrix
-from scipy.spatial.distance import cdist
 
 from celeri.celeri_util import (
     cartesian_vector_to_spherical_vector,
@@ -46,9 +44,7 @@ from celeri.spatial import (
     get_rotation_to_slip_rate_partials,
     get_rotation_to_velocities_partials,
     get_segment_station_operator_okada,
-    get_shared_sides,
     get_tde_to_velocities_single_mesh,
-    get_tri_shared_sides_distances,
     get_tri_smoothing_matrix,
     get_tri_smoothing_matrix_simple,
 )
@@ -137,64 +133,64 @@ class EigenIndex:
 
 @dataclass
 class Index:
-    """
-    Index of the full dense linear operators comprising the forward model.
+    """Index of the full dense linear operators comprising the forward model.
 
     Attributes:
-        n_blocks : int 
+        n_blocks : int
             The number of blocks in the model.
-        n_segments : int 
+        n_segments : int
             The number of segments in the model.
-        n_stations : int 
+        n_stations : int
             The number of stations in the model.
-        n_meshes : int 
+        n_meshes : int
             The number of meshes in the model.
-        n_mogis : int 
+        n_mogis : int
             The number of Mogi sources in the model.
-        vertical_velocities : np.ndarray 
+        vertical_velocities : np.ndarray
             The vertical velocities of the stations.
-        n_block_constraints : int 
+        n_block_constraints : int
             The number of block constraints in the model.
         station_row_keep_index : np.ndarray
-            The indices comprising the horizontal (spherical plane) vector components acting on the stations, for assigning 
+            The indices comprising the horizontal (spherical plane) vector components acting on the stations, for assigning
             horizontal-only forces in the full operator, e.g. block strain. Length is (2 * n_stations). Created using `celeri.utils.get_keep_index_12`.
-        start_station_row : int 
+        start_station_row : int
             The starting index of the station rows in the full operator.
-        end_station_row : int 
+        end_station_row : int
             The ending index of the station rows in the full operator.
-        start_block_col : int 
+        start_block_col : int
             The starting index of the block columns in the full operator.
-        end_block_col : int 
+        end_block_col : int
             The ending index of the block columns in the full operator.
-        start_block_constraints_row : int 
+        start_block_constraints_row : int
             The starting index of the block constraints rows in the full operator.
-        end_block_constraints_row : int 
+        end_block_constraints_row : int
             The ending index of the block constraints rows in the full operator.
-        n_slip_rate_constraints : int 
+        n_slip_rate_constraints : int
             The number of slip rate constraints in the model.
-        start_slip_rate_constraints_row : int 
+        start_slip_rate_constraints_row : int
             The starting index of the slip rate constraints rows in the full operator.
-        end_slip_rate_constraints_row : int 
+        end_slip_rate_constraints_row : int
             The ending index of the slip rate constraints rows in the full operator.
-        n_strain_blocks : int 
+        n_strain_blocks : int
             The number of strain blocks in the model.
-        n_block_strain_components : int 
+        n_block_strain_components : int
             The number of block strain components in the model.
-        start_block_strain_col : int 
+        start_block_strain_col : int
             The starting index of the block strain columns in the full operator.
-        end_block_strain_col : int 
+        end_block_strain_col : int
             The ending index of the block strain columns in the full operator.
-        start_mogi_col : int 
+        start_mogi_col : int
             The starting index of the Mogi columns in the full operator.
-        end_mogi_col : int 
+        end_mogi_col : int
             The ending index of the Mogi columns in the full operator.
-        slip_rate_bounds : np.ndarray 
+        slip_rate_bounds : np.ndarray
             The indices of the slip rate bounds in the model.
-        tde : TdeIndex | None 
+        tde : TdeIndex | None
             The TDE index.
-        eigen : EigenIndex | None 
+        eigen : EigenIndex | None
             The Eigen index.
     """
+
     n_blocks: int
     n_segments: int
     n_stations: int
@@ -366,43 +362,42 @@ class EigenOperators:
 
 @dataclass
 class Operators:
-    """
-    Linear operators comprising the forward model.
+    """Linear operators comprising the forward model.
 
     Attributes:
-        model : Model 
+        model : Model
             The model.
-        index : Index 
+        index : Index
             Indices to access different parts of the full dense operator.
-        assembly : Assembly 
+        assembly : Assembly
             Contains data, sigma, and index dictionaries.
-        rotation_to_velocities : np.ndarray 
+        rotation_to_velocities : np.ndarray
             Maps rotational vectors to velocities.
-        block_motion_constraints : np.ndarray 
+        block_motion_constraints : np.ndarray
             Constraints on block motions.
-        slip_rate_constraints : np.ndarray 
+        slip_rate_constraints : np.ndarray
             Limitations on slip rates.
-        rotation_to_slip_rate : np.ndarray 
+         rotation_to_slip_rate : np.ndarray
             Maps block rotations to kinematic slip rates along the segments.
-        block_strain_rate_to_velocities : np.ndarray 
-            Computes the components of the predicted velocities on the stations due to the homogenous block strain rates. 
+         block_strain_rate_to_velocities : np.ndarray
+             Computes the components of the predicted velocities on the stations due to the homogenous block strain rates.
             Has shape (3 * n_stations, 3 * n_strain_blocks).
-        mogi_to_velocities : np.ndarray 
-            Computes the components of the predicted velocities on the stations due to the Mogi sources. 
+        mogi_to_velocities : np.ndarray
+            Computes the components of the predicted velocities on the stations due to the Mogi sources.
             Has shape (3 * n_stations, n_mogis).
-        slip_rate_to_okada_to_velocities : np.ndarray 
+        slip_rate_to_okada_to_velocities : np.ndarray
             Okada model slip rate to velocity mapping.
-        rotation_to_tri_slip_rate : dict[int, np.ndarray] 
+        rotation_to_tri_slip_rate : dict[int, np.ndarray]
             Rotation to triangular slip rate mapping.
-        rotation_to_slip_rate_to_okada_to_velocities : np.ndarray 
+        rotation_to_slip_rate_to_okada_to_velocities : np.ndarray
             Rotation to slip rate to Okada velocities transformation.
-        smoothing_matrix (dict[int, csr_matrix]): 
+        smoothing_matrix (dict[int, csr_matrix]):
             Smoothing matrices for various meshes.
-        global_float_block_rotation (np.ndarray): 
+        global_float_block_rotation (np.ndarray):
             Global rotation operator for the block.
-        tde (TdeOperators | None): 
+        tde (TdeOperators | None):
             TDE-related operators.
-        eigen (EigenOperators | None): 
+        eigen (EigenOperators | None):
             Operators related to eigenmodes for TDEs.
 
     Methods:
@@ -413,6 +408,7 @@ class Operators:
         weighting_vector: np.ndarray
             Weighting vector for the operator, applying to constraints and station measurements.
     """
+
     model: Model
     index: Index
     assembly: Assembly
@@ -794,8 +790,8 @@ def _store_gaussian_smoothing_operator(
 def _hash_elastic_operator_input(
     meshes: list[MeshConfig], station: DataFrame, config: Config
 ):
-    """Create a hash from geometric components of station DataFrames and elastic 
-    parameters from config. This allows us to check if we need to recompute elastic operators, 
+    """Create a hash from geometric components of station DataFrames and elastic
+    parameters from config. This allows us to check if we need to recompute elastic operators,
     or if we can use cached ones.
 
     Args:
@@ -815,7 +811,7 @@ def _hash_elastic_operator_input(
     material_params = f"{config.material_mu}_{config.material_lambda}"
 
     constraint_fields = {
-        "n_modes_strike_slip", #n_modes do not affect the elastic operators
+        "n_modes_strike_slip",  # n_modes do not affect the elastic operators
         "n_modes_dip_slip",
         "sqp_kinematic_slip_rate_hint_ss",
         "sqp_kinematic_slip_rate_hint_ds",
@@ -835,21 +831,18 @@ def _hash_elastic_operator_input(
     }
 
     mesh_configs = [mesh.model_dump_json(exclude=constraint_fields) for mesh in meshes]
-    combined_input = "_".join(
-        [station_str, material_params, *mesh_configs]
-    )
+    combined_input = "_".join([station_str, material_params, *mesh_configs])
 
     return hashlib.blake2b(combined_input.encode()).hexdigest()[:16]
 
 
 def _save_segments_to_hdf5(segments: DataFrame, hdf5_file: h5py.File) -> None:
     """Save full segments DataFrame to HDF5 file.
-    
+
     Args:
         segments: DataFrame containing segment information
         hdf5_file: Open HDF5 file handle to save to
     """
-
     if "name" in segments.columns:
         segment_no_name = segments.drop("name", axis=1)
         hdf5_file.create_dataset("segments", data=segment_no_name.to_numpy())
@@ -872,10 +865,10 @@ def _save_segments_to_hdf5(segments: DataFrame, hdf5_file: h5py.File) -> None:
 
 def _load_segments_from_hdf5(hdf5_file: h5py.File) -> DataFrame | None:
     """Load segments DataFrame from HDF5 file.
-    
+
     Args:
         hdf5_file: Open HDF5 file handle to load from
-        
+
     Returns:
         DataFrame with segment information, or None if not found
     """
@@ -887,19 +880,18 @@ def _load_segments_from_hdf5(hdf5_file: h5py.File) -> DataFrame | None:
         if columns_attr is None:
             return None
         columns_list = [
-            col.decode() if isinstance(col, bytes) else str(col) 
-            for col in columns_attr
+            col.decode() if isinstance(col, bytes) else str(col) for col in columns_attr
         ]
         index_attr = hdf5_file.attrs.get("segments_index")
         if index_attr is None:
             index_array = np.arange(len(segments_data))
         else:
             index_array = np.array(index_attr)
-        
+
         segments = pd.DataFrame(segments_data)
         segments.columns = pd.Index(columns_list)
         segments.index = pd.Index(index_array)
-        
+
         if "segments_names" in hdf5_file:
             names_dataset = hdf5_file["segments_names"]
             names_data = np.array(names_dataset)
@@ -907,40 +899,58 @@ def _load_segments_from_hdf5(hdf5_file: h5py.File) -> DataFrame | None:
                 name.decode() if isinstance(name, bytes) else str(name)
                 for name in names_data
             ]
-        
+
         return segments
     except Exception:
         return None
 
-def _compare_segments(cached_segments: DataFrame, current_segments: DataFrame) -> list[int]:
+
+def _compare_segments(
+    cached_segments: DataFrame, current_segments: DataFrame
+) -> list[int]:
     """Compare cached and current segments to find which indices have changed.
-    
+
     Compares only geometric columns: lon1, lat1, lon2, lat2, locking_depth, dip, azimuth.
-    
+
     Args:
         cached_segments: DataFrame with geometric columns from cache
         current_segments: DataFrame with current geometric columns
-        
+
     Returns:
         List of segment indices where any geometric column differs
     """
-    geometric_columns = ["lon1", "lat1", "lon2", "lat2", "locking_depth", "dip", "azimuth"]
-    
+    geometric_columns = [
+        "lon1",
+        "lat1",
+        "lon2",
+        "lat2",
+        "locking_depth",
+        "dip",
+        "azimuth",
+    ]
+
     if len(cached_segments) != len(current_segments):
         return list(range(len(current_segments)))
-    
+
     cached_geom = cached_segments[geometric_columns].copy()
     current_geom = current_segments[geometric_columns].copy()
-    
+
     tolerance = 1e-10
     changed_indices = []
     for i in range(len(current_geom)):
         cached_row = cached_geom.iloc[i]
         current_row = current_geom.iloc[i]
-        if not np.allclose(cached_row.values, current_row.values, rtol=0, atol=tolerance, equal_nan=True):
+        if not np.allclose(
+            cached_row.values,
+            current_row.values,
+            rtol=0,
+            atol=tolerance,
+            equal_nan=True,
+        ):
             changed_indices.append(i)
-    
+
     return changed_indices
+
 
 def _store_elastic_operators(
     model: Model,
@@ -950,7 +960,7 @@ def _store_elastic_operators(
 ):
     """Calculate (or load previously calculated) elastic operators from
     both fully locked segments and TDE-parameterized surfaces.
-    
+
     Supports selective recomputation when only some source segments change.
 
     Args:
@@ -976,7 +986,7 @@ def _store_elastic_operators(
             )
         else:
             input_hash = _hash_elastic_operator_input([], station, config)
-            
+
         cache = config.elastic_operator_cache_dir / f"{input_hash}.hdf5"
 
         if cache.exists():
@@ -987,17 +997,20 @@ def _store_elastic_operators(
             )
             cached_segments = _load_segments_from_hdf5(hdf5_file)
             hdf5_file.close()
-            
 
             if cached_segments is None:
-                logger.info("Metadata files not found (old cache format). Recomputing operators.")
+                logger.info(
+                    "Metadata files not found (old cache format). Recomputing operators."
+                )
                 cached_operator = None
             else:
                 changed_segment_indices = _compare_segments(cached_segments, segment)
                 if len(changed_segment_indices) == 0:
-                    logger.info("No source geometry changed since last computation. Using cached operator.")
+                    logger.info(
+                        "No source geometry changed since last computation. Using cached operator."
+                    )
                     operators.slip_rate_to_okada_to_velocities = cached_operator
-                    
+
                     if tde:
                         hdf5_file = h5py.File(cache, "r")
                         for i in range(len(meshes)):
@@ -1007,22 +1020,24 @@ def _store_elastic_operators(
                         hdf5_file.close()
                     return
 
-                logger.info(
-                    f"Recomputing {len(changed_segment_indices)} segments"
-                )
-                
+                logger.info(f"Recomputing {len(changed_segment_indices)} segments")
+
                 operators.slip_rate_to_okada_to_velocities = cached_operator.copy()
-                
+
                 if len(changed_segment_indices) > 0:
                     for seg_idx in changed_segment_indices:
-                        single_segment = segment.iloc[seg_idx:seg_idx+1].reset_index(drop=True)
+                        single_segment = segment.iloc[
+                            seg_idx : seg_idx + 1
+                        ].reset_index(drop=True)
                         new_columns = get_segment_station_operator_okada(
                             single_segment, station, config
                         )
                         col_start = 3 * seg_idx
                         col_end = col_start + 3
-                        operators.slip_rate_to_okada_to_velocities[:, col_start:col_end] = new_columns
-                
+                        operators.slip_rate_to_okada_to_velocities[
+                            :, col_start:col_end
+                        ] = new_columns
+
                 if tde:
                     hdf5_file = h5py.File(cache, "r")
                     for i in range(len(meshes)):
@@ -1030,7 +1045,7 @@ def _store_elastic_operators(
                             hdf5_file.get("tde_to_velocities_" + str(i))
                         )
                     hdf5_file.close()
-                
+
                 logger.info("Caching updated elastic operators")
                 cache.parent.mkdir(parents=True, exist_ok=True)
                 hdf5_file = h5py.File(cache, "w")
@@ -1046,7 +1061,7 @@ def _store_elastic_operators(
                         )
                 _save_segments_to_hdf5(segment, hdf5_file)
                 hdf5_file.close()
-                
+
                 return
 
         logger.info("Precomputed elastic operator file not found. Computing operators")
@@ -1189,7 +1204,6 @@ def get_rotation_to_tri_slip_rate_partials(model: Model, mesh_idx: int) -> np.nd
     """Calculate partial derivatives relating relative block motion to TDE slip rates
     for a single mesh. Called within a loop from get_tde_coupling_constraints().
     """
-    
     n_blocks = len(model.block)
     tri_slip_rate_partials = np.zeros((3 * model.meshes[mesh_idx].n_tde, 3 * n_blocks))
 
@@ -1205,7 +1219,9 @@ def get_rotation_to_tri_slip_rate_partials(model: Model, mesh_idx: int) -> np.nd
         180 - tridip[model.meshes[mesh_idx].strike > 180]
     )
 
-    east_labels, west_labels, closest_segment_idx = assign_mesh_segment_labels(model, mesh_idx)
+    east_labels, west_labels, closest_segment_idx = assign_mesh_segment_labels(
+        model, mesh_idx
+    )
 
     for el_idx in range(model.meshes[mesh_idx].n_tde):
         # Project velocities from Cartesian to spherical coordinates at element centroids
@@ -1305,21 +1321,13 @@ def get_rotation_to_tri_slip_rate_partials(model: Model, mesh_idx: int) -> np.nd
         ns_switch[el_idx] = np.sign(
             90
             - np.abs(
-                tristrike[el_idx]
-                - model.segment.azimuth[
-                    closest_segment_idx[el_idx]
-                ]
+                tristrike[el_idx] - model.segment.azimuth[closest_segment_idx[el_idx]]
             )
         )
         ew_switch[el_idx] = (
             ns_switch[el_idx]
             * np.sign(tristrike[el_idx] - 90)
-            * np.sign(
-                model.segment.azimuth[
-                    closest_segment_idx[el_idx]
-                ]
-                - 90
-            )
+            * np.sign(model.segment.azimuth[closest_segment_idx[el_idx]] - 90)
         )
         # ew_switch = 1
         # Insert this element's partials into operator

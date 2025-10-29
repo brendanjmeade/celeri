@@ -69,11 +69,7 @@ class SlipRateItem:
         return elastic
 
     def out_of_bounds_coupling(
-        self, 
-        *, 
-        smooth_kinematic: bool, 
-        tol=1e-8, 
-        coupling_bounds: ScalarBound
+        self, *, smooth_kinematic: bool, tol=1e-8, coupling_bounds: ScalarBound
     ) -> tuple[int, int]:
         """Count slip rates that violate coupling constraints.
 
@@ -103,10 +99,7 @@ class SlipRateItem:
         return is_oob.sum(), total
 
     def constraint_loss(
-        self, 
-        *, 
-        smooth_kinematic: bool, 
-        coupling_bounds: ScalarBound
+        self, *, smooth_kinematic: bool, coupling_bounds: ScalarBound
     ) -> float:
         """Calculate quadratic coupling constraint violation"""
         if coupling_bounds.lower is None and coupling_bounds.upper is None:
@@ -132,11 +125,7 @@ class SlipRate:
     dip_slip: SlipRateItem
 
     def out_of_bounds_coupling(
-        self, 
-        *, 
-        smooth_kinematic: bool, 
-        tol: float = 1e-8, 
-        limits: SlipRateLimit
+        self, *, smooth_kinematic: bool, tol: float = 1e-8, limits: SlipRateLimit
     ) -> tuple[int, int]:
         oob_ss, total_ss = self.strike_slip.out_of_bounds_coupling(
             smooth_kinematic=smooth_kinematic,
@@ -151,11 +140,7 @@ class SlipRate:
         return oob_ss + oob_ds, total_ss + total_ds
 
     def out_of_bounds_detailed(
-        self, 
-        *, 
-        smooth_kinematic: bool, 
-        tol: float = 1e-8, 
-        limits: SlipRateLimit
+        self, *, smooth_kinematic: bool, tol: float = 1e-8, limits: SlipRateLimit
     ) -> tuple[tuple[int, int], tuple[int, int]]:
         """Count slip rates that violate coupling constraints with detailed output."""
         oob1, total1 = self.strike_slip.out_of_bounds_coupling(
@@ -494,6 +479,7 @@ class SlipRateLimitItem:
 @dataclass
 class SlipRateLimit:
     """Class to store slip rates constraints for optimization problem"""
+
     strike_slip: SlipRateLimitItem
     dip_slip: SlipRateLimitItem
 
@@ -564,10 +550,9 @@ class SlipRateLimit:
 @dataclass
 class Minimizer:
     """A class to store the results of an optimization run.
-    
+
     Attributes
     ----------
-
     model: Model
     operators: Operators
     cp_problem: cvxpy.Problem
@@ -582,6 +567,7 @@ class Minimizer:
     slip_rate_limits: list[SlipRateLimit]
     smooth_kinematic: bool = True
     """
+
     model: Model
     operators: Operators
     cp_problem: cp.Problem
@@ -648,11 +634,7 @@ class Minimizer:
             quiver_scale=self.model.config.quiver_scale,
         )
 
-    def out_of_bounds(
-        self, 
-        *, 
-        tol: float = 1e-8
-    ) -> tuple[int, int]:
+    def out_of_bounds(self, *, tol: float = 1e-8) -> tuple[int, int]:
         oob, total = 0, 0
         for idx, _ in enumerate(self.model.meshes):
             oob_mesh, total_mesh = self.slip_rate[idx].out_of_bounds_coupling(
@@ -665,9 +647,7 @@ class Minimizer:
         return oob, total
 
     def out_of_bounds_detailed(
-        self, 
-        *, 
-        tol: float = 1e-8
+        self, *, tol: float = 1e-8
     ) -> tuple[np.ndarray, np.ndarray]:
         """Count slip rates that violate coupling constraints with detailed output."""
         oob = np.zeros((len(self.model.meshes), 2), dtype=int)
@@ -905,12 +885,16 @@ def build_cvxpy_problem(
     )
     gamma = model.config.segment_slip_rate_regularization
     if gamma != 0.0:
-        subset = np.concatenate([
-            model.segment.ss_rate_flag == 2,
-            model.segment.ds_rate_flag == 2,
-            model.segment.ts_rate_flag == 2,
-        ])
-        objective_val = objective_val + gamma * cp.sum_squares(segment_slip_rate[subset])
+        subset = np.concatenate(
+            [
+                model.segment.ss_rate_flag == 2,
+                model.segment.ds_rate_flag == 2,
+                model.segment.ts_rate_flag == 2,
+            ]
+        )
+        objective_val = objective_val + gamma * cp.sum_squares(
+            segment_slip_rate[subset]
+        )
 
     segment_slip_rate = segment_slip_rate.reshape((-1, 3), order="C")
     # Add segment slip rate bounds
@@ -1062,7 +1046,7 @@ def _tighten_kinematic_bounds(
 @dataclass
 class MinimizerTrace:
     """A class to track the progress of an optimization run across iterations.
-    
+
     Attributes
     ----------
     model: Model
@@ -1096,6 +1080,7 @@ class MinimizerTrace:
     minimizer: Minimizer
         The optimization result.
     """
+
     model: Model
     params: list[np.ndarray]
     params_raw: list[np.ndarray]

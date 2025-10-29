@@ -2,7 +2,7 @@
 
 /**
  * Manage lockfile alert comments on a pull request.
- * 
+ *
  * Environment variables:
  *   NEEDS_ALERT - "true" if alert should be posted/updated, "false" to minimize
  *   PR_NUMBER - Pull request number
@@ -124,26 +124,26 @@ function githubGraphQL(query, variables = {}) {
 async function findAlertComment() {
   let page = 1;
   const perPage = 100;
-  
+
   while (true) {
     const comments = await githubRequest(
       'GET',
       `/repos/${owner}/${repo}/issues/${prNumber}/comments?per_page=${perPage}&page=${page}`
     );
-    
+
     if (!comments || comments.length === 0) {
       return null;
     }
-    
+
     const found = comments.find(c => c.body && c.body.includes(MARKER));
     if (found) {
       return found;
     }
-    
+
     if (comments.length < perPage) {
       return null;
     }
-    
+
     page++;
   }
 }
@@ -153,7 +153,7 @@ async function findAlertComment() {
  */
 async function getMinimizedState(nodeId) {
   if (!nodeId) return false;
-  
+
   const query = `
     query($id: ID!) {
       node(id: $id) {
@@ -163,7 +163,7 @@ async function getMinimizedState(nodeId) {
       }
     }
   `;
-  
+
   const result = await githubGraphQL(query, { id: nodeId });
   return Boolean(result?.data?.node?.isMinimized);
 }
@@ -181,7 +181,7 @@ async function minimizeComment(nodeId) {
       }
     }
   `;
-  
+
   await githubGraphQL(mutation, { id: nodeId });
 }
 
@@ -198,7 +198,7 @@ async function unminimizeComment(nodeId) {
       }
     }
   `;
-  
+
   await githubGraphQL(mutation, { id: nodeId });
 }
 
@@ -229,10 +229,10 @@ async function updateComment(commentId, body) {
  */
 async function main() {
   const existing = await findAlertComment();
-  
+
   if (needsAlert) {
     console.log('Lockfile drift detected, posting/updating alert...');
-    
+
     if (existing) {
       const isMinimized = await getMinimizedState(existing.node_id);
       if (isMinimized) {
@@ -247,7 +247,7 @@ async function main() {
     }
   } else {
     console.log('Lockfile is in sync.');
-    
+
     if (existing) {
       const isMinimized = await getMinimizedState(existing.node_id);
       if (!isMinimized) {
@@ -266,4 +266,3 @@ main().catch((error) => {
   console.error('Error:', error.message);
   process.exit(1);
 });
-
