@@ -25,9 +25,6 @@ DIRECTION_IDX = {
 }
 
 
-_LOW_RANK_APPROX = True
-
-
 def _constrain_field(values, lower: float | None, upper: float | None):
     """Use a sigmoid or softplus to constrain values to a range."""
     import pymc as pm
@@ -73,6 +70,85 @@ def _get_eigen_modes(
     return eigenvectors, to_velocity
 
 
+def _station_vel_from_elastic_mesh(
+    model: Model,
+    mesh: int,
+    kind: Literal["strike_slip", "dip_slip"],
+    elastic,
+    operators: Operators,
+):
+    """Compute elastic velocity at stations from slip rates on a mesh.
+
+    Parameters
+    ----------
+    model : Model
+        The model instance
+    mesh : int
+        Index of the mesh
+    kind : Literal["strike_slip", "dip_slip"]
+        Type of slip
+    elastic : array
+        Elastic slip rates on the mesh
+    operators : Operators
+        Operators containing TDE and eigen information
+
+    Returns
+    -------
+    array
+        Elastic velocities at station locations (flattened, all 3 components)
+    """
+    import pytensor.tensor as pt
+
+    assert operators.tde is not None
+    idx = DIRECTION_IDX[kind]
+    method = model.config.mcmc_station_velocity_method
+
+    if method == "low_rank":
+        to_station = operators.tde.tde_to_velocities[mesh][:, idx.start : None : 3]
+        u, s, vh = linalg.svd(to_station, full_matrices=False)
+        threshold = 1e-5
+        mask = s > threshold
+        s = s[mask].astype("f")
+        u = u[:, mask].astype("f")
+        vh = vh[mask, :].astype("f")
+        elastic_velocity = _operator_mult(-u * s, _operator_mult(vh, elastic))
+        return elastic_velocity.astype("d")
+    elif method == "project_to_eigen":
+        assert operators.eigen is not None
+        eigenvectors, to_velocity = _get_eigen_modes(
+            model,
+            mesh,
+            kind,
+            operators,
+            out_idx=idx,
+        )
+        # TODO: This assumes that the eigenvectors are orthogonal
+        # with respect to the euclidean inner product. If we change
+        # the eigen decomposition to use a different inner product,
+        # we will need to change this projection.
+        coefs = _operator_mult(eigenvectors.T, elastic)
+        elastic_velocity = _operator_mult(to_velocity, coefs)
+        # We need to return a station velocity for all three components,
+        # not just north and east.
+        elastic_velocity = pt.concatenate(
+            [
+                elastic_velocity.reshape((len(model.station), 2)),
+                np.zeros((len(model.station), 1)),
+            ],
+            axis=-1,
+        ).ravel()
+        return elastic_velocity
+    elif method == "direct":
+        to_station = operators.tde.tde_to_velocities[mesh][:, idx.start : None : 3]
+        elastic_velocity = _operator_mult(-to_station, elastic)
+        return elastic_velocity
+    else:
+        raise ValueError(
+            f"Unknown mcmc_station_velocity_method: {method}. "
+            "Must be one of 'direct', 'low_rank', or 'project_to_eigen'."
+        )
+
+
 def _coupling_component(
     model: Model,
     mesh: int,
@@ -90,6 +166,7 @@ def _coupling_component(
     assert operators.tde is not None
 
     import pymc as pm
+    import pytensor.tensor as pt
 
     idx = DIRECTION_IDX[kind]
 
@@ -119,18 +196,13 @@ def _coupling_component(
     elastic = kinematic * coupling_field
     pm.Deterministic(f"elastic_{mesh}_{kind}", elastic)
 
-    to_station = operators.tde.tde_to_velocities[mesh][:, idx.start : None : 3]
-
-    if _LOW_RANK_APPROX:
-        u, s, vh = linalg.svd(to_station, full_matrices=False)
-        threshold = 1e-6
-        mask = s > threshold
-        s = s[mask].astype("f")
-        u = u[:, mask].astype("f")
-        vh = vh[mask, :].astype("f")
-        elastic_velocity = _operator_mult(-u * s, _operator_mult(vh, elastic))
-    else:
-        elastic_velocity = _operator_mult(-to_station, elastic)
+    elastic_velocity = _station_vel_from_elastic_mesh(
+        model,
+        mesh,
+        kind,
+        elastic,
+        operators,
+    )
     return elastic_velocity.astype("d")
 
 
@@ -190,19 +262,13 @@ def _elastic_component(
             axis=-1,
         ).ravel()
     else:
-        to_station = operators.tde.tde_to_velocities[mesh][:, idx.start : None : 3]
-
-        if _LOW_RANK_APPROX:
-            u, s, vh = linalg.svd(to_station, full_matrices=False)
-            threshold = 1e-6
-            mask = s > threshold
-            s = s[mask].astype("f")
-            u = u[:, mask].astype("f")
-            vh = vh[mask, :].astype("f")
-            elastic_velocity = _operator_mult(-u * s, _operator_mult(vh, elastic))
-            elastic_velocity = elastic_velocity.astype("d")
-        else:
-            elastic_velocity = _operator_mult(-to_station, elastic)
+        elastic_velocity = _station_vel_from_elastic_mesh(
+            model,
+            mesh,
+            kind,
+            elastic,
+            operators,
+        )
 
     return elastic_velocity
 

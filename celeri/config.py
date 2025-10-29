@@ -18,6 +18,12 @@ Sqp2Objective = Literal[
     "huber",
 ]
 
+McmcStationVelocityMethod = Literal[
+    "direct",
+    "low_rank",
+    "project_to_eigen",
+]
+
 
 class Config(BaseModel):
     # Forbid extra fields when reading from JSON
@@ -167,6 +173,14 @@ class Config(BaseModel):
     # Parameters of mcmc
     mcmc_tune: int | None = 1000
     mcmc_draws: int | None = None
+    mcmc_station_velocity_method: McmcStationVelocityMethod = "project_to_eigen"
+    """Method for computing station velocities from slip rates in MCMC.
+
+    Options:
+    - "direct": Direct multiplication with TDE-to-station operator
+    - "low_rank": Low rank approximation of TDE-to-station operator via SVD
+    - "project_to_eigen": Project slip rates onto eigenbasis before computing velocities (default)
+    """
 
     # Only in tsts/global_config.json?
     mesh_file_names: list[Path] | None = None
