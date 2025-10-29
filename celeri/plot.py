@@ -357,7 +357,7 @@ def plot_input_summary(
 
     plt.suptitle("inputs")
 
-    if model.config.output_path is not None:
+    if model.config.output_path.exists():
         plt.savefig(model.config.output_path / "plot_input_summary.png", dpi=500)
         plt.savefig(model.config.output_path / "plot_input_summary.pdf")
         logger.success(
@@ -596,8 +596,9 @@ def plot_estimation_summary(
         f"mae = {mean_average_error:.2f} (mm/yr), mse = {mean_squared_error:.2f} (mm/yr)^2"
     )
 
-    plt.savefig(model.config.output_path / "plot_estimation_summary.png", dpi=500)
-    plt.savefig(model.config.output_path / "plot_estimation_summary.pdf")
+    if model.config.output_path.exists():
+        plt.savefig(model.config.output_path / "plot_estimation_summary.png", dpi=500)
+        plt.savefig(model.config.output_path / "plot_estimation_summary.pdf")
     plt.show(block=False)
 
     logger.success(
