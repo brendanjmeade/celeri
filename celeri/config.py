@@ -66,6 +66,20 @@ class Config(BaseModel):
     station_data_weight_min: int = 1
     station_data_weight_steps: int = 1
 
+    segment_slip_rate_regularization: float = 1.0
+    """Weight for regularizing slip rates at all segments to be close to zero.
+
+    A value of zero indicates no regularization.
+    This is used in `solve_sqp2` to help stabilize the inversion.
+
+    We can interpret this as adding pseudo-observations of zero slip rate
+    at all segments. The weight represents the ratio of pseudo-observation variance
+    to observation variance. Higher values indicate we trust the
+    zero slip rate assumption more relative to the actual observations.
+
+    Reasonable values might be in the range of 0.01 to 10.
+    """
+
     global_elastic_cutoff_distance: int = 2000000
     global_elastic_cutoff_distance_flag: int = 0
 
