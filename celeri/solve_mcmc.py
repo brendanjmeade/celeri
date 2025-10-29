@@ -3,8 +3,9 @@ from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import pandas as pd
-from scipy import linalg
+from scipy import linalg, spatial
 
+from celeri.constants import RADIUS_EARTH
 from celeri.model import Model
 from celeri.operators import Operators, build_operators
 from celeri.solve import Estimation, build_estimation
@@ -41,8 +42,8 @@ def _constrain_field(values, lower: float | None, upper: float | None):
     return values
 
 
-def _clean_operator(operator: np.ndarray):
-    return operator.copy(order="F").astype("d")
+def _operator_mult(operator: np.ndarray, vector):
+    return operator.astype("f").copy(order="F") @ vector.astype("f")
 
 
 def _get_eigen_modes(
@@ -68,7 +69,8 @@ def _get_eigen_modes(
     to_velocity = operators.eigen.eigen_to_velocities[mesh][
         :, start_idx : start_idx + n_eigs
     ]
-    return _clean_operator(eigenvectors), _clean_operator(to_velocity)
+    # return _clean_operator(eigenvectors), _clean_operator(to_velocity)
+    return eigenvectors, to_velocity
 
 
 def _coupling_component(
@@ -97,8 +99,8 @@ def _coupling_component(
             "Coupling constraints cannot be used."
         )
 
-    operator = _clean_operator(operators.rotation_to_tri_slip_rate[mesh][idx, :])
-    kinematic = operator @ rotation
+    operator = operators.rotation_to_tri_slip_rate[mesh][idx, :]
+    kinematic = _operator_mult(operator, rotation)
     pm.Deterministic(f"kinematic_{mesh}_{kind}", kinematic)
 
     eigenvectors, _ = _get_eigen_modes(
@@ -111,7 +113,7 @@ def _coupling_component(
     n_eigs = eigenvectors.shape[1]
     coefs = pm.Normal(f"coupling_coefs_{mesh}_{kind}", mu=0, sigma=10, shape=n_eigs)
 
-    coupling_field = eigenvectors @ coefs
+    coupling_field = _operator_mult(eigenvectors, coefs)
     coupling_field = _constrain_field(coupling_field, lower, upper)
     pm.Deterministic(f"coupling_{mesh}_{kind}", coupling_field)
     elastic = kinematic * coupling_field
@@ -126,10 +128,9 @@ def _coupling_component(
         s = s[mask].astype("f")
         u = u[:, mask].astype("f")
         vh = vh[mask, :].astype("f")
-        elastic_velocity = (-u * s) @ (vh @ elastic.astype("f"))
+        elastic_velocity = _operator_mult(-u * s, _operator_mult(vh, elastic))
     else:
-        to_station = _clean_operator(to_station)
-        elastic_velocity = -to_station @ elastic
+        elastic_velocity = _operator_mult(-to_station, elastic)
     return elastic_velocity.astype("d")
 
 
@@ -172,13 +173,13 @@ def _elastic_component(
 
     raw = pm.Normal(f"elastic_eigen_raw_{mesh}_{kind}", shape=n_eigs)
     param = pm.Deterministic(f"elastic_eigen_{mesh}_{kind}", scale * raw)
-    elastic = _constrain_field(eigenvectors @ param, lower, upper)
+    elastic = _constrain_field(_operator_mult(eigenvectors, param), lower, upper)
     pm.Deterministic(f"elastic_{mesh}_{kind}", elastic)
 
     # Compute elastic velocity at stations. The operator already
     # includes a negative sign.
     if lower is None and upper is None:
-        elastic_velocity = to_velocity @ param
+        elastic_velocity = _operator_mult(to_velocity, param)
         # We need to return a station velocity for all three components,
         # not just north and east.
         elastic_velocity = pt.concatenate(
@@ -198,11 +199,10 @@ def _elastic_component(
             s = s[mask].astype("f")
             u = u[:, mask].astype("f")
             vh = vh[mask, :].astype("f")
-            elastic_velocity = (-u * s) @ (vh @ elastic.astype("f"))
+            elastic_velocity = _operator_mult(-u * s, _operator_mult(vh, elastic))
             elastic_velocity = elastic_velocity.astype("d")
         else:
-            to_station = _clean_operator(to_station)
-            elastic_velocity = -to_station @ elastic
+            elastic_velocity = _operator_mult(-to_station, elastic)
 
     return elastic_velocity
 
@@ -285,7 +285,9 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
 
     with pm.Model(coords=coords) as pymc_model:
         # block strain rate
-        raw = pm.Normal("block_strain_rate_raw", dims="block_strain_rate_param")
+        raw = pm.Normal(
+            "block_strain_rate_raw", sigma=100, dims="block_strain_rate_param"
+        )
         if operators.block_strain_rate_to_velocities.size == 0:
             scale = 1.0
         else:
@@ -294,9 +296,9 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
             "block_strain_rate", scale * raw, dims="block_strain_rate_param"
         )
 
-        block_strain_rate_velocity = (
-            np.copy(operators.block_strain_rate_to_velocities, order="F")
-            @ block_strain_rate
+        block_strain_rate_velocity = _operator_mult(
+            operators.block_strain_rate_to_velocities,
+            block_strain_rate,
         )
 
         # block rotation
@@ -304,10 +306,9 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
         scale = 1 / np.sqrt((operators.rotation_to_velocities**2).mean())
         rotation = pm.Deterministic("rotation", scale * raw, dims="rotation_param")
 
-        rotation_velocity = operators.rotation_to_velocities.copy(order="F") @ rotation
-        rotation_okada_velocity = (
-            -operators.rotation_to_slip_rate_to_okada_to_velocities.copy(order="F")
-            @ rotation
+        rotation_velocity = _operator_mult(operators.rotation_to_velocities, rotation)
+        rotation_okada_velocity = _operator_mult(
+            -operators.rotation_to_slip_rate_to_okada_to_velocities, rotation
         )
 
         # mogi
@@ -381,7 +382,7 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
         )
         """
 
-        segment_rates = operators.rotation_to_slip_rate.copy(order="F") @ rotation
+        segment_rates = _operator_mult(operators.rotation_to_slip_rate, rotation)
         segment_rates = segment_rates.reshape((-1, 3))
         gamma = model.config.segment_slip_rate_regularization_sigma
         if gamma is not None:
@@ -523,7 +524,9 @@ def solve_mcmc(
 
     pymc_model = _build_pymc_model(model, operators)
 
-    compiled = nutpie.compile_pymc_model(pymc_model, backend="numba")
+    compiled = nutpie.compile_pymc_model(
+        pymc_model, backend="jax", gradient_backend="pytensor"
+    )
     kwargs = {
         "low_rank_modified_mass_matrix": True,
         "mass_matrix_eigval_cutoff": 1.5,
