@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import pandas as pd
+from scipy import linalg
 
 from celeri.model import Model
 from celeri.operators import Operators, build_operators
@@ -21,6 +22,9 @@ DIRECTION_IDX = {
     "strike_slip": slice(None, None, 2),
     "dip_slip": slice(1, None, 2),
 }
+
+
+_LOW_RANK_APPROX = True
 
 
 def _constrain_field(values, lower: float | None, upper: float | None):
@@ -114,9 +118,19 @@ def _coupling_component(
     pm.Deterministic(f"elastic_{mesh}_{kind}", elastic)
 
     to_station = operators.tde.tde_to_velocities[mesh][:, idx.start : None : 3]
-    to_station = _clean_operator(to_station)
-    elastic_velocity = -to_station @ elastic
-    return elastic_velocity
+
+    if _LOW_RANK_APPROX:
+        u, s, vh = linalg.svd(to_station, full_matrices=False)
+        threshold = 1e-6
+        mask = s > threshold
+        s = s[mask].astype("f")
+        u = u[:, mask].astype("f")
+        vh = vh[mask, :].astype("f")
+        elastic_velocity = (-u * s) @ (vh @ elastic.astype("f"))
+    else:
+        to_station = _clean_operator(to_station)
+        elastic_velocity = -to_station @ elastic
+    return elastic_velocity.astype("d")
 
 
 def _elastic_component(
@@ -176,8 +190,19 @@ def _elastic_component(
         ).ravel()
     else:
         to_station = operators.tde.tde_to_velocities[mesh][:, idx.start : None : 3]
-        to_station = _clean_operator(to_station)
-        elastic_velocity = -to_station @ elastic
+
+        if _LOW_RANK_APPROX:
+            u, s, vh = linalg.svd(to_station, full_matrices=False)
+            threshold = 1e-6
+            mask = s > threshold
+            s = s[mask].astype("f")
+            u = u[:, mask].astype("f")
+            vh = vh[mask, :].astype("f")
+            elastic_velocity = (-u * s) @ (vh @ elastic.astype("f"))
+            elastic_velocity = elastic_velocity.astype("d")
+        else:
+            to_station = _clean_operator(to_station)
+            elastic_velocity = -to_station @ elastic
 
     return elastic_velocity
 
