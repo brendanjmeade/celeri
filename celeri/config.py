@@ -95,7 +95,7 @@ class Config(BaseModel):
     This is used in `solve_sqp2` to enforce slip rate bounds softly.
     """
 
-    segment_slip_rate_hard_bounds: bool = True
+    segment_slip_rate_hard_bounds: bool = False
     """Enforce hard slip rate bounds at segments.
 
     This should be disabled when using soft slip rate bounds
@@ -104,14 +104,14 @@ class Config(BaseModel):
     The mcmc solver does not support hard bounds.
     """
 
-    segment_slip_rate_regularization_sigma: float = 15.0
+    segment_slip_rate_regularization_sigma: float | None = 100
     """Like `segment_slip_rate_regularization`, but for use in `solve_mcmc`.
 
     The regularization is implemented as a Gaussian prior with this
     standard deviation in mm/yr.
     """
 
-    segment_slip_rate_bound_sigma: float = 3.0
+    segment_slip_rate_bound_sigma: float = 1.0
     """Standard deviation for slip rate bounds at segments in mm/yr.
 
     This is used in `solve_mcmc` to implement soft slip rate bounds.
@@ -164,7 +164,7 @@ class Config(BaseModel):
     iterative_coupling_bounds_max_iter: int | None = None
 
     # Parameters of mcmc
-    mcmc_tune: int | None = None
+    mcmc_tune: int | None = 1000
     mcmc_draws: int | None = None
 
     # Only in tsts/global_config.json?

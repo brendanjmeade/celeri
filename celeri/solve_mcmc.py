@@ -300,7 +300,7 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
         )
 
         # block rotation
-        raw = pm.Normal("rotation_raw", sigma=10, dims="rotation_param")
+        raw = pm.Normal("rotation_raw", sigma=500, dims="rotation_param")
         scale = 1 / np.sqrt((operators.rotation_to_velocities**2).mean())
         rotation = pm.Deterministic("rotation", scale * raw, dims="rotation_param")
 
@@ -318,7 +318,7 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
             scale = 1 / np.sqrt((operators.mogi_to_velocities**2).mean())
         mogi = pm.Deterministic("mogi", scale * raw, dims="mogi_param")
 
-        mogi_velocity = operators.mogi_to_velocities.copy(order="F") @ mogi
+        mogi_velocity = _operator_mult(operators.mogi_to_velocities, mogi)
 
         elastic_velocities = []
         for key, _ in enumerate(model.meshes):
@@ -340,27 +340,61 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
 
         sigma = pm.HalfNormal("sigma", sigma=2)
         data = np.array([model.station.east_vel, model.station.north_vel]).T
-        pm.Normal(
+
+        lh_dist = pm.StudentT.dist
+
+        def lh(value, weight, mu, sigma):
+            dist = lh_dist(nu=6, mu=mu, sigma=sigma)
+            return weight * pm.logp(dist, value)
+
+        def random(weight, mu, sigma, rng=None, size=None):
+            return lh_dist(nu=6, mu=mu, sigma=sigma, rng=rng, size=size)
+
+        EFFECTIVE_AREA = 50000**2
+
+        voroni = spatial.SphericalVoronoi(
+            model.station[["x", "y", "z"]].values, RADIUS_EARTH
+        )
+        areas = voroni.calculate_areas()
+        areas = np.minimum(EFFECTIVE_AREA, areas)
+        weight = areas / EFFECTIVE_AREA
+
+        pm.CustomDist(
+            "station_velocity",
+            weight[:, None],
+            mu,
+            sigma,
+            logp=lh,
+            random=random,
+            observed=data,
+            dims=("station", "xy"),
+        )
+
+        """
+        pm.StudentT(
             "station_velocity",
             mu=mu,
             sigma=sigma,
             observed=data,
             dims=("station", "xy"),
+            nu=5,
         )
+        """
 
         segment_rates = operators.rotation_to_slip_rate.copy(order="F") @ rotation
         segment_rates = segment_rates.reshape((-1, 3))
         gamma = model.config.segment_slip_rate_regularization_sigma
-        if gamma != 0.0:
-            pm.Normal(
+        if gamma is not None:
+            pm.StudentT(
                 "segment_slip_rate_regularization",
                 mu=segment_rates,
                 sigma=gamma,
+                nu=5,
                 observed=np.zeros((len(model.segment), 3)),
             )
 
         pm.Deterministic(
-            "segment_strike_slip", segment_rates, dims=("segment", "ss_ds_ts")
+            "segment_slip_rate", segment_rates, dims=("segment", "ss_ds_ts")
         )
 
         # model.segment.ss_rate_flag (and ds_rate_flag, ts_rate_flag) indicates
@@ -432,8 +466,8 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
                         ],
                         sigma=bound_sig,
                     ),
-                    lower=lower_bounds,
-                    upper=None,
+                    upper=lower_bounds,
+                    lower=None,
                     observed=lower_bounds,
                 )
 
@@ -446,8 +480,8 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
                         ],
                         sigma=bound_sig,
                     ),
-                    lower=None,
-                    upper=upper_bounds,
+                    upper=None,
+                    lower=upper_bounds,
                     observed=upper_bounds,
                 )
 
