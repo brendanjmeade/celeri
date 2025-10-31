@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import pandas as pd
+from scipy import linalg
 
 from celeri.model import Model
 from celeri.operators import Operators, build_operators
@@ -21,6 +22,9 @@ DIRECTION_IDX = {
     "strike_slip": slice(None, None, 2),
     "dip_slip": slice(1, None, 2),
 }
+
+
+_LOW_RANK_APPROX = True
 
 
 def _constrain_field(values, lower: float | None, upper: float | None):
@@ -114,9 +118,19 @@ def _coupling_component(
     pm.Deterministic(f"elastic_{mesh}_{kind}", elastic)
 
     to_station = operators.tde.tde_to_velocities[mesh][:, idx.start : None : 3]
-    to_station = _clean_operator(to_station)
-    elastic_velocity = -to_station @ elastic
-    return elastic_velocity
+
+    if _LOW_RANK_APPROX:
+        u, s, vh = linalg.svd(to_station, full_matrices=False)
+        threshold = 1e-6
+        mask = s > threshold
+        s = s[mask].astype("f")
+        u = u[:, mask].astype("f")
+        vh = vh[mask, :].astype("f")
+        elastic_velocity = (-u * s) @ (vh @ elastic.astype("f"))
+    else:
+        to_station = _clean_operator(to_station)
+        elastic_velocity = -to_station @ elastic
+    return elastic_velocity.astype("d")
 
 
 def _elastic_component(
@@ -176,8 +190,19 @@ def _elastic_component(
         ).ravel()
     else:
         to_station = operators.tde.tde_to_velocities[mesh][:, idx.start : None : 3]
-        to_station = _clean_operator(to_station)
-        elastic_velocity = -to_station @ elastic
+
+        if _LOW_RANK_APPROX:
+            u, s, vh = linalg.svd(to_station, full_matrices=False)
+            threshold = 1e-6
+            mask = s > threshold
+            s = s[mask].astype("f")
+            u = u[:, mask].astype("f")
+            vh = vh[mask, :].astype("f")
+            elastic_velocity = (-u * s) @ (vh @ elastic.astype("f"))
+            elastic_velocity = elastic_velocity.astype("d")
+        else:
+            to_station = _clean_operator(to_station)
+            elastic_velocity = -to_station @ elastic
 
     return elastic_velocity
 
@@ -252,14 +277,19 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
         "mogi_param": pd.RangeIndex(operators.mogi_to_velocities.shape[1]),
         "rotation_param": pd.RangeIndex(operators.rotation_to_velocities.shape[1]),
         "station": model.station.index,
+        "segment": model.segment.index,
         "xyz": pd.Index(["x", "y", "z"]),
         "xy": pd.Index(["x", "y"]),
+        "ss_ds_ts": pd.Index(["strike_slip", "dip_slip", "tensile_slip"]),
     }
 
     with pm.Model(coords=coords) as pymc_model:
         # block strain rate
         raw = pm.Normal("block_strain_rate_raw", dims="block_strain_rate_param")
-        scale = 1 / np.sqrt((operators.block_strain_rate_to_velocities**2).mean())
+        if operators.block_strain_rate_to_velocities.size == 0:
+            scale = 1.0
+        else:
+            scale = 1 / np.sqrt((operators.block_strain_rate_to_velocities**2).mean())
         block_strain_rate = pm.Deterministic(
             "block_strain_rate", scale * raw, dims="block_strain_rate_param"
         )
@@ -282,7 +312,10 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
 
         # mogi
         raw = pm.Normal("mogi_raw", dims="mogi_param")
-        scale = 1 / np.sqrt((operators.mogi_to_velocities**2).mean())
+        if operators.mogi_to_velocities.size == 0:
+            scale = 1.0
+        else:
+            scale = 1 / np.sqrt((operators.mogi_to_velocities**2).mean())
         mogi = pm.Deterministic("mogi", scale * raw, dims="mogi_param")
 
         mogi_velocity = operators.mogi_to_velocities.copy(order="F") @ mogi
@@ -315,6 +348,109 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
             dims=("station", "xy"),
         )
 
+        segment_rates = operators.rotation_to_slip_rate.copy(order="F") @ rotation
+        segment_rates = segment_rates.reshape((-1, 3))
+        gamma = model.config.segment_slip_rate_regularization_sigma
+        if gamma != 0.0:
+            pm.Normal(
+                "segment_slip_rate_regularization",
+                mu=segment_rates,
+                sigma=gamma,
+                observed=np.zeros((len(model.segment), 3)),
+            )
+
+        pm.Deterministic(
+            "segment_strike_slip", segment_rates, dims=("segment", "ss_ds_ts")
+        )
+
+        # model.segment.ss_rate_flag (and ds_rate_flag, ts_rate_flag) indicates
+        # if we have a measurement for that compontent. The observed value is
+        # stored in model.segment.ss_rate (and ds_rate, ts_rate). The standard
+        # deviation of the measurement error is stored in
+        # model.segment.ss_rate_sig (and ds_rate_sig, ts_rate_sig). We only want
+        # to add likelihood terms for the components that have measurements.
+        for comp, flag_attr, rate_attr, sig_attr in [
+            ("strike_slip", "ss_rate_flag", "ss_rate", "ss_rate_sig"),
+            ("dip_slip", "ds_rate_flag", "ds_rate", "ds_rate_sig"),
+            ("tensile_slip", "ts_rate_flag", "ts_rate", "ts_rate_sig"),
+        ]:
+            flags = getattr(model.segment, flag_attr).values
+            if np.any(flags):
+                observed_rates = getattr(model.segment, rate_attr).values[flags == 1]
+                observed_sigs = getattr(model.segment, sig_attr).values[flags == 1]
+                pm.Normal(
+                    f"segment_{comp}_velocity",
+                    mu=segment_rates[
+                        flags == 1,
+                        ["strike_slip", "dip_slip", "tensile_slip"].index(comp),
+                    ],
+                    sigma=observed_sigs,
+                    observed=observed_rates,
+                )
+
+        # model.segment.ss_rate_bound_flag (and ds_rate_bound_flag, ts_rate_bound_flag)
+        # indicates if we have an interval bound for that component. The lower and upper
+        # bounds are stored in model.segment.ss_rate_lower_min and
+        # model.segment.ss_rate_upper_max. We use two pm.Bound(pm.Normal) likelihoods
+        # to implement the interval constraint. The standard deviation of the bound
+        # is set to model.config.segment_slip_rate_bound_sig.
+        for comp, bound_flag_attr, lower_attr, upper_attr in [
+            (
+                "strike_slip",
+                "ss_rate_bound_flag",
+                "ss_rate_bound_min",
+                "ss_rate_bound_max",
+            ),
+            (
+                "dip_slip",
+                "ds_rate_bound_flag",
+                "ds_rate_bound_min",
+                "ds_rate_bound_max",
+            ),
+            (
+                "tensile_slip",
+                "ts_rate_bound_flag",
+                "ts_rate_bound_min",
+                "ts_rate_bound_max",
+            ),
+        ]:
+            bound_flags = getattr(model.segment, bound_flag_attr).values
+            if np.any(bound_flags):
+                lower_bounds = getattr(model.segment, lower_attr).values[
+                    bound_flags == 1
+                ]
+                upper_bounds = getattr(model.segment, upper_attr).values[
+                    bound_flags == 1
+                ]
+                bound_sig = model.config.segment_slip_rate_bound_sigma
+                pm.Censored(
+                    f"segment_{comp}_slip_rate_lower_bound",
+                    dist=pm.Normal.dist(
+                        mu=segment_rates[
+                            bound_flags == 1,
+                            ["strike_slip", "dip_slip", "tensile_slip"].index(comp),
+                        ],
+                        sigma=bound_sig,
+                    ),
+                    lower=lower_bounds,
+                    upper=None,
+                    observed=lower_bounds,
+                )
+
+                pm.Censored(
+                    f"segment_{comp}_slip_rate_upper_bound",
+                    dist=pm.Normal.dist(
+                        mu=segment_rates[
+                            bound_flags == 1,
+                            ["strike_slip", "dip_slip", "tensile_slip"].index(comp),
+                        ],
+                        sigma=bound_sig,
+                    ),
+                    lower=None,
+                    upper=upper_bounds,
+                    observed=upper_bounds,
+                )
+
     return pymc_model
 
 
@@ -336,6 +472,12 @@ def solve_mcmc(
         )
 
     import nutpie
+
+    if model.config.segment_slip_rate_hard_bounds:
+        raise ValueError(
+            "Hard bounds on segment slip rates are not supported in MCMC solve. "
+            "Please use soft bounds with `segment_slip_rate_bound_sigma` instead."
+        )
 
     if operators is None:
         operators = build_operators(model, tde=True, eigen=True)
