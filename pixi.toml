@@ -2,7 +2,7 @@
 # It is equivalent to the `environment.yml`. The environment can be activated
 # with the command `pixi shell`.
 
-[project]
+[workspace]
 name = "celeri"
 platforms = ["linux-64", "osx-64", "osx-arm64", "win-64"]
 channels = ["conda-forge"]
