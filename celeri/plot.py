@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 from loguru import logger
 from matplotlib import cm
-from matplotlib.colors import Normalize
+from matplotlib.colors import Normalize, TwoSlopeNorm
 from shapely.geometry import (
     GeometryCollection,
     LineString,
@@ -581,21 +581,32 @@ def plot_estimation_summary(
 
     if model.config.solve_type != "dense_no_meshes":
         if len(meshes) > 0:
+            tde_strike_slip_dict = estimation.tde_strike_slip_rates
+            tde_dip_slip_dict = estimation.tde_dip_slip_rates
+            assert tde_strike_slip_dict is not None
+            assert tde_dip_slip_dict is not None
+
             subplot_index += 1
             plt.subplot(
                 n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1
             )
-            plt.title("TDE slip (strike-slip)")
+            plt.title("TDE Slip (strike-slip)")
             common_plot_elements(segment, lon_range, lat_range)
             # plot_meshes(meshes, estimation.tde_strike_slip_rates, plt.gca())
-            fill_value_dict = estimation.tde_strike_slip_rates
-            assert fill_value_dict is not None
-            fill_value_range = (0, 0)
-            for mesh_idx in fill_value_dict:
-                fill_value_range = (
-                    min(fill_value_range[0], float(np.min(fill_value_dict[mesh_idx]))),
-                    max(fill_value_range[1], float(np.max(fill_value_dict[mesh_idx]))),
-                )
+            fill_value_dict = tde_strike_slip_dict
+
+            strike_values = [
+                np.asarray(values, dtype=float).ravel() for values in fill_value_dict.values()
+            ]
+            if strike_values:
+                strike_max_abs = float(np.max(np.abs(np.concatenate(strike_values))))
+            else:
+                strike_max_abs = 0.0
+            if strike_max_abs == 0.0:
+                strike_max_abs = 1.0
+            strike_vmin = -strike_max_abs
+            strike_vmax = strike_max_abs
+            strike_norm = TwoSlopeNorm(vmin=strike_vmin, vcenter=0.0, vmax=strike_vmax)
 
             ax = plt.gca()
             for i in range(len(meshes)):
@@ -607,10 +618,10 @@ def plot_estimation_summary(
                 xy = np.c_[x_coords, y_coords]
                 verts = xy[vertex_array]
                 pc = matplotlib.collections.PolyCollection(
-                    verts, edgecolor="none", cmap="rainbow"
+                    verts, edgecolor="none", cmap="coolwarm", norm=strike_norm
                 )
                 pc.set_array(fill_value)
-                pc.set_clim(fill_value_range)
+                pc.set_clim(strike_vmin, strike_vmax)
                 ax.add_collection(pc)
                 # ax.autoscale()
                 if i == len(meshes) - 1:
@@ -627,17 +638,23 @@ def plot_estimation_summary(
             plt.subplot(
                 n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1
             )
-            plt.title("TDE slip (dip-slip)")
+            plt.title("TDE Slip (dip-slip)")
             common_plot_elements(segment, lon_range, lat_range)
             # plot_meshes(meshes, estimation.tde_dip_slip_rates, plt.gca())
-            fill_value_dict = estimation.tde_dip_slip_rates
-            assert fill_value_dict is not None
-            fill_value_range = (0, 0)
-            for mesh_idx in fill_value_dict:
-                fill_value_range = (
-                    min(fill_value_range[0], float(np.min(fill_value_dict[mesh_idx]))),
-                    max(fill_value_range[1], float(np.max(fill_value_dict[mesh_idx]))),
-                )
+            fill_value_dict = tde_dip_slip_dict
+
+            dip_values = [
+                np.asarray(values, dtype=float).ravel() for values in fill_value_dict.values()
+            ]
+            if dip_values:
+                dip_max_abs = float(np.max(np.abs(np.concatenate(dip_values))))
+            else:
+                dip_max_abs = 0.0
+            if dip_max_abs == 0.0:
+                dip_max_abs = 1.0
+            dip_vmin = -dip_max_abs
+            dip_vmax = dip_max_abs
+            dip_norm = TwoSlopeNorm(vmin=dip_vmin, vcenter=0.0, vmax=dip_vmax)
             ax = plt.gca()
             for i in range(len(meshes)):
                 fill_value = fill_value_dict[i]
@@ -648,10 +665,10 @@ def plot_estimation_summary(
                 xy = np.c_[x_coords, y_coords]
                 verts = xy[vertex_array]
                 pc = matplotlib.collections.PolyCollection(
-                    verts, edgecolor="none", cmap="rainbow"
+                    verts, edgecolor="none", cmap="coolwarm", norm=dip_norm
                 )
                 pc.set_array(fill_value)
-                pc.set_clim(fill_value_range)
+                pc.set_clim(dip_vmin, dip_vmax)
                 ax.add_collection(pc)
                 # ax.autoscale()
                 if i == len(meshes) - 1:
