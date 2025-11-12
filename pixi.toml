@@ -52,6 +52,7 @@ pydantic = ">=2.11.6"
 pyarrow = ">=20.0.0"
 cartopy = ">=0.25.0"
 shapely = ">=2.1.1"
+cowpy = "*"
 
 [target.linux-64.dependencies]
 libblas = { version = "*", build = "*_mkl" }
