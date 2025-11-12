@@ -9,6 +9,10 @@ on:
 
 permissions: {}
 
+concurrency:
+  group: check-lockfile-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
 jobs:
   generate-lockfile:
     # Untrusted job: runs PR code without secrets or write access
@@ -79,7 +83,7 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const author = '${{ github.event.pull_request.user.login }}';
+            const author = context.payload.pull_request.user.login;
             const issueNumber = context.payload.pull_request.number;
             const body = `@${author}, I updated the lockfile, so please pull the changes into your branch`;
             await github.rest.issues.createComment({
@@ -88,4 +92,3 @@ jobs:
               issue_number: issueNumber,
               body,
             });
-
