@@ -791,9 +791,9 @@ def _store_gaussian_smoothing_operator(
 def _hash_elastic_operator_input(
     meshes: list[MeshConfig], segment: DataFrame, station: DataFrame, config: Config
 ):
-    """Create a hash from segment, station DataFrames and elastic parameters from config.
-
-    This allows us to check if we need to recompute elastic operators or can use cached ones.
+    """Create a hash from geometric components of segment/station DataFrames and elastic 
+    parameters from config. This allows us to check if we need to recompute elastic operators, 
+    or if we can use cached ones.
 
     Args:
         segment: DataFrame containing fault segment information
@@ -804,7 +804,8 @@ def _hash_elastic_operator_input(
         str: Hash string representing the input data
     """
     # Convert dataframes to string representations
-    segment_str = segment.to_json()
+    segment_geom = segment.drop(columns=[c for c in segment.columns if "bound" in c])
+    segment_str = segment_geom.to_json()
     station_str = station.to_json()
     assert isinstance(segment_str, str)
     assert isinstance(station_str, str)
@@ -828,10 +829,10 @@ def _store_elastic_operators(
     tde: bool = True,
 ):
     """Calculate (or load previously calculated) elastic operators from
-    both fully locked segments and TDE parameterizes surfaces.
+    both fully locked segments and TDE-parameterized surfaces.
 
     Args:
-        operators (Dict): Elastic operators will be added to this data structure
+        operators (Dict): Data structure which the elastic operators will be added to
         meshes (List): Geometries of meshes
         segment (pd.DataFrame): All segment data
         station (pd.DataFrame): All station data
@@ -854,7 +855,9 @@ def _store_elastic_operators(
             )
         else:
             input_hash = _hash_elastic_operator_input([], segment, station, config)
+
         cache = config.elastic_operator_cache_dir / f"{input_hash}.hdf5"
+
         if cache.exists():
             logger.info(f"Using precomputed elastic operators from {cache}")
             hdf5_file = h5py.File(cache, "r")
@@ -869,10 +872,11 @@ def _store_elastic_operators(
             hdf5_file.close()
             return
 
-        logger.info("Precomputed elastic operator file not found, computing operators")
+        logger.info("Precomputed elastic operator file not found. Computing operators")
+
     else:
         logger.info(
-            "No precomputed elastic operator file specified, computing operators"
+            "No precomputed elastic operator file specified in config. Computing operators."
         )
 
     operators.slip_rate_to_okada_to_velocities = get_segment_station_operator_okada(
