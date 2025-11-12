@@ -38,8 +38,11 @@ jobs:
         run: |
           if git diff --quiet -- pixi.lock; then
             echo "updated=false" >> "$GITHUB_OUTPUT"
+            echo "Lockfile is unchanged"
           else
             echo "updated=true" >> "$GITHUB_OUTPUT"
+            echo "Lockfile has changes:"
+            git diff --stat -- pixi.lock
           fi
       - name: Verify lockfile state
         run: pixi list --locked
