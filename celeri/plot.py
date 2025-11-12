@@ -432,7 +432,8 @@ def plot_estimation_summary(
     n_subplot_cols = 3
     subplot_index = 0
 
-    plt.figure(figsize=(12, 16))
+    fig = plt.figure(figsize=(15, 20))
+    fig.subplots_adjust(wspace=0.35)
     subplot_index += 1
     ax1 = plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index)
     plt.title("observed velocities")
@@ -590,7 +591,7 @@ def plot_estimation_summary(
             plt.subplot(
                 n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1
             )
-            plt.title("TDE Slip (strike-slip)")
+            plt.title("TDE Slip (strike-slip, mm/yr)")
             common_plot_elements(segment, lon_range, lat_range)
             # plot_meshes(meshes, estimation.tde_strike_slip_rates, plt.gca())
             fill_value_dict = tde_strike_slip_dict
@@ -625,7 +626,7 @@ def plot_estimation_summary(
                 ax.add_collection(pc)
                 # ax.autoscale()
                 if i == len(meshes) - 1:
-                    plt.colorbar(pc, label="slip (mm/yr)")
+                    cbar = plt.colorbar(pc, fraction=0.03, pad=0.04)
 
                 # Add mesh edge
                 x_edge = x_coords[meshes[i].ordered_edge_nodes[:, 0]]
@@ -638,7 +639,7 @@ def plot_estimation_summary(
             plt.subplot(
                 n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1
             )
-            plt.title("TDE Slip (dip-slip)")
+            plt.title("TDE Slip (dip-slip, mm/yr)")
             common_plot_elements(segment, lon_range, lat_range)
             # plot_meshes(meshes, estimation.tde_dip_slip_rates, plt.gca())
             fill_value_dict = tde_dip_slip_dict
@@ -672,7 +673,7 @@ def plot_estimation_summary(
                 ax.add_collection(pc)
                 # ax.autoscale()
                 if i == len(meshes) - 1:
-                    plt.colorbar(pc, label="slip (mm/yr)")
+                    plt.colorbar(pc, fraction=0.03, pad=0.04)
 
                 # Add mesh edge
                 x_edge = x_coords[meshes[i].ordered_edge_nodes[:, 0]]
