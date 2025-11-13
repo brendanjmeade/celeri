@@ -13,7 +13,7 @@ from celeri.celeri_util import interleave2
 from celeri.mesh import Mesh
 from celeri.model import Model
 from celeri.operators import Operators, get_qp_all_inequality_operator_and_data_vector
-from celeri.plot import plot_meshes
+from celeri.plot import plot_mesh
 from celeri.solve import Estimation, lsqlin_qp
 
 
@@ -704,37 +704,37 @@ def plot_coupling(estimation: Estimation, *, mesh_idx: int):
     # Strike-slip
     plt.figure(figsize=(15, 2))
     plt.subplot(1, 4, 1)
-    plot_meshes([meshes[mesh_idx]], kinematic[0::2], plt.gca())
+    plot_mesh([meshes[mesh_idx]], kinematic[0::2], plt.gca())
     plt.title("ss kinematic")
 
     plt.subplot(1, 4, 2)
-    plot_meshes([meshes[mesh_idx]], kinematic_tde_rates_ss_smooth, plt.gca())
+    plot_mesh([meshes[mesh_idx]], kinematic_tde_rates_ss_smooth, plt.gca())
     plt.title("ss kinematic (smooth)")
 
     plt.subplot(1, 4, 3)
-    plot_meshes([meshes[mesh_idx]], elastic[0::2], plt.gca())
+    plot_mesh([meshes[mesh_idx]], elastic[0::2], plt.gca())
     plt.title("ss elastic")
 
     plt.subplot(1, 4, 4)
-    plot_meshes([meshes[mesh_idx]], tde_coupling_ss, plt.gca())
+    plot_mesh([meshes[mesh_idx]], tde_coupling_ss, plt.gca())
     plt.title("ss coupling")
 
     # Dip-slip
     plt.figure(figsize=(15, 2))
     plt.subplot(1, 4, 1)
-    plot_meshes([meshes[mesh_idx]], kinematic[1::2], plt.gca())
+    plot_mesh([meshes[mesh_idx]], kinematic[1::2], plt.gca())
     plt.title("ds kinematic")
 
     plt.subplot(1, 4, 2)
-    plot_meshes([meshes[mesh_idx]], kinematic_tde_rates_ds_smooth, plt.gca())
+    plot_mesh([meshes[mesh_idx]], kinematic_tde_rates_ds_smooth, plt.gca())
     plt.title("ds kinematic (smooth)")
 
     plt.subplot(1, 4, 3)
-    plot_meshes([meshes[mesh_idx]], elastic[1::2], plt.gca())
+    plot_mesh([meshes[mesh_idx]], elastic[1::2], plt.gca())
     plt.title("ds elastic")
 
     plt.subplot(1, 4, 4)
-    plot_meshes([meshes[mesh_idx]], tde_coupling_ds, plt.gca())
+    plot_mesh([meshes[mesh_idx]], tde_coupling_ds, plt.gca())
     plt.title("ds coupling")
 
     plt.show()
