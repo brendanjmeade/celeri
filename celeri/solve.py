@@ -657,7 +657,7 @@ def assemble_and_solve_dense(
     eigen: bool = False,
     tde: bool = True,
     invert: bool = False,
-) -> tuple[Operators, Estimation]:
+) -> Estimation:
     operators = build_operators(model, eigen=eigen, tde=tde)
 
     data_vector = operators.data_vector
@@ -679,7 +679,7 @@ def assemble_and_solve_dense(
 
     estimation = build_estimation(model, operators, state_vector)
     estimation.state_covariance_matrix = linalg.inv(inv_state_covariance_matrix)
-    return operators, estimation
+    return estimation
 
 
 def lsqlin_qp(
@@ -868,7 +868,7 @@ def _build_and_solve(name: str, model: Model, *, tde: bool, eigen: bool):
     # Direct solve dense linear system
     logger.info("Start: Dense assemble and solve")
     start_solve_time = timeit.default_timer()
-    index, estimation = assemble_and_solve_dense(model, tde=True, eigen=False)
+    estimation = assemble_and_solve_dense(model, tde=True, eigen=False)
     end_solve_time = timeit.default_timer()
     logger.success(
         f"Finish: Dense assemble and solve: {end_solve_time - start_solve_time:0.2f} seconds for solve"
