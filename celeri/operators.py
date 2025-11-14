@@ -796,6 +796,7 @@ def _hash_elastic_operator_input(
     or if we can use cached ones.
 
     Args:
+        meshes: list[MeshConfig] containing mesh configuration information
         segment: DataFrame containing fault segment information
         station: DataFrame containing station information
         config: Config object containing material parameters
@@ -803,7 +804,7 @@ def _hash_elastic_operator_input(
     Returns:
         str: Hash string representing the input data
     """
-    # Convert dataframes to string representations
+
     segment_geom = segment.drop(columns=[c for c in segment.columns if "bound" in c])
     segment_str = segment_geom.to_json()
     station_str = station.to_json()
@@ -813,12 +814,27 @@ def _hash_elastic_operator_input(
     # Get material parameters
     material_params = f"{config.material_mu}_{config.material_lambda}"
 
-    mesh_configs = [mesh.model_dump_json() for mesh in meshes]
+    constraint_fields = {
+        "top_slip_rate_constraint",
+        "bot_slip_rate_constraint",
+        "side_slip_rate_constraint",
+        "top_slip_rate_weight",
+        "bot_slip_rate_weight",
+        "side_slip_rate_weight",
+        "eigenmode_slip_rate_constraint_weight",
+        "a_priori_slip_filename",
+        "coupling_constraints_ss",
+        "coupling_constraints_ds",
+        "elastic_constraints_ss",
+        "elastic_constraints_ds",
+        "smoothing_weight",
+    }
 
-    # Combine all inputs and create hash
+    mesh_configs = [mesh.model_dump_json(exclude=constraint_fields) for mesh in meshes]
     combined_input = "_".join(
         [segment_str, station_str, material_params, *mesh_configs]
     )
+
     return hashlib.blake2b(combined_input.encode()).hexdigest()[:16]
 
 
