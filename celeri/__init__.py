@@ -51,8 +51,6 @@ from celeri.operators import (
 )
 from celeri.optimize import solve_sqp2
 from celeri.optimize_sqp import (
-    plot_coupling,
-    plot_coupling_evolution,
     plot_iterative_convergence,
     solve_sqp,
 )
@@ -76,6 +74,8 @@ from celeri.plot import (
     plot_tde_boundary_condition_labels,
     plot_vel_arrows_elements,
     plot_vels,
+    plot_coupling,
+    plot_coupling_evolution,
 )
 from celeri.solve import (
     Estimation,

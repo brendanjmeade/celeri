@@ -5,8 +5,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import cartopy.io.shapereader as shpreader
+import colorcet as cc
 import matplotlib
-import matplotlib.collections
 import matplotlib.collections as mc
 import matplotlib.lines as mlines
 import matplotlib.patches as mpatches
@@ -34,10 +34,12 @@ from celeri.spatial import (
     get_strain_rate_displacements,
 )
 
-if typing.TYPE_CHECKING:
-    from celeri.solve import Estimation
-
+from celeri.solve import Estimation
 from celeri.mesh import Mesh
+from celeri.optimize_sqp import _get_coupling
+
+from matplotlib.colors import LinearSegmentedColormap
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 @dataclass(kw_only=True)
 class PlotParams:
@@ -353,7 +355,7 @@ def plot_input_summary(
         ax = plt.gca()
         xy = np.c_[x_coords, y_coords]
         verts = xy[vertex_array]
-        pc = matplotlib.collections.PolyCollection(
+        pc = mc.PolyCollection(
             verts, edgecolor="none", linewidth=0.25, cmap="Oranges"
         )
         pc.set_array(is_constrained_tde)
@@ -619,9 +621,9 @@ def plot_mesh(
         ax = plt.gca()
 
     if vmin is None:
-        vmin = np.min(fill_value)
+        vmin = np.min([-1e-10, np.min(fill_value)])
     if vmax is None:
-        vmax = np.max(fill_value)
+        vmax = np.max([1e-10, np.max(fill_value)])
 
     norm = colors.TwoSlopeNorm(vmin=vmin, vcenter=center, vmax=vmax)
 
@@ -631,7 +633,7 @@ def plot_mesh(
 
     xy = np.c_[x_coords, y_coords]
     verts = xy[vertex_array]
-    pc = matplotlib.collections.PolyCollection(
+    pc = mc.PolyCollection(
         verts,
         edgecolor="none",
         cmap=cmap,
@@ -1392,7 +1394,7 @@ def plot_fault_geometry(p, segment, meshes):
         ax = plt.gca()
         xy = np.c_[x_coords, y_coords]
         verts = xy[vertex_array]
-        pc = matplotlib.collections.PolyCollection(
+        pc = mc.PolyCollection(
             verts, edgecolor="none", alpha=0.2, facecolor="red"
         )
         ax.add_collection(pc)
@@ -1534,3 +1536,244 @@ def plot_coastlines(lon_min, lat_min, lon_max, lat_max):
 
     line_collection = mc.LineCollection(coastlines, colors="black", linewidths=0.5)
     plt.gca().add_collection(line_collection)
+
+def plot_coupling(estimation: Estimation, 
+    *, 
+    mesh_idx: int
+    ):
+    operators = estimation.operators
+    block = estimation.model.block
+    index = operators.index
+    meshes = estimation.model.meshes
+
+    assert operators.eigen is not None
+    assert index.eigen is not None
+
+    # Multiply rotation vector components by TDE slip rate partials
+    kinematic = (
+        operators.rotation_to_tri_slip_rate[mesh_idx]
+        @ estimation.state_vector[0 : 3 * len(block)]
+    )
+
+    elastic = (
+        operators.eigen.eigenvectors_to_tde_slip[mesh_idx]
+        @ estimation.state_vector[
+            index.eigen.start_col_eigen[mesh_idx] : index.eigen.end_col_eigen[mesh_idx]
+        ]
+    )
+
+    # Calculate final coupling and smoothed kinematic
+    tde_coupling_ss, kinematic_tde_rates_ss_smooth = _get_coupling(
+        meshes[mesh_idx].lon_centroid,
+        meshes[mesh_idx].lat_centroid,
+        elastic[0::2],
+        kinematic[0::2],
+        smoothing_length_scale=meshes[
+            mesh_idx
+        ].config.iterative_coupling_smoothing_length_scale,
+        kinematic_slip_regularization_scale=meshes[
+            mesh_idx
+        ].config.iterative_coupling_kinematic_slip_regularization_scale,
+    )
+
+    tde_coupling_ds, kinematic_tde_rates_ds_smooth = _get_coupling(
+        meshes[mesh_idx].lon_centroid,
+        meshes[mesh_idx].lat_centroid,
+        elastic[1::2],
+        kinematic[1::2],
+        smoothing_length_scale=meshes[
+            mesh_idx
+        ].config.iterative_coupling_smoothing_length_scale,
+        kinematic_slip_regularization_scale=meshes[
+            mesh_idx
+        ].config.iterative_coupling_kinematic_slip_regularization_scale,
+    )
+
+    # Strike-slip
+    plt.figure(figsize=(15, 2))
+    plt.subplot(1, 4, 1)
+    plot_mesh(meshes[mesh_idx], fill_value=kinematic[0::2], ax=plt.gca())
+    plt.title("ss kinematic")
+
+    plt.subplot(1, 4, 2)
+    plot_mesh(meshes[mesh_idx], fill_value=kinematic_tde_rates_ss_smooth, ax=plt.gca())
+    plt.title("ss kinematic (smooth)")
+
+    plt.subplot(1, 4, 3)
+    plot_mesh(meshes[mesh_idx], fill_value=elastic[0::2], ax=plt.gca())
+    plt.title("ss elastic")
+
+    plt.subplot(1, 4, 4)
+    plot_mesh(meshes[mesh_idx], fill_value=tde_coupling_ss, ax=plt.gca())
+    plt.title("ss coupling")
+
+    # Dip-slip
+    plt.figure(figsize=(15, 2))
+    plt.subplot(1, 4, 1)
+    plot_mesh(meshes[mesh_idx], fill_value=kinematic[1::2], ax=plt.gca())
+    plt.title("ds kinematic")
+
+    plt.subplot(1, 4, 2)
+    plot_mesh(meshes[mesh_idx], fill_value=kinematic_tde_rates_ds_smooth, ax=plt.gca())
+    plt.title("ds kinematic (smooth)")
+
+    plt.subplot(1, 4, 3)
+    plot_mesh(meshes[mesh_idx], fill_value=elastic[1::2], ax=plt.gca())
+    plt.title("ds elastic")
+
+    plt.subplot(1, 4, 4)
+    plot_mesh(meshes[mesh_idx], fill_value=tde_coupling_ds, ax=plt.gca())
+    plt.title("ds coupling")
+
+    plt.show()
+
+def _plot_common_evolution_elements():
+    plt.xlim([-90, 90])
+    plt.ylim([-90, 90])
+    plt.xticks([-90, 0, 90])
+    plt.yticks([-90, 0, 90])
+    plt.gca().set_aspect("equal")
+
+
+def _plot_evolution(mesh: Mesh, field1: np.ndarray, field2: np.ndarray):
+    LINE_COLOR = "lightgray"
+    for i in range(mesh.n_tde):
+        plt.plot(
+            field1[i, :],
+            field2[i, :],
+            "-",
+            linewidth=0.1,
+            color=LINE_COLOR,
+            zorder=1,
+        )
+    plt.plot(field1[:, -1], field2[:, -1], ".k", markersize=0.5)
+
+
+def plot_coupling_evolution(estimation: Estimation, *, mesh_idx: int):
+    mesh = estimation.model.meshes[mesh_idx]
+
+    if estimation.trace is None:
+        raise ValueError("Estimation trace is not available for plotting.")
+
+    store_ss_kinematic = estimation.trace["ss_kinematic"]
+    store_ss_elcon = estimation.trace["ss_estimated"]
+    store_ss_lower = estimation.trace["ss_lower"]
+    store_ss_upper = estimation.trace["ss_upper"]
+    store_ds_kinematic = estimation.trace["ds_kinematic"]
+    store_ds_elcon = estimation.trace["ds_estimated"]
+    store_ds_lower = estimation.trace["ds_lower"]
+    store_ds_upper = estimation.trace["ds_upper"]
+
+    def plot_background():
+        REGULARIZATION_RATE = 1.0
+        levels = 101
+        j = np.linspace(-100, 100, 1000)
+        b = np.linspace(-100, 100, 1000)
+        j_grid, b_grid = np.meshgrid(j, b)
+        j_grid_orig = np.copy(j_grid)
+        b_grid_orig = np.copy(b_grid)
+        coupling, _ = _get_coupling(
+            0,
+            0,
+            b_grid.flatten(),
+            j_grid.flatten(),
+            smoothing_length_scale=0.0,
+            kinematic_slip_regularization_scale=REGULARIZATION_RATE,
+        )
+        coupling_grid = np.reshape(coupling, (1000, 1000))
+        coupling_grid[coupling_grid > 1.0] = np.nan
+        coupling_grid[coupling_grid < 0.0] = np.nan
+
+        # Create half colormap
+        # Retrieve a colorcet colormap
+        # full_cmap = cc.cm["coolwarm_r"]  # Replace with your desired colormap
+        # full_cmap = cc.cm["CET_D8_r"]  # Replace with your desired colormap
+        # full_cmap = cc.cm["cwr_r"]  # Replace with your desired colormap
+        full_cmap = cc.cm["bmy_r"]  # Replace with your desired colormap
+
+        # Extract half of the colormap
+        n_colors = full_cmap.N  # Total number of colors in the colormap
+        half_cmap = LinearSegmentedColormap.from_list(
+            "half_cmap", full_cmap(np.linspace(0, 0.5, n_colors // 2))
+        )
+        # cmap = half_cmap.reversed()
+        cmap = half_cmap
+
+        ch = plt.contourf(
+            j_grid_orig, b_grid_orig, coupling_grid, cmap=cmap, levels=levels
+        )
+        return ch
+
+    plt.figure(figsize=(10, 10))
+
+    plt.subplot(2, 2, 1)
+    ch = plot_background()
+    _plot_evolution(mesh, store_ss_kinematic[mesh_idx], store_ss_elcon[mesh_idx])
+    _plot_common_evolution_elements()
+    plt.xlabel("$v$ strike-slip kinematic (mm/yr)")
+    plt.ylabel("$v$ strike-slip elastic (mm/yr)")
+    cax = inset_axes(
+        plt.gca(),
+        width="20%",
+        height="30%",
+        loc="upper right",
+        bbox_to_anchor=(0.0, 0.0, 0.07, 0.95),  # Position in axes fraction
+        bbox_transform=plt.gca().transAxes,
+        borderpad=0,
+    )
+    plt.colorbar(ch, cax=cax, ticks=[0.0, 1.0], label="coupling")
+
+    plt.subplot(2, 2, 2)
+    ch = plot_background()
+    _plot_evolution(mesh, store_ss_kinematic[mesh_idx], store_ss_lower[mesh_idx])
+    _plot_evolution(mesh, store_ss_kinematic[mesh_idx], store_ss_upper[mesh_idx])
+    _plot_common_evolution_elements()
+    plt.xlabel("$v$ strike-slip kinematic (mm/yr)")
+    plt.ylabel("$v$ strike-slip bounds (mm/yr)")
+    cax = inset_axes(
+        plt.gca(),
+        width="20%",
+        height="30%",
+        loc="upper right",
+        bbox_to_anchor=(0.0, 0.0, 0.07, 0.95),  # Position in axes fraction
+        bbox_transform=plt.gca().transAxes,
+        borderpad=0,
+    )
+    plt.colorbar(ch, cax=cax, ticks=[0.0, 1.0], label="coupling")
+
+    plt.subplot(2, 2, 3)
+    ch = plot_background()
+    _plot_evolution(mesh, store_ds_kinematic[mesh_idx], store_ds_elcon[mesh_idx])
+    _plot_common_evolution_elements()
+    plt.xlabel("$v$ dip-slip kinematic (mm/yr)")
+    plt.ylabel("$v$ dip-slip elastic (mm/yr)")
+    cax = inset_axes(
+        plt.gca(),
+        width="20%",
+        height="30%",
+        loc="upper right",
+        bbox_to_anchor=(0.0, 0.0, 0.07, 0.95),  # Position in axes fraction
+        bbox_transform=plt.gca().transAxes,
+        borderpad=0,
+    )
+    plt.colorbar(ch, cax=cax, ticks=[0.0, 1.0], label="coupling")
+
+    plt.subplot(2, 2, 4)
+    ch = plot_background()
+    _plot_evolution(mesh, store_ds_kinematic[mesh_idx], store_ds_lower[mesh_idx])
+    _plot_evolution(mesh, store_ds_kinematic[mesh_idx], store_ds_upper[mesh_idx])
+    _plot_common_evolution_elements()
+    plt.xlabel("$v$ dip-slip kinematic (mm/yr)")
+    plt.ylabel("$v$ dip-slip bounds (mm/yr)")
+    cax = inset_axes(
+        plt.gca(),
+        width="20%",
+        height="30%",
+        loc="upper right",
+        bbox_to_anchor=(0.0, 0.0, 0.07, 0.95),  # Position in axes fraction
+        bbox_transform=plt.gca().transAxes,
+        borderpad=0,
+    )
+    plt.colorbar(ch, cax=cax, ticks=[0.0, 1.0], label="coupling")
+    plt.suptitle(f"{mesh.name}")
+    plt.show()
