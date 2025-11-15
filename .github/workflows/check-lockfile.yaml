@@ -125,6 +125,11 @@ jobs:
           fi
       - name: Fail to block merge
         if: steps.lockfile-status.outputs.stale == 'true'
+        env:
+          SERVER_URL: ${{ github.server_url }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
         run: |
           echo "Lockfile is stale; failing workflow."
+          echo "For recommendations on how to fix, see ${SERVER_URL}/${REPOSITORY}/actions/runs/${RUN_ID}"
           exit 1
