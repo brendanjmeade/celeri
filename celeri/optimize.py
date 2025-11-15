@@ -883,13 +883,30 @@ def build_cvxpy_problem(
     )
 
 
+class MinimizationComplete(Exception):
+    pass
+
+
 def _tighten_kinematic_bounds(
     minimizer: Minimizer,
     *,
     tighten_all: bool = True,
     factor: float = 0.5,
+    iteration_number: int,
+    num_oob: int,
+    annealing_schedule: list[float],
 ):
     assert factor > 0 and factor < 1
+
+    if num_oob > 0:
+        looseness = 0
+    elif len(annealing_schedule) == 0:
+        raise MinimizationComplete()
+    else:
+        # We have fixed all OOBs, and annealing is enabled, so use the first remaining
+        # value in the annealing schedule as the loosenenss.
+        looseness = annealing_schedule.pop(0)
+        print(f"Loosening constraints by {looseness}")
 
     def tighten_item(limits: SlipRateLimitItem, coupling: SlipRateItem):
         elastic = coupling.elastic_numpy()
@@ -917,9 +934,9 @@ def _tighten_kinematic_bounds(
         if tighten_all:
             target = kinematic
             diff = upper - target
-            upper = target + factor * diff
+            upper = target + factor * diff + looseness
             diff = lower - target
-            lower = target + factor * diff
+            lower = target + factor * diff - looseness
         else:
             pos = kinematic > 0
             oob = (
@@ -1020,7 +1037,7 @@ class MinimizerTrace:
         print(f"Iteration: {iter_num}")
         print(f"{oob} of {total} velocities are out-of-bounds")
         print(f"Non-convex constraint loss: {nonconvex_loss:.2e}")
-        print(f"residual 2-norm: {objective:.5e}")
+        print(f"residual 2-norm: {objective}")
         print(f"Iteration took {iter_time:.2f}s")
         print()
 
@@ -1171,6 +1188,7 @@ def solve_sqp2(
     rescale_constraints: bool = True,
     objective: Objective = "qr_sum_of_squares",
     operators: Operators | None = None,
+    annealing_schedule: list[float] | None = None,
 ) -> Estimation:
     """Iteratively solve a constrained optimization problem for fault slip rates.
 
@@ -1188,6 +1206,9 @@ def solve_sqp2(
     Returns:
         A trace object containing the optimization history
     """
+    if annealing_schedule is None:
+        annealing_schedule = []
+
     limits = SlipRateLimit.from_model(model)
 
     minimizer = build_cvxpy_problem(
@@ -1217,8 +1238,8 @@ def solve_sqp2(
     all_warnings = []
 
     # Intializing this so that warnings check will run even with no iteration case
-    num_iter = 0
-    for num_iter in range(max_iter):
+    iteration_number = 0
+    for iteration_number in range(max_iter):
         # QP solve in context manager to capture warnings
         with warnings.catch_warnings(record=True) as caught_warnings:
             warnings.simplefilter("always")
@@ -1233,7 +1254,7 @@ def solve_sqp2(
         for warning in caught_warnings:
             all_warnings.append(  # noqa: PERF401
                 {
-                    "iteration": num_iter,
+                    "iteration_number": iteration_number,
                     "message": str(warning.message),
                     "category": warning.category.__name__,
                     "filename": warning.filename,
@@ -1245,24 +1266,28 @@ def solve_sqp2(
         if verbose:
             trace.print_last_progress()
 
-        num_oob, total = minimizer.out_of_bounds()
-        if num_oob == 0:
-            break
+        num_oob, _total = minimizer.out_of_bounds()
 
-        _tighten_kinematic_bounds(
-            minimizer,
-            factor=reduction_factor,
-            tighten_all=True,
-        )
+        try:
+            _tighten_kinematic_bounds(
+                minimizer,
+                factor=reduction_factor,
+                tighten_all=True,
+                iteration_number=iteration_number,
+                annealing_schedule=annealing_schedule,
+                num_oob=num_oob,
+            )
+        except MinimizationComplete:
+            break
 
     # Log warning if the last iteration includes an error
     if all_warnings:
-        if all_warnings[-1]["iteration"] == num_iter:
+        if all_warnings[-1]["iteration"] == iteration_number:
             logger.warning(f"SQP iteration: {all_warnings[-1]['message']}")
         else:
             iterations_with_warnings = [d["iteration"] for d in all_warnings]
             logger.info(
-                f"SQP iteration: Warnings in iterations {iterations_with_warnings} of {num_iter + 1} total iterations"
+                f"SQP iteration: Warnings in iterations {iterations_with_warnings} of {iteration_number + 1} total iterations"
             )
     else:
         logger.info("SQP iteration: Ran with no warnings")
