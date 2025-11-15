@@ -27,6 +27,11 @@ jobs:
         with:
           cache: true
           environments: ${{ matrix.pixi-environment }}
+          # The lockfile is allowed to be a lie
+          locked: false
+          # If the lockfile is a lie, then defer to pixi.toml as the source of truth
+          # over the lockfile, and locally overwrite the lockfile accordingly.
+          frozen: false
       - name: Test
         if: ${{ matrix.tests-to-run == 'other' }}
         run: |
