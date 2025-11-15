@@ -380,7 +380,7 @@ class Operators:
         slip_rate_constraints : np.ndarray 
             Limitations on slip rates.
         rotation_to_slip_rate : np.ndarray 
-            Maps rotations to slip rates.
+            Maps block rotations to kinematic slip rates along the segments.
         block_strain_rate_to_velocities : np.ndarray 
             Computes the components of the predicted velocities on the stations due to the homogenous block strain rates. 
             Has shape (3 * n_stations, 3 * n_strain_blocks).

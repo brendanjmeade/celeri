@@ -68,7 +68,11 @@ class SlipRateItem:
         return elastic
 
     def out_of_bounds_coupling(
-        self, *, smooth_kinematic: bool, tol=1e-8, coupling_bounds: ScalarBound
+        self, 
+        *, 
+        smooth_kinematic: bool, 
+        tol=1e-8, 
+        coupling_bounds: ScalarBound
     ) -> tuple[int, int]:
         """Count slip rates that violate coupling constraints.
 
@@ -98,7 +102,10 @@ class SlipRateItem:
         return is_oob.sum(), total
 
     def constraint_loss(
-        self, *, smooth_kinematic: bool, coupling_bounds: ScalarBound
+        self, 
+        *, 
+        smooth_kinematic: bool, 
+        coupling_bounds: ScalarBound
     ) -> float:
         """Calculate quadratic coupling constraint violation"""
         if coupling_bounds.lower is None and coupling_bounds.upper is None:
@@ -124,22 +131,30 @@ class SlipRate:
     dip_slip: SlipRateItem
 
     def out_of_bounds_coupling(
-        self, *, smooth_kinematic: bool, tol: float = 1e-8, limits: SlipRateLimit
+        self, 
+        *, 
+        smooth_kinematic: bool, 
+        tol: float = 1e-8, 
+        limits: SlipRateLimit
     ) -> tuple[int, int]:
-        oob1, total1 = self.strike_slip.out_of_bounds_coupling(
+        oob_ss, total_ss = self.strike_slip.out_of_bounds_coupling(
             smooth_kinematic=smooth_kinematic,
             tol=tol,
             coupling_bounds=limits.strike_slip.coupling_bounds,
         )
-        oob2, total2 = self.dip_slip.out_of_bounds_coupling(
+        oob_ds, total_ds = self.dip_slip.out_of_bounds_coupling(
             smooth_kinematic=smooth_kinematic,
             tol=tol,
             coupling_bounds=limits.dip_slip.coupling_bounds,
         )
-        return oob1 + oob2, total1 + total2
+        return oob_ss + oob_ds, total_ss + total_ds
 
     def out_of_bounds_detailed(
-        self, *, smooth_kinematic: bool, tol: float = 1e-8, limits: SlipRateLimit
+        self, 
+        *, 
+        smooth_kinematic: bool, 
+        tol: float = 1e-8, 
+        limits: SlipRateLimit
     ) -> tuple[tuple[int, int], tuple[int, int]]:
         """Count slip rates that violate coupling constraints with detailed output."""
         oob1, total1 = self.strike_slip.out_of_bounds_coupling(
@@ -477,6 +492,7 @@ class SlipRateLimitItem:
 
 @dataclass
 class SlipRateLimit:
+    """Class to store slip rates constraints for optimization problem"""
     strike_slip: SlipRateLimitItem
     dip_slip: SlipRateLimitItem
 
@@ -546,6 +562,25 @@ class SlipRateLimit:
 
 @dataclass
 class Minimizer:
+    """A class to store the results of an optimization run.
+    
+    Attributes
+    ----------
+
+    model: Model
+    operators: Operators
+    cp_problem: cvxpy.Problem
+    params_raw: cvxpy.Expression
+        Raw parameters.
+    params: cvxpy.Expression
+        Scaled parameters.
+    params_scale: np.ndarray
+    objective_norm2: cp.Expression
+    constraint_scale: np.ndarray
+    slip_rate: list[SlipRate]
+    slip_rate_limits: list[SlipRateLimit]
+    smooth_kinematic: bool = True
+    """
     model: Model
     operators: Operators
     cp_problem: cp.Problem
@@ -612,7 +647,11 @@ class Minimizer:
             quiver_scale=self.model.config.quiver_scale,
         )
 
-    def out_of_bounds(self, *, tol: float = 1e-8) -> tuple[int, int]:
+    def out_of_bounds(
+        self, 
+        *, 
+        tol: float = 1e-8
+    ) -> tuple[int, int]:
         oob, total = 0, 0
         for idx, _ in enumerate(self.model.meshes):
             oob_mesh, total_mesh = self.slip_rate[idx].out_of_bounds_coupling(
@@ -625,7 +664,9 @@ class Minimizer:
         return oob, total
 
     def out_of_bounds_detailed(
-        self, *, tol: float = 1e-8
+        self, 
+        *, 
+        tol: float = 1e-8
     ) -> tuple[np.ndarray, np.ndarray]:
         """Count slip rates that violate coupling constraints with detailed output."""
         oob = np.zeros((len(self.model.meshes), 2), dtype=int)
@@ -1184,6 +1225,10 @@ def solve_sqp2(
         solve_kwargs: Additional keyword arguments passed to the solver
         reduction_factor: Factor to reduce bounds by in each iteration (0-1)
         verbose: Whether to print progress information
+        rescale_parameters: bool
+        rescale_constraints: bool
+        objective: Objective
+        operators: operators.Operators
 
     Returns:
         A trace object containing the optimization history
