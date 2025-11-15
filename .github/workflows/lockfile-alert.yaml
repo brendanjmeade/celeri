@@ -1,6 +1,7 @@
 name: Lockfile Alert
 
 on:
+  workflow_dispatch:
   pull_request_target:
     types:
       - opened
@@ -45,7 +46,7 @@ jobs:
         run: node "${GITHUB_WORKSPACE}/.github/scripts/lockfile-alert-comment.js"
 
   gather-open-prs:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment: create-pr
     outputs:
@@ -71,7 +72,7 @@ jobs:
             core.setOutput('matrix', JSON.stringify(matrix));
 
   lockfile-alert-push:
-    if: github.event_name == 'push' && needs.gather-open-prs.outputs.matrix != '[]'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.gather-open-prs.outputs.matrix != '[]'
     needs: gather-open-prs
     runs-on: ubuntu-latest
     environment: create-pr
