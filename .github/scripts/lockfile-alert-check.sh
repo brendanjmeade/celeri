@@ -15,14 +15,14 @@ if [[ -z "${PR_NUMBER}" || -z "${BASE_REF}" ]]; then
   exit 2
 fi
 
-TMP_BRANCH="lockfile-alert/pr-${PR_NUMBER}"
+PR_HEAD="refs/pull/${PR_NUMBER}/head"
 REMOTE_BASE="origin/${BASE_REF}"
 
 git fetch --no-tags --depth=1 origin "${BASE_REF}"
-git fetch --no-tags origin "pull/${PR_NUMBER}/head:${TMP_BRANCH}"
-git checkout -B "${TMP_BRANCH}" "${TMP_BRANCH}"
+git fetch --no-tags --depth=1 origin "${PR_HEAD}"
 
-if git diff --quiet HEAD.."${REMOTE_BASE}" -- pixi.lock; then
+# Compare pixi.lock between PR head and base without checking out
+if git diff --quiet "${PR_HEAD}" "${REMOTE_BASE}" -- pixi.lock; then
   result=false
 else
   result=true
