@@ -22,6 +22,8 @@ const baseRef = process.env.BASE_REF;
 const author = process.env.AUTHOR;
 const token = process.env.GITHUB_TOKEN;
 const [owner, repo] = (process.env.GITHUB_REPOSITORY || '').split('/');
+const defaultBranch = process.env.DEFAULT_BRANCH || 'main';
+const workflowUrl = `https://github.com/${owner}/${repo}/blob/${defaultBranch}/.github/workflows/lockfile-alert.yaml`;
 
 if (!prNumber || !baseRef || !author || !token || !owner || !repo) {
   console.error('Missing required environment variables');
@@ -39,6 +41,9 @@ Recommended steps:
 3. pixi lock (if necessary)
 
 This reminder will be minimized automatically once \`pixi.lock\` matches \`${baseRef}\`.
+
+---
+_Generated automatically by [\`.github/workflows/lockfile-alert.yaml\`](${workflowUrl})._
 `;
 
 /**

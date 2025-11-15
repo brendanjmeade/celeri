@@ -2,6 +2,11 @@ name: Lockfile Alert
 
 on:
   workflow_dispatch:
+  # We intentionally use pull_request_target so runs execute in the base repo
+  # context and keep the read/write GITHUB_TOKEN required to comment on PRs,
+  # even when they originate from forks. See:
+  # https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#pull_request_target
+  # The workflow never executes code from the PR head; helper scripts stay on main.
   pull_request_target:
     types:
       - opened
@@ -19,7 +24,6 @@ jobs:
   lockfile-alert-pr:
     if: github.event_name == 'pull_request_target'
     runs-on: ubuntu-latest
-    environment: create-pr
     steps:
       - name: Checkout repository
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
@@ -45,14 +49,14 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
           AUTHOR: ${{ github.event.pull_request.user.login }}
-          GITHUB_TOKEN: ${{ secrets.GH_PAT_FOR_PR }}
+          GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: node "${GITHUB_WORKSPACE}/.github/scripts/lockfile-alert-comment.js"
 
   gather-open-prs:
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    environment: create-pr
     outputs:
       matrix: ${{ steps.collect.outputs.matrix }}
     steps:
@@ -60,7 +64,7 @@ jobs:
         id: collect
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         with:
-          github-token: ${{ secrets.GH_PAT_FOR_PR }}
+          github-token: ${{ github.token }}
           script: |
             const prs = await github.paginate(github.rest.pulls.list, {
               owner: context.repo.owner,
@@ -79,7 +83,6 @@ jobs:
     if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.gather-open-prs.outputs.matrix != '[]'
     needs: gather-open-prs
     runs-on: ubuntu-latest
-    environment: create-pr
     strategy:
       fail-fast: false
       matrix:
@@ -105,7 +108,8 @@ jobs:
           PR_NUMBER: ${{ matrix.pr.number }}
           BASE_REF: ${{ matrix.pr.baseRef }}
           AUTHOR: ${{ matrix.pr.author }}
-          GITHUB_TOKEN: ${{ secrets.GH_PAT_FOR_PR }}
+          GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: node "${GITHUB_WORKSPACE}/.github/scripts/lockfile-alert-comment.js"
 
