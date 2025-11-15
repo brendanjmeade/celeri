@@ -1,3 +1,8 @@
+# Check Lockfile (recovery)
+# Flags PRs whose `pixi.lock` becomes stale (when `pixi list --locked` fails),
+# then documents how to regenerate the lockfile and resolve any conflicts. It
+# merely turns the PR red—merges are still possible—and complements the
+# preventative `.github/workflows/lockfile-alert.yaml` reminders.
 name: Check Lockfile
 
 on:

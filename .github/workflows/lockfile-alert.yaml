@@ -1,3 +1,8 @@
+# Lockfile Alert (prevention)
+# Proactively reminds PR authors to merge the latest `pixi.lock` from the base
+# branch so conflicts never reach CI. If stale metadata still appears, the
+# non-blocking `.github/workflows/check-lockfile.yaml` job will mark the PR red
+# and walk contributors through recovering.
 name: Lockfile Alert
 
 on:
