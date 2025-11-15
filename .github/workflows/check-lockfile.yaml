@@ -122,6 +122,7 @@ jobs:
                 echo "We regenerated \`pixi.lock\` and verified it merges cleanly with \`$BASE_REF\`."
               fi
             } >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Fail to block merge
         if: steps.lockfile-status.outputs.stale == 'true'
         run: |
