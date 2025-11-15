@@ -15,14 +15,24 @@ if [[ -z "${PR_NUMBER}" || -z "${BASE_REF}" ]]; then
   exit 2
 fi
 
-PR_HEAD="refs/pull/${PR_NUMBER}/head"
 REMOTE_BASE="origin/${BASE_REF}"
 
 git fetch --no-tags --depth=1 origin "${BASE_REF}"
-git fetch --no-tags --depth=1 origin "${PR_HEAD}"
+git fetch --no-tags --depth=1 origin "pull/${PR_NUMBER}/head:pr-${PR_NUMBER}"
 
 # Compare pixi.lock between PR head and base without checking out
-if git diff --quiet "${PR_HEAD}" "${REMOTE_BASE}" -- pixi.lock; then
+# git diff --quiet exits 0 if no diff, 1 if diff exists, >1 on error
+set +e
+git diff --quiet "pr-${PR_NUMBER}" "${REMOTE_BASE}" -- pixi.lock
+diff_status=$?
+set -e
+
+if [[ ${diff_status} -gt 1 ]]; then
+  echo "Error: git diff failed with status ${diff_status}" >&2
+  exit 1
+fi
+
+if [[ ${diff_status} -eq 0 ]]; then
   result=false
 else
   result=true
