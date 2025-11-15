@@ -48,10 +48,13 @@ jobs:
           NEEDS_ALERT: ${{ steps.detect.outputs.needs_alert }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
           AUTHOR: ${{ github.event.pull_request.user.login }}
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          BASE_REPO: ${{ github.event.pull_request.base.repo.full_name }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
         run: node "${GITHUB_WORKSPACE}/.github/scripts/lockfile-alert-comment.js"
 
   gather-open-prs:
@@ -75,7 +78,10 @@ jobs:
             const matrix = prs.map((pr) => ({
               number: pr.number,
               baseRef: pr.base.ref,
+              headRef: pr.head.ref,
               author: pr.user.login,
+              baseRepoFullName: pr.base.repo.full_name,
+              headRepoFullName: pr.head.repo.full_name,
             }));
             core.setOutput('matrix', JSON.stringify(matrix));
 
@@ -107,9 +113,12 @@ jobs:
           NEEDS_ALERT: ${{ steps.detect.outputs.needs_alert }}
           PR_NUMBER: ${{ matrix.pr.number }}
           BASE_REF: ${{ matrix.pr.baseRef }}
+          HEAD_REF: ${{ matrix.pr.headRef }}
           AUTHOR: ${{ matrix.pr.author }}
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          BASE_REPO: ${{ matrix.pr.baseRepoFullName }}
+          HEAD_REPO: ${{ matrix.pr.headRepoFullName }}
         run: node "${GITHUB_WORKSPACE}/.github/scripts/lockfile-alert-comment.js"
 

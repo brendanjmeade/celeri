@@ -78,6 +78,7 @@ jobs:
         env:
           MERGE_CLEAN: ${{ steps.merge-check.outputs.clean || 'unknown' }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
           BASE_REPO: ${{ github.repository }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
         run: |
@@ -103,10 +104,11 @@ jobs:
               echo "$remote_context"
               echo
               echo '```bash'
+              echo "git checkout $HEAD_REF"
               echo "git restore --staged pixi.lock && git restore pixi.lock"
               echo "git fetch ${remote_name}"
               echo "git merge ${remote_name}/${BASE_REF}"
-              echo "git checkout --theirs pixi.lock && git add pixi.lock"
+              echo "git checkout --theirs pixi.lock"
               echo "pixi lock"
               echo "git add pixi.lock"
               echo 'git commit -m "Update pixi.lock"'
@@ -115,8 +117,14 @@ jobs:
           else
             {
               echo
-              echo "- Run \`pixi lock\`"
-              echo "- Commit the updated \`pixi.lock\`"
+              echo "Run \`pixi lock\` and commit the updated \`pixi.lock\`:"
+              echo
+              echo '```bash'
+              echo "git checkout $HEAD_REF"
+              echo "pixi lock"
+              echo "git add pixi.lock"
+              echo 'git commit -m "Update pixi.lock"'
+              echo '```'
               if [ "$MERGE_CLEAN" = "true" ]; then
                 echo
                 echo "We regenerated \`pixi.lock\` and verified it merges cleanly with \`$BASE_REF\`."

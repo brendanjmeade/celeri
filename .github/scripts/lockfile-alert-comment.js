@@ -19,26 +19,49 @@ const MARKER = '<!-- lockfile-alert -->';
 const needsAlert = (process.env.NEEDS_ALERT || '').toLowerCase() === 'true';
 const prNumber = Number(process.env.PR_NUMBER);
 const baseRef = process.env.BASE_REF;
+const headRef = process.env.HEAD_REF;
 const author = process.env.AUTHOR;
 const token = process.env.GITHUB_TOKEN;
 const [owner, repo] = (process.env.GITHUB_REPOSITORY || '').split('/');
 const defaultBranch = process.env.DEFAULT_BRANCH || 'main';
 const workflowUrl = `https://github.com/${owner}/${repo}/blob/${defaultBranch}/.github/workflows/lockfile-alert.yaml`;
+const headRepo = process.env.HEAD_REPO;
+const baseRepo = process.env.BASE_REPO;
 
-if (!prNumber || !baseRef || !author || !token || !owner || !repo) {
+if (!prNumber || !baseRef || !headRef || !author || !token || !owner || !repo) {
   console.error('Missing required environment variables');
   process.exit(1);
+}
+
+// Determine the correct remote name based on whether this is a fork
+let remoteName = 'origin';
+let remoteContext = '';
+
+if (headRepo && baseRepo && headRepo !== baseRepo) {
+  remoteName = 'upstream';
+  remoteContext = `\n\nRemote \`upstream\` should point at ${baseRepo}; your fork is ${headRepo}.`;
+} else if (baseRepo) {
+  remoteContext = `\n\nRemote \`origin\` should point at ${baseRepo} because this branch lives in ${baseRepo}.`;
 }
 
 const alertBody = `${MARKER}
 Hi @${author},
 
-\`${baseRef}\` has updated \`pixi.lock\` since this branch was last synced. Please merge or rebase the latest \`${baseRef}\` so dependency metadata stays current.
+\`${baseRef}\` has updated \`pixi.lock\` since this branch was last synced. Merge or rebase the latest \`${baseRef}\` so dependency metadata stays current.${remoteContext}
 
-Recommended steps:
-1. git fetch origin
-2. git merge origin/${baseRef}
-3. pixi lock (if necessary)
+\`\`\`bash
+git checkout ${headRef}
+git fetch ${remoteName}
+git merge ${remoteName}/${baseRef}
+\`\`\`
+
+If merge conflicts occur in \`pixi.lock\`, accept the incoming changes from \`${baseRef}\` and regenerate the lockfile:
+
+\`\`\`bash
+git checkout --theirs pixi.lock
+pixi lock
+git add pixi.lock
+\`\`\`
 
 This reminder will be minimized automatically once \`pixi.lock\` matches \`${baseRef}\`.
 
