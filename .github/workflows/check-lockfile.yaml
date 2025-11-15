@@ -14,8 +14,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  generate-lockfile:
-    # Untrusted job: runs PR code without secrets or write access
+  check-lockfile:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -84,10 +83,10 @@ jobs:
         run: |
           if [ "$HEAD_REPO" != "$BASE_REPO" ]; then
             remote_name="upstream"
-            remote_context="Remote `upstream` should point at ${BASE_REPO}; your fork is ${HEAD_REPO}."
+            remote_context="Remote \`upstream\` should point at ${BASE_REPO}; your fork is ${HEAD_REPO}."
           else
             remote_name="origin"
-            remote_context="Remote `origin` should point at ${BASE_REPO} because this branch lives in ${BASE_REPO}."
+            remote_context="Remote \`origin\` should point at ${BASE_REPO} because this branch lives in ${BASE_REPO}."
           fi
 
           {
@@ -99,7 +98,7 @@ jobs:
           if [ "$MERGE_CLEAN" = "false" ]; then
             {
               echo
-              echo "There are conflicting changes to `pixi.lock` on `$BASE_REF`. Merge or rebase those updates before committing a refreshed lockfile."
+              echo "There are conflicting changes to \`pixi.lock\` on \`$BASE_REF\`. Merge or rebase those updates before committing a refreshed lockfile."
               echo
               echo "$remote_context"
               echo
@@ -116,11 +115,11 @@ jobs:
           else
             {
               echo
-              echo "- Run `pixi lock`"
-              echo "- Commit the updated `pixi.lock`"
+              echo "- Run \`pixi lock\`"
+              echo "- Commit the updated \`pixi.lock\`"
               if [ "$MERGE_CLEAN" = "true" ]; then
                 echo
-                echo "We regenerated `pixi.lock` and verified it merges cleanly with `$BASE_REF`."
+                echo "We regenerated \`pixi.lock\` and verified it merges cleanly with \`$BASE_REF\`."
               fi
             } >> "$GITHUB_STEP_SUMMARY"
       - name: Fail to block merge
