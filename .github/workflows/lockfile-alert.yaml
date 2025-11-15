@@ -35,114 +35,14 @@ jobs:
           "${GITHUB_WORKSPACE}/.github/scripts/lockfile-alert-check.sh" "${PR_NUMBER}" "${BASE_REF}"
 
       - name: Update alert comment
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         env:
           NEEDS_ALERT: ${{ steps.detect.outputs.needs_alert }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
           AUTHOR: ${{ github.event.pull_request.user.login }}
-        with:
-          github-token: ${{ secrets.GH_PAT_FOR_PR }}
-          script: |
-            const marker = '<!-- lockfile-alert -->';
-            const needsAlert = (process.env.NEEDS_ALERT || '').toLowerCase() === 'true';
-            const issue_number = Number(process.env.PR_NUMBER);
-            const baseRef = process.env.BASE_REF;
-            const author = process.env.AUTHOR;
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-
-            const body = `${marker}
-Hi @${author},
-
-${'`'}${baseRef}${'`'} has updated \`pixi.lock\` since this branch was last synced. Please merge or rebase the latest ${'`'}${baseRef}${'`'} so dependency metadata stays current.
-
-Recommended steps:
-1. git fetch origin
-2. git merge origin/${baseRef}
-3. pixi lock (if necessary)
-
-This reminder will be minimized automatically once \`pixi.lock\` matches ${'`'}${baseRef}${'`'}.
-`;
-
-            async function findAlertComment() {
-              const comments = await github.paginate(
-                github.rest.issues.listComments,
-                { owner, repo, issue_number, per_page: 100 },
-              );
-              return comments.find((comment) => comment.body && comment.body.includes(marker));
-            }
-
-            async function getMinimizedState(nodeId) {
-              if (!nodeId) return false;
-              const query = `
-                query($id: ID!) {
-                  node(id: $id) {
-                    ... on IssueComment {
-                      isMinimized
-                    }
-                  }
-                }
-              `;
-              const result = await github.graphql(query, { id: nodeId });
-              return Boolean(result?.node?.isMinimized);
-            }
-
-            async function minimizeComment(nodeId) {
-              const mutation = `
-                mutation($id: ID!) {
-                  minimizeComment(input: { subjectId: $id, classifier: OUTDATED }) {
-                    minimizedComment {
-                      isMinimized
-                    }
-                  }
-                }
-              `;
-              await github.graphql(mutation, { id: nodeId });
-            }
-
-            async function unminimizeComment(nodeId) {
-              const mutation = `
-                mutation($id: ID!) {
-                  unminimizeComment(input: { subjectId: $id }) {
-                    unminimizedComment {
-                      isMinimized
-                    }
-                  }
-                }
-              `;
-              await github.graphql(mutation, { id: nodeId });
-            }
-
-            (async () => {
-              const existing = await findAlertComment();
-              if (needsAlert) {
-                if (existing) {
-                  const isMinimized = await getMinimizedState(existing.node_id);
-                  if (isMinimized) {
-                    await unminimizeComment(existing.node_id);
-                  }
-                  await github.rest.issues.updateComment({
-                    owner,
-                    repo,
-                    comment_id: existing.id,
-                    body,
-                  });
-                } else {
-                  await github.rest.issues.createComment({
-                    owner,
-                    repo,
-                    issue_number,
-                    body,
-                  });
-                }
-              } else if (existing) {
-                const isMinimized = await getMinimizedState(existing.node_id);
-                if (!isMinimized) {
-                  await minimizeComment(existing.node_id);
-                }
-              }
-            })().catch((error) => core.setFailed(error));
+          GITHUB_TOKEN: ${{ secrets.GH_PAT_FOR_PR }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node "${GITHUB_WORKSPACE}/.github/scripts/lockfile-alert-comment.js"
 
   gather-open-prs:
     if: github.event_name == 'push'
@@ -195,112 +95,12 @@ This reminder will be minimized automatically once \`pixi.lock\` matches ${'`'}$
           "${GITHUB_WORKSPACE}/.github/scripts/lockfile-alert-check.sh" "${PR_NUMBER}" "${BASE_REF}"
 
       - name: Update alert comment
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         env:
           NEEDS_ALERT: ${{ steps.detect.outputs.needs_alert }}
           PR_NUMBER: ${{ matrix.pr.number }}
           BASE_REF: ${{ matrix.pr.baseRef }}
           AUTHOR: ${{ matrix.pr.author }}
-        with:
-          github-token: ${{ secrets.GH_PAT_FOR_PR }}
-          script: |
-            const marker = '<!-- lockfile-alert -->';
-            const needsAlert = (process.env.NEEDS_ALERT || '').toLowerCase() === 'true';
-            const issue_number = Number(process.env.PR_NUMBER);
-            const baseRef = process.env.BASE_REF;
-            const author = process.env.AUTHOR;
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-
-            const body = `${marker}
-Hi @${author},
-
-${'`'}${baseRef}${'`'} has updated \`pixi.lock\` since this branch was last synced. Please merge or rebase the latest ${'`'}${baseRef}${'`'} so dependency metadata stays current.
-
-Recommended steps:
-1. git fetch origin
-2. git merge origin/${baseRef}
-3. pixi lock (if necessary)
-
-This reminder will be minimized automatically once \`pixi.lock\` matches ${'`'}${baseRef}${'`'}.
-`;
-
-            async function findAlertComment() {
-              const comments = await github.paginate(
-                github.rest.issues.listComments,
-                { owner, repo, issue_number, per_page: 100 },
-              );
-              return comments.find((comment) => comment.body && comment.body.includes(marker));
-            }
-
-            async function getMinimizedState(nodeId) {
-              if (!nodeId) return false;
-              const query = `
-                query($id: ID!) {
-                  node(id: $id) {
-                    ... on IssueComment {
-                      isMinimized
-                    }
-                  }
-                }
-              `;
-              const result = await github.graphql(query, { id: nodeId });
-              return Boolean(result?.node?.isMinimized);
-            }
-
-            async function minimizeComment(nodeId) {
-              const mutation = `
-                mutation($id: ID!) {
-                  minimizeComment(input: { subjectId: $id, classifier: OUTDATED }) {
-                    minimizedComment {
-                      isMinimized
-                    }
-                  }
-                }
-              `;
-              await github.graphql(mutation, { id: nodeId });
-            }
-
-            async function unminimizeComment(nodeId) {
-              const mutation = `
-                mutation($id: ID!) {
-                  unminimizeComment(input: { subjectId: $id }) {
-                    unminimizedComment {
-                      isMinimized
-                    }
-                  }
-                }
-              `;
-              await github.graphql(mutation, { id: nodeId });
-            }
-
-            (async () => {
-              const existing = await findAlertComment();
-              if (needsAlert) {
-                if (existing) {
-                  const isMinimized = await getMinimizedState(existing.node_id);
-                  if (isMinimized) {
-                    await unminimizeComment(existing.node_id);
-                  }
-                  await github.rest.issues.updateComment({
-                    owner,
-                    repo,
-                    comment_id: existing.id,
-                    body,
-                  });
-                } else {
-                  await github.rest.issues.createComment({
-                    owner,
-                    repo,
-                    issue_number,
-                    body,
-                  });
-                }
-              } else if (existing) {
-                const isMinimized = await getMinimizedState(existing.node_id);
-                if (!isMinimized) {
-                  await minimizeComment(existing.node_id);
-                }
-              }
-            })().catch((error) => core.setFailed(error));
+          GITHUB_TOKEN: ${{ secrets.GH_PAT_FOR_PR }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node "${GITHUB_WORKSPACE}/.github/scripts/lockfile-alert-comment.js"
 
