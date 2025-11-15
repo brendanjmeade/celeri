@@ -55,12 +55,13 @@ git fetch ${remoteName}
 git merge ${remoteName}/${baseRef}
 \`\`\`
 
-If merge conflicts occur in \`pixi.lock\`, accept the incoming changes from \`${baseRef}\` and regenerate the lockfile:
+If merge conflicts occur in \`pixi.lock\`, accept the incoming changes from \`${baseRef}\`, regenerate the lockfile, then continue the merge once everything is staged:
 
 \`\`\`bash
 git checkout --theirs pixi.lock
 pixi lock
 git add pixi.lock
+git merge --continue
 \`\`\`
 
 This reminder will be minimized automatically once \`pixi.lock\` matches \`${baseRef}\`.

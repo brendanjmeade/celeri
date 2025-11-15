@@ -111,7 +111,7 @@ jobs:
               echo "git checkout --theirs pixi.lock"
               echo "pixi lock"
               echo "git add pixi.lock"
-              echo 'git commit -m "Update pixi.lock"'
+              echo "git merge --continue"
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
           else
