@@ -380,7 +380,7 @@ class Operators:
         slip_rate_constraints : np.ndarray 
             Limitations on slip rates.
         rotation_to_slip_rate : np.ndarray 
-            Maps rotations to slip rates.
+            Maps block rotations to kinematic slip rates along the segments.
         block_strain_rate_to_velocities : np.ndarray 
             Computes the components of the predicted velocities on the stations due to the homogenous block strain rates. 
             Has shape (3 * n_stations, 3 * n_strain_blocks).
@@ -791,11 +791,12 @@ def _store_gaussian_smoothing_operator(
 def _hash_elastic_operator_input(
     meshes: list[MeshConfig], segment: DataFrame, station: DataFrame, config: Config
 ):
-    """Create a hash from segment, station DataFrames and elastic parameters from config.
-
-    This allows us to check if we need to recompute elastic operators or can use cached ones.
+    """Create a hash from geometric components of segment/station DataFrames and elastic 
+    parameters from config. This allows us to check if we need to recompute elastic operators, 
+    or if we can use cached ones.
 
     Args:
+        meshes: list[MeshConfig] containing mesh configuration information
         segment: DataFrame containing fault segment information
         station: DataFrame containing station information
         config: Config object containing material parameters
@@ -803,8 +804,9 @@ def _hash_elastic_operator_input(
     Returns:
         str: Hash string representing the input data
     """
-    # Convert dataframes to string representations
-    segment_str = segment.to_json()
+
+    segment_geom = segment.drop(columns=[c for c in segment.columns if "bound" in c])
+    segment_str = segment_geom.to_json()
     station_str = station.to_json()
     assert isinstance(segment_str, str)
     assert isinstance(station_str, str)
@@ -812,12 +814,27 @@ def _hash_elastic_operator_input(
     # Get material parameters
     material_params = f"{config.material_mu}_{config.material_lambda}"
 
-    mesh_configs = [mesh.model_dump_json() for mesh in meshes]
+    constraint_fields = {
+        "top_slip_rate_constraint",
+        "bot_slip_rate_constraint",
+        "side_slip_rate_constraint",
+        "top_slip_rate_weight",
+        "bot_slip_rate_weight",
+        "side_slip_rate_weight",
+        "eigenmode_slip_rate_constraint_weight",
+        "a_priori_slip_filename",
+        "coupling_constraints_ss",
+        "coupling_constraints_ds",
+        "elastic_constraints_ss",
+        "elastic_constraints_ds",
+        "smoothing_weight",
+    }
 
-    # Combine all inputs and create hash
+    mesh_configs = [mesh.model_dump_json(exclude=constraint_fields) for mesh in meshes]
     combined_input = "_".join(
         [segment_str, station_str, material_params, *mesh_configs]
     )
+
     return hashlib.blake2b(combined_input.encode()).hexdigest()[:16]
 
 
@@ -828,10 +845,10 @@ def _store_elastic_operators(
     tde: bool = True,
 ):
     """Calculate (or load previously calculated) elastic operators from
-    both fully locked segments and TDE parameterizes surfaces.
+    both fully locked segments and TDE-parameterized surfaces.
 
     Args:
-        operators (Dict): Elastic operators will be added to this data structure
+        operators (Dict): Data structure which the elastic operators will be added to
         meshes (List): Geometries of meshes
         segment (pd.DataFrame): All segment data
         station (pd.DataFrame): All station data
@@ -854,7 +871,9 @@ def _store_elastic_operators(
             )
         else:
             input_hash = _hash_elastic_operator_input([], segment, station, config)
+
         cache = config.elastic_operator_cache_dir / f"{input_hash}.hdf5"
+
         if cache.exists():
             logger.info(f"Using precomputed elastic operators from {cache}")
             hdf5_file = h5py.File(cache, "r")
@@ -869,10 +888,11 @@ def _store_elastic_operators(
             hdf5_file.close()
             return
 
-        logger.info("Precomputed elastic operator file not found, computing operators")
+        logger.info("Precomputed elastic operator file not found. Computing operators")
+
     else:
         logger.info(
-            "No precomputed elastic operator file specified, computing operators"
+            "No precomputed elastic operator file specified in config. Computing operators."
         )
 
     operators.slip_rate_to_okada_to_velocities = get_segment_station_operator_okada(

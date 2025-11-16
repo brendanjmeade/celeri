@@ -13,6 +13,7 @@ from typing import Any
 import cvxopt
 import numpy as np
 import pandas as pd
+from pandas.core.indexing import item_from_zerodim
 import scipy
 from loguru import logger
 from scipy import linalg
@@ -36,6 +37,173 @@ from celeri.output import dataclass_from_disk, dataclass_to_disk, write_output
 
 @dataclass(kw_only=True)
 class Estimation:
+
+    """
+    A class to hold an estimation of the model parameters.
+
+    Attributes:
+        data_vector : np.ndarray 
+            The data vector, containing the data and constraints.
+        weighting_vector : np.ndarray 
+            The weighting vector, containing the weights for the data and constraints.
+        operator : np.ndarray 
+            The full operator, containing the linear operator for the forward model.
+        state_vector : np.ndarray 
+            The state vector, containing the model parameters.
+        operators : Operators 
+            The operators object, containing the operators for the forward model.
+        state_covariance_matrix : np.ndarray | None
+            The covariance matrix of the state vector.
+        n_out_of_bounds_trace : np.ndarray | None
+            Trace of out-of-bounds values during optimization.
+        trace : Any | None
+            Trace from optimization.
+        mcmc_trace : Any | None
+            MCMC trace from Bayesian inference.
+        
+    Methods:
+        mcmc_draw(draw: int, chain: int) -> Estimation:
+            Get the MCMC draw for a specific chain and draw number.
+        to_disk(output_dir: str | Path) -> None:
+            Save the estimation to disk.
+        from_disk(output_dir: str | Path) -> Estimation:
+            Class method to load the estimation from disk.
+
+    Properties:
+        model:
+            The model object.
+        index:
+            The index object for the operators.
+        station:
+            An extension of the `model.station` dataframe, with 
+            additional columns for the estimated velocities returned by the model.
+        segment:
+            An extension of the `model.segment` dataframe, with 
+            additional columns for the estimated slip rates returned by the model.
+        block:
+            An extension of the `model.block` dataframe, with 
+            additional columns for the estimated Euler pole parameters returned by the model.
+        mogi:
+            An extension of the `model.mogi` dataframe, with 
+            additional columns for the estimated mogi parameters returned by the model.
+        mesh_estimate:
+            A dataframe containing the estimated slip rates and couplings for each mesh.
+        predictions:
+            The full forward model predictions vector.
+        vel:
+            The estimated velocities at the stations.
+        east_vel:
+            The estimated east velocities at the stations.
+        north_vel:
+            The estimated north velocities at the stations.
+        east_vel_residual:
+            The residual between the estimated and observed east velocities at the stations.
+        north_vel_residual:
+            The residual between the estimated and observed north velocities at the stations.
+        rotation_vector:
+            Returns an np.array of length 3 * n_blocks, containing (x,y,z) rotation vector components for each block.
+        rotation_vector_x:
+            The estimated x-component of the rotation vector.
+        rotation_vector_y:
+            The estimated y-component of the rotation vector.
+        rotation_vector_z:
+            The estimated z-component of the rotation vector.
+        slip_rate_sigma: np.ndarray of shape (3 * n_segments,)
+            The standard deviation of the estimated strike, dip, and tensile slip rates for each segment; propagated from
+            `self.state_covariance_matrix`.
+        strike_slip_rate_sigma:
+            The sigma of the strike slip rates.
+        dip_slip_rate_sigma:
+            The sigma of the dip slip rates.
+        tensile_slip_rate_sigma:
+            The sigma of the tensile slip rates.
+        tde_rates:
+            Dictionary mapping mesh indices to TDE slip rate arrays.
+        tde_strike_slip_rates:
+            Dictionary mapping mesh indices to TDE strike slip rate arrays.
+        tde_dip_slip_rates:
+            Dictionary mapping mesh indices to TDE dip slip rate arrays.
+        slip_rates:
+            The estimated slip rates (strike, dip, tensile) for each segment.
+        strike_slip_rates:
+            The estimated strike slip rates for each segment.
+        dip_slip_rates:
+            The estimated dip slip rates for each segment.
+        tensile_slip_rates:
+            The estimated tensile slip rates for each segment.
+        block_strain_rates:
+            The estimated block strain rates.
+        mogi_volume_change_rates:
+            The estimated Mogi volume change rates.
+        vel_rotation:
+            Returns an np.array of shape (n_stations,), containing the velocity components (unstacked) for each station.
+        east_vel_rotation:
+            Returns an np.array of shape (n_stations,), containing the east velocity components for each station.
+        north_vel_rotation:
+            Returns an np.array of shape (n_stations,), containing the north velocity components for each station.
+        vel_elastic_segment:
+            Elastic velocities on the segments from Okada.
+        east_vel_elastic_segment:
+            East component of elastic velocities on the segments from Okada.
+        north_vel_elastic_segment:
+            North component of elastic velocities on the segments from Okada.
+        vel_block_strain_rate:
+            Velocities from block strain rates.
+        east_vel_block_strain_rate:
+            East component of velocities from block strain rates.
+        north_vel_block_strain_rate:
+            North component of velocities from block strain rates.
+        euler: np.ndarray of shape (3, n_blocks)
+            The estimated euler poles of rotation for each block.
+        euler_lon:
+            The estimated Euler pole longitude for each block.
+        euler_lat:
+            The estimated Euler pole latitude for each block.
+        euler_rate:
+            The estimated Euler pole rotation rate for each block.
+        euler_err:
+            The estimated Euler pole errors (lon, lat, rate) for each block.
+        euler_lon_err:
+            The estimated Euler pole longitude error for each block.
+        euler_lat_err:
+            The estimated Euler pole latitude error for each block.
+        euler_rate_err:
+            The estimated Euler pole rotation rate error for each block.
+        vel_mogi:
+            Velocities from Mogi sources.
+        east_vel_mogi:
+            East component of velocities from Mogi sources.
+        north_vel_mogi:
+            North component of velocities from Mogi sources.
+        vel_tde:
+            Velocities from TDE (triangular dislocation elements).
+        east_vel_tde:
+            East component of velocities from TDE.
+        north_vel_tde:
+            North component of velocities from TDE.
+        tde_kinematic_smooth:
+            Dictionary mapping mesh indices to smoothed kinematic slip rate arrays.
+        tde_kinematic:
+            Dictionary mapping mesh indices to kinematic slip rate arrays.
+        tde_strike_slip_rates_kinematic:
+            Dictionary mapping mesh indices to kinematic strike slip rate arrays.
+        tde_strike_slip_rates_kinematic_smooth:
+            Dictionary mapping mesh indices to smoothed kinematic strike slip rate arrays.
+        tde_dip_slip_rates_kinematic:
+            Dictionary mapping mesh indices to kinematic dip slip rate arrays.
+        tde_dip_slip_rates_kinematic_smooth:
+            Dictionary mapping mesh indices to smoothed kinematic dip slip rate arrays.
+        tde_strike_slip_rates_coupling:
+            Dictionary mapping mesh indices to strike slip coupling ratios.
+        tde_strike_slip_rates_coupling_smooth:
+            Dictionary mapping mesh indices to smoothed strike slip coupling ratios.
+        tde_dip_slip_rates_coupling:
+            Dictionary mapping mesh indices to dip slip coupling ratios.
+        tde_dip_slip_rates_coupling_smooth:
+            Dictionary mapping mesh indices to smoothed dip slip coupling ratios.
+        eigenvalues:
+            The eigenvalues from the eigen decomposition (if used).
+    """
     data_vector: np.ndarray
     weighting_vector: np.ndarray
     operator: np.ndarray
@@ -449,15 +617,15 @@ class Estimation:
         vel_tde = np.zeros(2 * self.index.n_stations)
 
         if index.eigen is None:
-            for i in range(len(self.operators.tde.tde_to_velocities)):
+            for i, item in self.operators.tde.tde_to_velocities.items():
                 tde_keep_row_index = get_keep_index_12(
-                    self.operators.tde.tde_to_velocities[i].shape[0]
+                    item.shape[0]
                 )
                 tde_keep_col_index = get_keep_index_12(
-                    self.operators.tde.tde_to_velocities[i].shape[1]
+                    item.shape[1]
                 )
                 vel_tde += (
-                    self.operators.tde.tde_to_velocities[i][tde_keep_row_index, :][
+                    item[tde_keep_row_index, :][
                         :, tde_keep_col_index
                     ]
                     @ self.state_vector[
@@ -657,7 +825,7 @@ def assemble_and_solve_dense(
     eigen: bool = False,
     tde: bool = True,
     invert: bool = False,
-) -> tuple[Operators, Estimation]:
+) -> Estimation:
     operators = build_operators(model, eigen=eigen, tde=tde)
 
     data_vector = operators.data_vector
@@ -679,7 +847,7 @@ def assemble_and_solve_dense(
 
     estimation = build_estimation(model, operators, state_vector)
     estimation.state_covariance_matrix = linalg.inv(inv_state_covariance_matrix)
-    return operators, estimation
+    return estimation
 
 
 def lsqlin_qp(
@@ -868,7 +1036,7 @@ def _build_and_solve(name: str, model: Model, *, tde: bool, eigen: bool):
     # Direct solve dense linear system
     logger.info("Start: Dense assemble and solve")
     start_solve_time = timeit.default_timer()
-    index, estimation = assemble_and_solve_dense(model, tde=True, eigen=False)
+    estimation = assemble_and_solve_dense(model, tde=True, eigen=False)
     end_solve_time = timeit.default_timer()
     logger.success(
         f"Finish: Dense assemble and solve: {end_solve_time - start_solve_time:0.2f} seconds for solve"
