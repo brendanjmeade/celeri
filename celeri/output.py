@@ -17,61 +17,25 @@ if typing.TYPE_CHECKING:
 
     from celeri.config import Config
     from celeri.solve import Estimation
+    from celeri.mesh import Mesh
 
 
 def write_output(
-    config: Config,
     estimation: Estimation,
     station: pd.DataFrame,
     segment: pd.DataFrame,
     block: pd.DataFrame,
-    meshes: dict,
+    meshes: list[Mesh],
     mogi=None,
 ):
     config = estimation.model.config
     output_path = Path(config.output_path)
     estimation.to_disk(output_path)
 
-    def add_dataset(output_file_name, dataset_name, dataset):
-        with h5py.File(output_file_name, "r+") as hdf:
-            # Handle the case where dataset_name starts with '/'
-            parts = dataset_name.strip("/").split("/")
-            current_path = ""
-
-            # Create groups for each level of the path
-            for part in parts[:-1]:
-                if not part:  # Skip empty parts
-                    continue
-
-                if current_path:
-                    current_path = current_path + "/" + part
-                else:
-                    current_path = part
-
-                if current_path in hdf and isinstance(
-                    hdf[current_path], h5py.Dataset
-                ):
-                    del hdf[current_path]
-
-                # Create group if it doesn't exist
-                if current_path not in hdf:
-                    try:
-                        hdf.create_group(current_path)
-                    except ValueError:
-                        raise
-
-            # Now handle the final dataset
-            if dataset_name in hdf:
-                del hdf[dataset_name]  # Remove the existing dataset
-
-            # Create the new dataset
-            hdf.create_dataset(dataset_name, data=dataset)
-
     hdf_output_file_name = (
         config.output_path / f"model_{config.run_name}.hdf5"
     )
     with h5py.File(hdf_output_file_name, "w") as hdf:
-        # Meta data
         hdf.create_dataset(
             "run_name",
             data=config.run_name.encode("utf-8"),
@@ -87,19 +51,24 @@ def write_output(
             if value is None:
                 continue
             if isinstance(value, str):
-                # Handle strings specially
                 grp.create_dataset(
                     key,
                     data=value.encode("utf-8"),
                     dtype=h5py.string_dtype(encoding="utf-8"),
                 )
-            else:
-                # Handle numeric values
+            elif np.issubdtype(type(value), np.number):
                 grp.create_dataset(key, data=value)
-        # Write mesh parameters
-        for mesh_idx, data in enumerate(mesh_params):
+            else:
+                continue
+        
+        for mesh_idx, mesh_config in enumerate(mesh_params):
             mesh_grp = grp.create_group(f"mesh_params/mesh_{mesh_idx:05}")
-            for key, value in data.items():
+            mesh_data = {}
+            for field_name in mesh_config.keys():
+                mesh_data[field_name] = mesh_config[field_name]
+            
+            for key, value in mesh_data.items():
+                print(key, value)
                 if value is None:
                     continue
                 if isinstance(value, str):
@@ -108,9 +77,15 @@ def write_output(
                         data=value.encode("utf-8"),
                         dtype=h5py.string_dtype(encoding="utf-8"),
                     )
-                else:
+                elif isinstance(value, Path):
+                    mesh_grp.create_dataset(
+                        key,
+                        data=str(value).encode("utf-8"),
+                        dtype=h5py.string_dtype(encoding="utf-8"),
+                    )
+                elif isinstance(value, (int, float, np.integer, np.floating)):
                     mesh_grp.create_dataset(key, data=value)
-
+                
         mesh_end_idx = 0
         for i in range(len(meshes)):
             grp = hdf.create_group(f"meshes/mesh_{i:05}")
@@ -120,7 +95,6 @@ def write_output(
                 data=mesh_name.encode("utf-8"),
                 dtype=h5py.string_dtype(encoding="utf-8"),
             )
-            # grp.create_dataset("n_time_steps", data=1)
 
             # Write mesh geometry
             grp.create_dataset("coordinates", data=meshes[i].points)
@@ -133,7 +107,7 @@ def write_output(
                 mesh_start_idx = mesh_end_idx
                 mesh_end_idx = mesh_start_idx + meshes[i].n_tde
 
-            # Write that there is a single timestep for parsli visualzation compatability
+            # Write that there is a single timestep for parsli visualization compatability
             grp.create_dataset(
                 f"/meshes/mesh_{i:05}/n_time_steps",
                 data=1,
@@ -234,26 +208,6 @@ def write_output(
         hdf.attrs["columns"] = np.array(
             station_no_name.columns, dtype=h5py.string_dtype()
         )
-        # Store the index as an attribute
-        # hdf.attrs["index"] = station_no_name.index.to_numpy()
-
-    args_config_output_file_name = (
-        config.output_path / f"args_{config.file_name}"
-    )
-    with open(args_config_output_file_name, "w") as f:
-        f.write(config.model_dump_json(indent=4))
-
-    # Write model estimates to CSV files for easy access
-    kwargs = {"index": False, "float_format": "%0.4f"}
-    estimation.station.to_csv(output_path / "model_station.csv", **kwargs)
-    estimation.segment.to_csv(output_path / "model_segment.csv", **kwargs)
-    estimation.block.to_csv(output_path / "model_block.csv", **kwargs)
-    estimation.mogi.to_csv(output_path / "model_mogi.csv", **kwargs)
-    # Construct mesh geometry dataframe
-    mesh_estimates = estimation.mesh_estimate
-    if mesh_estimates is not None:
-        mesh_estimates.to_csv(output_path / "model_meshes.csv", index=False)
-
 
 def dataclass_to_disk(
     obj: DataclassInstance, output_dir: str | Path, *, skip: set[str] | None = None
