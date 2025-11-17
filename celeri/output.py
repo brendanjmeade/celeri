@@ -1,26 +1,247 @@
 from __future__ import annotations
 
+import os
 import json
 import typing
 from dataclasses import fields
 from pathlib import Path
 from typing import Any, TypeVar
 
+import pandas as pd
 import numpy as np
 import zarr
+import h5py
 
 if typing.TYPE_CHECKING:
     from _typeshed import DataclassInstance
 
+    from celeri.config import Config
     from celeri.solve import Estimation
 
 
 def write_output(
+    config: Config,
     estimation: Estimation,
+    station: pd.DataFrame,
+    segment: pd.DataFrame,
+    block: pd.DataFrame,
+    meshes: dict,
+    mogi=None,
 ):
     config = estimation.model.config
     output_path = Path(config.output_path)
     estimation.to_disk(output_path)
+
+    def add_dataset(output_file_name, dataset_name, dataset):
+        with h5py.File(output_file_name, "r+") as hdf:
+            # Handle the case where dataset_name starts with '/'
+            parts = dataset_name.strip("/").split("/")
+            current_path = ""
+
+            # Create groups for each level of the path
+            for part in parts[:-1]:
+                if not part:  # Skip empty parts
+                    continue
+
+                if current_path:
+                    current_path = current_path + "/" + part
+                else:
+                    current_path = part
+
+                if current_path in hdf and isinstance(
+                    hdf[current_path], h5py.Dataset
+                ):
+                    del hdf[current_path]
+
+                # Create group if it doesn't exist
+                if current_path not in hdf:
+                    try:
+                        hdf.create_group(current_path)
+                    except ValueError:
+                        raise
+
+            # Now handle the final dataset
+            if dataset_name in hdf:
+                del hdf[dataset_name]  # Remove the existing dataset
+
+            # Create the new dataset
+            hdf.create_dataset(dataset_name, data=dataset)
+
+    hdf_output_file_name = (
+        config.output_path / f"model_{config.run_name}.hdf5"
+    )
+    with h5py.File(hdf_output_file_name, "w") as hdf:
+        # Meta data
+        hdf.create_dataset(
+            "run_name",
+            data=config.run_name.encode("utf-8"),
+            dtype=h5py.string_dtype(encoding="utf-8"),
+        )
+        hdf.create_dataset("earth_radius", data=6371.0)
+
+        # Write config dictionary
+        grp = hdf.create_group("config")
+        data = config.model_dump()
+        mesh_params = data.pop("mesh_params")
+        for key, value in data.items():
+            if value is None:
+                continue
+            if isinstance(value, str):
+                # Handle strings specially
+                grp.create_dataset(
+                    key,
+                    data=value.encode("utf-8"),
+                    dtype=h5py.string_dtype(encoding="utf-8"),
+                )
+            else:
+                # Handle numeric values
+                grp.create_dataset(key, data=value)
+        # Write mesh parameters
+        for mesh_idx, data in enumerate(mesh_params):
+            mesh_grp = grp.create_group(f"mesh_params/mesh_{mesh_idx:05}")
+            for key, value in data.items():
+                if value is None:
+                    continue
+                if isinstance(value, str):
+                    mesh_grp.create_dataset(
+                        key,
+                        data=value.encode("utf-8"),
+                        dtype=h5py.string_dtype(encoding="utf-8"),
+                    )
+                else:
+                    mesh_grp.create_dataset(key, data=value)
+
+        mesh_end_idx = 0
+        for i in range(len(meshes)):
+            grp = hdf.create_group(f"meshes/mesh_{i:05}")
+            mesh_name = os.path.splitext(os.path.basename(meshes[i].file_name))[0]
+            grp.create_dataset(
+                "mesh_name",
+                data=mesh_name.encode("utf-8"),
+                dtype=h5py.string_dtype(encoding="utf-8"),
+            )
+            # grp.create_dataset("n_time_steps", data=1)
+
+            # Write mesh geometry
+            grp.create_dataset("coordinates", data=meshes[i].points)
+            grp.create_dataset("verts", data=meshes[i].verts)
+
+            if i == 0:
+                mesh_start_idx = 0
+                mesh_end_idx = meshes[i].n_tde
+            else:
+                mesh_start_idx = mesh_end_idx
+                mesh_end_idx = mesh_start_idx + meshes[i].n_tde
+
+            # Write that there is a single timestep for parsli visualzation compatability
+            grp.create_dataset(
+                f"/meshes/mesh_{i:05}/n_time_steps",
+                data=1,
+            )
+
+            if estimation.tde_rates is not None:
+                tde_ss_rates = estimation.tde_strike_slip_rates
+                tde_ds_rates = estimation.tde_dip_slip_rates
+                if tde_ss_rates is not None and tde_ds_rates is not None:
+                    grp.create_dataset(
+                        f"/meshes/mesh_{i:05}/strike_slip/{0:012}",
+                        data=tde_ss_rates[i],
+                    )
+                    grp.create_dataset(
+                        f"/meshes/mesh_{i:05}/dip_slip/{0:012}",
+                        data=tde_ds_rates[i],
+                    )
+                    grp.create_dataset(
+                        f"/meshes/mesh_{i:05}/tensile_slip/{0:012}",
+                        data=np.zeros_like(tde_ds_rates[i]),
+                    )
+
+                tde_ss_kinematic = estimation.tde_strike_slip_rates_kinematic
+                tde_ds_kinematic = estimation.tde_dip_slip_rates_kinematic
+                if tde_ss_kinematic is not None and tde_ds_kinematic is not None:
+                    grp.create_dataset(
+                        f"/meshes/mesh_{i:05}/strike_slip_kinematic/{0:012}",
+                        data=tde_ss_kinematic[i],
+                    )
+                    grp.create_dataset(
+                        f"/meshes/mesh_{i:05}/dip_slip_kinematic/{0:012}",
+                        data=tde_ds_kinematic[i],
+                    )
+                    grp.create_dataset(
+                        f"/meshes/mesh_{i:05}/tensile_slip_kinematic/{0:012}",
+                        data=np.zeros_like(tde_ds_kinematic[i]),
+                    )
+
+                coupling_ss = estimation.tde_strike_slip_rates_coupling
+                coupling_ds = estimation.tde_dip_slip_rates_coupling
+                if coupling_ss is not None and coupling_ds is not None:
+                    grp.create_dataset(
+                        f"/meshes/mesh_{i:05}/strike_slip_coupling/{0:012}",
+                        data=coupling_ss[i],
+                    )
+                    grp.create_dataset(
+                        f"/meshes/mesh_{i:05}/dip_slip_coupling/{0:012}",
+                        data=coupling_ds[i],
+                    )
+                    grp.create_dataset(
+                        f"/meshes/mesh_{i:05}/tensile_slip_coupling/{0:012}",
+                        data=np.zeros_like(coupling_ds[i]),
+                    )
+
+        # Try saving segment rate data in parsli style
+        hdf.create_dataset(
+            f"/segments/strike_slip/{0:012}", data=estimation.strike_slip_rates
+        )
+        hdf.create_dataset(
+            f"/segments/dip_slip/{0:012}", data=estimation.dip_slip_rates
+        )
+        hdf.create_dataset(
+            f"/segments/tensile_slip/{0:012}", data=estimation.tensile_slip_rates
+        )
+
+        segment_no_name = segment.drop("name", axis=1)
+        hdf.create_dataset("segment", data=segment_no_name.to_numpy())
+        string_dtype = h5py.string_dtype(
+            encoding="utf-8"
+        )
+
+        hdf.create_dataset(
+            "segment_names",
+            data=segment["name"].to_numpy(dtype=object),
+            dtype=string_dtype,
+        )
+
+        hdf.attrs["columns"] = np.array(
+            segment_no_name.columns, dtype=h5py.string_dtype()
+        )
+
+        hdf.attrs["index"] = segment_no_name.index.to_numpy()
+
+        station_no_name = station.drop("name", axis=1)
+
+        hdf.create_dataset("station", data=station_no_name.to_numpy())
+
+        string_dtype = h5py.string_dtype(
+            encoding="utf-8"
+        )
+
+        hdf.create_dataset(
+            "station_names",
+            data=station["name"].to_numpy(dtype=object),
+            dtype=string_dtype,
+        )
+
+        hdf.attrs["columns"] = np.array(
+            station_no_name.columns, dtype=h5py.string_dtype()
+        )
+        # Store the index as an attribute
+        # hdf.attrs["index"] = station_no_name.index.to_numpy()
+
+    args_config_output_file_name = (
+        config.output_path / f"args_{config.file_name}"
+    )
+    with open(args_config_output_file_name, "w") as f:
+        f.write(config.model_dump_json(indent=4))
 
     # Write model estimates to CSV files for easy access
     kwargs = {"index": False, "float_format": "%0.4f"}

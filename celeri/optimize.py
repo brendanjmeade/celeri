@@ -1017,6 +1017,41 @@ def _tighten_kinematic_bounds(
 
 @dataclass
 class MinimizerTrace:
+    """A class to track the progress of an optimization run across iterations.
+    
+    Attributes
+    ----------
+    model: Model
+        The model being optimized.
+    params: list[np.ndarray]
+        Scaled parameters at each iteration.
+    params_raw: list[np.ndarray]
+        Raw (unscaled) parameters at each iteration.
+    slip_rates: list[list[SlipRate]]
+        Slip rates at each iteration, organized by mesh segment.
+    slip_rate_limits: list[list[SlipRateLimit]]
+        Slip rate limits at each iteration, organized by mesh segment.
+    objective: list[float]
+        Objective function value at each iteration.
+    objective_norm2: list[float]
+        L2 norm of the objective function residual at each iteration.
+    nonconvex_constraint_loss: list[float]
+        Non-convex constraint loss at each iteration.
+    out_of_bounds: list[int]
+        Number of velocities out of bounds at each iteration.
+    out_of_bounds_detailed: list[np.ndarray]
+        Detailed out-of-bounds information at each iteration.
+    iter_time: list[float]
+        Time taken for each iteration in seconds.
+    total_time: float
+        Total elapsed time since initialization.
+    start_time: float
+        Timestamp when the trace was initialized.
+    last_update_time: float
+        Timestamp of the last update.
+    minimizer: Minimizer
+        The optimization result.
+    """
     model: Model
     params: list[np.ndarray]
     params_raw: list[np.ndarray]
@@ -1231,7 +1266,7 @@ def solve_sqp2(
         operators: operators.Operators
 
     Returns:
-        A trace object containing the optimization history
+        An Estimation object containing the optimization results.
     """
     limits = SlipRateLimit.from_model(model)
 
