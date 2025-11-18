@@ -1,4 +1,5 @@
 import hashlib
+import json
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
@@ -7,6 +8,7 @@ from typing import Any, overload
 import addict
 import h5py
 import numpy as np
+import pandas as pd
 import scipy
 from loguru import logger
 from pandas import DataFrame
@@ -789,15 +791,14 @@ def _store_gaussian_smoothing_operator(
 
 
 def _hash_elastic_operator_input(
-    meshes: list[MeshConfig], segment: DataFrame, station: DataFrame, config: Config
+    meshes: list[MeshConfig], station: DataFrame, config: Config
 ):
-    """Create a hash from geometric components of segment/station DataFrames and elastic 
+    """Create a hash from geometric components of station DataFrames and elastic 
     parameters from config. This allows us to check if we need to recompute elastic operators, 
     or if we can use cached ones.
 
     Args:
         meshes: list[MeshConfig] containing mesh configuration information
-        segment: DataFrame containing fault segment information
         station: DataFrame containing station information
         config: Config object containing material parameters
 
@@ -805,10 +806,7 @@ def _hash_elastic_operator_input(
         str: Hash string representing the input data
     """
 
-    segment_geom = segment.drop(columns=[c for c in segment.columns if "bound" in c])
-    segment_str = segment_geom.to_json()
     station_str = station.to_json()
-    assert isinstance(segment_str, str)
     assert isinstance(station_str, str)
 
     # Get material parameters
@@ -836,11 +834,69 @@ def _hash_elastic_operator_input(
 
     mesh_configs = [mesh.model_dump_json(exclude=constraint_fields) for mesh in meshes]
     combined_input = "_".join(
-        [segment_str, station_str, material_params, *mesh_configs]
+        [station_str, material_params, *mesh_configs]
     )
 
     return hashlib.blake2b(combined_input.encode()).hexdigest()[:16]
 
+
+def _save_segments_metadata(segments: DataFrame, filepath: Path) -> None:
+    """Save geometric columns of segments to JSON file for comparison.
+    
+    Args:
+        segments: DataFrame containing segment information
+        filepath: Path to save the JSON file
+    """
+    geometric_columns = ["lon1", "lat1", "lon2", "lat2", "locking_depth", "dip", "azimuth"]
+    segment_geom = segments[geometric_columns].copy()
+    segment_geom.to_json(filepath, orient="records", indent=2)
+
+
+def _load_segments_metadata(filepath: Path) -> DataFrame | None:
+    """Load segments metadata from JSON file.
+    
+    Args:
+        filepath: Path to the JSON file
+        
+    Returns:
+        DataFrame with geometric columns, or None if file doesn't exist
+    """
+    if not filepath.exists():
+        return None
+    try:
+        return pd.read_json(filepath, orient="records")
+    except Exception:
+        return None
+
+def _compare_segments(cached_segments: DataFrame, current_segments: DataFrame) -> list[int]:
+    """Compare cached and current segments to find which indices have changed.
+    
+    Compares only geometric columns: lon1, lat1, lon2, lat2, locking_depth, dip, azimuth.
+    
+    Args:
+        cached_segments: DataFrame with geometric columns from cache
+        current_segments: DataFrame with current geometric columns
+        
+    Returns:
+        List of segment indices where any geometric column differs
+    """
+    geometric_columns = ["lon1", "lat1", "lon2", "lat2", "locking_depth", "dip", "azimuth"]
+    
+    if len(cached_segments) != len(current_segments):
+        return list(range(len(current_segments)))
+    
+    cached_geom = cached_segments[geometric_columns].copy()
+    current_geom = current_segments[geometric_columns].copy()
+    
+    tolerance = 1e-10
+    changed_indices = []
+    for i in range(len(current_geom)):
+        cached_row = cached_geom.iloc[i]
+        current_row = current_geom.iloc[i]
+        if not np.allclose(cached_row.values, current_row.values, rtol=0, atol=tolerance, equal_nan=True):
+            changed_indices.append(i)
+    
+    return changed_indices
 
 def _store_elastic_operators(
     model: Model,
@@ -850,6 +906,8 @@ def _store_elastic_operators(
 ):
     """Calculate (or load previously calculated) elastic operators from
     both fully locked segments and TDE-parameterized surfaces.
+    
+    Supports selective recomputation when only some source segments change.
 
     Args:
         operators (Dict): Data structure which the elastic operators will be added to
@@ -864,33 +922,92 @@ def _store_elastic_operators(
     station = model.station
 
     cache = None
+    segments_metadata_file = None
 
     if config.elastic_operator_cache_dir is not None:
         if tde:
             input_hash = _hash_elastic_operator_input(
                 [mesh.config for mesh in meshes],
-                segment,
                 station,
                 config,
             )
         else:
-            input_hash = _hash_elastic_operator_input([], segment, station, config)
+            input_hash = _hash_elastic_operator_input([], station, config)
 
         cache = config.elastic_operator_cache_dir / f"{input_hash}.hdf5"
+        segments_metadata_file = config.elastic_operator_cache_dir / f"{input_hash}_segments.json"
 
         if cache.exists():
-            logger.info(f"Using precomputed elastic operators from {cache}")
+            logger.info(f"Found cached elastic operators at {cache}")
             hdf5_file = h5py.File(cache, "r")
-            operators.slip_rate_to_okada_to_velocities = np.array(
+            cached_operator = np.array(
                 hdf5_file.get("slip_rate_to_okada_to_velocities")
             )
-            if tde:
-                for i in range(len(meshes)):
-                    operators.tde_to_velocities[i] = np.array(
-                        hdf5_file.get("tde_to_velocities_" + str(i))
-                    )
             hdf5_file.close()
-            return
+            
+            cached_segments = _load_segments_metadata(segments_metadata_file)
+            
+
+            if cached_segments is None:
+                logger.info("Metadata files not found (old cache format). Recomputing operators.")
+                cached_operator = None
+            else:
+                changed_segment_indices = _compare_segments(cached_segments, segment)
+                if len(changed_segment_indices) == 0:
+                    logger.info("No source geometry changed since last computation. Using cached operator.")
+                    operators.slip_rate_to_okada_to_velocities = cached_operator
+                    
+                    if tde:
+                        hdf5_file = h5py.File(cache, "r")
+                        for i in range(len(meshes)):
+                            operators.tde_to_velocities[i] = np.array(
+                                hdf5_file.get("tde_to_velocities_" + str(i))
+                            )
+                        hdf5_file.close()
+                    return
+
+                logger.info(
+                    f"Recomputing {len(changed_segment_indices)} segments"
+                )
+                
+                operators.slip_rate_to_okada_to_velocities = cached_operator.copy()
+                
+                if len(changed_segment_indices) > 0:
+                    for seg_idx in changed_segment_indices:
+                        single_segment = segment.iloc[seg_idx:seg_idx+1].reset_index(drop=True)
+                        new_columns = get_segment_station_operator_okada(
+                            single_segment, station, config
+                        )
+                        col_start = 3 * seg_idx
+                        col_end = col_start + 3
+                        operators.slip_rate_to_okada_to_velocities[:, col_start:col_end] = new_columns
+                
+                if tde:
+                    hdf5_file = h5py.File(cache, "r")
+                    for i in range(len(meshes)):
+                        operators.tde_to_velocities[i] = np.array(
+                            hdf5_file.get("tde_to_velocities_" + str(i))
+                        )
+                    hdf5_file.close()
+                
+                logger.info("Caching updated elastic operators")
+                cache.parent.mkdir(parents=True, exist_ok=True)
+                hdf5_file = h5py.File(cache, "w")
+                hdf5_file.create_dataset(
+                    "slip_rate_to_okada_to_velocities",
+                    data=operators.slip_rate_to_okada_to_velocities,
+                )
+                if tde:
+                    for i in range(len(meshes)):
+                        hdf5_file.create_dataset(
+                            "tde_to_velocities_" + str(i),
+                            data=operators.tde_to_velocities[i],
+                        )
+                hdf5_file.close()
+                
+                _save_segments_metadata(segment, segments_metadata_file)
+                
+                return
 
         logger.info("Precomputed elastic operator file not found. Computing operators")
 
@@ -933,6 +1050,9 @@ def _store_elastic_operators(
                 data=operators.tde_to_velocities[i],
             )
     hdf5_file.close()
+    
+    if segments_metadata_file is not None:
+        _save_segments_metadata(segment, segments_metadata_file)
 
 
 def _store_all_mesh_smoothing_matrices(model: Model, operators: _OperatorBuilder):
@@ -1075,10 +1195,12 @@ def get_rotation_to_tri_slip_rate_partials(model: Model, mesh_idx: int) -> np.nd
     tridip[model.meshes[mesh_idx].strike > 180] = (
         180 - tridip[model.meshes[mesh_idx].strike > 180]
     )
+
     # Find subset of segments that are replaced by this mesh
     seg_replace_idx = np.where(
         (model.segment.mesh_flag != 0) & (model.segment.mesh_file_index == mesh_idx)
     )
+
     # Find closest segment midpoint to each element centroid, using scipy.spatial.cdist
     model.meshes[mesh_idx].closest_segment_idx = seg_replace_idx[0][
         cdist(
@@ -1096,20 +1218,25 @@ def get_rotation_to_tri_slip_rate_partials(model: Model, mesh_idx: int) -> np.nd
             ).T,
         ).argmin(axis=1)
     ]
+    
     # Add segment labels to elements
+    closest_segment_idx = model.meshes[mesh_idx].closest_segment_idx
+    assert closest_segment_idx is not None
     model.meshes[mesh_idx].east_labels = np.array(
-        model.segment.east_labels[model.meshes[mesh_idx].closest_segment_idx]
+        model.segment.east_labels[closest_segment_idx]
     )
     model.meshes[mesh_idx].west_labels = np.array(
-        model.segment.west_labels[model.meshes[mesh_idx].closest_segment_idx]
+        model.segment.west_labels[closest_segment_idx]
     )
+    east_labels = model.meshes[mesh_idx].east_labels
+    west_labels = model.meshes[mesh_idx].west_labels
+    assert east_labels is not None and west_labels is not None
 
-    # Find rotation partials for each element
     for el_idx in range(model.meshes[mesh_idx].n_tde):
         # Project velocities from Cartesian to spherical coordinates at element centroids
         row_idx = 3 * el_idx
-        column_idx_east = 3 * model.meshes[mesh_idx].east_labels[el_idx]
-        column_idx_west = 3 * model.meshes[mesh_idx].west_labels[el_idx]
+        column_idx_east = 3 * east_labels[el_idx]
+        column_idx_west = 3 * west_labels[el_idx]
         R = get_cross_partials(
             [
                 model.meshes[mesh_idx].x_centroid[el_idx],
@@ -1205,7 +1332,7 @@ def get_rotation_to_tri_slip_rate_partials(model: Model, mesh_idx: int) -> np.nd
             - np.abs(
                 tristrike[el_idx]
                 - model.segment.azimuth[
-                    model.meshes[mesh_idx].closest_segment_idx[el_idx]
+                    closest_segment_idx[el_idx]
                 ]
             )
         )
@@ -1214,7 +1341,7 @@ def get_rotation_to_tri_slip_rate_partials(model: Model, mesh_idx: int) -> np.nd
             * np.sign(tristrike[el_idx] - 90)
             * np.sign(
                 model.segment.azimuth[
-                    model.meshes[mesh_idx].closest_segment_idx[el_idx]
+                    closest_segment_idx[el_idx]
                 ]
                 - 90
             )
