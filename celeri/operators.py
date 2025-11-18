@@ -815,6 +815,10 @@ def _hash_elastic_operator_input(
     material_params = f"{config.material_mu}_{config.material_lambda}"
 
     constraint_fields = {
+        "n_modes_strike_slip", #n_modes do not affect the elastic operators
+        "n_modes_dip_slip",
+        "sqp_kinematic_slip_rate_hint_ss",
+        "sqp_kinematic_slip_rate_hint_ds",
         "top_slip_rate_constraint",
         "bot_slip_rate_constraint",
         "side_slip_rate_constraint",
