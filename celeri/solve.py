@@ -1042,7 +1042,7 @@ def _build_and_solve(name: str, model: Model, *, tde: bool, eigen: bool):
         f"Finish: Dense assemble and solve: {end_solve_time - start_solve_time:0.2f} seconds for solve"
     )
 
-    write_output(estimation)
+    write_output(estimation, station=model.station, segment=model.segment, block=model.block, meshes=model.meshes)
 
     if model.config.plot_estimation_summary:
         import celeri

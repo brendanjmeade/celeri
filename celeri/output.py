@@ -209,6 +209,23 @@ def write_output(
             station_no_name.columns, dtype=h5py.string_dtype()
         )
 
+    args_config_output_file_name = (
+        config.output_path / f"args_{config.file_name}"
+    )
+    with open(args_config_output_file_name, "w") as f:
+        f.write(config.model_dump_json(indent=4))
+
+    # Write model estimates to CSV files for easy access
+    kwargs = {"index": False, "float_format": "%0.4f"}
+    estimation.station.to_csv(output_path / "model_station.csv", **kwargs)
+    estimation.segment.to_csv(output_path / "model_segment.csv", **kwargs)
+    estimation.block.to_csv(output_path / "model_block.csv", **kwargs)
+    estimation.mogi.to_csv(output_path / "model_mogi.csv", **kwargs)
+    # Construct mesh geometry dataframe
+    mesh_estimates = estimation.mesh_estimate
+    if mesh_estimates is not None:
+        mesh_estimates.to_csv(output_path / "model_meshes.csv", index=False)
+
 def dataclass_to_disk(
     obj: DataclassInstance, output_dir: str | Path, *, skip: set[str] | None = None
 ):
