@@ -6,12 +6,12 @@ import celeri
 @pytest.mark.parametrize(
     "config_file, eigen, tde",
     [
-        ("./tests/test_japan_config.json", True, True),
-        ("./tests/test_japan_config.json", False, True),
-        ("./tests/test_japan_config.json", False, False),
-        ("./tests/test_western_north_america_config.json", True, True),
-        ("./tests/test_western_north_america_config.json", False, True),
-        ("./tests/test_western_north_america_config.json", False, False),
+        ("./tests/configs/test_japan_config.json", True, True),
+        ("./tests/configs/test_japan_config.json", False, True),
+        ("./tests/configs/test_japan_config.json", False, False),
+        ("./tests/configs/test_wna_config.json", True, True),
+        ("./tests/configs/test_wna_config.json", False, True),
+        ("./tests/configs/test_wna_config.json", False, False),
     ],
 )
 def test_japan_dense(config_file, eigen: bool, tde: bool):
@@ -26,7 +26,7 @@ def test_japan_dense(config_file, eigen: bool, tde: bool):
 
 
 def test_japan_dense_error():
-    config_file_name = "./tests/test_japan_config.json"
+    config_file_name = "./tests/configs/test_japan_config.json"
     model = celeri.build_model(config_file_name)
 
     with pytest.raises(ValueError):

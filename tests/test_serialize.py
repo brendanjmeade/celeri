@@ -22,8 +22,8 @@ def temp_dir():
 @pytest.mark.parametrize(
     "config_file",
     [
-        "./tests/test_japan_config.json",
-        "./tests/test_western_north_america_config.json",
+        "./tests/configs/test_japan_config.json",
+        "./tests/configs/test_wna_config.json",
     ],
 )
 def test_mesh_serialization(config_file, temp_dir):
@@ -67,8 +67,8 @@ def test_mesh_serialization_error_handling(temp_dir):
 @pytest.mark.parametrize(
     "config_file",
     [
-        "./tests/test_japan_config.json",
-        "./tests/test_western_north_america_config.json",
+        "./tests/configs/test_japan_config.json",
+        "./tests/configs/test_western_north_america_config.json",
     ],
 )
 def test_model_serialization(config_file, temp_dir):
@@ -116,7 +116,7 @@ def test_model_serialization(config_file, temp_dir):
 def test_model_round_trip_serialization(temp_dir):
     """Test complete model round-trip serialization with validation."""
     # SkipLoad model from config
-    config_file = "./tests/test_japan_config.json"
+    config_file = "./tests/configs/test_japan_config.json"
     config = celeri.get_config(config_file)
     original_model = celeri.build_model(config)
 
@@ -159,7 +159,7 @@ def test_model_round_trip_serialization(temp_dir):
 @pytest.mark.parametrize(
     "config_file",
     [
-        "./tests/test_japan_config.json",
+        "./tests/configs/test_japan_config.json",
     ],
 )
 def test_operators_serialization(config_file, temp_dir):
@@ -219,7 +219,7 @@ def test_operators_serialization(config_file, temp_dir):
 @pytest.mark.parametrize(
     "config_file",
     [
-        "./tests/test_japan_config.json",
+        "./tests/configs/test_japan_config.json",
     ],
 )
 def test_estimation_serialization(config_file, temp_dir):

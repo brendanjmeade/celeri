@@ -38,4 +38,4 @@ jobs:
       - name: Test
         if: ${{ matrix.tests-to-run == 'optimize_sqp' }}
         run: |
-          pixi run -e ${{ matrix.pixi-environment }} pytest ./tests/test_optimize_sqp.py
+          pixi run -e ${{ matrix.pixi-environment }} pytest ./tests/test_optimize_sqp.py ./tests/test_output_files.py
