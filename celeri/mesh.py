@@ -497,7 +497,7 @@ class Mesh:
     coup_idx: np.ndarray | None = None
     ss_slip_idx: np.ndarray | None = None
     ds_slip_idx: np.ndarray | None = None
-    # computed in operators.get_rotation_to_tri_slip_rate_partials
+    # computed in model.assign_mesh_segment_labels
     closest_segment_idx: np.ndarray | None = None
     east_labels: np.ndarray | None = None
     west_labels: np.ndarray | None = None

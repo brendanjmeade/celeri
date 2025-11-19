@@ -34,6 +34,7 @@ from celeri.constants import (
 from celeri.mesh import ByMesh, Mesh, MeshConfig
 from celeri.model import (
     Model,
+    assign_mesh_segment_labels,
     merge_geodetic_data,
 )
 from celeri.output import dataclass_from_disk, dataclass_to_disk
@@ -1179,8 +1180,9 @@ def get_rotation_to_tri_slip_rate_partials(model: Model, mesh_idx: int) -> np.nd
     """Calculate partial derivatives relating relative block motion to TDE slip rates
     for a single mesh. Called within a loop from get_tde_coupling_constraints().
     """
-    # TODO(Adrian): This function modifies model.meshes[mesh_idx] in place.
-    # Should part of this be moved to model.py?
+    if model.meshes[mesh_idx].closest_segment_idx is None:
+        assign_mesh_segment_labels(model, mesh_idx)
+    
     n_blocks = len(model.block)
     tri_slip_rate_partials = np.zeros((3 * model.meshes[mesh_idx].n_tde, 3 * n_blocks))
 
@@ -1196,40 +1198,11 @@ def get_rotation_to_tri_slip_rate_partials(model: Model, mesh_idx: int) -> np.nd
         180 - tridip[model.meshes[mesh_idx].strike > 180]
     )
 
-    # Find subset of segments that are replaced by this mesh
-    seg_replace_idx = np.where(
-        (model.segment.mesh_flag != 0) & (model.segment.mesh_file_index == mesh_idx)
-    )
-
-    # Find closest segment midpoint to each element centroid, using scipy.spatial.cdist
-    model.meshes[mesh_idx].closest_segment_idx = seg_replace_idx[0][
-        cdist(
-            np.array(
-                [
-                    model.meshes[mesh_idx].lon_centroid,
-                    model.meshes[mesh_idx].lat_centroid,
-                ]
-            ).T,
-            np.array(
-                [
-                    model.segment.mid_lon[seg_replace_idx[0]],
-                    model.segment.mid_lat[seg_replace_idx[0]],
-                ]
-            ).T,
-        ).argmin(axis=1)
-    ]
-    
-    # Add segment labels to elements
+    # Get segment labels (already assigned by assign_mesh_segment_labels)
     closest_segment_idx = model.meshes[mesh_idx].closest_segment_idx
-    assert closest_segment_idx is not None
-    model.meshes[mesh_idx].east_labels = np.array(
-        model.segment.east_labels[closest_segment_idx]
-    )
-    model.meshes[mesh_idx].west_labels = np.array(
-        model.segment.west_labels[closest_segment_idx]
-    )
     east_labels = model.meshes[mesh_idx].east_labels
     west_labels = model.meshes[mesh_idx].west_labels
+    assert closest_segment_idx is not None
     assert east_labels is not None and west_labels is not None
 
     for el_idx in range(model.meshes[mesh_idx].n_tde):
