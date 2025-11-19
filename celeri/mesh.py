@@ -479,12 +479,6 @@ class Mesh:
             Indices of the TDEs which have constraints on their strike slip slip rates.
         ds_slip_idx: np.ndarray
             Indices of the TDEs which have constraints on their dip slip slip rates.
-        east_labels: np.ndarray
-            Block indices on the eastern fault block of the TDEs.
-        west_labels: np.ndarray
-            Block indices on the western fault block of the TDEs.
-        closest_segment_idx: np.ndarray
-            Indices of the segment with midpoint closest to each TDE's centroid.
     """
 
     points: np.ndarray
@@ -537,10 +531,7 @@ class Mesh:
     coup_idx: np.ndarray | None = None
     ss_slip_idx: np.ndarray | None = None
     ds_slip_idx: np.ndarray | None = None
-    # computed in model.assign_mesh_segment_labels
     closest_segment_idx: np.ndarray | None = None
-    east_labels: np.ndarray | None = None
-    west_labels: np.ndarray | None = None
 
     @classmethod
     def from_params(cls, config: MeshConfig):
@@ -689,13 +680,13 @@ class Mesh:
         return cls(**mesh)
 
     @property
-    def file_name(self) -> Path:
+    def file_name(self) -> Path | None:
         return self.config.mesh_filename
 
     @property
     def name(self) -> str:
         """Return the name of the mesh configuration."""
-        return self.file_name.stem
+        return self.file_name.stem if self.file_name is not None else "unknown"
 
     def to_disk(self, output_dir: str | Path):
         """Save the mesh configuration to a JSON file."""

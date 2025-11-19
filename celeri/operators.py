@@ -1152,8 +1152,6 @@ def get_rotation_to_tri_slip_rate_partials(model: Model, mesh_idx: int) -> np.nd
     """Calculate partial derivatives relating relative block motion to TDE slip rates
     for a single mesh. Called within a loop from get_tde_coupling_constraints().
     """
-    if model.meshes[mesh_idx].closest_segment_idx is None:
-        assign_mesh_segment_labels(model, mesh_idx)
     
     n_blocks = len(model.block)
     tri_slip_rate_partials = np.zeros((3 * model.meshes[mesh_idx].n_tde, 3 * n_blocks))
@@ -1170,12 +1168,7 @@ def get_rotation_to_tri_slip_rate_partials(model: Model, mesh_idx: int) -> np.nd
         180 - tridip[model.meshes[mesh_idx].strike > 180]
     )
 
-    # Get segment labels (already assigned by assign_mesh_segment_labels)
-    closest_segment_idx = model.meshes[mesh_idx].closest_segment_idx
-    east_labels = model.meshes[mesh_idx].east_labels
-    west_labels = model.meshes[mesh_idx].west_labels
-    assert closest_segment_idx is not None
-    assert east_labels is not None and west_labels is not None
+    east_labels, west_labels, closest_segment_idx = assign_mesh_segment_labels(model, mesh_idx)
 
     for el_idx in range(model.meshes[mesh_idx].n_tde):
         # Project velocities from Cartesian to spherical coordinates at element centroids

@@ -743,15 +743,13 @@ def assign_block_labels(segment, station, block, mogi, sar):
     return closure, segment, station, block, mogi, sar
 
 
-def assign_mesh_segment_labels(model: Model, mesh_idx: int):
-    """Assign segment labels to mesh elements.
-    
-    For each mesh element, finds the closest segment midpoint and assigns
-    the east and west block labels from that segment. This modifies
-    model.meshes[mesh_idx] in place by setting:
-    - closest_segment_idx: indices of closest segments
-    - east_labels: block labels on eastern side
-    - west_labels: block labels on western side
+def assign_mesh_segment_labels(model: Model, mesh_idx: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """For a mesh, finds the closest segment midpoint and assigns
+    the east and west block labels from that segment.
+    Returns:
+        closest_segment_idx: indices of closest segments
+        east_labels: block labels on eastern side
+        west_labels: block labels on western side
     """
     # Find subset of segments that are replaced by this mesh
     seg_replace_idx = np.where(
@@ -779,15 +777,16 @@ def assign_mesh_segment_labels(model: Model, mesh_idx: int):
     # Add segment labels to elements
     closest_segment_idx = model.meshes[mesh_idx].closest_segment_idx
     assert closest_segment_idx is not None
-    model.meshes[mesh_idx].east_labels = np.array(
+
+    east_labels = np.array(
         model.segment.east_labels[closest_segment_idx]
     )
-    model.meshes[mesh_idx].west_labels = np.array(
+    west_labels = np.array(
         model.segment.west_labels[closest_segment_idx]
     )
-    east_labels = model.meshes[mesh_idx].east_labels
-    west_labels = model.meshes[mesh_idx].west_labels
+
     assert east_labels is not None and west_labels is not None
+    return east_labels, west_labels, closest_segment_idx
 
 
 def station_row_keep(assembly):
