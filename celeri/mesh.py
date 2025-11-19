@@ -341,6 +341,52 @@ def _compute_mesh_edge_elements(mesh: dict):
     mesh["side_elements"] = sides
 
 
+def _compute_n_tde_constraints(
+    n_tde: int,
+    top_slip_idx: np.ndarray,
+    bot_slip_idx: np.ndarray,
+    side_slip_idx: np.ndarray,
+) -> int:
+    """Compute the total number of TDE constraints.
+    
+    Builds a constraint matrix and counts rows with at least one constraint,
+    replicating the logic from operators._store_tde_slip_rate_constraints.
+    
+    Args:
+        n_tde: Number of triangular elements
+        top_slip_idx: Indices for top boundary constraints
+        bot_slip_idx: Indices for bottom boundary constraints
+        side_slip_idx: Indices for side boundary constraints
+    
+    Returns:
+        Total number of constraint rows
+    """
+    tde_slip_rate_constraints = np.zeros((2 * n_tde, 2 * n_tde))
+    end_row = 0
+    
+    boundary_slip_indices = [top_slip_idx, bot_slip_idx, side_slip_idx]
+    
+    for slip_idx in boundary_slip_indices:
+        if len(slip_idx) > 0:
+            start_row = end_row
+            end_row = start_row + len(slip_idx)
+            tde_slip_rate_constraints[start_row:end_row, slip_idx] = np.eye(
+                len(slip_idx)
+            )
+    
+    # Count rows with at least one constraint
+    # Total number of slip constraints:
+        # 2 for each element that has coupling constrained (top, bottom, side, specified indices)
+        # 1 for each additional slip component that is constrained (specified indices)
+
+    # TODO: Number of total constraints is determined by just finding 1 in the
+    # constraint array. This could cause an error when the index Dict is constructed,
+    # if an individual element has a constraint imposed, but that element is also
+    # a constrained edge element. Need to build in some uniqueness tests.
+    sum_constraint_columns = np.sum(tde_slip_rate_constraints, 1)
+    return int(np.sum(sum_constraint_columns > 0))
+
+
 def _compute_mesh_perimeter(mesh: dict):
     x_coords = mesh["points"][:, 0]
     y_coords = mesh["points"][:, 1]
@@ -484,11 +530,10 @@ class Mesh:
     config: MeshConfig
     share: np.ndarray
     tri_shared_sides_distances: np.ndarray
-    n_tde_constraints: int | None = None
-    # computed in operators._store_tde_slip_rate_constraints
-    top_slip_idx: np.ndarray | None = None
-    bot_slip_idx: np.ndarray | None = None
-    side_slip_idx: np.ndarray | None = None
+    top_slip_idx: np.ndarray
+    bot_slip_idx: np.ndarray
+    side_slip_idx: np.ndarray
+    n_tde_constraints: int
     coup_idx: np.ndarray | None = None
     ss_slip_idx: np.ndarray | None = None
     ds_slip_idx: np.ndarray | None = None
@@ -619,6 +664,26 @@ class Mesh:
             mesh["z_centroid"],
         )
 
+        from celeri.celeri_util import get_2component_index
+        boundary_constraints = [
+            ("top", config.top_slip_rate_constraint, mesh["top_elements"]),
+            ("bot", config.bot_slip_rate_constraint, mesh["bot_elements"]),
+            ("side", config.side_slip_rate_constraint, mesh["side_elements"]),
+        ]
+        for name, constraint_value, elements in boundary_constraints:
+            if constraint_value > 0:
+                indices = np.asarray(np.where(elements))
+                mesh[f"{name}_slip_idx"] = get_2component_index(indices)
+            else:
+                mesh[f"{name}_slip_idx"] = np.array([], dtype=np.int64)
+
+        mesh["n_tde_constraints"] = _compute_n_tde_constraints(
+            mesh["n_tde"],
+            mesh["top_slip_idx"],
+            mesh["bot_slip_idx"],
+            mesh["side_slip_idx"],
+        )
+
         logger.success(f"Read: {filename}")
         # Convert dict to Mesh dataclass
         return cls(**mesh)
@@ -672,6 +737,27 @@ class Mesh:
             mesh.x_centroid,
             mesh.y_centroid,
             mesh.z_centroid,
+        )
+        
+        # Compute slip indices for boundary constraints
+        from celeri.celeri_util import get_2component_index
+        boundary_constraints = [
+            ("top", config.top_slip_rate_constraint, mesh.top_elements),
+            ("bot", config.bot_slip_rate_constraint, mesh.bot_elements),
+            ("side", config.side_slip_rate_constraint, mesh.side_elements),
+        ]
+        for name, constraint_value, elements in boundary_constraints:
+            if constraint_value > 0:
+                indices = np.asarray(np.where(elements))
+                setattr(mesh, f"{name}_slip_idx", get_2component_index(indices))
+            else:
+                setattr(mesh, f"{name}_slip_idx", np.array([], dtype=np.int64))
+
+        mesh.n_tde_constraints = _compute_n_tde_constraints(
+            mesh.n_tde,
+            mesh.top_slip_idx,
+            mesh.bot_slip_idx,
+            mesh.side_slip_idx,
         )
         
         return mesh

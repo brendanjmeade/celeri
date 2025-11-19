@@ -1108,20 +1108,13 @@ def _store_tde_slip_rate_constraints(model: Model, operators: _OperatorBuilder):
 
         # Process boundary constraints (top, bottom, side)
         boundary_constraints = [
-            ("top", meshes[i].config.top_slip_rate_constraint, meshes[i].top_elements),
-            ("bot", meshes[i].config.bot_slip_rate_constraint, meshes[i].bot_elements),
-            (
-                "side",
-                meshes[i].config.side_slip_rate_constraint,
-                meshes[i].side_elements,
-            ),
+            meshes[i].top_slip_idx,
+            meshes[i].bot_slip_idx,
+            meshes[i].side_slip_idx,
         ]
 
-        for name, constraint_value, elements in boundary_constraints:
-            if constraint_value > 0:
-                indices = np.asarray(np.where(elements))
-                slip_idx = get_2component_index(indices)
-                setattr(meshes[i], f"{name}_slip_idx", slip_idx)
+        for slip_idx in boundary_constraints:
+            if len(slip_idx) > 0:
                 start_row = end_row
                 end_row = start_row + len(slip_idx)
                 tde_slip_rate_constraints[start_row:end_row, slip_idx] = np.eye(
@@ -1134,15 +1127,6 @@ def _store_tde_slip_rate_constraints(model: Model, operators: _OperatorBuilder):
             sum_constraint_columns > 0, :
         ]
         operators.tde_slip_rate_constraints[i] = tde_slip_rate_constraints
-        # Total number of slip constraints:
-        # 2 for each element that has coupling constrained (top, bottom, side, specified indices)
-        # 1 for each additional slip component that is constrained (specified indices)
-
-        # TODO: Number of total constraints is determined by just finding 1 in the
-        # constraint array. This could cause an error when the index Dict is constructed,
-        # if an individual element has a constraint imposed, but that element is also
-        # a constrained edge element. Need to build in some uniqueness tests.
-        meshes[i].n_tde_constraints = np.sum(sum_constraint_columns > 0)
 
 
 def _store_tde_coupling_constraints(model: Model, operators: _OperatorBuilder):
@@ -2438,17 +2422,17 @@ def _get_index(model: Model, assembly: Assembly) -> Index:
 
         # Set top constraint row indices and adjust count based on available data
         tde.start_tde_top_constraint_row[i] = tde.end_tde_smoothing_row[i]
-        count = len(idx) if (idx := model.meshes[i].top_slip_idx) is not None else 0
+        count = len(model.meshes[i].top_slip_idx)
         tde.end_tde_top_constraint_row[i] = tde.start_tde_top_constraint_row[i] + count
 
         # Set bottom constraint row indices
         tde.start_tde_bot_constraint_row[i] = tde.end_tde_top_constraint_row[i]
-        count = len(idx) if (idx := model.meshes[i].bot_slip_idx) is not None else 0
+        count = len(model.meshes[i].bot_slip_idx)
         tde.end_tde_bot_constraint_row[i] = tde.start_tde_bot_constraint_row[i] + count
 
         # Set side constraint row indices
         tde.start_tde_side_constraint_row[i] = tde.end_tde_bot_constraint_row[i]
-        count = len(idx) if (idx := model.meshes[i].side_slip_idx) is not None else 0
+        count = len(model.meshes[i].side_slip_idx)
         tde.end_tde_side_constraint_row[i] = (
             tde.start_tde_side_constraint_row[i] + count
         )
