@@ -9,7 +9,7 @@ from celeri.celeri_util import get_newest_run_folder, read_run
 @pytest.mark.parametrize(
     "config_file",
     [
-        "./tests/test_japan_config.json",
+        "./tests/configs/test_japan_config.json",
         "./data/config/japan_config.json",
         "./data/config/wna_config.json",
     ],
