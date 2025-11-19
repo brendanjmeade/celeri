@@ -482,13 +482,8 @@ class Mesh:
     x_perimeter: np.ndarray
     y_perimeter: np.ndarray
     config: MeshConfig
-
-    # TOOD(Adrian): Can we move those function into this module
-    # and make them non-optional?
-
-    # Computed in operators._store_all_mesh_smoothing_matrices
-    share: np.ndarray | None = None
-    tri_shared_sides_distances: np.ndarray | None = None
+    share: np.ndarray
+    tri_shared_sides_distances: np.ndarray
     n_tde_constraints: int | None = None
     # computed in operators._store_tde_slip_rate_constraints
     top_slip_idx: np.ndarray | None = None
@@ -615,6 +610,15 @@ class Mesh:
         _compute_mesh_edge_elements(mesh)
         _compute_mesh_perimeter(mesh)
 
+        from celeri.spatial import get_shared_sides, get_tri_shared_sides_distances
+        mesh["share"] = get_shared_sides(mesh["verts"])
+        mesh["tri_shared_sides_distances"] = get_tri_shared_sides_distances(
+            mesh["share"],
+            mesh["x_centroid"],
+            mesh["y_centroid"],
+            mesh["z_centroid"],
+        )
+
         logger.success(f"Read: {filename}")
         # Convert dict to Mesh dataclass
         return cls(**mesh)
@@ -658,4 +662,16 @@ class Mesh:
         config = MeshConfig(**config_data)
 
         # Use the general dataclass deserialization function with the config as extra data
-        return dataclass_from_disk(cls, input_dir, extra={"config": config})
+        mesh = dataclass_from_disk(cls, input_dir, extra={"config": config})
+        
+        # Compute shared sides and distances if not already loaded (backward compatibility)
+        from celeri.spatial import get_shared_sides, get_tri_shared_sides_distances
+        mesh.share = get_shared_sides(mesh.verts)
+        mesh.tri_shared_sides_distances = get_tri_shared_sides_distances(
+            mesh.share,
+            mesh.x_centroid,
+            mesh.y_centroid,
+            mesh.z_centroid,
+        )
+        
+        return mesh

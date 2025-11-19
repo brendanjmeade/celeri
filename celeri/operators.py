@@ -1060,18 +1060,8 @@ def _store_all_mesh_smoothing_matrices(model: Model, operators: _OperatorBuilder
     """Build smoothing matrices for each of the triangular meshes
     stored in meshes.
     """
-    # TODO(Adrian): The first part should be in model.py?
-
     meshes = model.meshes
     for i in range(len(meshes)):
-        # Get smoothing operator for a single mesh.
-        meshes[i].share = get_shared_sides(meshes[i].verts)
-        meshes[i].tri_shared_sides_distances = get_tri_shared_sides_distances(
-            meshes[i].share,
-            meshes[i].x_centroid,
-            meshes[i].y_centroid,
-            meshes[i].z_centroid,
-        )
         operators.smoothing_matrix[i] = get_tri_smoothing_matrix(
             meshes[i].share, meshes[i].tri_shared_sides_distances
         )
@@ -1086,8 +1076,6 @@ def _store_all_mesh_smoothing_matrices_simple(
     """
     meshes = model.meshes
     for i in range(len(meshes)):
-        # Get smoothing operator for a single mesh.
-        meshes[i].share = get_shared_sides(meshes[i].verts)
         operators.smoothing_matrix[i] = get_tri_smoothing_matrix_simple(
             meshes[i].share, N_MESH_DIM
         )
