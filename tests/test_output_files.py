@@ -11,7 +11,7 @@ from celeri.celeri_util import get_newest_run_folder
 @pytest.mark.parametrize(
     "config_file",
     [
-        "./tests/test_japan_config.json",
+        "./tests/configs/test_japan_config.json",
     ],
 )
 def test_celeri_solve_creates_output_files(config_file):
