@@ -67,12 +67,8 @@ ruff = "*"
 okada-wrapper = ">=24.6.15"
 celeri = { path = ".", editable = true }
 
-[feature.py311.dependencies]
-python = "3.11.*"
-
 [environments]
 default = ["dev"]
-py311 = ["py311"]
 
 [system-requirements]
 macos = "13.3"
