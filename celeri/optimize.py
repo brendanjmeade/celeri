@@ -903,7 +903,12 @@ def build_cvxpy_problem(
     )
     gamma = model.config.segment_slip_rate_regularization
     if gamma != 0.0:
-        objective_val = objective_val + gamma * cp.sum_squares(segment_slip_rate)
+        subset = np.concatenate([
+            model.segment.ss_rate_flag == 2,
+            model.segment.ds_rate_flag == 2,
+            model.segment.ts_rate_flag == 2,
+        ])
+        objective_val = objective_val + gamma * cp.sum_squares(segment_slip_rate[subset])
 
     segment_slip_rate = segment_slip_rate.reshape((-1, 3), order="C")
     # Add segment slip rate bounds
