@@ -302,9 +302,14 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
         )
 
         # block rotation
-        raw = pm.Normal("rotation_raw", sigma=500, dims="rotation_param")
-        scale = 1 / np.sqrt((operators.rotation_to_velocities**2).mean())
-        rotation = pm.Deterministic("rotation", scale * raw, dims="rotation_param")
+        A = operators.rotation_to_velocities - operators.rotation_to_slip_rate_to_okada_to_velocities
+        scale = 1e6
+        B = A / scale
+        u, s, vh = linalg.svd(B, full_matrices=False)
+        raw = pm.Normal("rotation_raw", sigma=20, dims="rotation_param")
+
+        #scale = 1 / np.sqrt((operators.rotation_to_velocities**2).mean())
+        rotation = pm.Deterministic("rotation", vh.T @ (raw / scale), dims="rotation_param")
 
         rotation_velocity = _operator_mult(operators.rotation_to_velocities, rotation)
         rotation_okada_velocity = _operator_mult(
