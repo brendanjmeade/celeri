@@ -531,15 +531,17 @@ def solve_mcmc(
     pymc_model = _build_pymc_model(model, operators)
 
     compiled = nutpie.compile_pymc_model(
-        pymc_model, backend="jax", gradient_backend="pytensor"
+        pymc_model, backend="numba",
     )
     kwargs = {
         "low_rank_modified_mass_matrix": True,
         "mass_matrix_eigval_cutoff": 1.5,
         "mass_matrix_gamma": 1e-6,
-        "chains": 2,
+        "chains": 1,
         "draws": model.config.mcmc_draws,
         "tune": model.config.mcmc_tune,
+        "store_unconstrained": True,
+        "store_gradient": True,
     }
     kwargs.update(sample_kwargs or {})
     trace = nutpie.sample(compiled, **kwargs)
