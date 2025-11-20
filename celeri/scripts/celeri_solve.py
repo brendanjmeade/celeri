@@ -48,6 +48,7 @@ def main():
 
     # Drop into ipython REPL
     if config.repl:
+        import IPython
         IPython.embed(banner1="")
 
 
