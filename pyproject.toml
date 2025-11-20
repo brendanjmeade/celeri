@@ -10,7 +10,7 @@ license = {file = "LICENSE"}
 authors = [
     {name = "Brendan Meade", email = "brendanjmeade@gmail.com"},
 ]
-requires-python = ">=3.11"
+requires-python = ">=3.13"
 dependencies = [
     "addict",
     "cartopy",
