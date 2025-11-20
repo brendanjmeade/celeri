@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
 
-import platform
-import re
-import subprocess
-import warnings
 
 from loguru import logger
 
@@ -11,46 +7,8 @@ import celeri
 import celeri.optimize
 
 
-def is_m4_mac() -> bool:
-    """True iff running on macOS and the CPU brand string contains 'M4'."""
-    if platform.system() != "Darwin":
-        return False
-    out = subprocess.check_output(
-        ["sysctl", "-n", "machdep.cpu.brand_string"], text=True
-    )
-    return "M4" in out
-
-
-# One regex to match the three bogus matmul warnings
-_MATMUL_MSG = r"(divide by zero|overflow|invalid value) encountered in matmul"
-
-
-def silence_bogus_matmul_warnings() -> None:
-    """Silence NumPy's spurious matmul RuntimeWarnings (see numpy#29820).
-
-    This installs a warnings filter that ignores RuntimeWarnings whose
-    message matches the bogus '... encountered in matmul' pattern.
-    """
-    warnings.filterwarnings(
-        action="ignore",
-        message=_MATMUL_MSG,
-        category=RuntimeWarning,
-    )
-
-    # Filter out the dot product warnings from numpy.linalg
-    warnings.filterwarnings(
-        action="ignore",
-        message=r"(divide by zero|overflow|invalid value) encountered in dot",
-        category=RuntimeWarning,
-    )
-
-
 @logger.catch(reraise=True)
 def main():
-    # HACK: Silence rogue M4 numpy warnings
-    if is_m4_mac():
-        silence_bogus_matmul_warnings()
-
     # Process arguments
     args = celeri.parse_args()
 
@@ -90,6 +48,7 @@ def main():
 
     # Drop into ipython REPL
     if config.repl:
+        import IPython
         IPython.embed(banner1="")
 
 
