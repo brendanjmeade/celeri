@@ -841,31 +841,73 @@ def _hash_elastic_operator_input(
     return hashlib.blake2b(combined_input.encode()).hexdigest()[:16]
 
 
-def _save_segments_metadata(segments: DataFrame, filepath: Path) -> None:
-    """Save geometric columns of segments to JSON file for comparison.
+def _save_segments_to_hdf5(segments: DataFrame, hdf5_file: h5py.File) -> None:
+    """Save full segments DataFrame to HDF5 file.
     
     Args:
         segments: DataFrame containing segment information
-        filepath: Path to save the JSON file
+        hdf5_file: Open HDF5 file handle to save to
     """
-    geometric_columns = ["lon1", "lat1", "lon2", "lat2", "locking_depth", "dip", "azimuth"]
-    segment_geom = segments[geometric_columns].copy()
-    segment_geom.to_json(filepath, orient="records", indent=2)
+
+    if "name" in segments.columns:
+        segment_no_name = segments.drop("name", axis=1)
+        hdf5_file.create_dataset("segments", data=segment_no_name.to_numpy())
+        string_dtype = h5py.string_dtype(encoding="utf-8")
+        hdf5_file.create_dataset(
+            "segments_names",
+            data=segments["name"].to_numpy(dtype=object),
+            dtype=string_dtype,
+        )
+        hdf5_file.attrs["segments_columns"] = np.array(
+            segment_no_name.columns, dtype=h5py.string_dtype()
+        )
+    else:
+        hdf5_file.create_dataset("segments", data=segments.to_numpy())
+        hdf5_file.attrs["segments_columns"] = np.array(
+            segments.columns, dtype=h5py.string_dtype()
+        )
+    hdf5_file.attrs["segments_index"] = segments.index.to_numpy()
 
 
-def _load_segments_metadata(filepath: Path) -> DataFrame | None:
-    """Load segments metadata from JSON file.
+def _load_segments_from_hdf5(hdf5_file: h5py.File) -> DataFrame | None:
+    """Load segments DataFrame from HDF5 file.
     
     Args:
-        filepath: Path to the JSON file
+        hdf5_file: Open HDF5 file handle to load from
         
     Returns:
-        DataFrame with geometric columns, or None if file doesn't exist
+        DataFrame with segment information, or None if not found
     """
-    if not filepath.exists():
+    if "segments" not in hdf5_file:
         return None
     try:
-        return pd.read_json(filepath, orient="records")
+        segments_data = np.array(hdf5_file["segments"])
+        columns_attr = hdf5_file.attrs.get("segments_columns")
+        if columns_attr is None:
+            return None
+        columns_list = [
+            col.decode() if isinstance(col, bytes) else str(col) 
+            for col in columns_attr
+        ]
+        index_attr = hdf5_file.attrs.get("segments_index")
+        if index_attr is None:
+            index_array = np.arange(len(segments_data))
+        else:
+            index_array = np.array(index_attr)
+        
+        segments = pd.DataFrame(segments_data)
+        segments.columns = pd.Index(columns_list)
+        segments.index = pd.Index(index_array)
+        
+        if "segments_names" in hdf5_file:
+            names_dataset = hdf5_file["segments_names"]
+            names_data = np.array(names_dataset)
+            segments["name"] = [
+                name.decode() if isinstance(name, bytes) else str(name)
+                for name in names_data
+            ]
+        
+        return segments
     except Exception:
         return None
 
@@ -923,7 +965,6 @@ def _store_elastic_operators(
     station = model.station
 
     cache = None
-    segments_metadata_file = None
 
     if config.elastic_operator_cache_dir is not None:
         if tde:
@@ -936,7 +977,6 @@ def _store_elastic_operators(
             input_hash = _hash_elastic_operator_input([], station, config)
 
         cache = config.elastic_operator_cache_dir / f"{input_hash}.hdf5"
-        segments_metadata_file = config.elastic_operator_cache_dir / f"{input_hash}_segments.json"
 
         if cache.exists():
             logger.info(f"Found cached elastic operators at {cache}")
@@ -944,9 +984,8 @@ def _store_elastic_operators(
             cached_operator = np.array(
                 hdf5_file.get("slip_rate_to_okada_to_velocities")
             )
+            cached_segments = _load_segments_from_hdf5(hdf5_file)
             hdf5_file.close()
-            
-            cached_segments = _load_segments_metadata(segments_metadata_file)
             
 
             if cached_segments is None:
@@ -1004,9 +1043,8 @@ def _store_elastic_operators(
                             "tde_to_velocities_" + str(i),
                             data=operators.tde_to_velocities[i],
                         )
+                _save_segments_to_hdf5(segment, hdf5_file)
                 hdf5_file.close()
-                
-                _save_segments_metadata(segment, segments_metadata_file)
                 
                 return
 
@@ -1050,10 +1088,8 @@ def _store_elastic_operators(
                 "tde_to_velocities_" + str(i),
                 data=operators.tde_to_velocities[i],
             )
+    _save_segments_to_hdf5(segment, hdf5_file)
     hdf5_file.close()
-    
-    if segments_metadata_file is not None:
-        _save_segments_metadata(segment, segments_metadata_file)
 
 
 def _store_all_mesh_smoothing_matrices(model: Model, operators: _OperatorBuilder):
