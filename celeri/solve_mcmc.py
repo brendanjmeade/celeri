@@ -391,13 +391,14 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
         segment_rates = segment_rates.reshape((-1, 3))
         gamma = model.config.segment_slip_rate_regularization_sigma
         if gamma is not None:
-            pm.StudentT(
-                "segment_slip_rate_regularization",
-                mu=segment_rates,
-                sigma=gamma,
-                nu=5,
-                observed=np.zeros((len(model.segment), 3)),
-            )
+            for i, dir in enumerate(["ss", "ds", "ts"]):
+                pm.StudentT(
+                    f"segment_slip_rate_regularization_{dir}",
+                    mu=segment_rates[(model.segment[f"{dir}_rate_flag"] == 2).values, i],
+                    sigma=gamma,
+                    nu=5,
+                    observed=np.zeros((model.segment[f"{dir}_rate_flag"] == 2).sum()),
+                )
 
         pm.Deterministic(
             "segment_slip_rate", segment_rates, dims=("segment", "ss_ds_ts")
