@@ -44,7 +44,7 @@ def main():
         raise ValueError(f"Unknown solve type: {config.solve_type}")
 
     # Write output
-    celeri.write_output(estimation, station=model.station, segment=model.segment, block=model.block, meshes=model.meshes)
+    celeri.write_output(estimation)
 
     # Drop into ipython REPL
     if config.repl:

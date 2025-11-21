@@ -3,7 +3,6 @@ celeri.egg-info/
 UNKNOWN.egg-info/
 output/
 runs/
-data/operators/*_segments.json
 *.py[cod]
 .ipynb_checkpoints
 .DS_Store

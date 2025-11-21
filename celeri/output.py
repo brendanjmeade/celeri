@@ -22,15 +22,13 @@ if typing.TYPE_CHECKING:
 
 def write_output(
     estimation: Estimation,
-    station: pd.DataFrame,
-    segment: pd.DataFrame,
-    block: pd.DataFrame,
-    meshes: list[Mesh],
-    mogi=None,
 ):
     config = estimation.model.config
     output_path = Path(config.output_path)
     estimation.to_disk(output_path)
+    station = estimation.model.station
+    segment = estimation.model.segment
+    meshes = estimation.model.meshes
 
     hdf_output_file_name = (
         config.output_path / f"model_{config.run_name}.hdf5"
