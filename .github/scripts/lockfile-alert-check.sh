@@ -43,4 +43,3 @@ if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
 else
   echo "needs_alert=${result}"
 fi
-

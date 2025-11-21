@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 
 import sys
-import os
+from pathlib import Path
+
+import matplotlib.pyplot as plt
 import pandas as pd
 from shapely.geometry import LineString, Point
-from shapely.ops import unary_union
-import matplotlib.pyplot as plt
 
 
 def main():
@@ -109,7 +109,8 @@ def main():
     filtered_station_df = station_df.drop(index=list(matching_station_indices))
 
     # Create output filename
-    base_name = os.path.splitext(station_file)[0]
+    station_path = Path(station_file)
+    base_name = station_path.stem
     output_file = f"{base_name}_near_segment_removed_{buffer_distance}.csv"
 
     # Write the filtered dataframe to CSV without index
@@ -145,7 +146,7 @@ def main():
 
         # Save and show the plot
         plt.savefig("segments_with_nearby_stations.png", dpi=300, bbox_inches="tight")
-        print(f"\nPlot saved as 'segments_with_nearby_stations.png'")
+        print("\nPlot saved as 'segments_with_nearby_stations.png'")
         plt.show()
     else:
         print("\nNo matching segments found - no plot created")

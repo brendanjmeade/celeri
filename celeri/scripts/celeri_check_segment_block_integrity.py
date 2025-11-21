@@ -1,5 +1,5 @@
 # %% Imports
-import matplotlib.pyplot as plt  # noqa
+import matplotlib.pyplot as plt
 import matplotlib_inline.backend_inline
 import numpy as np
 

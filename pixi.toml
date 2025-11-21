@@ -5,7 +5,7 @@
 [workspace]
 name = "celeri"
 platforms = ["linux-64", "osx-64", "osx-arm64", "win-64"]
-channels = ["conda-forge"]
+channels = ["conda-forge", "numba"]
 
 [tasks]
 pixi-global-install-shim-hack = "python -m celeri.scripts.pixi_global_install_shim_hack"
@@ -52,9 +52,14 @@ pydantic = ">=2.11.6"
 pyarrow = ">=20.0.0"
 cartopy = ">=0.25.0"
 shapely = ">=2.1.1"
+opt_einsum = ">=3.4.0,<4"
 
 [target.linux-64.dependencies]
 libblas = { version = "*", build = "*_mkl" }
+
+[target.linux-64.pypi-dependencies]
+jax = { version = ">=0.8, <0.9", extras = ["cuda12"] }
+tfp-nightly = "*"
 
 [target.osx-arm64.dependencies]
 libblas = { version = "*", build = "*_newaccelerate" }

@@ -2,19 +2,18 @@ import copy
 from dataclasses import dataclass
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from loguru import logger
+from matplotlib import path
 from scipy.spatial.distance import cdist
 
 from celeri import celeri_closure
-from celeri.celeri_util import polygon_area, sph2cart
+from celeri.celeri_util import sph2cart
 from celeri.config import Config, get_config
 from celeri.constants import GEOID, RADIUS_EARTH
 from celeri.mesh import Mesh
-import matplotlib.pyplot as plt
-from matplotlib.patches import Polygon as MatplotlibPolygon
-from matplotlib import path
 
 
 @dataclass
