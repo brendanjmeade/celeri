@@ -806,8 +806,9 @@ def _hash_elastic_operator_input(
     Returns:
         str: Hash string representing the input data
     """
-
-    station_str = station.to_json()
+    geometric_columns = ["lon", "lat", "depth", "x", "y", "z"]
+    station_geom = station[geometric_columns].copy()
+    station_str = station_geom.to_json()
     assert isinstance(station_str, str)
 
     # Get material parameters
@@ -975,7 +976,7 @@ def _store_elastic_operators(
             )
         else:
             input_hash = _hash_elastic_operator_input([], station, config)
-
+            
         cache = config.elastic_operator_cache_dir / f"{input_hash}.hdf5"
 
         if cache.exists():
