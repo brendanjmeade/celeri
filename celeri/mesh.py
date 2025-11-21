@@ -341,6 +341,52 @@ def _compute_mesh_edge_elements(mesh: dict):
     mesh["side_elements"] = sides
 
 
+def _compute_n_tde_constraints(
+    n_tde: int,
+    top_slip_idx: np.ndarray,
+    bot_slip_idx: np.ndarray,
+    side_slip_idx: np.ndarray,
+) -> int:
+    """Compute the total number of TDE constraints.
+    
+    Builds a constraint matrix and counts rows with at least one constraint,
+    replicating the logic from operators._store_tde_slip_rate_constraints.
+    
+    Args:
+        n_tde: Number of triangular elements
+        top_slip_idx: Indices for top boundary constraints
+        bot_slip_idx: Indices for bottom boundary constraints
+        side_slip_idx: Indices for side boundary constraints
+    
+    Returns:
+        Total number of constraint rows
+    """
+    tde_slip_rate_constraints = np.zeros((2 * n_tde, 2 * n_tde))
+    end_row = 0
+    
+    boundary_slip_indices = [top_slip_idx, bot_slip_idx, side_slip_idx]
+    
+    for slip_idx in boundary_slip_indices:
+        if len(slip_idx) > 0:
+            start_row = end_row
+            end_row = start_row + len(slip_idx)
+            tde_slip_rate_constraints[start_row:end_row, slip_idx] = np.eye(
+                len(slip_idx)
+            )
+    
+    # Count rows with at least one constraint
+    # Total number of slip constraints:
+        # 2 for each element that has coupling constrained (top, bottom, side, specified indices)
+        # 1 for each additional slip component that is constrained (specified indices)
+
+    # TODO: Number of total constraints is determined by just finding 1 in the
+    # constraint array. This could cause an error when the index Dict is constructed,
+    # if an individual element has a constraint imposed, but that element is also
+    # a constrained edge element. Need to build in some uniqueness tests.
+    sum_constraint_columns = np.sum(tde_slip_rate_constraints, 1)
+    return int(np.sum(sum_constraint_columns > 0))
+
+
 def _compute_mesh_perimeter(mesh: dict):
     x_coords = mesh["points"][:, 0]
     y_coords = mesh["points"][:, 1]
@@ -433,12 +479,6 @@ class Mesh:
             Indices of the TDEs which have constraints on their strike slip slip rates.
         ds_slip_idx: np.ndarray
             Indices of the TDEs which have constraints on their dip slip slip rates.
-        east_labels: np.ndarray
-            Block indices on the eastern fault block of the TDEs.
-        west_labels: np.ndarray
-            Block indices on the western fault block of the TDEs.
-        closest_segment_idx: np.ndarray
-            Indices of the segment with midpoint closest to each TDE's centroid.
     """
 
     points: np.ndarray
@@ -482,25 +522,16 @@ class Mesh:
     x_perimeter: np.ndarray
     y_perimeter: np.ndarray
     config: MeshConfig
-
-    # TOOD(Adrian): Can we move those function into this module
-    # and make them non-optional?
-
-    # Computed in operators._store_all_mesh_smoothing_matrices
-    share: np.ndarray | None = None
-    tri_shared_sides_distances: np.ndarray | None = None
-    n_tde_constraints: int | None = None
-    # computed in operators._store_tde_slip_rate_constraints
-    top_slip_idx: np.ndarray | None = None
-    bot_slip_idx: np.ndarray | None = None
-    side_slip_idx: np.ndarray | None = None
+    share: np.ndarray
+    tri_shared_sides_distances: np.ndarray
+    top_slip_idx: np.ndarray
+    bot_slip_idx: np.ndarray
+    side_slip_idx: np.ndarray
+    n_tde_constraints: int
     coup_idx: np.ndarray | None = None
     ss_slip_idx: np.ndarray | None = None
     ds_slip_idx: np.ndarray | None = None
-    # computed in operators.get_rotation_to_tri_slip_rate_partials
     closest_segment_idx: np.ndarray | None = None
-    east_labels: np.ndarray | None = None
-    west_labels: np.ndarray | None = None
 
     @classmethod
     def from_params(cls, config: MeshConfig):
@@ -615,18 +646,47 @@ class Mesh:
         _compute_mesh_edge_elements(mesh)
         _compute_mesh_perimeter(mesh)
 
+        from celeri.spatial import get_shared_sides, get_tri_shared_sides_distances
+        mesh["share"] = get_shared_sides(mesh["verts"])
+        mesh["tri_shared_sides_distances"] = get_tri_shared_sides_distances(
+            mesh["share"],
+            mesh["x_centroid"],
+            mesh["y_centroid"],
+            mesh["z_centroid"],
+        )
+
+        from celeri.celeri_util import get_2component_index
+        boundary_constraints = [
+            ("top", config.top_slip_rate_constraint, mesh["top_elements"]),
+            ("bot", config.bot_slip_rate_constraint, mesh["bot_elements"]),
+            ("side", config.side_slip_rate_constraint, mesh["side_elements"]),
+        ]
+        for name, constraint_value, elements in boundary_constraints:
+            if constraint_value > 0:
+                indices = np.asarray(np.where(elements))
+                mesh[f"{name}_slip_idx"] = get_2component_index(indices)
+            else:
+                mesh[f"{name}_slip_idx"] = np.array([], dtype=np.int64)
+
+        mesh["n_tde_constraints"] = _compute_n_tde_constraints(
+            mesh["n_tde"],
+            mesh["top_slip_idx"],
+            mesh["bot_slip_idx"],
+            mesh["side_slip_idx"],
+        )
+
         logger.success(f"Read: {filename}")
         # Convert dict to Mesh dataclass
         return cls(**mesh)
 
     @property
-    def file_name(self) -> Path:
+    def file_name(self) -> Path | None:
         return self.config.mesh_filename
 
     @property
     def name(self) -> str:
         """Return the name of the mesh configuration."""
-        return self.file_name.stem
+        return self.file_name.stem if self.file_name is not None else "unknown"
 
     def to_disk(self, output_dir: str | Path):
         """Save the mesh configuration to a JSON file."""
@@ -658,4 +718,37 @@ class Mesh:
         config = MeshConfig(**config_data)
 
         # Use the general dataclass deserialization function with the config as extra data
-        return dataclass_from_disk(cls, input_dir, extra={"config": config})
+        mesh = dataclass_from_disk(cls, input_dir, extra={"config": config})
+        
+        # Compute shared sides and distances if not already loaded (backward compatibility)
+        from celeri.spatial import get_shared_sides, get_tri_shared_sides_distances
+        mesh.share = get_shared_sides(mesh.verts)
+        mesh.tri_shared_sides_distances = get_tri_shared_sides_distances(
+            mesh.share,
+            mesh.x_centroid,
+            mesh.y_centroid,
+            mesh.z_centroid,
+        )
+        
+        # Compute slip indices for boundary constraints
+        from celeri.celeri_util import get_2component_index
+        boundary_constraints = [
+            ("top", config.top_slip_rate_constraint, mesh.top_elements),
+            ("bot", config.bot_slip_rate_constraint, mesh.bot_elements),
+            ("side", config.side_slip_rate_constraint, mesh.side_elements),
+        ]
+        for name, constraint_value, elements in boundary_constraints:
+            if constraint_value > 0:
+                indices = np.asarray(np.where(elements))
+                setattr(mesh, f"{name}_slip_idx", get_2component_index(indices))
+            else:
+                setattr(mesh, f"{name}_slip_idx", np.array([], dtype=np.int64))
+
+        mesh.n_tde_constraints = _compute_n_tde_constraints(
+            mesh.n_tde,
+            mesh.top_slip_idx,
+            mesh.bot_slip_idx,
+            mesh.side_slip_idx,
+        )
+        
+        return mesh

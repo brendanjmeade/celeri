@@ -18,8 +18,7 @@ def test_japan_dense(config_file, eigen: bool, tde: bool):
     config = celeri.get_config(config_file)
     model = celeri.build_model(config)
 
-    # Estimate block model parameters (dense)
-    operators, estimation = celeri.assemble_and_solve_dense(model, eigen=eigen, tde=tde)
+    estimation = celeri.assemble_and_solve_dense(model, eigen=eigen, tde=tde)
 
     estimation.tde_rates  # noqa: B018
     estimation.east_vel_residual  # noqa: B018
