@@ -1,0 +1,128 @@
+[
+    {
+        "file_name": "../mesh/wna_mesh.json",
+        "mesh_filename": "../mesh/cascadia.msh",
+        "smoothing_weight": 1e+18,
+        "n_modes_strike_slip": 10,
+        "n_modes_dip_slip": 50,
+        "top_slip_rate_constraint": 0,
+        "bot_slip_rate_constraint": 1,
+        "side_slip_rate_constraint": 0,
+        "top_slip_rate_weight": 100.0,
+        "bot_slip_rate_weight": 100.0,
+        "side_slip_rate_weight": 100.0,
+        "eigenmode_slip_rate_constraint_weight": 10.0,
+        "a_priori_slip_filename": "",
+        "coupling_constraints_ss": {
+            "lower": 0.0,
+            "upper": 1.0
+        },
+        "coupling_constraints_ds": {
+            "lower": 0.0,
+            "upper": 1.0
+        },
+        "elastic_constraints_ss": {
+            "lower": -5.0,
+            "upper": 5.0
+        },
+        "elastic_constraints_ds": {
+            "lower": 0.0,
+            "upper": 30.0
+        },
+        "sqp_kinematic_slip_rate_hint_ss": {
+            "lower": -100.0,
+            "upper": 100.0
+        },
+        "sqp_kinematic_slip_rate_hint_ds": {
+            "lower": -100.0,
+            "upper": 100.0
+        },
+        "iterative_coupling_linear_slip_rate_reduction_factor": 0.025,
+        "iterative_coupling_smoothing_length_scale": null,
+        "iterative_coupling_kinematic_slip_regularization_scale": 1.0
+    },
+    {
+        "file_name": "../mesh/wna_mesh.json",
+        "mesh_filename": "../mesh/graham_nshm23_merge_connected_fixed_segments_3_constraints_1_borderlands_constraint_fix_locking_depths_damped_segmesh0.msh",
+        "smoothing_weight": 1.0,
+        "n_modes_strike_slip": 10,
+        "n_modes_dip_slip": 10,
+        "top_slip_rate_constraint": 0,
+        "bot_slip_rate_constraint": 0,
+        "side_slip_rate_constraint": 0,
+        "top_slip_rate_weight": 1.0,
+        "bot_slip_rate_weight": 1.0,
+        "side_slip_rate_weight": 1.0,
+        "eigenmode_slip_rate_constraint_weight": 1.0,
+        "a_priori_slip_filename": null,
+        "coupling_constraints_ss": {
+            "lower": null,
+            "upper": null
+        },
+        "coupling_constraints_ds": {
+            "lower": null,
+            "upper": null
+        },
+        "elastic_constraints_ss": {
+            "lower": null,
+            "upper": null
+        },
+        "elastic_constraints_ds": {
+            "lower": null,
+            "upper": null
+        },
+        "sqp_kinematic_slip_rate_hint_ss": {
+            "lower": -100.0,
+            "upper": 100.0
+        },
+        "sqp_kinematic_slip_rate_hint_ds": {
+            "lower": -100.0,
+            "upper": 100.0
+        },
+        "iterative_coupling_linear_slip_rate_reduction_factor": 0.025,
+        "iterative_coupling_smoothing_length_scale": null,
+        "iterative_coupling_kinematic_slip_regularization_scale": 1.0
+    },
+    {
+        "file_name": "../mesh/wna_mesh.json",
+        "mesh_filename": "../mesh/graham_nshm23_merge_connected_fixed_segments_3_constraints_1_borderlands_constraint_fix_locking_depths_damped_segmesh1.msh",
+        "smoothing_weight": 1.0,
+        "n_modes_strike_slip": 10,
+        "n_modes_dip_slip": 10,
+        "top_slip_rate_constraint": 0,
+        "bot_slip_rate_constraint": 0,
+        "side_slip_rate_constraint": 0,
+        "top_slip_rate_weight": 1.0,
+        "bot_slip_rate_weight": 1.0,
+        "side_slip_rate_weight": 1.0,
+        "eigenmode_slip_rate_constraint_weight": 1.0,
+        "a_priori_slip_filename": null,
+        "coupling_constraints_ss": {
+            "lower": null,
+            "upper": null
+        },
+        "coupling_constraints_ds": {
+            "lower": null,
+            "upper": null
+        },
+        "elastic_constraints_ss": {
+            "lower": null,
+            "upper": null
+        },
+        "elastic_constraints_ds": {
+            "lower": null,
+            "upper": null
+        },
+        "sqp_kinematic_slip_rate_hint_ss": {
+            "lower": -100.0,
+            "upper": 100.0
+        },
+        "sqp_kinematic_slip_rate_hint_ds": {
+            "lower": -100.0,
+            "upper": 100.0
+        },
+        "iterative_coupling_linear_slip_rate_reduction_factor": 0.025,
+        "iterative_coupling_smoothing_length_scale": null,
+        "iterative_coupling_kinematic_slip_regularization_scale": 1.0
+    }
+]

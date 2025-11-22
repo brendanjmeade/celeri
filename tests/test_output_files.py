@@ -7,12 +7,14 @@ import pandas as pd
 import pytest
 
 from celeri.celeri_util import get_newest_run_folder
+from celeri.operators import _OperatorBuilder, Assembly, _store_elastic_operators, _hash_elastic_operator_input
 
+test_logger = logger.bind(name="test_output_files")
 
 @pytest.mark.parametrize(
     "config_file",
     [
-        "./tests/configs/test_japan_config.json",
+        "../data/config/wna_config.json",
     ],
 )
 def test_celeri_solve_creates_output_files(config_file):
