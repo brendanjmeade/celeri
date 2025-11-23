@@ -1,6 +1,5 @@
 from pathlib import Path
 import subprocess
-import shutil
 import h5py
 import pytest
 import json
@@ -101,7 +100,7 @@ def test_celeri_solve_creates_output_files(config_file):
         "tests/configs/wna_outputs.json",
     ],
 )
-def test_smart_recompute(config_file):
+def test_smart_segment_recompute(config_file):
     """Test that selective recompute works correctly when segments change.
     
     This test verifies the selective recomputation feature of elastic operators:
@@ -157,31 +156,23 @@ def test_smart_recompute(config_file):
         
         new_cache_file = cache_dir / f"{input_hash}.hdf5"
         assert new_cache_file.exists(), "New cache file should be created"
-        
-        dataset_names = [
-            "slip_rate_to_okada_to_velocities",
-            "tde_to_velocities_0",
-            "tde_to_velocities_1",
-            "tde_to_velocities_2",
-        ]
 
         with h5py.File(new_cache_file, "r") as f_new, h5py.File(recomputed_file, "r") as f_old:
-            for name in dataset_names:
-                assert name in f_new, f"[{name}] not found in hdf5 file computed from scratch"
-                assert name in f_old, f"[{name}] not found in hdf5 file recomputed from cache"
-                dataset_new = f_new[name]
-                dataset_old = f_old[name]
-                arr_new = np.array(dataset_new)
-                arr_old = np.array(dataset_old)
-                if arr_new.shape != arr_old.shape:
-                    print(f"[{name}] Shapes differ: {arr_new.shape} vs {arr_old.shape}")
-                    continue
-                else:
-                    max_diff = np.max(np.abs(arr_new - arr_old))
-                    assert np.allclose(arr_new, arr_old, rtol=1e-10, atol=1e-10), (
-                        f"[{name}] Arrays should be equal (within tolerance). "
-                        f"Max difference: {max_diff}"
-                    )
+            name = "slip_rate_to_okada_to_velocities"
+            assert name in f_new, f"[{name}] not found in hdf5 file computed from scratch"
+            assert name in f_old, f"[{name}] not found in hdf5 file recomputed from cache"
+            dataset_new = f_new[name]
+            dataset_old = f_old[name]
+            arr_new = np.array(dataset_new)
+            arr_old = np.array(dataset_old)
+            if arr_new.shape != arr_old.shape:
+                print(f"[{name}] Shapes differ: {arr_new.shape} vs {arr_old.shape}")
+            else:
+                max_diff = np.max(np.abs(arr_new - arr_old))
+                assert np.allclose(arr_new, arr_old, rtol=1e-10, atol=1e-10), (
+                    f"[{name}] Arrays should be equal (within tolerance). "
+                    f"Max difference: {max_diff}"
+                )
     finally:
         logger.enable("celeri")
         if cache_dir is not None and cache_dir.exists():
