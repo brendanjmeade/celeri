@@ -35,7 +35,7 @@ jobs:
       - name: Test
         if: ${{ matrix.tests-to-run == 'other' }}
         run: |
-          pixi run -e ${{ matrix.pixi-environment }} pytest ./tests/test_closure.py ./tests/test_okada_equals_cutde.py ./tests/test_optimize.py ./tests/test_serialize.py
+          pixi run -e ${{ matrix.pixi-environment }} pytest ./tests/test_closure.py ./tests/test_okada_equals_cutde.py ./tests/test_optimize.py ./tests/test_serialize.py ./tests/test_output_files.py
       - name: Test
         if: ${{ matrix.tests-to-run == 'japan' }}
         run: |
@@ -43,4 +43,4 @@ jobs:
       - name: Test
         if: ${{ matrix.tests-to-run == 'optimize_sqp' }}
         run: |
-          pixi run -e ${{ matrix.pixi-environment }} pytest ./tests/test_optimize_sqp.py ./tests/test_output_files.py
+          pixi run -e ${{ matrix.pixi-environment }} pytest ./tests/test_optimize_sqp.py
