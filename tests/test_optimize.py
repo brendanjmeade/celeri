@@ -21,7 +21,7 @@ from celeri.optimize import (
 
 @pytest.fixture(scope="module")
 def small_test_config_path():
-    return Path("tests/test_japan_config.json")
+    return Path("tests/configs/test_japan_config.json")
 
 
 @pytest.fixture(scope="module")
