@@ -13,7 +13,6 @@ from typing import Any
 import cvxopt
 import numpy as np
 import pandas as pd
-from pandas.core.indexing import item_from_zerodim
 import scipy
 from loguru import logger
 from scipy import linalg
@@ -513,16 +512,10 @@ class Estimation:
 
         if index.eigen is None:
             for i, item in self.operators.tde.tde_to_velocities.items():
-                tde_keep_row_index = get_keep_index_12(
-                    item.shape[0]
-                )
-                tde_keep_col_index = get_keep_index_12(
-                    item.shape[1]
-                )
+                tde_keep_row_index = get_keep_index_12(item.shape[0])
+                tde_keep_col_index = get_keep_index_12(item.shape[1])
                 vel_tde += (
-                    item[tde_keep_row_index, :][
-                        :, tde_keep_col_index
-                    ]
+                    item[tde_keep_row_index, :][:, tde_keep_col_index]
                     @ self.state_vector[
                         index.tde.start_tde_col[i] : index.tde.end_tde_col[i]
                     ]

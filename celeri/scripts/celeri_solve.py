@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-
-
 from loguru import logger
 
 import celeri
@@ -49,6 +47,7 @@ def main():
     # Drop into ipython REPL
     if config.repl:
         import IPython
+
         IPython.embed(banner1="")
 
 

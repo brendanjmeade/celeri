@@ -1,23 +1,20 @@
 from __future__ import annotations
 
-import os
 import json
+import os
 import typing
 from dataclasses import fields
 from pathlib import Path
 from typing import Any, TypeVar
 
-import pandas as pd
+import h5py
 import numpy as np
 import zarr
-import h5py
 
 if typing.TYPE_CHECKING:
     from _typeshed import DataclassInstance
 
-    from celeri.config import Config
     from celeri.solve import Estimation
-    from celeri.mesh import Mesh
 
 
 def write_output(
@@ -30,9 +27,7 @@ def write_output(
     segment = estimation.model.segment
     meshes = estimation.model.meshes
 
-    hdf_output_file_name = (
-        config.output_path / f"model_{config.run_name}.hdf5"
-    )
+    hdf_output_file_name = config.output_path / f"model_{config.run_name}.hdf5"
     with h5py.File(hdf_output_file_name, "w") as hdf:
         hdf.create_dataset(
             "run_name",
@@ -58,13 +53,13 @@ def write_output(
                 grp.create_dataset(key, data=value)
             else:
                 continue
-        
+
         for mesh_idx, mesh_config in enumerate(mesh_params):
             mesh_grp = grp.create_group(f"mesh_params/mesh_{mesh_idx:05}")
             mesh_data = {}
             for field_name in mesh_config.keys():
                 mesh_data[field_name] = mesh_config[field_name]
-            
+
             for key, value in mesh_data.items():
                 print(key, value)
                 if value is None:
@@ -81,9 +76,9 @@ def write_output(
                         data=str(value).encode("utf-8"),
                         dtype=h5py.string_dtype(encoding="utf-8"),
                     )
-                elif isinstance(value, (int, float, np.integer, np.floating)):
+                elif isinstance(value, int | float | np.integer | np.floating):
                     mesh_grp.create_dataset(key, data=value)
-                
+
         mesh_end_idx = 0
         for i in range(len(meshes)):
             grp = hdf.create_group(f"meshes/mesh_{i:05}")
@@ -173,9 +168,7 @@ def write_output(
 
         segment_no_name = segment.drop("name", axis=1)
         hdf.create_dataset("segment", data=segment_no_name.to_numpy())
-        string_dtype = h5py.string_dtype(
-            encoding="utf-8"
-        )
+        string_dtype = h5py.string_dtype(encoding="utf-8")
 
         hdf.create_dataset(
             "segment_names",
@@ -193,9 +186,7 @@ def write_output(
 
         hdf.create_dataset("station", data=station_no_name.to_numpy())
 
-        string_dtype = h5py.string_dtype(
-            encoding="utf-8"
-        )
+        string_dtype = h5py.string_dtype(encoding="utf-8")
 
         hdf.create_dataset(
             "station_names",
@@ -223,6 +214,7 @@ def write_output(
     mesh_estimates = estimation.mesh_estimate
     if mesh_estimates is not None:
         mesh_estimates.to_csv(output_path / "model_meshes.csv", index=False)
+
 
 def dataclass_to_disk(
     obj: DataclassInstance, output_dir: str | Path, *, skip: set[str] | None = None

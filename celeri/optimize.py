@@ -5,7 +5,7 @@ import warnings
 from collections import namedtuple
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Literal, cast
+from typing import cast
 
 import cvxopt
 import cvxpy as cp
@@ -14,6 +14,7 @@ import numpy as np
 from loguru import logger
 from scipy import linalg, sparse
 
+from celeri.config import Sqp2Objective
 from celeri.mesh import ScalarBound
 from celeri.model import Model
 from celeri.operators import (
@@ -68,11 +69,7 @@ class SlipRateItem:
         return elastic
 
     def out_of_bounds_coupling(
-        self, 
-        *, 
-        smooth_kinematic: bool, 
-        tol=1e-8, 
-        coupling_bounds: ScalarBound
+        self, *, smooth_kinematic: bool, tol=1e-8, coupling_bounds: ScalarBound
     ) -> tuple[int, int]:
         """Count slip rates that violate coupling constraints.
 
@@ -102,10 +99,7 @@ class SlipRateItem:
         return is_oob.sum(), total
 
     def constraint_loss(
-        self, 
-        *, 
-        smooth_kinematic: bool, 
-        coupling_bounds: ScalarBound
+        self, *, smooth_kinematic: bool, coupling_bounds: ScalarBound
     ) -> float:
         """Calculate quadratic coupling constraint violation"""
         if coupling_bounds.lower is None and coupling_bounds.upper is None:
@@ -131,11 +125,7 @@ class SlipRate:
     dip_slip: SlipRateItem
 
     def out_of_bounds_coupling(
-        self, 
-        *, 
-        smooth_kinematic: bool, 
-        tol: float = 1e-8, 
-        limits: SlipRateLimit
+        self, *, smooth_kinematic: bool, tol: float = 1e-8, limits: SlipRateLimit
     ) -> tuple[int, int]:
         oob_ss, total_ss = self.strike_slip.out_of_bounds_coupling(
             smooth_kinematic=smooth_kinematic,
@@ -150,11 +140,7 @@ class SlipRate:
         return oob_ss + oob_ds, total_ss + total_ds
 
     def out_of_bounds_detailed(
-        self, 
-        *, 
-        smooth_kinematic: bool, 
-        tol: float = 1e-8, 
-        limits: SlipRateLimit
+        self, *, smooth_kinematic: bool, tol: float = 1e-8, limits: SlipRateLimit
     ) -> tuple[tuple[int, int], tuple[int, int]]:
         """Count slip rates that violate coupling constraints with detailed output."""
         oob1, total1 = self.strike_slip.out_of_bounds_coupling(
@@ -493,6 +479,7 @@ class SlipRateLimitItem:
 @dataclass
 class SlipRateLimit:
     """Class to store slip rates constraints for optimization problem"""
+
     strike_slip: SlipRateLimitItem
     dip_slip: SlipRateLimitItem
 
@@ -563,10 +550,9 @@ class SlipRateLimit:
 @dataclass
 class Minimizer:
     """A class to store the results of an optimization run.
-    
+
     Attributes
     ----------
-
     model: Model
     operators: Operators
     cp_problem: cvxpy.Problem
@@ -581,6 +567,7 @@ class Minimizer:
     slip_rate_limits: list[SlipRateLimit]
     smooth_kinematic: bool = True
     """
+
     model: Model
     operators: Operators
     cp_problem: cp.Problem
@@ -647,11 +634,7 @@ class Minimizer:
             quiver_scale=self.model.config.quiver_scale,
         )
 
-    def out_of_bounds(
-        self, 
-        *, 
-        tol: float = 1e-8
-    ) -> tuple[int, int]:
+    def out_of_bounds(self, *, tol: float = 1e-8) -> tuple[int, int]:
         oob, total = 0, 0
         for idx, _ in enumerate(self.model.meshes):
             oob_mesh, total_mesh = self.slip_rate[idx].out_of_bounds_coupling(
@@ -664,9 +647,7 @@ class Minimizer:
         return oob, total
 
     def out_of_bounds_detailed(
-        self, 
-        *, 
-        tol: float = 1e-8
+        self, *, tol: float = 1e-8
     ) -> tuple[np.ndarray, np.ndarray]:
         """Count slip rates that violate coupling constraints with detailed output."""
         oob = np.zeros((len(self.model.meshes), 2), dtype=int)
@@ -691,16 +672,6 @@ class Minimizer:
         return loss
 
 
-Objective = Literal[
-    "expanded_norm2",
-    "sum_of_squares",
-    "qr_sum_of_squares",
-    "svd_sum_of_squares",
-    "norm2",
-    "norm1",
-]
-
-
 def build_cvxpy_problem(
     model: Model,
     *,
@@ -709,7 +680,7 @@ def build_cvxpy_problem(
     velocity_limits: list[SlipRateLimit] | None = None,
     smooth_kinematic: bool = True,
     slip_rate_reduction: float | None = None,
-    objective: Objective = "qr_sum_of_squares",
+    objective: Sqp2Objective = "qr_sum_of_squares",
     rescale_parameters: bool = True,
     rescale_constraints: bool = True,
     operators: Operators | None = None,
@@ -887,6 +858,8 @@ def build_cvxpy_problem(
             objective_val = cp.norm1(C_hat @ params_raw - d)
         case "norm2":
             objective_val = objective_norm2
+        case "huber":
+            objective_val = cp.sum(cp.huber(C_hat @ params_raw - d, M=5))
         case _:
             raise ValueError(f"Unknown objective type: {objective}")
 
@@ -903,9 +876,64 @@ def build_cvxpy_problem(
     A_hat_ = A_hat / A_scale[:, None]
     b_hat = b / A_scale
 
-    if len(b) > 0:
+    if len(b) > 0 and model.config.segment_slip_rate_hard_bounds:
         constraint = adapt_operator(A_hat_) @ params_raw <= b_hat
         constraints.append(constraint)
+
+    segment_slip_rate = (
+        operators.rotation_to_slip_rate @ params[: operators.index.n_blocks * 3]
+    )
+    gamma = model.config.segment_slip_rate_regularization
+    if gamma != 0.0:
+        subset = np.concatenate(
+            [
+                model.segment.ss_rate_flag == 2,
+                model.segment.ds_rate_flag == 2,
+                model.segment.ts_rate_flag == 2,
+            ]
+        )
+        objective_val = objective_val + gamma * cp.sum_squares(
+            segment_slip_rate[subset]
+        )
+
+    segment_slip_rate = segment_slip_rate.reshape((-1, 3), order="C")
+    # Add segment slip rate bounds
+    for comp, bound_flag_attr, lower_attr, upper_attr in [
+        (
+            "strike_slip",
+            "ss_rate_bound_flag",
+            "ss_rate_bound_min",
+            "ss_rate_bound_max",
+        ),
+        (
+            "dip_slip",
+            "ds_rate_bound_flag",
+            "ds_rate_bound_min",
+            "ds_rate_bound_max",
+        ),
+        (
+            "tensile_slip",
+            "ts_rate_bound_flag",
+            "ts_rate_bound_min",
+            "ts_rate_bound_max",
+        ),
+    ]:
+        bound_flags = getattr(model.segment, bound_flag_attr).values
+        if np.any(bound_flags):
+            lower_bounds = getattr(model.segment, lower_attr).values[bound_flags == 1]
+            upper_bounds = getattr(model.segment, upper_attr).values[bound_flags == 1]
+            bound_sig = model.config.segment_slip_rate_bound_weight
+
+            comp_idx = {"strike_slip": 0, "dip_slip": 1, "tensile_slip": 2}[comp]
+            slip_rates_comp = segment_slip_rate[:, comp_idx][bound_flags == 1]
+            if lower_bounds.size > 0:
+                objective_val = objective_val + bound_sig * cp.sum_squares(
+                    cp.pos(lower_bounds - slip_rates_comp)
+                )
+            if upper_bounds.size > 0:
+                objective_val = objective_val + bound_sig * cp.sum_squares(
+                    cp.pos(slip_rates_comp - upper_bounds)
+                )
 
     cp_problem = cp.Problem(cp.Minimize(objective_val), constraints)
 
@@ -1018,7 +1046,7 @@ def _tighten_kinematic_bounds(
 @dataclass
 class MinimizerTrace:
     """A class to track the progress of an optimization run across iterations.
-    
+
     Attributes
     ----------
     model: Model
@@ -1052,6 +1080,7 @@ class MinimizerTrace:
     minimizer: Minimizer
         The optimization result.
     """
+
     model: Model
     params: list[np.ndarray]
     params_raw: list[np.ndarray]
@@ -1209,7 +1238,7 @@ def _custom_cvxopt_solve(problem: cp.Problem, **kwargs):
     problem.unpack_results(sol, chain, inverse_data)  # type: ignore
 
 
-def _custom_solve(problem: cp.Problem, solver: str, objective: Objective, **kwargs):
+def _custom_solve(problem: cp.Problem, solver: str, objective: Sqp2Objective, **kwargs):
     if solver == "CUSTOM_CVXOPT":
         if objective not in [
             "expanded_norm2",
@@ -1245,7 +1274,7 @@ def solve_sqp2(
     verbose: bool = False,
     rescale_parameters: bool = True,
     rescale_constraints: bool = True,
-    objective: Objective = "qr_sum_of_squares",
+    objective: Sqp2Objective | None = None,
     operators: Operators | None = None,
 ) -> Estimation:
     """Iteratively solve a constrained optimization problem for fault slip rates.
@@ -1269,6 +1298,9 @@ def solve_sqp2(
         An Estimation object containing the optimization results.
     """
     limits = SlipRateLimit.from_model(model)
+
+    if objective is None:
+        objective = model.config.sqp2_objective
 
     minimizer = build_cvxpy_problem(
         model,
@@ -1353,7 +1385,7 @@ def solve_sqp2(
 def benchmark_solve(
     model: Model,
     *,
-    objective: Objective,
+    objective: Sqp2Objective,
     rescale_parameters: bool,
     rescale_constraints: bool,
     solver: str,

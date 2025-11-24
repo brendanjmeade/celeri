@@ -1,22 +1,20 @@
 from __future__ import annotations
 
-import typing
 from dataclasses import dataclass, field
 from typing import Any
 
 import cartopy.io.shapereader as shpreader
 import colorcet as cc
-import matplotlib
 import matplotlib.collections as mc
 import matplotlib.lines as mlines
 import matplotlib.patches as mpatches
-import matplotlib.path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from loguru import logger
 from matplotlib import cm
-from matplotlib.colors import Normalize, TwoSlopeNorm
+from matplotlib.colors import LinearSegmentedColormap, Normalize
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from shapely.geometry import (
     GeometryCollection,
     LineString,
@@ -27,19 +25,16 @@ from shapely.geometry import (
 )
 
 from celeri.constants import EPS
+from celeri.mesh import Mesh
 from celeri.model import Model
+from celeri.optimize_sqp import _get_coupling
+from celeri.solve import Estimation
 from celeri.spatial import (
     get_okada_displacements,
     get_rotation_displacements,
     get_strain_rate_displacements,
 )
 
-from celeri.solve import Estimation
-from celeri.mesh import Mesh
-from celeri.optimize_sqp import _get_coupling
-
-from matplotlib.colors import LinearSegmentedColormap
-from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 @dataclass(kw_only=True)
 class PlotParams:
@@ -355,16 +350,14 @@ def plot_input_summary(
         ax = plt.gca()
         xy = np.c_[x_coords, y_coords]
         verts = xy[vertex_array]
-        pc = mc.PolyCollection(
-            verts, edgecolor="none", linewidth=0.25, cmap="Oranges"
-        )
+        pc = mc.PolyCollection(verts, edgecolor="none", linewidth=0.25, cmap="Oranges")
         pc.set_array(is_constrained_tde)
         ax.add_collection(pc)
         # ax.autoscale()
 
     plt.suptitle("inputs")
 
-    if model.config.output_path is not None:
+    if model.config.output_path.exists():
         plt.savefig(model.config.output_path / "plot_input_summary.png", dpi=500)
         plt.savefig(model.config.output_path / "plot_input_summary.pdf")
         logger.success(
@@ -403,7 +396,6 @@ def plot_estimation_summary(
     segment = model.segment
     station = model.station
     meshes = model.meshes
-    import matplotlib.colors as mcolors
 
     def common_plot_elements(segment: pd.DataFrame, lon_range: tuple, lat_range: tuple):
         """Elements common to all subplots
@@ -431,7 +423,6 @@ def plot_estimation_summary(
         plt.ylim([lat_range[0], lat_range[1]])
         plt.gca().set_aspect("equal", adjustable="box")
 
-    max_sigma_cutoff = 99.0
     n_subplot_rows = 3
     n_subplot_cols = 3
     subplot_index = 1
@@ -538,14 +529,22 @@ def plot_estimation_summary(
             plt.title("TDE Slip (strike-slip, mm/yr)")
             common_plot_elements(segment, lon_range, lat_range)
 
-            all_values = np.concatenate([np.ravel(vals) for vals in tde_strike_slip_dict.values()])
+            all_values = np.concatenate(
+                [np.ravel(vals) for vals in tde_strike_slip_dict.values()]
+            )
             vmin = np.min(all_values)
             vmax = np.max(all_values)
 
             ax = plt.gca()
             pc = None
             for i in range(len(meshes)):
-                pc = plot_mesh(meshes[i], fill_value=tde_strike_slip_dict[i], ax=ax, vmin=vmin, vmax=vmax)
+                pc = plot_mesh(
+                    meshes[i],
+                    fill_value=tde_strike_slip_dict[i],
+                    ax=ax,
+                    vmin=vmin,
+                    vmax=vmax,
+                )
             plt.colorbar(pc, ax=ax, shrink=0.7)
 
             subplot_index += 1
@@ -556,14 +555,22 @@ def plot_estimation_summary(
             plt.title("TDE Slip (dip-slip, mm/yr)")
             common_plot_elements(segment, lon_range, lat_range)
 
-            all_values = np.concatenate([np.ravel(vals) for vals in tde_dip_slip_dict.values()])
+            all_values = np.concatenate(
+                [np.ravel(vals) for vals in tde_dip_slip_dict.values()]
+            )
             vmin = np.min(all_values)
             vmax = np.max(all_values)
 
             ax = plt.gca()
             pc = None
             for i in range(len(meshes)):
-                pc = plot_mesh(meshes[i], fill_value=tde_dip_slip_dict[i], ax=ax, vmin=vmin, vmax=vmax)
+                pc = plot_mesh(
+                    meshes[i],
+                    fill_value=tde_dip_slip_dict[i],
+                    ax=ax,
+                    vmin=vmin,
+                    vmax=vmax,
+                )
 
             cbar = plt.colorbar(pc, ax=ax, shrink=0.7)
             n_ticks = 7
@@ -589,8 +596,9 @@ def plot_estimation_summary(
         f"mae = {mean_average_error:.2f} (mm/yr), mse = {mean_squared_error:.2f} (mm/yr)^2"
     )
 
-    plt.savefig(model.config.output_path / "plot_estimation_summary.png", dpi=500)
-    plt.savefig(model.config.output_path / "plot_estimation_summary.pdf")
+    if model.config.output_path.exists():
+        plt.savefig(model.config.output_path / "plot_estimation_summary.png", dpi=500)
+        plt.savefig(model.config.output_path / "plot_estimation_summary.pdf")
     plt.show(block=False)
 
     logger.success(
@@ -650,6 +658,7 @@ def plot_mesh(
     y_edge = np.append(y_edge, y_coords[mesh.ordered_edge_nodes[0, 0]])
     ax.plot(x_edge, y_edge, color="black", linewidth=1)
     return pc
+
 
 def plot_segment_displacements(
     segment,
@@ -1394,9 +1403,7 @@ def plot_fault_geometry(p, segment, meshes):
         ax = plt.gca()
         xy = np.c_[x_coords, y_coords]
         verts = xy[vertex_array]
-        pc = mc.PolyCollection(
-            verts, edgecolor="none", alpha=0.2, facecolor="red"
-        )
+        pc = mc.PolyCollection(verts, edgecolor="none", alpha=0.2, facecolor="red")
         ax.add_collection(pc)
 
         # Add mesh edge
@@ -1537,10 +1544,8 @@ def plot_coastlines(lon_min, lat_min, lon_max, lat_max):
     line_collection = mc.LineCollection(coastlines, colors="black", linewidths=0.5)
     plt.gca().add_collection(line_collection)
 
-def plot_coupling(estimation: Estimation, 
-    *, 
-    mesh_idx: int
-    ):
+
+def plot_coupling(estimation: Estimation, *, mesh_idx: int):
     operators = estimation.operators
     block = estimation.model.block
     index = operators.index
@@ -1626,6 +1631,7 @@ def plot_coupling(estimation: Estimation,
     plt.title("ds coupling")
 
     plt.show()
+
 
 def _plot_common_evolution_elements():
     plt.xlim([-90, 90])

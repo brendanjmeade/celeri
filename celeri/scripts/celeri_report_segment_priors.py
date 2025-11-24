@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
-"""
-Calculate density-based weights for GPS station data.
+"""Calculate density-based weights for GPS station data.
 
 This script computes weights that are inversely proportional to local station density,
 allowing for more balanced influence of data points in spatial estimation procedures.
 """
 
 import argparse
-import os
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 
 
 def main():

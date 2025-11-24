@@ -1,34 +1,33 @@
 #!/usr/bin/env python3
-"""
-Calculate density-based weights for GPS station data.
+"""Calculate density-based weights for GPS station data.
 
 This script computes weights that are inversely proportional to local station density,
 allowing for more balanced influence of data points in spatial estimation procedures.
 """
 
+import warnings
+from pathlib import Path
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 from scipy.spatial import KDTree
-from scipy.spatial.distance import cdist
-import warnings
 
 warnings.filterwarnings("ignore")
 
 
 def haversine_distance(lon1, lat1, lon2, lat2):
-    """
-    Calculate great circle distance between points on Earth.
+    """Calculate great circle distance between points on Earth.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     lon1, lat1 : array-like
         Longitude and latitude of first point(s) in degrees
     lon2, lat2 : array-like
         Longitude and latitude of second point(s) in degrees
 
-    Returns:
-    --------
+    Returns
+    -------
     distance : array
         Distance in kilometers
     """
@@ -56,11 +55,10 @@ def haversine_distance(lon1, lat1, lon2, lat2):
 def calculate_density_weights(
     df, k_neighbors=10, method="knn", bandwidth=None, weight_type="inverse_square"
 ):
-    """
-    Calculate weights inversely proportional to local station density.
+    """Calculate weights inversely proportional to local station density.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     df : pandas.DataFrame
         DataFrame with 'lon' and 'lat' columns
     k_neighbors : int
@@ -72,14 +70,13 @@ def calculate_density_weights(
     weight_type : str
         'inverse' for 1/density, 'inverse_square' for 1/density², or 'log_inverse' for 1/log10(density)
 
-    Returns:
-    --------
+    Returns
+    -------
     weights : numpy.array
         Normalized weights inversely proportional to density
     densities : numpy.array
         Raw density estimates
     """
-
     # Extract coordinates
     coords = df[["lon", "lat"]].values
     n_stations = len(coords)
@@ -175,11 +172,10 @@ def calculate_density_weights(
 
 
 def plot_station_weights(df, weights, save_path=None):
-    """
-    Create visualization of station locations colored by their weights.
+    """Create visualization of station locations colored by their weights.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     df : pandas.DataFrame
         DataFrame with 'lon' and 'lat' columns
     weights : array-like
@@ -187,7 +183,6 @@ def plot_station_weights(df, weights, save_path=None):
     save_path : str, optional
         Path to save the figure
     """
-
     fig, axes = plt.subplots(1, 2, figsize=(16, 7))
 
     # Left plot: Station locations with weights as colors
@@ -212,7 +207,7 @@ def plot_station_weights(df, weights, save_path=None):
     ax1.set_aspect("equal", adjustable="box")
 
     # Add colorbar
-    cbar1 = plt.colorbar(scatter1, ax=ax1, label="Weight")
+    plt.colorbar(scatter1, ax=ax1, label="Weight")
 
     # Right plot: Weight distribution histogram
     ax2 = axes[1]
@@ -250,7 +245,6 @@ def plot_station_weights(df, weights, save_path=None):
 
 def main():
     """Main execution function."""
-
     # Parse command line arguments
     import argparse
 
@@ -292,13 +286,11 @@ def main():
     args = parser.parse_args()
 
     # File paths
-    station_file = args.input
+    station_file = Path(args.input)
     # Create output filename based on input
-    import os
-
-    base_name = os.path.basename(station_file).replace(".csv", "")
-    output_dir = os.path.dirname(station_file)
-    output_file = os.path.join(output_dir, f"{base_name}_reweighted.csv")
+    base_name = station_file.stem
+    output_dir = station_file.parent
+    output_file = output_dir / f"{base_name}_reweighted.csv"
 
     print("=" * 60)
     print("Station Density Weighting Tool")
@@ -310,12 +302,12 @@ def main():
     print(f"Loaded {len(df)} stations")
 
     # Display data summary
-    print(f"\nCoordinate ranges:")
+    print("\nCoordinate ranges:")
     print(f"  Longitude: {df['lon'].min():.3f} to {df['lon'].max():.3f}")
     print(f"  Latitude:  {df['lat'].min():.3f} to {df['lat'].max():.3f}")
 
     # Calculate weights using specified method
-    print(f"\nCalculating density-based weights...")
+    print("\nCalculating density-based weights...")
     print(f"  Method: {args.method}")
     print(f"  Weight type: {args.weight_type}")
     print(f"  K-neighbors: {args.k_neighbors}")
@@ -328,7 +320,7 @@ def main():
     )
 
     # Print weight statistics
-    print(f"\nWeight Statistics:")
+    print("\nWeight Statistics:")
     print(f"  Mean weight:   {np.mean(weights):.3f}")
     print(f"  Median weight: {np.median(weights):.3f}")
     print(f"  Std weight:    {np.std(weights):.3f}")
@@ -341,7 +333,7 @@ def main():
 
     if args.replace_sigmas:
         # Replace sigma columns with weights
-        print(f"\nReplacing sigma columns with density-based weights...")
+        print("\nReplacing sigma columns with density-based weights...")
         df_output["east_sig"] = weights
         df_output["north_sig"] = weights
         if "up_sig" in df_output.columns:
@@ -365,22 +357,22 @@ def main():
     high_weight_threshold = np.percentile(weights, 95)
     low_weight_threshold = np.percentile(weights, 5)
 
-    print(f"\nStations with highest weights (lowest density):")
+    print("\nStations with highest weights (lowest density):")
     df_temp = df.copy()
     df_temp["weight"] = weights
     high_weight_stations = df_temp[
         df_temp["weight"] >= high_weight_threshold
     ].sort_values("weight", ascending=False)
-    for idx, row in high_weight_stations.head(5).iterrows():
+    for _idx, row in high_weight_stations.head(5).iterrows():
         print(
             f"  {row['name']}: weight={row['weight']:.2f}, lon={row['lon']:.3f}, lat={row['lat']:.3f}"
         )
 
-    print(f"\nStations with lowest weights (highest density):")
+    print("\nStations with lowest weights (highest density):")
     low_weight_stations = df_temp[
         df_temp["weight"] <= low_weight_threshold
     ].sort_values("weight")
-    for idx, row in low_weight_stations.head(5).iterrows():
+    for _idx, row in low_weight_stations.head(5).iterrows():
         print(
             f"  {row['name']}: weight={row['weight']:.2f}, lon={row['lon']:.3f}, lat={row['lat']:.3f}"
         )
@@ -396,7 +388,7 @@ def main():
 
     print("\nAnalysis complete!")
     print(f"Output saved: {output_file}")
-    print(f"Visualization saved: station_density_weights.png")
+    print("Visualization saved: station_density_weights.png")
 
 
 if __name__ == "__main__":
