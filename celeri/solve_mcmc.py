@@ -309,7 +309,7 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
         scale = 1e6
         B = A / scale
         u, s, vh = linalg.svd(B, full_matrices=False)
-        raw = pm.Normal("rotation_raw", sigma=20, dims="rotation_param")
+        raw = pm.StudentT("rotation_raw", sigma=20, nu=4, dims="rotation_param")
 
         # scale = 1 / np.sqrt((operators.rotation_to_velocities**2).mean())
         rotation = pm.Deterministic(
