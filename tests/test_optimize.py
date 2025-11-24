@@ -134,7 +134,7 @@ def test_minimize(model):
 @pytest.mark.slow  # Mark as slow since it may take time
 def test_minimize_coupling():
     """Test the minimize function with coupling [-10, 1]"""
-    path = Path("tests/test_japan_config.json")
+    path = Path("tests/configs/test_japan_config.json")
     config = Config.from_file(path)
 
     # Disable all coupling constraints
