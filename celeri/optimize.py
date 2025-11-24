@@ -878,6 +878,8 @@ def build_cvxpy_problem(
             objective_val = cp.norm1(C_hat @ params_raw - d)
         case "norm2":
             objective_val = objective_norm2
+        case "huber":
+            objective_val = cp.sum(cp.huber(C_hat @ params_raw - d, M=5))
         case _:
             raise ValueError(f"Unknown objective type: {objective}")
 

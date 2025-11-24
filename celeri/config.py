@@ -15,6 +15,7 @@ Sqp2Objective = Literal[
     "svd_sum_of_squares",
     "norm2",
     "norm1",
+    "huber",
 ]
 
 
