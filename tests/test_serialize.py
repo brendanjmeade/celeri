@@ -68,7 +68,7 @@ def test_mesh_serialization_error_handling(temp_dir):
     "config_file",
     [
         "./tests/configs/test_japan_config.json",
-        "./tests/configs/test_western_north_america_config.json",
+        "./tests/configs/test_wna_config.json",
     ],
 )
 def test_model_serialization(config_file, temp_dir):
