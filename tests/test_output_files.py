@@ -17,7 +17,7 @@ test_logger = logger.bind(name="test_output_files")
 @pytest.mark.parametrize(
     "config_file",
     [
-        "../data/config/wna_config.json",
+        "data/config/wna_config.json",
     ],
 )
 def test_celeri_solve_creates_output_files(config_file):
