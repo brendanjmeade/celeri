@@ -229,9 +229,7 @@ def test_estimation_serialization(config_file, temp_dir):
     model = celeri.build_model(config)
 
     # Generate an estimation object by solving the model
-    original_estimation = celeri.assemble_and_solve_dense(
-        model, eigen=True, tde=True
-    )
+    original_estimation = celeri.assemble_and_solve_dense(model, eigen=True, tde=True)
 
     # Test to_disk method
     output_dir = Path(temp_dir) / "estimation_output"

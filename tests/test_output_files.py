@@ -1,9 +1,10 @@
-from pathlib import Path
-import subprocess
-import h5py
-import pytest
 import json
+import subprocess
+from pathlib import Path
+
+import h5py
 import pandas as pd
+import pytest
 
 from celeri.celeri_util import get_newest_run_folder
 
@@ -34,7 +35,7 @@ def test_celeri_solve_creates_output_files(config_file):
     with h5py.File(hdf5_file, "r") as hdf:
         assert "meshes" in hdf, "HDF5 file missing 'meshes' Group"
         assert isinstance(hdf["meshes"], h5py.Group), "'meshes' is not a Group"
-        
+
         assert "segments" in hdf, "HDF5 file missing 'segments' Group"
         assert isinstance(hdf["segments"], h5py.Group), "'segments' is not a Group"
 
@@ -42,7 +43,7 @@ def test_celeri_solve_creates_output_files(config_file):
         segment_dataset = hdf["segment"]
         assert isinstance(segment_dataset, h5py.Dataset), "'segment' is not a Dataset"
 
-        with open(config_file, "r") as f:
+        with open(config_file) as f:
             config = json.load(f)
         segment_file_path = config["segment_file_name"]
         segment_file = Path(config_file).parent / segment_file_path
@@ -55,12 +56,12 @@ def test_celeri_solve_creates_output_files(config_file):
             f"Shape mismatch: HDF5 'segment' first dimension: {h5_segment_shape[0]}, "
             f"CSV segment rows: {csv_shape[0]}"
         )
-        
+
         assert "station" in hdf, "HDF5 file missing 'station' Dataset"
         station_dataset = hdf["station"]
         assert isinstance(station_dataset, h5py.Dataset), "'station' is not a Dataset"
 
-        with open(config_file, "r") as f:
+        with open(config_file) as f:
             config = json.load(f)
         station_file_path = config["station_file_name"]
         station_file = Path(config_file).parent / station_file_path
@@ -73,9 +74,11 @@ def test_celeri_solve_creates_output_files(config_file):
             f"Shape mismatch: HDF5 'station' first dimension: {h5_station_shape[0]}, "
             f"CSV station rows: {csv_shape[0]}"
         )
-        
+
         assert "station_names" in hdf, "HDF5 file missing 'station_names' Dataset"
-        assert isinstance(hdf["station_names"], h5py.Dataset), "'station_names' is not a Dataset"
+        assert isinstance(hdf["station_names"], h5py.Dataset), (
+            "'station_names' is not a Dataset"
+        )
 
     csv_files = [
         "model_station.csv",
@@ -83,7 +86,7 @@ def test_celeri_solve_creates_output_files(config_file):
         "model_block.csv",
         "model_mogi.csv",
     ]
-    
+
     for csv_file in csv_files:
         csv_path = run_dir / csv_file
         assert csv_path.exists(), f"CSV file not created: {csv_path}"

@@ -2,11 +2,21 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from celeri.mesh import MeshConfig
+
+Sqp2Objective = Literal[
+    "expanded_norm2",
+    "sum_of_squares",
+    "qr_sum_of_squares",
+    "svd_sum_of_squares",
+    "norm2",
+    "norm1",
+    "huber",
+]
 
 
 class Config(BaseModel):
@@ -66,6 +76,58 @@ class Config(BaseModel):
     station_data_weight_min: int = 1
     station_data_weight_steps: int = 1
 
+    segment_slip_rate_regularization: float = 1.0
+    """Weight for regularizing slip rates at all segments to be close to zero.
+
+    A value of zero indicates no regularization.
+    This is used in `solve_sqp2` to help stabilize the inversion.
+
+    We can interpret this as adding pseudo-observations of zero slip rate
+    at all segments. The weight represents the ratio of pseudo-observation variance
+    to observation variance. Higher values indicate we trust the
+    zero slip rate assumption more relative to the actual observations.
+
+    Reasonable values might be in the range of 0.01 to 10.
+    """
+
+    segment_slip_rate_bound_weight: float = 100.0
+    """Weight for enforcing slip rate bounds at segments.
+
+    This is used in `solve_sqp2` to enforce slip rate bounds softly.
+    """
+
+    segment_slip_rate_hard_bounds: bool = False
+    """Enforce hard slip rate bounds at segments.
+
+    This should be disabled when using soft slip rate bounds
+    via `segment_slip_rate_bound_sigma`.
+
+    The mcmc solver does not support hard bounds.
+    """
+
+    segment_slip_rate_regularization_sigma: float | None = 100
+    """Like `segment_slip_rate_regularization`, but for use in `solve_mcmc`.
+
+    The regularization is implemented as a Gaussian prior with this
+    standard deviation in mm/yr.
+    """
+
+    segment_slip_rate_bound_sigma: float = 1.0
+    """Standard deviation for slip rate bounds at segments in mm/yr.
+
+    This is used in `solve_mcmc` to implement soft slip rate bounds.
+
+    Hard slip rate bounds are implemented as a censored normal likelihood
+    with this standard deviation. Small values approach hard bounds,
+    while larger values allow more violation of the bounds.
+
+    We can interpret this as a measurment error of the slip rate bound
+    itself.
+    """
+
+    sqp2_objective: Sqp2Objective = "qr_sum_of_squares"
+    """Objective function to use in `solve_sqp2`."""
+
     global_elastic_cutoff_distance: int = 2000000
     global_elastic_cutoff_distance_flag: int = 0
 
@@ -103,7 +165,7 @@ class Config(BaseModel):
     iterative_coupling_bounds_max_iter: int | None = None
 
     # Parameters of mcmc
-    mcmc_tune: int | None = None
+    mcmc_tune: int | None = 1000
     mcmc_draws: int | None = None
 
     # Only in tsts/global_config.json?

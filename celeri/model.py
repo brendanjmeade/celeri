@@ -2,19 +2,18 @@ import copy
 from dataclasses import dataclass
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from loguru import logger
+from matplotlib import path
 from scipy.spatial.distance import cdist
 
 from celeri import celeri_closure
-from celeri.celeri_util import polygon_area, sph2cart
+from celeri.celeri_util import sph2cart
 from celeri.config import Config, get_config
 from celeri.constants import GEOID, RADIUS_EARTH
 from celeri.mesh import Mesh
-import matplotlib.pyplot as plt
-from matplotlib.patches import Polygon as MatplotlibPolygon
-from matplotlib import path
 
 
 @dataclass
@@ -743,9 +742,12 @@ def assign_block_labels(segment, station, block, mogi, sar):
     return closure, segment, station, block, mogi, sar
 
 
-def assign_mesh_segment_labels(model: Model, mesh_idx: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def assign_mesh_segment_labels(
+    model: Model, mesh_idx: int
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """For a mesh, finds the closest segment midpoint and assigns
     the east and west block labels from that segment.
+
     Returns:
         closest_segment_idx: indices of closest segments
         east_labels: block labels on eastern side
@@ -773,17 +775,13 @@ def assign_mesh_segment_labels(model: Model, mesh_idx: int) -> tuple[np.ndarray,
             ).T,
         ).argmin(axis=1)
     ]
-    
+
     # Add segment labels to elements
     closest_segment_idx = model.meshes[mesh_idx].closest_segment_idx
     assert closest_segment_idx is not None
 
-    east_labels = np.array(
-        model.segment.east_labels[closest_segment_idx]
-    )
-    west_labels = np.array(
-        model.segment.west_labels[closest_segment_idx]
-    )
+    east_labels = np.array(model.segment.east_labels[closest_segment_idx])
+    west_labels = np.array(model.segment.west_labels[closest_segment_idx])
 
     assert east_labels is not None and west_labels is not None
     return east_labels, west_labels, closest_segment_idx
