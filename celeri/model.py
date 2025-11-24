@@ -743,6 +743,52 @@ def assign_block_labels(segment, station, block, mogi, sar):
     return closure, segment, station, block, mogi, sar
 
 
+def assign_mesh_segment_labels(model: Model, mesh_idx: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """For a mesh, finds the closest segment midpoint and assigns
+    the east and west block labels from that segment.
+    Returns:
+        closest_segment_idx: indices of closest segments
+        east_labels: block labels on eastern side
+        west_labels: block labels on western side
+    """
+    # Find subset of segments that are replaced by this mesh
+    seg_replace_idx = np.where(
+        (model.segment.mesh_flag != 0) & (model.segment.mesh_file_index == mesh_idx)
+    )
+
+    # Find closest segment midpoint to each element centroid, using scipy.spatial.cdist
+    model.meshes[mesh_idx].closest_segment_idx = seg_replace_idx[0][
+        cdist(
+            np.array(
+                [
+                    model.meshes[mesh_idx].lon_centroid,
+                    model.meshes[mesh_idx].lat_centroid,
+                ]
+            ).T,
+            np.array(
+                [
+                    model.segment.mid_lon[seg_replace_idx[0]],
+                    model.segment.mid_lat[seg_replace_idx[0]],
+                ]
+            ).T,
+        ).argmin(axis=1)
+    ]
+    
+    # Add segment labels to elements
+    closest_segment_idx = model.meshes[mesh_idx].closest_segment_idx
+    assert closest_segment_idx is not None
+
+    east_labels = np.array(
+        model.segment.east_labels[closest_segment_idx]
+    )
+    west_labels = np.array(
+        model.segment.west_labels[closest_segment_idx]
+    )
+
+    assert east_labels is not None and west_labels is not None
+    return east_labels, west_labels, closest_segment_idx
+
+
 def station_row_keep(assembly):
     """Determines which station rows should be retained based on up velocities
     TODO: I do not understand this!!!

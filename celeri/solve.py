@@ -13,6 +13,7 @@ from typing import Any
 import cvxopt
 import numpy as np
 import pandas as pd
+from pandas.core.indexing import item_from_zerodim
 import scipy
 from loguru import logger
 from scipy import linalg
@@ -36,27 +37,41 @@ from celeri.output import dataclass_from_disk, dataclass_to_disk, write_output
 
 @dataclass(kw_only=True)
 class Estimation:
+    """A class to hold an estimation of the model parameters."""
+
+    # The data vector, containing the data and constraints.
     data_vector: np.ndarray
+    # The weighting vector, containing the weights for the data and constraints.
     weighting_vector: np.ndarray
+    # The full operator, containing the linear operator for the forward model.
     operator: np.ndarray
+    # The state vector, containing the model parameters.
     state_vector: np.ndarray
+    # The operators object, containing the operators for the forward model.
     operators: Operators
 
+    # The covariance matrix of the state vector.
     state_covariance_matrix: np.ndarray | None
+    # Trace of out-of-bounds values during optimization.
     n_out_of_bounds_trace: np.ndarray | None = None
+    # Trace from optimization.
     trace: Any | None = None
+    # MCMC trace from Bayesian inference.
     mcmc_trace: Any | None = None
 
     @property
     def model(self) -> Model:
+        """The model object."""
         return self.operators.model
 
     @property
     def index(self) -> Index:
+        """The index object for the operators."""
         return self.operators.index
 
     @cached_property
     def station(self) -> pd.DataFrame:
+        """An extension of the `model.station` dataframe, with additional columns for the estimated velocities returned by the model."""
         station = self.model.station.copy(deep=True)
         station["model_east_vel"] = self.east_vel
         station["model_north_vel"] = self.north_vel
@@ -78,6 +93,7 @@ class Estimation:
 
     @cached_property
     def segment(self) -> pd.DataFrame:
+        """An extension of the `model.segment` dataframe, with additional columns for the estimated slip rates returned by the model."""
         segment = self.model.segment.copy(deep=True)
         segment["model_strike_slip_rate"] = self.strike_slip_rates
         segment["model_dip_slip_rate"] = self.dip_slip_rates
@@ -99,6 +115,7 @@ class Estimation:
 
     @cached_property
     def block(self) -> pd.DataFrame:
+        """An extension of the `model.block` dataframe, with additional columns for the estimated Euler pole parameters returned by the model."""
         block = self.model.block.copy(deep=True)
         block["euler_lon"] = self.euler_lon
         block["euler_lon_err"] = self.euler_lon_err
@@ -110,6 +127,7 @@ class Estimation:
 
     @cached_property
     def mogi(self) -> pd.DataFrame:
+        """An extension of the `model.mogi` dataframe, with additional columns for the estimated mogi parameters returned by the model."""
         mogi = self.model.mogi.copy(deep=True)
         # TODO Why the different names?
         mogi["volume_change"] = self.mogi_volume_change_rates
@@ -119,6 +137,7 @@ class Estimation:
 
     @cached_property
     def mesh_estimate(self) -> pd.DataFrame | None:
+        """A dataframe containing the estimated slip rates and couplings for each mesh."""
         if self.operators.tde is None or self.operators.eigen is None:
             return None
         if self.tde_strike_slip_rates is None or self.tde_dip_slip_rates is None:
@@ -190,46 +209,57 @@ class Estimation:
 
     @cached_property
     def predictions(self) -> np.ndarray:
+        """The full forward model predictions vector."""
         return self.operator @ self.state_vector
 
     @property
     def vel(self) -> np.ndarray:
+        """The estimated velocities at the stations."""
         return self.predictions[0 : 2 * self.index.n_stations]
 
     @property
     def east_vel(self) -> np.ndarray:
+        """The estimated east velocities at the stations."""
         return self.vel[0::2]
 
     @property
     def north_vel(self) -> np.ndarray:
+        """The estimated north velocities at the stations."""
         return self.vel[1::2]
 
     @property
     def east_vel_residual(self) -> np.ndarray:
+        """The residual between the estimated and observed east velocities at the stations."""
         return self.east_vel - self.model.station.east_vel
 
     @property
     def north_vel_residual(self) -> np.ndarray:
+        """The residual between the estimated and observed north velocities at the stations."""
         return self.north_vel - self.model.station.north_vel
 
     @property
     def rotation_vector(self) -> np.ndarray:
+        """Returns an np.array of length 3 * n_blocks, containing (x,y,z) rotation vector components for each block."""
         return self.state_vector[0 : 3 * self.index.n_blocks]
 
     @property
     def rotation_vector_x(self) -> np.ndarray:
+        """The estimated x-component of the rotation vector."""
         return self.rotation_vector[0::3]
 
     @property
     def rotation_vector_y(self) -> np.ndarray:
+        """The estimated y-component of the rotation vector."""
         return self.rotation_vector[1::3]
 
     @property
     def rotation_vector_z(self) -> np.ndarray:
+        """The estimated z-component of the rotation vector."""
         return self.rotation_vector[2::3]
 
     @cached_property
     def slip_rate_sigma(self) -> np.ndarray | None:
+        """The standard deviation of the estimated strike, dip, and tensile slip rates for each segment; propagated from `self.state_covariance_matrix`. Shape: (3 * n_segments,)."""
         if self.state_covariance_matrix is not None:
             return np.sqrt(
                 np.diag(
@@ -244,24 +274,28 @@ class Estimation:
 
     @property
     def strike_slip_rate_sigma(self) -> np.ndarray | None:
+        """The sigma of the strike slip rates."""
         if self.slip_rate_sigma is not None:
             return self.slip_rate_sigma[0::3]
         return None
 
     @property
     def dip_slip_rate_sigma(self) -> np.ndarray | None:
+        """The sigma of the dip slip rates."""
         if self.slip_rate_sigma is not None:
             return self.slip_rate_sigma[1::3]
         return None
 
     @property
     def tensile_slip_rate_sigma(self) -> np.ndarray | None:
+        """The sigma of the tensile slip rates."""
         if self.slip_rate_sigma is not None:
             return self.slip_rate_sigma[2::3]
         return None
 
     @cached_property
     def tde_rates(self) -> dict[int, np.ndarray] | None:
+        """Dictionary mapping mesh indices to TDE slip rate arrays."""
         index = self.index
         if index.tde is None:
             return None
@@ -290,34 +324,41 @@ class Estimation:
 
     @property
     def tde_strike_slip_rates(self) -> dict[int, np.ndarray] | None:
+        """Dictionary mapping mesh indices to TDE strike slip rate arrays."""
         if (rates := self.tde_rates) is None:
             return None
         return {key: val[0::2] for key, val in rates.items()}
 
     @property
     def tde_dip_slip_rates(self) -> dict[int, np.ndarray] | None:
+        """Dictionary mapping mesh indices to TDE dip slip rate arrays."""
         if (rates := self.tde_rates) is None:
             return None
         return {key: val[1::2] for key, val in rates.items()}
 
     @property
     def slip_rates(self) -> np.ndarray:
+        """The estimated slip rates (strike, dip, tensile) for each segment."""
         return self.operators.rotation_to_slip_rate @ self.rotation_vector
 
     @property
     def strike_slip_rates(self) -> np.ndarray:
+        """The estimated strike slip rates for each segment."""
         return self.slip_rates[0::3]
 
     @property
     def dip_slip_rates(self) -> np.ndarray:
+        """The estimated dip slip rates for each segment."""
         return self.slip_rates[1::3]
 
     @property
     def tensile_slip_rates(self) -> np.ndarray:
+        """The estimated tensile slip rates for each segment."""
         return self.slip_rates[2::3]
 
     @property
     def block_strain_rates(self) -> np.ndarray:
+        """The estimated block strain rates."""
         # TODO(Adrian) verify with eigen
         return self.state_vector[
             self.index.start_block_strain_col : self.index.end_block_strain_col
@@ -325,11 +366,13 @@ class Estimation:
 
     @property
     def mogi_volume_change_rates(self) -> np.ndarray:
+        """The estimated Mogi volume change rates."""
         # TODO(Adrian) verify with eigen
         return self.state_vector[self.index.start_mogi_col : self.index.end_mogi_col]
 
     @property
     def vel_rotation(self) -> np.ndarray:
+        """Returns an np.array of shape (n_stations,), containing the velocity components (unstacked) for each station."""
         return (
             self.operators.rotation_to_velocities[self.index.station_row_keep_index, :]
             @ self.rotation_vector
@@ -337,14 +380,17 @@ class Estimation:
 
     @property
     def east_vel_rotation(self) -> np.ndarray:
+        """Returns an np.array of shape (n_stations,), containing the east velocity components for each station."""
         return self.vel_rotation[0::2]
 
     @property
     def north_vel_rotation(self) -> np.ndarray:
+        """Returns an np.array of shape (n_stations,), containing the north velocity components for each station."""
         return self.vel_rotation[1::2]
 
     @cached_property
     def vel_elastic_segment(self) -> np.ndarray:
+        """Elastic velocities on the segments from Okada."""
         return (
             self.operators.rotation_to_slip_rate_to_okada_to_velocities[
                 self.index.station_row_keep_index, :
@@ -354,14 +400,17 @@ class Estimation:
 
     @property
     def east_vel_elastic_segment(self) -> np.ndarray:
+        """East component of elastic velocities on the segments from Okada."""
         return self.vel_elastic_segment[0::2]
 
     @property
     def north_vel_elastic_segment(self) -> np.ndarray:
+        """North component of elastic velocities on the segments from Okada."""
         return self.vel_elastic_segment[1::2]
 
     @cached_property
     def vel_block_strain_rate(self) -> np.ndarray:
+        """Velocities from block strain rates."""
         return (
             self.operators.block_strain_rate_to_velocities[
                 self.index.station_row_keep_index, :
@@ -371,14 +420,17 @@ class Estimation:
 
     @property
     def east_vel_block_strain_rate(self) -> np.ndarray:
+        """East component of velocities from block strain rates."""
         return self.vel_block_strain_rate[0::2]
 
     @property
     def north_vel_block_strain_rate(self) -> np.ndarray:
+        """North component of velocities from block strain rates."""
         return self.vel_block_strain_rate[1::2]
 
     @cached_property
     def euler(self) -> np.ndarray:
+        """The estimated euler poles of rotation for each block. Shape: (3, n_blocks)."""
         lon, lat, rate = rotation_vectors_to_euler_poles(
             self.rotation_vector_x, self.rotation_vector_y, self.rotation_vector_z
         )
@@ -386,18 +438,22 @@ class Estimation:
 
     @property
     def euler_lon(self) -> np.ndarray:
+        """The estimated Euler pole longitude for each block."""
         return self.euler[0]
 
     @property
     def euler_lat(self) -> np.ndarray:
+        """The estimated Euler pole latitude for each block."""
         return self.euler[1]
 
     @property
     def euler_rate(self) -> np.ndarray:
+        """The estimated Euler pole rotation rate for each block."""
         return self.euler[2]
 
     @cached_property
     def euler_err(self) -> np.ndarray:
+        """The estimated Euler pole errors (lon, lat, rate) for each block."""
         # TODO
         omega_cov = np.zeros(
             (3 * len(self.rotation_vector_x), 3 * len(self.rotation_vector_x))
@@ -412,18 +468,22 @@ class Estimation:
 
     @property
     def euler_lon_err(self) -> np.ndarray:
+        """The estimated Euler pole longitude error for each block."""
         return self.euler_err[0]
 
     @property
     def euler_lat_err(self) -> np.ndarray:
+        """The estimated Euler pole latitude error for each block."""
         return self.euler_err[1]
 
     @property
     def euler_rate_err(self) -> np.ndarray:
+        """The estimated Euler pole rotation rate error for each block."""
         return self.euler_err[2]
 
     @cached_property
     def vel_mogi(self) -> np.ndarray:
+        """Velocities from Mogi sources."""
         return (
             self.operators.mogi_to_velocities[self.index.station_row_keep_index, :]
             @ self.mogi_volume_change_rates
@@ -431,14 +491,17 @@ class Estimation:
 
     @property
     def east_vel_mogi(self) -> np.ndarray:
+        """East component of velocities from Mogi sources."""
         return self.vel_mogi[0::2]
 
     @property
     def north_vel_mogi(self) -> np.ndarray:
+        """North component of velocities from Mogi sources."""
         return self.vel_mogi[1::2]
 
     @cached_property
     def vel_tde(self) -> np.ndarray | None:
+        """Velocities from TDE (triangular dislocation elements)."""
         index = self.index
 
         if index.tde is None:
@@ -449,15 +512,15 @@ class Estimation:
         vel_tde = np.zeros(2 * self.index.n_stations)
 
         if index.eigen is None:
-            for i in range(len(self.operators.tde.tde_to_velocities)):
+            for i, item in self.operators.tde.tde_to_velocities.items():
                 tde_keep_row_index = get_keep_index_12(
-                    self.operators.tde.tde_to_velocities[i].shape[0]
+                    item.shape[0]
                 )
                 tde_keep_col_index = get_keep_index_12(
-                    self.operators.tde.tde_to_velocities[i].shape[1]
+                    item.shape[1]
                 )
                 vel_tde += (
-                    self.operators.tde.tde_to_velocities[i][tde_keep_row_index, :][
+                    item[tde_keep_row_index, :][
                         :, tde_keep_col_index
                     ]
                     @ self.state_vector[
@@ -478,46 +541,55 @@ class Estimation:
 
     @property
     def east_vel_tde(self) -> np.ndarray | None:
+        """East component of velocities from TDE."""
         if (vel := self.vel_tde) is None:
             return None
         return vel[0::2]
 
     @property
     def north_vel_tde(self) -> np.ndarray | None:
+        """North component of velocities from TDE."""
         if (vel := self.vel_tde) is None:
             return None
         return vel[1::2]
 
     @property
     def tde_kinematic_smooth(self) -> dict[int, np.ndarray]:
+        """Dictionary mapping mesh indices to smoothed kinematic slip rate arrays."""
         return self.operators.kinematic_slip_rate(
             self.state_vector, mesh_idx=None, smooth=True
         )
 
     @property
     def tde_kinematic(self) -> dict[int, np.ndarray]:
+        """Dictionary mapping mesh indices to kinematic slip rate arrays."""
         return self.operators.kinematic_slip_rate(
             self.state_vector, mesh_idx=None, smooth=False
         )
 
     @property
     def tde_strike_slip_rates_kinematic(self) -> dict[int, np.ndarray]:
+        """Dictionary mapping mesh indices to kinematic strike slip rate arrays."""
         return {key: val[0::2] for key, val in self.tde_kinematic.items()}
 
     @property
     def tde_strike_slip_rates_kinematic_smooth(self) -> dict[int, np.ndarray]:
+        """Dictionary mapping mesh indices to smoothed kinematic strike slip rate arrays."""
         return {key: val[0::2] for key, val in self.tde_kinematic_smooth.items()}
 
     @property
     def tde_dip_slip_rates_kinematic(self) -> dict[int, np.ndarray]:
+        """Dictionary mapping mesh indices to kinematic dip slip rate arrays."""
         return {key: val[1::2] for key, val in self.tde_kinematic.items()}
 
     @property
     def tde_dip_slip_rates_kinematic_smooth(self) -> dict[int, np.ndarray]:
+        """Dictionary mapping mesh indices to smoothed kinematic dip slip rate arrays."""
         return {key: val[1::2] for key, val in self.tde_kinematic_smooth.items()}
 
     @property
     def tde_strike_slip_rates_coupling(self) -> dict[int, np.ndarray] | None:
+        """Dictionary mapping mesh indices to strike slip coupling ratios."""
         kinematic = self.tde_strike_slip_rates_kinematic
         elastic = self.tde_strike_slip_rates
         if elastic is None:
@@ -529,6 +601,7 @@ class Estimation:
 
     @property
     def tde_strike_slip_rates_coupling_smooth(self) -> dict[int, np.ndarray] | None:
+        """Dictionary mapping mesh indices to smoothed strike slip coupling ratios."""
         kinematic = self.tde_strike_slip_rates_kinematic_smooth
         elastic = self.tde_strike_slip_rates
         if elastic is None:
@@ -540,6 +613,7 @@ class Estimation:
 
     @property
     def tde_dip_slip_rates_coupling(self) -> dict[int, np.ndarray] | None:
+        """Dictionary mapping mesh indices to dip slip coupling ratios."""
         kinematic = self.tde_dip_slip_rates_kinematic
         elastic = self.tde_dip_slip_rates
         if elastic is None:
@@ -551,6 +625,7 @@ class Estimation:
 
     @property
     def tde_dip_slip_rates_coupling_smooth(self) -> dict[int, np.ndarray] | None:
+        """Dictionary mapping mesh indices to smoothed dip slip coupling ratios."""
         kinematic = self.tde_dip_slip_rates_kinematic_smooth
         elastic = self.tde_dip_slip_rates
         if elastic is None:
@@ -562,6 +637,7 @@ class Estimation:
 
     @property
     def eigenvalues(self) -> np.ndarray | None:
+        """The eigenvalues from the eigen decomposition (if used)."""
         if self.index.eigen is None:
             return None
         return self.state_vector[
@@ -580,6 +656,7 @@ class Estimation:
         return replace(self, state_vector=state_vector)
 
     def to_disk(self, output_dir: str | Path) -> None:
+        """Save the estimation to disk."""
         output_dir = Path(output_dir)
 
         self.operators.to_disk(output_dir / "operators")
@@ -591,6 +668,7 @@ class Estimation:
 
     @classmethod
     def from_disk(cls, output_dir: str | Path) -> Estimation:
+        """Class method to load the estimation from disk."""
         output_dir = Path(output_dir)
 
         operators = Operators.from_disk(output_dir / "operators")
@@ -657,7 +735,7 @@ def assemble_and_solve_dense(
     eigen: bool = False,
     tde: bool = True,
     invert: bool = False,
-) -> tuple[Operators, Estimation]:
+) -> Estimation:
     operators = build_operators(model, eigen=eigen, tde=tde)
 
     data_vector = operators.data_vector
@@ -679,7 +757,7 @@ def assemble_and_solve_dense(
 
     estimation = build_estimation(model, operators, state_vector)
     estimation.state_covariance_matrix = linalg.inv(inv_state_covariance_matrix)
-    return operators, estimation
+    return estimation
 
 
 def lsqlin_qp(
@@ -868,7 +946,7 @@ def _build_and_solve(name: str, model: Model, *, tde: bool, eigen: bool):
     # Direct solve dense linear system
     logger.info("Start: Dense assemble and solve")
     start_solve_time = timeit.default_timer()
-    index, estimation = assemble_and_solve_dense(model, tde=True, eigen=False)
+    estimation = assemble_and_solve_dense(model, tde=True, eigen=False)
     end_solve_time = timeit.default_timer()
     logger.success(
         f"Finish: Dense assemble and solve: {end_solve_time - start_solve_time:0.2f} seconds for solve"

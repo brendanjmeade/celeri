@@ -151,7 +151,7 @@ def test_model_round_trip_serialization(temp_dir):
     )
 
     # Test if model can be used in calculations
-    ops, est = celeri.assemble_and_solve_dense(deserialized_model, eigen=True, tde=True)
+    est = celeri.assemble_and_solve_dense(deserialized_model, eigen=True, tde=True)
     # If we get here without errors, the deserialized model works correctly
     assert est.tde_rates is not None
 
@@ -229,7 +229,7 @@ def test_estimation_serialization(config_file, temp_dir):
     model = celeri.build_model(config)
 
     # Generate an estimation object by solving the model
-    operators, original_estimation = celeri.assemble_and_solve_dense(
+    original_estimation = celeri.assemble_and_solve_dense(
         model, eigen=True, tde=True
     )
 
