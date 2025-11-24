@@ -198,7 +198,9 @@ def write_output(
             station_no_name.columns, dtype=h5py.string_dtype()
         )
 
-    args_config_output_file_name = config.output_path / f"args_{config.file_name}"
+    args_config_output_file_name = (
+        config.output_path / f"config.json"
+    )
     with open(args_config_output_file_name, "w") as f:
         f.write(config.model_dump_json(indent=4))
 
