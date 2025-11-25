@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import pandas as pd
+from loguru import logger
 from scipy import linalg, spatial
 
 from celeri.constants import RADIUS_EARTH
@@ -23,9 +24,6 @@ DIRECTION_IDX = {
     "strike_slip": slice(None, None, 2),
     "dip_slip": slice(1, None, 2),
 }
-
-
-_LOW_RANK_APPROX = True
 
 
 def _constrain_field(values, lower: float | None, upper: float | None):
@@ -71,6 +69,85 @@ def _get_eigen_modes(
     ]
     # return _clean_operator(eigenvectors), _clean_operator(to_velocity)
     return eigenvectors, to_velocity
+
+
+def _station_vel_from_elastic_mesh(
+    model: Model,
+    mesh: int,
+    kind: Literal["strike_slip", "dip_slip"],
+    elastic,
+    operators: Operators,
+):
+    """Compute elastic velocity at stations from slip rates on a mesh.
+
+    Parameters
+    ----------
+    model : Model
+        The model instance
+    mesh : int
+        Index of the mesh
+    kind : Literal["strike_slip", "dip_slip"]
+        Type of slip
+    elastic : array
+        Elastic slip rates on the mesh
+    operators : Operators
+        Operators containing TDE and eigen information
+
+    Returns
+    -------
+    array
+        Elastic velocities at station locations (flattened, all 3 components)
+    """
+    import pytensor.tensor as pt
+
+    assert operators.tde is not None
+    idx = DIRECTION_IDX[kind]
+    method = model.config.mcmc_station_velocity_method
+
+    if method == "low_rank":
+        to_station = operators.tde.tde_to_velocities[mesh][:, idx.start : None : 3]
+        u, s, vh = linalg.svd(to_station, full_matrices=False)
+        threshold = 1e-5
+        mask = s > threshold
+        s = s[mask].astype("f")
+        u = u[:, mask].astype("f")
+        vh = vh[mask, :].astype("f")
+        elastic_velocity = _operator_mult(-u * s, _operator_mult(vh, elastic))
+        return elastic_velocity.astype("d")
+    elif method == "project_to_eigen":
+        assert operators.eigen is not None
+        eigenvectors, to_velocity = _get_eigen_modes(
+            model,
+            mesh,
+            kind,
+            operators,
+            out_idx=idx,
+        )
+        # TODO: This assumes that the eigenvectors are orthogonal
+        # with respect to the euclidean inner product. If we change
+        # the eigen decomposition to use a different inner product,
+        # we will need to change this projection.
+        coefs = _operator_mult(eigenvectors.T, elastic)
+        elastic_velocity = _operator_mult(to_velocity, coefs)
+        # We need to return a station velocity for all three components,
+        # not just north and east.
+        elastic_velocity = pt.concatenate(
+            [
+                elastic_velocity.reshape((len(model.station), 2)),
+                np.zeros((len(model.station), 1)),
+            ],
+            axis=-1,
+        ).ravel()
+        return elastic_velocity
+    elif method == "direct":
+        to_station = operators.tde.tde_to_velocities[mesh][:, idx.start : None : 3]
+        elastic_velocity = _operator_mult(-to_station, elastic)
+        return elastic_velocity
+    else:
+        raise ValueError(
+            f"Unknown mcmc_station_velocity_method: {method}. "
+            "Must be one of 'direct', 'low_rank', or 'project_to_eigen'."
+        )
 
 
 def _coupling_component(
@@ -119,18 +196,13 @@ def _coupling_component(
     elastic = kinematic * coupling_field
     pm.Deterministic(f"elastic_{mesh}_{kind}", elastic)
 
-    to_station = operators.tde.tde_to_velocities[mesh][:, idx.start : None : 3]
-
-    if _LOW_RANK_APPROX:
-        u, s, vh = linalg.svd(to_station, full_matrices=False)
-        threshold = 1e-6
-        mask = s > threshold
-        s = s[mask].astype("f")
-        u = u[:, mask].astype("f")
-        vh = vh[mask, :].astype("f")
-        elastic_velocity = _operator_mult(-u * s, _operator_mult(vh, elastic))
-    else:
-        elastic_velocity = _operator_mult(-to_station, elastic)
+    elastic_velocity = _station_vel_from_elastic_mesh(
+        model,
+        mesh,
+        kind,
+        elastic,
+        operators,
+    )
     return elastic_velocity.astype("d")
 
 
@@ -190,19 +262,13 @@ def _elastic_component(
             axis=-1,
         ).ravel()
     else:
-        to_station = operators.tde.tde_to_velocities[mesh][:, idx.start : None : 3]
-
-        if _LOW_RANK_APPROX:
-            u, s, vh = linalg.svd(to_station, full_matrices=False)
-            threshold = 1e-6
-            mask = s > threshold
-            s = s[mask].astype("f")
-            u = u[:, mask].astype("f")
-            vh = vh[mask, :].astype("f")
-            elastic_velocity = _operator_mult(-u * s, _operator_mult(vh, elastic))
-            elastic_velocity = elastic_velocity.astype("d")
-        else:
-            elastic_velocity = _operator_mult(-to_station, elastic)
+        elastic_velocity = _station_vel_from_elastic_mesh(
+            model,
+            mesh,
+            kind,
+            elastic,
+            operators,
+        )
 
     return elastic_velocity
 
@@ -261,7 +327,249 @@ def _mesh_component(
     return sum(rates)
 
 
+def _add_block_strain_rate_component(operators: Operators):
+    """Add block strain rate component to the PyMC model.
+
+    Returns the velocity contribution from block strain rates.
+    """
+    import pymc as pm
+
+    raw = pm.Normal("block_strain_rate_raw", sigma=100, dims="block_strain_rate_param")
+    if operators.block_strain_rate_to_velocities.size == 0:
+        scale = 1.0
+    else:
+        scale = 1 / np.sqrt((operators.block_strain_rate_to_velocities**2).mean())
+    block_strain_rate = pm.Deterministic(
+        "block_strain_rate", scale * raw, dims="block_strain_rate_param"
+    )
+
+    return _operator_mult(operators.block_strain_rate_to_velocities, block_strain_rate)
+
+
+def _add_rotation_component(operators: Operators):
+    """Add block rotation component to the PyMC model.
+
+    Returns rotation parameters and velocity contributions.
+    """
+    import pymc as pm
+
+    A = (
+        operators.rotation_to_velocities
+        - operators.rotation_to_slip_rate_to_okada_to_velocities
+    )
+    scale = 1e6
+    B = A / scale
+    u, s, vh = linalg.svd(B, full_matrices=False)
+    raw = pm.StudentT("rotation_raw", sigma=20, nu=4, dims="rotation_param")
+
+    rotation = pm.Deterministic(
+        "rotation", _operator_mult(vh.T, raw / scale), dims="rotation_param"
+    )
+
+    rotation_velocity = _operator_mult(operators.rotation_to_velocities, rotation)
+    rotation_okada_velocity = _operator_mult(
+        -operators.rotation_to_slip_rate_to_okada_to_velocities, rotation
+    )
+
+    return rotation, rotation_velocity, rotation_okada_velocity
+
+
+def _add_mogi_component(operators: Operators):
+    """Add Mogi source component to the PyMC model.
+
+    Returns the velocity contribution from Mogi sources.
+    """
+    import pymc as pm
+
+    raw = pm.Normal("mogi_raw", dims="mogi_param")
+    if operators.mogi_to_velocities.size == 0:
+        scale = 1.0
+    else:
+        scale = 1 / np.sqrt((operators.mogi_to_velocities**2).mean())
+    mogi = pm.Deterministic("mogi", scale * raw, dims="mogi_param")
+
+    return _operator_mult(operators.mogi_to_velocities, mogi)
+
+
+def _add_station_velocity_likelihood(model: Model, mu):
+    """Add station velocity likelihood to the PyMC model.
+
+    Uses area-weighted Student-t likelihood for station observations.
+    """
+    import pymc as pm
+
+    sigma = pm.HalfNormal("sigma", sigma=2)
+    data = np.array([model.station.east_vel, model.station.north_vel]).T
+
+    lh_dist = pm.StudentT.dist
+
+    def lh(value, weight, mu, sigma):
+        dist = lh_dist(nu=6, mu=mu, sigma=sigma)
+        return weight * pm.logp(dist, value)
+
+    def random(weight, mu, sigma, rng=None, size=None):
+        return lh_dist(nu=6, mu=mu, sigma=sigma, rng=rng, size=size)
+
+    if model.config.mcmc_station_weighting is None:
+        logger.info(f"Using unweighted station likelihood ({len(data)} stations)")
+        pm.StudentT(
+            "station_velocity",
+            mu=mu,
+            sigma=sigma,
+            observed=data,
+            dims=("station", "xy"),
+            nu=6,
+        )
+    elif model.config.mcmc_station_weighting == "voronoi":
+        effective_area = model.config.mcmc_station_effective_area
+
+        voroni = spatial.SphericalVoronoi(
+            model.station[["x", "y", "z"]].values, RADIUS_EARTH
+        )
+        areas = voroni.calculate_areas()
+
+        areas_clipped = np.minimum(effective_area, areas)
+        weight = areas_clipped / effective_area
+
+        # Log diagnostics about the weighting
+        effective_n = (weight.sum() ** 2) / (weight**2).sum()
+        logger.info("Station weighting diagnostics:")
+        logger.info(f"  Number of stations: {len(weight)}")
+        logger.info(
+            f"  Effective area threshold: {np.sqrt(effective_area) / 1000:.1f} km "
+            f"x {np.sqrt(effective_area) / 1000:.1f} km"
+        )
+        logger.info(f"  Weight range: [{weight.min():.3f}, {weight.max():.3f}]")
+        logger.info(
+            f"  Effective sample size: {effective_n:.1f} (vs {len(weight)} stations)"
+        )
+        logger.info(
+            "  Stations at full weight (area >= threshold): "
+            f"{(areas >= effective_area).sum()}"
+        )
+
+        pm.CustomDist(
+            "station_velocity",
+            weight[:, None],
+            mu,
+            sigma,
+            logp=lh,
+            random=random,
+            observed=data,
+            dims=("station", "xy"),
+        )
+    else:
+        raise ValueError(
+            f"Unknown mcmc_station_weighting: {model.config.mcmc_station_weighting}. "
+            "Must be None or 'voronoi'."
+        )
+
+
+def _add_segment_constraints(model: Model, operators: Operators, rotation):
+    """Add segment slip rate constraints to the PyMC model.
+
+    Includes regularization, observations, and bounds on slip rates.
+    """
+    import pymc as pm
+
+    segment_rates = _operator_mult(operators.rotation_to_slip_rate, rotation)
+    segment_rates = segment_rates.reshape((-1, 3))
+
+    # Regularization towards zero slip rate
+    gamma = model.config.segment_slip_rate_regularization_sigma
+    if gamma is not None:
+        for i, kind in enumerate(["ss", "ds", "ts"]):
+            pm.StudentT(
+                f"segment_slip_rate_regularization_{kind}",
+                mu=segment_rates[(model.segment[f"{kind}_rate_flag"] == 2).values, i],
+                sigma=gamma,
+                nu=5,
+                observed=np.zeros((model.segment[f"{kind}_rate_flag"] == 2).sum()),
+            )
+
+    pm.Deterministic("segment_slip_rate", segment_rates, dims=("segment", "ss_ds_ts"))
+
+    # Slip rate observations
+    for comp, flag_attr, rate_attr, sig_attr in [
+        ("strike_slip", "ss_rate_flag", "ss_rate", "ss_rate_sig"),
+        ("dip_slip", "ds_rate_flag", "ds_rate", "ds_rate_sig"),
+        ("tensile_slip", "ts_rate_flag", "ts_rate", "ts_rate_sig"),
+    ]:
+        flags = getattr(model.segment, flag_attr).values
+        if np.any(flags):
+            observed_rates = getattr(model.segment, rate_attr).values[flags == 1]
+            observed_sigs = getattr(model.segment, sig_attr).values[flags == 1]
+            pm.Normal(
+                f"segment_{comp}_velocity",
+                mu=segment_rates[
+                    flags == 1,
+                    ["strike_slip", "dip_slip", "tensile_slip"].index(comp),
+                ],
+                sigma=observed_sigs,
+                observed=observed_rates,
+            )
+
+    # Slip rate bounds (soft constraints)
+    for comp, bound_flag_attr, lower_attr, upper_attr in [
+        (
+            "strike_slip",
+            "ss_rate_bound_flag",
+            "ss_rate_bound_min",
+            "ss_rate_bound_max",
+        ),
+        (
+            "dip_slip",
+            "ds_rate_bound_flag",
+            "ds_rate_bound_min",
+            "ds_rate_bound_max",
+        ),
+        (
+            "tensile_slip",
+            "ts_rate_bound_flag",
+            "ts_rate_bound_min",
+            "ts_rate_bound_max",
+        ),
+    ]:
+        bound_flags = getattr(model.segment, bound_flag_attr).values
+        if np.any(bound_flags):
+            lower_bounds = getattr(model.segment, lower_attr).values[bound_flags == 1]
+            upper_bounds = getattr(model.segment, upper_attr).values[bound_flags == 1]
+            bound_sig = model.config.segment_slip_rate_bound_sigma
+            pm.Censored(
+                f"segment_{comp}_slip_rate_lower_bound",
+                dist=pm.Normal.dist(
+                    mu=segment_rates[
+                        bound_flags == 1,
+                        ["strike_slip", "dip_slip", "tensile_slip"].index(comp),
+                    ],
+                    sigma=bound_sig,
+                ),
+                upper=lower_bounds,
+                lower=None,
+                observed=lower_bounds,
+            )
+
+            pm.Censored(
+                f"segment_{comp}_slip_rate_upper_bound",
+                dist=pm.Normal.dist(
+                    mu=segment_rates[
+                        bound_flags == 1,
+                        ["strike_slip", "dip_slip", "tensile_slip"].index(comp),
+                    ],
+                    sigma=bound_sig,
+                ),
+                upper=None,
+                lower=upper_bounds,
+                observed=upper_bounds,
+            )
+
+
 def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
+    """Build the complete PyMC model for MCMC inference.
+
+    Combines all velocity components (block strain, rotation, Mogi, elastic)
+    and adds likelihoods for station and segment observations.
+    """
     assert operators.eigen is not None
     assert operators.tde is not None
 
@@ -284,59 +592,20 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
     }
 
     with pm.Model(coords=coords) as pymc_model:
-        # block strain rate
-        raw = pm.Normal(
-            "block_strain_rate_raw", sigma=100, dims="block_strain_rate_param"
+        # Add velocity components
+        block_strain_rate_velocity = _add_block_strain_rate_component(operators)
+        rotation, rotation_velocity, rotation_okada_velocity = _add_rotation_component(
+            operators
         )
-        if operators.block_strain_rate_to_velocities.size == 0:
-            scale = 1.0
-        else:
-            scale = 1 / np.sqrt((operators.block_strain_rate_to_velocities**2).mean())
-        block_strain_rate = pm.Deterministic(
-            "block_strain_rate", scale * raw, dims="block_strain_rate_param"
-        )
+        mogi_velocity = _add_mogi_component(operators)
 
-        block_strain_rate_velocity = _operator_mult(
-            operators.block_strain_rate_to_velocities,
-            block_strain_rate,
-        )
-
-        # block rotation
-        A = (
-            operators.rotation_to_velocities
-            - operators.rotation_to_slip_rate_to_okada_to_velocities
-        )
-        scale = 1e6
-        B = A / scale
-        u, s, vh = linalg.svd(B, full_matrices=False)
-        raw = pm.StudentT("rotation_raw", sigma=20, nu=4, dims="rotation_param")
-
-        # scale = 1 / np.sqrt((operators.rotation_to_velocities**2).mean())
-        rotation = pm.Deterministic(
-            "rotation", vh.T @ (raw / scale), dims="rotation_param"
-        )
-
-        rotation_velocity = _operator_mult(operators.rotation_to_velocities, rotation)
-        rotation_okada_velocity = _operator_mult(
-            -operators.rotation_to_slip_rate_to_okada_to_velocities, rotation
-        )
-
-        # mogi
-        raw = pm.Normal("mogi_raw", dims="mogi_param")
-        if operators.mogi_to_velocities.size == 0:
-            scale = 1.0
-        else:
-            scale = 1 / np.sqrt((operators.mogi_to_velocities**2).mean())
-        mogi = pm.Deterministic("mogi", scale * raw, dims="mogi_param")
-
-        mogi_velocity = _operator_mult(operators.mogi_to_velocities, mogi)
-
+        # Add elastic velocity from meshes
         elastic_velocities = []
         for key, _ in enumerate(model.meshes):
             elastic_velocities.append(_mesh_component(model, key, rotation, operators))
-
         elastic_velocity = sum(elastic_velocities)
 
+        # Combine all velocity components
         mu = (
             block_strain_rate_velocity
             + rotation_velocity
@@ -344,160 +613,12 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
             + mogi_velocity
             + elastic_velocity
         )
-
         mu = mu.reshape((len(model.station), 3))[:, :2]
-
         pm.Deterministic("mu", mu, dims=("station", "xy"))
 
-        sigma = pm.HalfNormal("sigma", sigma=2)
-        data = np.array([model.station.east_vel, model.station.north_vel]).T
-
-        lh_dist = pm.StudentT.dist
-
-        def lh(value, weight, mu, sigma):
-            dist = lh_dist(nu=6, mu=mu, sigma=sigma)
-            return weight * pm.logp(dist, value)
-
-        def random(weight, mu, sigma, rng=None, size=None):
-            return lh_dist(nu=6, mu=mu, sigma=sigma, rng=rng, size=size)
-
-        EFFECTIVE_AREA = 50000**2
-
-        voroni = spatial.SphericalVoronoi(
-            model.station[["x", "y", "z"]].values, RADIUS_EARTH
-        )
-        areas = voroni.calculate_areas()
-        areas = np.minimum(EFFECTIVE_AREA, areas)
-        weight = areas / EFFECTIVE_AREA
-
-        pm.CustomDist(
-            "station_velocity",
-            weight[:, None],
-            mu,
-            sigma,
-            logp=lh,
-            random=random,
-            observed=data,
-            dims=("station", "xy"),
-        )
-
-        """
-        pm.StudentT(
-            "station_velocity",
-            mu=mu,
-            sigma=sigma,
-            observed=data,
-            dims=("station", "xy"),
-            nu=5,
-        )
-        """
-
-        segment_rates = _operator_mult(operators.rotation_to_slip_rate, rotation)
-        segment_rates = segment_rates.reshape((-1, 3))
-        gamma = model.config.segment_slip_rate_regularization_sigma
-        if gamma is not None:
-            for i, kind in enumerate(["ss", "ds", "ts"]):
-                pm.StudentT(
-                    f"segment_slip_rate_regularization_{kind}",
-                    mu=segment_rates[
-                        (model.segment[f"{kind}_rate_flag"] == 2).values, i
-                    ],
-                    sigma=gamma,
-                    nu=5,
-                    observed=np.zeros((model.segment[f"{kind}_rate_flag"] == 2).sum()),
-                )
-
-        pm.Deterministic(
-            "segment_slip_rate", segment_rates, dims=("segment", "ss_ds_ts")
-        )
-
-        # model.segment.ss_rate_flag (and ds_rate_flag, ts_rate_flag) indicates
-        # if we have a measurement for that compontent. The observed value is
-        # stored in model.segment.ss_rate (and ds_rate, ts_rate). The standard
-        # deviation of the measurement error is stored in
-        # model.segment.ss_rate_sig (and ds_rate_sig, ts_rate_sig). We only want
-        # to add likelihood terms for the components that have measurements.
-        for comp, flag_attr, rate_attr, sig_attr in [
-            ("strike_slip", "ss_rate_flag", "ss_rate", "ss_rate_sig"),
-            ("dip_slip", "ds_rate_flag", "ds_rate", "ds_rate_sig"),
-            ("tensile_slip", "ts_rate_flag", "ts_rate", "ts_rate_sig"),
-        ]:
-            flags = getattr(model.segment, flag_attr).values
-            if np.any(flags):
-                observed_rates = getattr(model.segment, rate_attr).values[flags == 1]
-                observed_sigs = getattr(model.segment, sig_attr).values[flags == 1]
-                pm.Normal(
-                    f"segment_{comp}_velocity",
-                    mu=segment_rates[
-                        flags == 1,
-                        ["strike_slip", "dip_slip", "tensile_slip"].index(comp),
-                    ],
-                    sigma=observed_sigs,
-                    observed=observed_rates,
-                )
-
-        # model.segment.ss_rate_bound_flag (and ds_rate_bound_flag, ts_rate_bound_flag)
-        # indicates if we have an interval bound for that component. The lower and upper
-        # bounds are stored in model.segment.ss_rate_lower_min and
-        # model.segment.ss_rate_upper_max. We use two pm.Bound(pm.Normal) likelihoods
-        # to implement the interval constraint. The standard deviation of the bound
-        # is set to model.config.segment_slip_rate_bound_sig.
-        for comp, bound_flag_attr, lower_attr, upper_attr in [
-            (
-                "strike_slip",
-                "ss_rate_bound_flag",
-                "ss_rate_bound_min",
-                "ss_rate_bound_max",
-            ),
-            (
-                "dip_slip",
-                "ds_rate_bound_flag",
-                "ds_rate_bound_min",
-                "ds_rate_bound_max",
-            ),
-            (
-                "tensile_slip",
-                "ts_rate_bound_flag",
-                "ts_rate_bound_min",
-                "ts_rate_bound_max",
-            ),
-        ]:
-            bound_flags = getattr(model.segment, bound_flag_attr).values
-            if np.any(bound_flags):
-                lower_bounds = getattr(model.segment, lower_attr).values[
-                    bound_flags == 1
-                ]
-                upper_bounds = getattr(model.segment, upper_attr).values[
-                    bound_flags == 1
-                ]
-                bound_sig = model.config.segment_slip_rate_bound_sigma
-                pm.Censored(
-                    f"segment_{comp}_slip_rate_lower_bound",
-                    dist=pm.Normal.dist(
-                        mu=segment_rates[
-                            bound_flags == 1,
-                            ["strike_slip", "dip_slip", "tensile_slip"].index(comp),
-                        ],
-                        sigma=bound_sig,
-                    ),
-                    upper=lower_bounds,
-                    lower=None,
-                    observed=lower_bounds,
-                )
-
-                pm.Censored(
-                    f"segment_{comp}_slip_rate_upper_bound",
-                    dist=pm.Normal.dist(
-                        mu=segment_rates[
-                            bound_flags == 1,
-                            ["strike_slip", "dip_slip", "tensile_slip"].index(comp),
-                        ],
-                        sigma=bound_sig,
-                    ),
-                    upper=None,
-                    lower=upper_bounds,
-                    observed=upper_bounds,
-                )
+        # Add likelihoods and constraints
+        _add_station_velocity_likelihood(model, mu)
+        _add_segment_constraints(model, operators, rotation)
 
     return pymc_model
 
@@ -539,13 +660,13 @@ def solve_mcmc(
 
     compiled = nutpie.compile_pymc_model(
         pymc_model,
-        backend="numba",
+        backend=model.config.mcmc_backend,
     )
     kwargs = {
         "low_rank_modified_mass_matrix": True,
         "mass_matrix_eigval_cutoff": 1.5,
         "mass_matrix_gamma": 1e-6,
-        "chains": 1,
+        "chains": model.config.mcmc_chains,
         "draws": model.config.mcmc_draws,
         "tune": model.config.mcmc_tune,
         "store_unconstrained": True,
