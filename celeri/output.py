@@ -61,7 +61,6 @@ def write_output(
                 mesh_data[field_name] = mesh_config[field_name]
 
             for key, value in mesh_data.items():
-                print(key, value)
                 if value is None:
                     continue
                 if isinstance(value, str):
