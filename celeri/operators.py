@@ -4,7 +4,6 @@ from functools import cached_property
 from pathlib import Path
 from typing import Any, overload
 
-import addict
 import h5py
 import numpy as np
 import pandas as pd
@@ -33,7 +32,6 @@ from celeri.mesh import ByMesh, Mesh, MeshConfig
 from celeri.model import (
     Model,
     assign_mesh_segment_labels,
-    merge_geodetic_data,
 )
 from celeri.output import dataclass_from_disk, dataclass_to_disk
 from celeri.spatial import (
@@ -309,12 +307,198 @@ class Index:
         return dataclass_from_disk(cls, path, extra={"tde": tde, "eigen": eigen})
 
 
-# TODO: Figure out what the types should be
-@dataclass
+@dataclass(frozen=True)
 class Assembly:
-    data: Any
-    sigma: Any
-    index: Any
+    """Assembly of geodetic data, uncertainties, and indices.
+    All data is computed from a Model object on initialization.
+    """
+    model: Model
+    data: Any = field(init=False)
+    sigma: Any = field(init=False)
+    index: Any = field(init=False)
+    
+    def __post_init__(self):
+        """Compute all data, sigma, and index values from the model."""
+        data = dict()
+        sigma = dict()
+        index = dict()
+        
+        # Merge geodetic data from station and SAR
+        station = self.model.station
+        sar = self.model.sar
+        
+        data["n_stations"] = len(station)
+        data["n_sar"] = len(sar)
+        data["east_vel"] = station.east_vel.to_numpy()
+        sigma["east_sig"] = station.east_sig.to_numpy()
+        data["north_vel"] = station.north_vel.to_numpy()
+        sigma["north_sig"] = station.north_sig.to_numpy()
+        data["up_vel"] = station.up_vel.to_numpy()
+        sigma["up_sig"] = station.up_sig.to_numpy()
+        data["sar_line_of_sight_change_val"] = sar.line_of_sight_change_val.to_numpy()
+        sigma["sar_line_of_sight_change_sig"] = sar.line_of_sight_change_sig.to_numpy()
+        data["lon"] = np.concatenate((station.lon.to_numpy(), sar.lon.to_numpy()))
+        data["lat"] = np.concatenate((station.lat.to_numpy(), sar.lat.to_numpy()))
+        data["depth"] = np.concatenate((station.depth.to_numpy(), sar.depth.to_numpy()))
+        data["x"] = np.concatenate((station.x.to_numpy(), sar.x.to_numpy()))
+        data["y"] = np.concatenate((station.y.to_numpy(), sar.y.to_numpy()))
+        data["z"] = np.concatenate((station.z.to_numpy(), sar.z.to_numpy()))
+        data["block_label"] = np.concatenate(
+            (station.block_label.to_numpy(), sar.block_label.to_numpy())
+        )
+        index["sar_coordinate_idx"] = np.arange(len(station), len(station) + len(sar))
+        
+        # Compute block motion constraints
+        block = self.model.block
+        block_constraint_partials = get_block_motion_constraint_partials(block)
+        index["block_constraints_idx"] = np.where(block.rotation_flag == 1)[0]
+        data["n_block_constraints"] = len(index["block_constraints_idx"])
+        data["block_constraints"] = np.zeros(block_constraint_partials.shape[0])
+        sigma["block_constraints"] = np.zeros(block_constraint_partials.shape[0])
+        if data["n_block_constraints"] > 0:
+            (
+                data["block_constraints"][0::3],
+                data["block_constraints"][1::3],
+                data["block_constraints"][2::3],
+            ) = sph2cart(
+                block.euler_lon[index["block_constraints_idx"]],
+                block.euler_lat[index["block_constraints_idx"]],
+                np.deg2rad(block.rotation_rate[index["block_constraints_idx"]]),
+            )
+            euler_pole_covariance_all = np.diag(
+                np.concatenate(
+                    (
+                        np.deg2rad(block.euler_lat_sig[index["block_constraints_idx"]]),
+                        np.deg2rad(block.euler_lon_sig[index["block_constraints_idx"]]),
+                        np.deg2rad(block.rotation_rate_sig[index["block_constraints_idx"]]),
+                    )
+                )
+            )
+            (
+                sigma["block_constraints"][0::3],
+                sigma["block_constraints"][1::3],
+                sigma["block_constraints"][2::3],
+            ) = euler_pole_covariance_to_rotation_vector_covariance(
+                data["block_constraints"][0::3],
+                data["block_constraints"][1::3],
+                data["block_constraints"][2::3],
+                euler_pole_covariance_all,
+            )
+        sigma["block_constraint_weight"] = self.model.config.block_constraint_weight
+        
+        # Compute slip rate constraints
+        segment = self.model.segment
+        n_total_slip_rate_contraints = (
+            np.sum(segment.ss_rate_flag.values)
+            + np.sum(segment.ds_rate_flag.values)
+            + np.sum(segment.ts_rate_flag.values)
+        )
+        if n_total_slip_rate_contraints > 0:
+            logger.info(f"Found {n_total_slip_rate_contraints} slip rate constraints")
+            for i in range(len(segment.lon1)):
+                if segment.ss_rate_flag[i] == 1:
+                    logger.info(
+                        "Strike-slip rate constraint on "
+                        + segment.name[i].strip()
+                        + ": rate = "
+                        + f"{segment.ss_rate[i]:.2f}"
+                        + " (mm/yr), 1-sigma uncertainty = +/-"
+                        + f"{segment.ss_rate_sig[i]:.2f}"
+                        + " (mm/yr)"
+                    )
+                if segment.ds_rate_flag[i] == 1:
+                    logger.info(
+                        "Dip-slip rate constraint on "
+                        + segment.name[i].strip()
+                        + ": rate = "
+                        + f"{segment.ds_rate[i]:.2f}"
+                        + " (mm/yr), 1-sigma uncertainty = +/-"
+                        + f"{segment.ds_rate_sig[i]:.2f}"
+                        + " (mm/yr)"
+                    )
+                if segment.ts_rate_flag[i] == 1:
+                    logger.info(
+                        "Tensile-slip rate constraint on "
+                        + segment.name[i].strip()
+                        + ": rate = "
+                        + f"{segment.ts_rate[i]:.2f}"
+                        + " (mm/yr), 1-sigma uncertainty = +/-"
+                        + f"{segment.ts_rate_sig[i]:.2f}"
+                        + " (mm/yr)"
+                    )
+        else:
+            logger.info("No slip rate constraints")
+        
+        slip_rate_constraint_flag = interleave3(
+            segment.ss_rate_flag, segment.ds_rate_flag, segment.ts_rate_flag
+        )
+        index["slip_rate_constraints"] = np.where(slip_rate_constraint_flag == 1)[0]
+        data["n_slip_rate_constraints"] = len(index["slip_rate_constraints"])
+        
+        slip_rate_constraints_all = interleave3(
+            segment.ss_rate, segment.ds_rate, segment.ts_rate
+        )
+        if data["n_slip_rate_constraints"] > 0:
+            data["slip_rate_constraints"] = slip_rate_constraints_all[
+                index["slip_rate_constraints"]
+            ]
+        else:
+            data["slip_rate_constraints"] = np.array([], dtype=slip_rate_constraints_all.dtype)
+        
+        slip_rate_constraints_sig_all = interleave3(
+            segment.ss_rate_sig, segment.ds_rate_sig, segment.ts_rate_sig
+        )
+        if data["n_slip_rate_constraints"] > 0:
+            sigma["slip_rate_constraints"] = slip_rate_constraints_sig_all[
+                index["slip_rate_constraints"]
+            ]
+        else:
+            sigma["slip_rate_constraints"] = np.array([], dtype=slip_rate_constraints_sig_all.dtype)
+        sigma["slip_rate_constraint_weight"] = self.model.config.slip_constraint_weight
+        
+        # Compute slip rake constraints (if rake_flag column exists)
+        if 'rake_flag' in segment.columns:
+            n_total_slip_rake_contraints = np.sum(segment.rake_flag.values)
+            if n_total_slip_rake_contraints > 0:
+                logger.info(f"Found {n_total_slip_rake_contraints} slip rake constraints")
+                for i in range(len(segment.lon1)):
+                    if segment.rake_flag[i] == 1:
+                        logger.info(
+                            "Rake constraint on "
+                            + segment.name[i].strip()
+                            + ": rake = "
+                            + f"{segment.rake[i]:.2f}"
+                            + ", constraint strike = "
+                            + f"{segment.rake_strike[i]:.2f}"
+                            + ", 1-sigma uncertainty = +/-"
+                            + f"{segment.rake_sig[i]:.2f}"
+                        )
+            else:
+                logger.info("No slip rake constraints")
+            
+            index["slip_rake_constraints"] = np.where(segment.rake_flag == 1)[0]
+            data["n_slip_rake_constraints"] = len(index["slip_rake_constraints"])
+            
+            rake_constraint_component_indices = get_2component_index(
+                index["slip_rake_constraints"]
+            )
+            data["n_total_slip_rake_contraints"] = len(rake_constraint_component_indices)
+            
+            data["slip_rake_constraints"] = np.zeros(data["n_total_slip_rake_contraints"])
+            sigma["slip_rake_constraints"] = segment.rake_sig
+            sigma["slip_rake_constraint_weight"] = self.model.config.slip_constraint_weight
+        else:
+            logger.info("No slip rake constraints (rake_flag column not found)")
+            index["slip_rake_constraints"] = np.array([], dtype=int)
+            data["n_slip_rake_constraints"] = 0
+            data["n_total_slip_rake_contraints"] = 0
+            data["slip_rake_constraints"] = np.array([], dtype=float)
+            sigma["slip_rake_constraints"] = np.array([], dtype=float)
+            sigma["slip_rake_constraint_weight"] = self.model.config.slip_constraint_weight
+        
+        object.__setattr__(self, 'data', data)
+        object.__setattr__(self, 'sigma', sigma)
+        object.__setattr__(self, 'index', index)
 
 
 # TODO(Adrian): Maybe it would be better to use only one of
@@ -495,7 +679,7 @@ class Operators:
             return _get_data_vector_no_meshes(self.model, self.assembly, self.index)
         if self.eigen is not None:
             return _get_data_vector_eigen(self.model, self.assembly, self.index)
-        return _get_data_vector(self.model, self.assembly, self.index)
+        return _get_data_vector(self.assembly, self.index)
 
     @property
     def weighting_vector(self) -> np.ndarray:
@@ -557,15 +741,15 @@ class Operators:
                     f"Smoothing matrix for mesh {mesh_idx} not found at {matrix_path}"
                 )
 
+        assembly = Assembly(model)
+        
         extra = {
             "tde": tde,
             "eigen": eigen,
             "index": index,
             "model": model,
             "smoothing_matrix": smoothing_matrix,
-            "assembly": Assembly(
-                data=addict.Dict(), sigma=addict.Dict(), index=addict.Dict()
-            ),
+            "assembly": assembly,
         }
 
         return dataclass_from_disk(cls, path, extra=extra)
@@ -665,11 +849,10 @@ class _OperatorBuilder:
 def build_operators(model: Model, *, eigen: bool = True, tde: bool = True) -> Operators:
     if eigen and not tde:
         raise ValueError("eigen operators require tde")
-    assembly = Assembly(data=addict.Dict(), sigma=addict.Dict(), index=addict.Dict())
+
+    assembly = Assembly(model)
     operators = _OperatorBuilder(model)
     operators.assembly = assembly
-
-    assembly = merge_geodetic_data(assembly, model.station, model.sar)
 
     # Get all elastic operators for segments and TDEs
     _store_elastic_operators(model, operators)
@@ -688,7 +871,7 @@ def build_operators(model: Model, *, eigen: bool = True, tde: bool = True) -> Op
 
     # Soft block motion constraints
     operators.block_motion_constraints = _store_block_motion_constraints(
-        model, assembly
+        model
     )
 
     # Soft slip rate constraints
@@ -1340,159 +1523,36 @@ def get_rotation_to_tri_slip_rate_partials(model: Model, mesh_idx: int) -> np.nd
     return tri_slip_rate_partials
 
 
-def _store_block_motion_constraints(model: Model, assembly: Assembly) -> np.ndarray:
-    """Applying a priori block motion constraints."""
-    # TODO This modifies the assembly object in place. Fix this.
-
+def _store_block_motion_constraints(model: Model) -> np.ndarray:
+    """Get block motion constraint partials."""
     block = model.block
     block_constraint_partials = get_block_motion_constraint_partials(block)
-    assembly.index.block_constraints_idx = np.where(block.rotation_flag == 1)[0]
-
-    assembly.data.n_block_constraints = len(assembly.index.block_constraints_idx)
-    assembly.data.block_constraints = np.zeros(block_constraint_partials.shape[0])
-    assembly.sigma.block_constraints = np.zeros(block_constraint_partials.shape[0])
-    if assembly.data.n_block_constraints > 0:
-        (
-            assembly.data.block_constraints[0::3],
-            assembly.data.block_constraints[1::3],
-            assembly.data.block_constraints[2::3],
-        ) = sph2cart(
-            block.euler_lon[assembly.index.block_constraints_idx],
-            block.euler_lat[assembly.index.block_constraints_idx],
-            np.deg2rad(block.rotation_rate[assembly.index.block_constraints_idx]),
-        )
-        euler_pole_covariance_all = np.diag(
-            np.concatenate(
-                (
-                    np.deg2rad(
-                        block.euler_lat_sig[assembly.index.block_constraints_idx]
-                    ),
-                    np.deg2rad(
-                        block.euler_lon_sig[assembly.index.block_constraints_idx]
-                    ),
-                    np.deg2rad(
-                        block.rotation_rate_sig[assembly.index.block_constraints_idx]
-                    ),
-                )
-            )
-        )
-        (
-            assembly.sigma.block_constraints[0::3],
-            assembly.sigma.block_constraints[1::3],
-            assembly.sigma.block_constraints[2::3],
-        ) = euler_pole_covariance_to_rotation_vector_covariance(
-            assembly.data.block_constraints[0::3],
-            assembly.data.block_constraints[1::3],
-            assembly.data.block_constraints[2::3],
-            euler_pole_covariance_all,
-        )
-    assembly.sigma.block_constraint_weight = model.config.block_constraint_weight
     return block_constraint_partials
 
 
 def get_slip_rate_constraints(model: Model, assembly: Assembly) -> np.ndarray:
-    # TODO This modifies the assembly object in place. Fix this.
-
+    """Get slip rate constraint partials."""
     segment = model.segment
-    n_total_slip_rate_contraints = (
-        np.sum(segment.ss_rate_flag.values)
-        + np.sum(segment.ds_rate_flag.values)
-        + np.sum(segment.ts_rate_flag.values)
-    )
-    if n_total_slip_rate_contraints > 0:
-        logger.info(f"Found {n_total_slip_rate_contraints} slip rate constraints")
-        for i in range(len(segment.lon1)):
-            if segment.ss_rate_flag[i] == 1:
-                logger.info(
-                    "Strike-slip rate constraint on "
-                    + segment.name[i].strip()
-                    + ": rate = "
-                    + f"{segment.ss_rate[i]:.2f}"
-                    + " (mm/yr), 1-sigma uncertainty = +/-"
-                    + f"{segment.ss_rate_sig[i]:.2f}"
-                    + " (mm/yr)"
-                )
-            if segment.ds_rate_flag[i] == 1:
-                logger.info(
-                    "Dip-slip rate constraint on "
-                    + segment.name[i].strip()
-                    + ": rate = "
-                    + f"{segment.ds_rate[i]:.2f}"
-                    + " (mm/yr), 1-sigma uncertainty = +/-"
-                    + f"{segment.ds_rate_sig[i]:.2f}"
-                    + " (mm/yr)"
-                )
-            if segment.ts_rate_flag[i] == 1:
-                logger.info(
-                    "Tensile-slip rate constraint on "
-                    + segment.name[i].strip()
-                    + ": rate = "
-                    + f"{segment.ts_rate[i]:.2f}"
-                    + " (mm/yr), 1-sigma uncertainty = +/-"
-                    + f"{segment.ts_rate_sig[i]:.2f}"
-                    + " (mm/yr)"
-                )
-    else:
-        logger.info("No slip rate constraints")
-
     slip_rate_constraint_partials = get_rotation_to_slip_rate_partials(
         segment, model.block
     )
-
-    slip_rate_constraint_flag = interleave3(
-        segment.ss_rate_flag, segment.ds_rate_flag, segment.ts_rate_flag
-    )
-    assembly.index.slip_rate_constraints = np.where(slip_rate_constraint_flag == 1)[0]
-    assembly.data.n_slip_rate_constraints = len(assembly.index.slip_rate_constraints)
-
-    assembly.data.slip_rate_constraints = interleave3(
-        segment.ss_rate, segment.ds_rate, segment.ts_rate
-    )
-
-    assembly.data.slip_rate_constraints = assembly.data.slip_rate_constraints[
-        assembly.index.slip_rate_constraints
-    ]
-
-    assembly.sigma.slip_rate_constraints = interleave3(
-        segment.ss_rate_sig, segment.ds_rate_sig, segment.ts_rate_sig
-    )
-
-    assembly.sigma.slip_rate_constraints = assembly.sigma.slip_rate_constraints[
-        assembly.index.slip_rate_constraints
-    ]
-
+    
+    # Filter partials to only include constrained segments
     slip_rate_constraint_partials = slip_rate_constraint_partials[
-        assembly.index.slip_rate_constraints, :
+        assembly.index["slip_rate_constraints"], :
     ]
-    assembly.sigma.slip_rate_constraint_weight = model.config.slip_constraint_weight
     return slip_rate_constraint_partials
 
 
 def get_slip_rake_constraints(model: Model, assembly: Assembly) -> np.ndarray:
+    """Get slip rake constraint partials."""
     segment = model.segment
-
-    n_total_slip_rake_contraints = np.sum(segment.rake_flag.values)
-    if n_total_slip_rake_contraints > 0:
-        logger.info(f"Found {n_total_slip_rake_contraints} slip rake constraints")
-        for i in range(len(segment.lon1)):
-            if segment.rake_flag[i] == 1:
-                logger.info(
-                    "Rake constraint on "
-                    + segment.name[i].strip()
-                    + ": rake = "
-                    + f"{segment.rake[i]:.2f}"
-                    + ", constraint strike = "
-                    + f"{segment.rake_strike[i]:.2f}"
-                    + ", 1-sigma uncertainty = +/-"
-                    + f"{segment.rake_sig[i]:.2f}"
-                )
-    else:
-        logger.info("No slip rake constraints")
-    # To keep this a standalone function, let's calculate the full set of slip rate partials
-    # TODO: Check how get_slip_rate_constraints is called to see if we need to recalculate the full set of partials, or if we can reuse a previous calculation
+    
+    # Calculate the full set of slip rate partials
     slip_rate_constraint_partials = get_rotation_to_slip_rate_partials(
         segment, model.block
     )
+    
     # Figure out effective rake. This is a simple correction of the rake data by the calculated strike of the segment
     # The idea is that the source of the rake constraint will include its own strike (and dip), which may differ from the model segment geometry
     # TODO: Full three-dimensional rotation of rake vector, based on strike and dip of constraint source?
@@ -1500,14 +1560,11 @@ def get_slip_rake_constraints(model: Model, assembly: Assembly) -> np.ndarray:
         segment.strike[segment.rake_flag] - segment.rake_strike[segment.rake_flag]
     )
 
-    # Find indices of constrained segments
-    assembly.index.slip_rake_constraints = np.where(segment.rake_flag == 1)[0]
-    assembly.data.n_slip_rake_constraints = len(assembly.index.slip_rake_constraints)
-
     # Get component indices of slip rate partials
     rake_constraint_component_indices = get_2component_index(
-        assembly.index.slip_rake_constraints
+        assembly.index["slip_rake_constraints"]
     )
+    
     # Rotate slip partials about effective rake. We just want to use the second row (second basis vector) of a full rotation matrix, because we want to set slip in that direction to zero as a constraint
     slip_rake_constraint_partials = (
         np.cos(np.radians(effective_rakes))
@@ -1515,17 +1572,7 @@ def get_slip_rake_constraints(model: Model, assembly: Assembly) -> np.ndarray:
         + np.sin(np.radians(effective_rakes))
         * slip_rate_constraint_partials[rake_constraint_component_indices[1::2]]
     )
-
-    # Constraint data is all zeros, because we're setting slip perpendicular to the rake direction equal to zero
-    assembly.data.slip_rake_constraints = np.zeros(
-        assembly.data.n_total_slip_rake_contraints
-    )
-
-    # Insert sigmas into assembly dict
-    assembly.sigma.slip_rake_constraints = segment.rake_sig
-
-    # Using the same weighting here as for slip rate constraints.
-    assembly.sigma.slip_rake_constraint_weight = model.config.slip_constraint_weight
+    
     return slip_rake_constraint_partials
 
 
@@ -1540,23 +1587,23 @@ def _get_data_vector_no_meshes(
 
     # Add GPS stations to data vector
     data_vector[index.start_station_row : index.end_station_row] = interleave2(
-        assembly.data.east_vel, assembly.data.north_vel
+        assembly.data["east_vel"], assembly.data["north_vel"]
     )
 
     # Add block motion constraints to data vector
     data_vector[index.start_block_constraints_row : index.end_block_constraints_row] = (
-        DEG_PER_MYR_TO_RAD_PER_YR * assembly.data.block_constraints
+        DEG_PER_MYR_TO_RAD_PER_YR * assembly.data["block_constraints"]
     )
 
     # Add slip rate constraints to data vector
     data_vector[
         index.start_slip_rate_constraints_row : index.end_slip_rate_constraints_row
-    ] = assembly.data.slip_rate_constraints
+    ] = assembly.data["slip_rate_constraints"]
 
     return data_vector
 
 
-def _get_data_vector(model: Model, assembly: Assembly, index: Index) -> np.ndarray:
+def _get_data_vector(assembly: Assembly, index: Index) -> np.ndarray:
     assert index.tde is not None
 
     data_vector = np.zeros(
@@ -1569,18 +1616,18 @@ def _get_data_vector(model: Model, assembly: Assembly, index: Index) -> np.ndarr
 
     # Add GPS stations to data vector
     data_vector[index.start_station_row : index.end_station_row] = interleave2(
-        assembly.data.east_vel, assembly.data.north_vel
+        assembly.data["east_vel"], assembly.data["north_vel"]
     )
 
     # Add block motion constraints to data vector
     data_vector[index.start_block_constraints_row : index.end_block_constraints_row] = (
-        DEG_PER_MYR_TO_RAD_PER_YR * assembly.data.block_constraints
+        DEG_PER_MYR_TO_RAD_PER_YR * assembly.data["block_constraints"]
     )
 
     # Add slip rate constraints to data vector
     data_vector[
         index.start_slip_rate_constraints_row : index.end_slip_rate_constraints_row
-    ] = assembly.data.slip_rate_constraints
+    ] = assembly.data["slip_rate_constraints"]
     return data_vector
 
 
@@ -1599,18 +1646,18 @@ def _get_data_vector_eigen(
 
     # Add GPS stations to data vector
     data_vector[index.start_station_row : index.end_station_row] = interleave2(
-        assembly.data.east_vel, assembly.data.north_vel
+        assembly.data["east_vel"], assembly.data["north_vel"]
     )
 
     # Add block motion constraints to data vector
     data_vector[index.start_block_constraints_row : index.end_block_constraints_row] = (
-        DEG_PER_MYR_TO_RAD_PER_YR * assembly.data.block_constraints
+        DEG_PER_MYR_TO_RAD_PER_YR * assembly.data["block_constraints"]
     )
 
     # Add slip rate constraints to data vector
     data_vector[
         index.start_slip_rate_constraints_row : index.end_slip_rate_constraints_row
-    ] = assembly.data.slip_rate_constraints
+    ] = assembly.data["slip_rate_constraints"]
     return data_vector
 
 
@@ -2520,9 +2567,9 @@ def _get_index_no_meshes(model: Model, assembly: Assembly):
     # NOTE: Merge with above if possible.
     # Make sure empty meshes work
     n_blocks = len(model.block)
-    n_stations = assembly.data.n_stations
-    n_block_constraints = assembly.data.n_block_constraints
-    n_slip_rate_constraints = assembly.data.slip_rate_constraints.size
+    n_stations = assembly.data["n_stations"]
+    n_block_constraints = assembly.data["n_block_constraints"]
+    n_slip_rate_constraints = assembly.data["slip_rate_constraints"].size
     n_mogi = len(model.mogi)
     n_meshes = 0
     n_segments = len(model.segment)

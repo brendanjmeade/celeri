@@ -4,8 +4,8 @@
 import argparse
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
-import addict
 import meshio
 import numpy as np
 import pandas as pd
@@ -184,7 +184,7 @@ def main():
         type=Path,
         help="Name of mesh parameter file.",
     )
-    args = addict.Dict(vars(parser.parse_args()))
+    args = SimpleNamespace(**vars(parser.parse_args()))
 
     # Read segment data
     segment = pd.read_csv(args.segment_file_name)
@@ -199,7 +199,7 @@ def main():
 
     if len(mesh_param) > 0:
         for i in range(len(mesh_param)):
-            meshes.append(addict.Dict())
+            meshes.append(SimpleNamespace())
             meshes[i].meshio_object = meshio.read(mesh_param[i]["mesh_filename"])
             meshes[i].file_name = mesh_param[i]["mesh_filename"]
             meshes[i].verts = meshes[i].meshio_object.get_cells_type("triangle")
@@ -276,9 +276,7 @@ def main():
                 "side_slip_rate_constraint"
             ]
             meshes[i].n_tde = meshes[i].lon1.size
-            celeri.get_mesh_edge_elements(meshes)
             logger.success(f"Read: {mesh_param[i]['mesh_filename']}")
-        celeri.get_mesh_perimeter(meshes)
 
         new_segment = snap_segments(segment, meshes)
         segpath = args.segment_file_name.resolve()

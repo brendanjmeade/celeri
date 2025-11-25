@@ -1120,7 +1120,7 @@ def plot_vels(
 
     Parameters
     ----------
-    p (addict.Dict): A dictionary containing plotting parameters.
+    p (PlotParams): A PlotParams object containing plotting parameters.
     segment (DataFrame): A DataFrame containing segment information with columns
                          'lon1', 'lon2', 'lat1', and 'lat2' representing the
                          starting and ending coordinates of each segment.
