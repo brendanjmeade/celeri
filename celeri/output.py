@@ -126,34 +126,36 @@ def write_output(
                 tde_ss_kinematic = estimation.tde_strike_slip_rates_kinematic
                 tde_ds_kinematic = estimation.tde_dip_slip_rates_kinematic
                 if tde_ss_kinematic is not None and tde_ds_kinematic is not None:
-                    grp.create_dataset(
-                        f"/meshes/mesh_{i:05}/strike_slip_kinematic/{0:012}",
-                        data=tde_ss_kinematic[i],
-                    )
-                    grp.create_dataset(
-                        f"/meshes/mesh_{i:05}/dip_slip_kinematic/{0:012}",
-                        data=tde_ds_kinematic[i],
-                    )
-                    grp.create_dataset(
-                        f"/meshes/mesh_{i:05}/tensile_slip_kinematic/{0:012}",
-                        data=np.zeros_like(tde_ds_kinematic[i]),
-                    )
+                    if i in tde_ss_kinematic and i in tde_ds_kinematic:
+                        grp.create_dataset(
+                            f"/meshes/mesh_{i:05}/strike_slip_kinematic/{0:012}",
+                            data=tde_ss_kinematic[i],
+                        )
+                        grp.create_dataset(
+                            f"/meshes/mesh_{i:05}/dip_slip_kinematic/{0:012}",
+                            data=tde_ds_kinematic[i],
+                        )
+                        grp.create_dataset(
+                            f"/meshes/mesh_{i:05}/tensile_slip_kinematic/{0:012}",
+                            data=np.zeros_like(tde_ds_kinematic[i]),
+                        )
 
                 coupling_ss = estimation.tde_strike_slip_rates_coupling
                 coupling_ds = estimation.tde_dip_slip_rates_coupling
                 if coupling_ss is not None and coupling_ds is not None:
-                    grp.create_dataset(
-                        f"/meshes/mesh_{i:05}/strike_slip_coupling/{0:012}",
-                        data=coupling_ss[i],
-                    )
-                    grp.create_dataset(
-                        f"/meshes/mesh_{i:05}/dip_slip_coupling/{0:012}",
-                        data=coupling_ds[i],
-                    )
-                    grp.create_dataset(
-                        f"/meshes/mesh_{i:05}/tensile_slip_coupling/{0:012}",
-                        data=np.zeros_like(coupling_ds[i]),
-                    )
+                    if i in coupling_ss and i in coupling_ds:
+                        grp.create_dataset(
+                            f"/meshes/mesh_{i:05}/strike_slip_coupling/{0:012}",
+                            data=coupling_ss[i],
+                        )
+                        grp.create_dataset(
+                            f"/meshes/mesh_{i:05}/dip_slip_coupling/{0:012}",
+                            data=coupling_ds[i],
+                        )
+                        grp.create_dataset(
+                            f"/meshes/mesh_{i:05}/tensile_slip_coupling/{0:012}",
+                            data=np.zeros_like(coupling_ds[i]),
+                        )
 
         # Try saving segment rate data in parsli style
         hdf.create_dataset(
