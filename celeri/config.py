@@ -18,6 +18,14 @@ Sqp2Objective = Literal[
     "huber",
 ]
 
+McmcStationVelocityMethod = Literal[
+    "direct",
+    "low_rank",
+    "project_to_eigen",
+]
+
+McmcStationWeighting = Literal["voronoi",]
+
 
 class Config(BaseModel):
     # Forbid extra fields when reading from JSON
@@ -166,7 +174,59 @@ class Config(BaseModel):
 
     # Parameters of mcmc
     mcmc_tune: int | None = 1000
+    """Number of tuning steps in MCMC before sampling."""
+
     mcmc_draws: int | None = None
+    """Number of MCMC samples to draw after tuning."""
+
+    mcmc_chains: int = 1
+    """Number of parallel MCMC chains to run."""
+
+    mcmc_backend: Literal["numba", "jax"] = "numba"
+    """Backend to use for MCMC computations."""
+
+    mcmc_station_velocity_method: McmcStationVelocityMethod = "project_to_eigen"
+    """Method for computing station velocities from slip rates in MCMC.
+
+    Options:
+    - "direct": Direct multiplication with TDE-to-station operator
+    - "low_rank": Low rank approximation of TDE-to-station operator via SVD
+    - "project_to_eigen": Project slip rates onto eigenbasis before computing velocities (default)
+    """
+
+    mcmc_station_weighting: McmcStationWeighting | None = "voronoi"
+    """Method for weighting station observations in MCMC likelihood.
+
+    Options:
+    - None: All stations weighted equally with weight one.
+    - "voronoi": Weight by Voronoi cell area to reduce over-representation of clusters (default)
+
+    The "voronoi" option is a pragmatic approach to handle spatially clustered stations
+    without the computational cost of full spatial correlation modeling. It down-weights
+    stations in dense clusters proportionally to their spacing. Use None if you want
+    standard unweighted likelihood or if your network has uniform spatial coverage.
+    """
+
+    mcmc_station_effective_area: float = 10_000**2
+    """Effective area (in m²) for station likelihood weighting in MCMC.
+
+    This parameter controls how station observations are weighted in the likelihood
+    based on their spatial density. Stations are weighted by their Voronoi cell area
+    (computed on a sphere), but areas larger than this threshold are clipped to avoid
+    over-weighting isolated stations.
+
+    Interpretation:
+    - Smaller values: Give more uniform weight to all stations, regardless of spacing
+    - Larger values: Weight stations more strongly based on their Voronoi cell area
+    - Default (50000²): Stations separated by ~50 km or more get equal weight
+
+    The default value of 2.5e9 m² corresponds to a square roughly 50 km on a side.
+    This means stations that are more than ~50 km apart will receive equal weighting,
+    while stations in dense clusters will be down-weighted proportionally to avoid
+    over-representing those regions.
+
+    Only used when mcmc_station_weighting is "voronoi".
+    """
 
     # Only in tsts/global_config.json?
     mesh_file_names: list[Path] | None = None
