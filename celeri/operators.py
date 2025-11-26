@@ -326,15 +326,8 @@ class Assembly:
         # Merge geodetic data from station and SAR
         station = self.model.station
         sar = self.model.sar
-        
-        data["n_stations"] = len(station)
-        data["n_sar"] = len(sar)
-        data["east_vel"] = station.east_vel.to_numpy()
-        sigma["east_sig"] = station.east_sig.to_numpy()
-        data["north_vel"] = station.north_vel.to_numpy()
-        sigma["north_sig"] = station.north_sig.to_numpy()
+
         data["up_vel"] = station.up_vel.to_numpy()
-        sigma["up_sig"] = station.up_sig.to_numpy()
         data["sar_line_of_sight_change_val"] = sar.line_of_sight_change_val.to_numpy()
         sigma["sar_line_of_sight_change_sig"] = sar.line_of_sight_change_sig.to_numpy()
         data["lon"] = np.concatenate((station.lon.to_numpy(), sar.lon.to_numpy()))
@@ -352,10 +345,9 @@ class Assembly:
         block = self.model.block
         block_constraint_partials = get_block_motion_constraint_partials(block)
         index["block_constraints_idx"] = np.where(block.rotation_flag == 1)[0]
-        data["n_block_constraints"] = len(index["block_constraints_idx"])
         data["block_constraints"] = np.zeros(block_constraint_partials.shape[0])
         sigma["block_constraints"] = np.zeros(block_constraint_partials.shape[0])
-        if data["n_block_constraints"] > 0:
+        if len(index["block_constraints_idx"]) > 0:
             (
                 data["block_constraints"][0::3],
                 data["block_constraints"][1::3],
@@ -679,7 +671,7 @@ class Operators:
             return _get_data_vector_no_meshes(self.model, self.assembly, self.index)
         if self.eigen is not None:
             return _get_data_vector_eigen(self.model, self.assembly, self.index)
-        return _get_data_vector(self.assembly, self.index)
+        return _get_data_vector(self.model, self.assembly, self.index)
 
     @property
     def weighting_vector(self) -> np.ndarray:
@@ -899,13 +891,13 @@ def build_operators(model: Model, *, eigen: bool = True, tde: bool = True) -> Op
     _store_tde_slip_rate_constraints(model, operators)
 
     if eigen:
-        index = _get_index_eigen(model, assembly)
+        index = _get_index_eigen(model)
         operators.index = index
 
         # Get KL modes for each mesh
         _store_eigenvectors_to_tde_slip(model, operators)
     else:
-        index = _get_index(model, assembly)
+        index = _get_index(model)
         operators.index = index
 
     # Get rotation to TDE kinematic slip rate operator for all meshes tied to segments
@@ -1587,7 +1579,7 @@ def _get_data_vector_no_meshes(
 
     # Add GPS stations to data vector
     data_vector[index.start_station_row : index.end_station_row] = interleave2(
-        assembly.data["east_vel"], assembly.data["north_vel"]
+        model.station.east_vel.to_numpy(), model.station.north_vel.to_numpy()
     )
 
     # Add block motion constraints to data vector
@@ -1603,7 +1595,9 @@ def _get_data_vector_no_meshes(
     return data_vector
 
 
-def _get_data_vector(assembly: Assembly, index: Index) -> np.ndarray:
+def _get_data_vector(
+    model: Model, assembly: Assembly, index: Index
+) -> np.ndarray:
     assert index.tde is not None
 
     data_vector = np.zeros(
@@ -1616,7 +1610,7 @@ def _get_data_vector(assembly: Assembly, index: Index) -> np.ndarray:
 
     # Add GPS stations to data vector
     data_vector[index.start_station_row : index.end_station_row] = interleave2(
-        assembly.data["east_vel"], assembly.data["north_vel"]
+        model.station.east_vel.to_numpy(), model.station.north_vel.to_numpy()
     )
 
     # Add block motion constraints to data vector
@@ -1646,7 +1640,7 @@ def _get_data_vector_eigen(
 
     # Add GPS stations to data vector
     data_vector[index.start_station_row : index.end_station_row] = interleave2(
-        assembly.data["east_vel"], assembly.data["north_vel"]
+        model.station.east_vel.to_numpy(), model.station.north_vel.to_numpy()
     )
 
     # Add block motion constraints to data vector
@@ -2450,11 +2444,11 @@ def rotation_vector_err_to_euler_pole_err(omega_x, omega_y, omega_z, omega_cov):
     return euler_lon_err, euler_lat_err, euler_rate_err
 
 
-def _get_index(model: Model, assembly: Assembly) -> Index:
+def _get_index(model: Model) -> Index:
     # TODO: Adapt this to use the dataclasses as in get_index_eigen
     # TODO: But better integrate it with the other get_index_* functions?
 
-    index = _get_index_no_meshes(model, assembly)
+    index = _get_index_no_meshes(model)
     index.n_meshes = len(model.meshes)
 
     # Add TDE mesh indices
@@ -2563,13 +2557,21 @@ def _get_index(model: Model, assembly: Assembly) -> Index:
     return index
 
 
-def _get_index_no_meshes(model: Model, assembly: Assembly):
+def _get_index_no_meshes(model: Model):
     # NOTE: Merge with above if possible.
     # Make sure empty meshes work
+    segment = model.segment
     n_blocks = len(model.block)
-    n_stations = assembly.data["n_stations"]
-    n_block_constraints = assembly.data["n_block_constraints"]
-    n_slip_rate_constraints = assembly.data["slip_rate_constraints"].size
+    n_stations = len(model.station)
+    n_block_constraints = len(np.where(model.block.rotation_flag == 1)[0])
+
+    slip_rate_constraint_flag = interleave3(
+        segment.ss_rate_flag, segment.ds_rate_flag, segment.ts_rate_flag
+    )
+
+    slip_rate_constraints = np.where(slip_rate_constraint_flag == 1)[0]
+    n_slip_rate_constraints = len(slip_rate_constraints)
+
     n_mogi = len(model.mogi)
     n_meshes = 0
     n_segments = len(model.segment)
@@ -2614,9 +2616,9 @@ def _get_index_no_meshes(model: Model, assembly: Assembly):
     )
 
 
-def _get_index_eigen(model: Model, assembly: Assembly) -> Index:
+def _get_index_eigen(model: Model) -> Index:
     # Create dictionary to store indices and sizes for operator building
-    index = _get_index(model, assembly)
+    index = _get_index(model)
     tde = index.tde
     assert tde is not None
 
