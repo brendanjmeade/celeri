@@ -85,7 +85,8 @@ class Config(BaseModel):
     station_data_weight_steps: int = 1
 
     segment_slip_rate_regularization: float = 1.0
-    """Weight for regularizing slip rates towards 0. Applied to segments with *s_rate_flag = 2 in the segment file.
+    """Weight for regularizing slip rates towards 0. 
+    Applied to segments with *s_rate_flag = 2 in the segment file.
 
     A value of zero indicates no regularization.
     This is used in `solve_sqp2` to help stabilize the inversion.

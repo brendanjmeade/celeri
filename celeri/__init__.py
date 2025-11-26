@@ -25,7 +25,6 @@ from celeri.model import (
     process_segment,
     process_station,
     read_data,
-    station_row_keep,
 )
 from celeri.operators import (
     Operators,
@@ -180,7 +179,6 @@ __all__ = [
     "solve_mcmc",
     "solve_sqp",
     "solve_sqp2",
-    "station_row_keep",
     "wrap2360",
     "write_output",
 ]

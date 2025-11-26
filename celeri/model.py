@@ -755,23 +755,6 @@ def assign_mesh_segment_labels(
     return east_labels, west_labels, closest_segment_idx
 
 
-def station_row_keep(assembly):
-    """Determines which station rows should be retained based on up velocities
-    TODO: I do not understand this!!!
-    TODO: The logic in the first conditional seems to indicate that if there are
-    no vertical velocities as a part of the data then they should be eliminated.
-    TODO: Perhaps it would be better to make this a flag in config???
-    """
-    if np.sum(np.abs(assembly.data.up_vel)) == 0:
-        assembly.index.station_row_keep = np.setdiff1d(
-            np.arange(0, assembly.index.sz_rotation[0]),
-            np.arange(2, assembly.index.sz_rotation[0], 3),
-        )
-    else:
-        assembly.index.station_row_keep = np.arange(0, assembly.index.sz_rotation[1])
-    return assembly
-
-
 def make_default_segment(length):
     """Create a default segment Dict of specified length."""
     columns = pd.Index(
