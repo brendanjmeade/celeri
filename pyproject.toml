@@ -12,7 +12,6 @@ authors = [
 ]
 requires-python = ">=3.13"
 dependencies = [
-    "addict",
     "cartopy",
     "colorcet",
     "cutde>=25.7.24",
