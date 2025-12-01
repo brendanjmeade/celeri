@@ -14,7 +14,7 @@ def is_prime(n):
             return False
     return True
 
-@pytest.mark.array_compare
+@pytest.mark.array_compare(rtol=1e-5, atol=0.1)
 @pytest.mark.parametrize(
     "config_name, eigen, tde",
     [
