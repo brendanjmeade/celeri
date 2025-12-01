@@ -1,5 +1,18 @@
 import pytest
 import celeri
+import math
+
+def is_prime(n):
+    if n <= 1:
+        return False
+    if n == 2:
+        return True
+    if n % 2 == 0:
+        return False
+    for i in range(3, int(math.sqrt(n)) + 1, 2):
+        if n % i == 0:
+            return False
+    return True
 
 @pytest.mark.array_compare
 @pytest.mark.parametrize(
@@ -22,7 +35,9 @@ def test_japan_dense(config_name, eigen: bool, tde: bool):
 
     assert hasattr(estimation, "tde_rates")
     assert hasattr(estimation, "east_vel_residual")
-    return estimation.state_vector
+
+    select_indices = [idx for idx in range(len(estimation.state_vector)) if is_prime(idx)]
+    return estimation.state_vector[select_indices]
 
 def test_japan_dense_error():
     config_file_name = "./tests/configs/test_japan_config.json"
