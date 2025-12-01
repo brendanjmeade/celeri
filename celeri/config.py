@@ -85,7 +85,7 @@ class Config(BaseModel):
     station_data_weight_steps: int = 1
 
     segment_slip_rate_regularization: float = 1.0
-    """Weight for regularizing slip rates towards 0. 
+    """Weight for regularizing slip rates towards 0.
     Applied to segments with *s_rate_flag = 2 in the segment file.
 
     A value of zero indicates no regularization.
@@ -227,6 +227,35 @@ class Config(BaseModel):
     over-representing those regions.
 
     Only used when mcmc_station_weighting is "voronoi".
+    """
+
+    sqp2_annealing_enabled: bool = False
+    """Enable annealing to search for a more optimal solution.
+
+    The SQP2 solver iteratively tightens coupling constraints until convergence
+    (no out-of-bounds values). When annealing is enabled, the solver continues
+    beyond this point: for each value in `sqp2_annealing_schedule`, it loosens
+    the constraints by that amount and runs another SQP pass, potentially
+    converging to a solution with a lower residual.
+
+    Set to False for a single-shot solve (faster, often sufficient).
+    Set to True to enable multi-pass annealing (slower, may find better solutions).
+    """
+
+    sqp2_annealing_schedule: list[float] = [0.125, 0.125, 0.125]
+    """Looseness values (mm/yr) for each annealing pass.
+
+    After the solver converges with no out-of-bounds values, each value in this
+    list triggers an additional SQP pass where the coupling constraints are
+    temporarily widened by that amount (added to upper bounds, subtracted from
+    lower bounds). This allows the solver to escape local minima and potentially
+    find a more optimal solution.
+
+    The default [0.125, 0.125, 0.125] performs three annealing passes, each
+    loosening constraints by 0.125 mm/yr. An empty list [] is equivalent to
+    disabling annealing (single-shot solve).
+
+    Only used when `sqp2_annealing_enabled` is True.
     """
 
     # Only in tsts/global_config.json?
