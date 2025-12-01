@@ -1414,6 +1414,14 @@ def solve_sqp2(
             )
         except MinimizationComplete:
             break
+    else:
+        # No MinimizationComplete exception was raised.
+        assert iteration_number == max_iter - 1
+        if num_oob is not None and num_oob > 0:
+            logger.warning(
+                f"SQP iteration: Reached maximum number of {max_iter} iterations, "
+                f"but there are still {num_oob} out-of-bounds values."
+            )
 
     # Log warning if the last iteration includes an error
     if all_warnings:
