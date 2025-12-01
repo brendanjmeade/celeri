@@ -21,12 +21,10 @@ from celeri.model import (
     assign_block_labels,
     build_model,
     create_output_folder,
-    merge_geodetic_data,
     process_sar,
     process_segment,
     process_station,
     read_data,
-    station_row_keep,
 )
 from celeri.operators import (
     Operators,
@@ -151,7 +149,6 @@ __all__ = [
     "interleave2",
     "interleave3",
     "lsqlin_qp",
-    "merge_geodetic_data",
     "parse_args",
     "plot_coastlines",
     "plot_common_elements",
@@ -182,7 +179,6 @@ __all__ = [
     "solve_mcmc",
     "solve_sqp",
     "solve_sqp2",
-    "station_row_keep",
     "wrap2360",
     "write_output",
 ]

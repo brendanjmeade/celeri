@@ -702,14 +702,14 @@ def build_estimation(
         Estimation: The estimation object.
     """
     if operators.eigen is not None:
-        data_vector = _get_data_vector_eigen(model, operators.assembly, operators.index)
+        data_vector = _get_data_vector_eigen(model, operators.index)
         weighting_vector = _get_weighting_vector_eigen(model, operators.index)
     elif operators.tde is not None:
-        data_vector = _get_data_vector(model, operators.assembly, operators.index)
+        data_vector = _get_data_vector(model, operators.index)
         weighting_vector = _get_weighting_vector(model, operators.index)
     else:
         # TODO is get_data_vector correct here?
-        data_vector = _get_data_vector(model, operators.assembly, operators.index)
+        data_vector = _get_data_vector(model, operators.index)
         weighting_vector = _get_weighting_vector_no_meshes(model, operators.index)
 
     return Estimation(

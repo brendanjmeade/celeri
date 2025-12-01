@@ -11,7 +11,6 @@ channels = ["conda-forge", "numba"]
 pixi-global-install-shim-hack = "python -m celeri.scripts.pixi_global_install_shim_hack"
 
 [dependencies]
-addict = ">=2.4.0"
 colorcet = ">=3.1.0"
 compilers = ">=1.9.0"
 cutde = ">=25.7.24"

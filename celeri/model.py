@@ -294,38 +294,6 @@ def process_sar(sar, config):
         sar["block_label"] = []
     return sar
 
-
-def merge_geodetic_data(assembly, station, sar):
-    """Merge GPS and InSAR data to a single assembly object."""
-    assembly.data.n_stations = len(station)
-    assembly.data.n_sar = len(sar)
-    assembly.data.east_vel = station.east_vel.to_numpy()
-    assembly.sigma.east_sig = station.east_sig.to_numpy()
-    assembly.data.north_vel = station.north_vel.to_numpy()
-    assembly.sigma.north_sig = station.north_sig.to_numpy()
-    assembly.data.up_vel = station.up_vel.to_numpy()
-    assembly.sigma.up_sig = station.up_sig.to_numpy()
-    assembly.data.sar_line_of_sight_change_val = sar.line_of_sight_change_val.to_numpy()
-    assembly.sigma.sar_line_of_sight_change_sig = (
-        sar.line_of_sight_change_sig.to_numpy()
-    )
-    assembly.data.lon = np.concatenate((station.lon.to_numpy(), sar.lon.to_numpy()))
-    assembly.data.lat = np.concatenate((station.lat.to_numpy(), sar.lat.to_numpy()))
-    assembly.data.depth = np.concatenate(
-        (station.depth.to_numpy(), sar.depth.to_numpy())
-    )
-    assembly.data.x = np.concatenate((station.x.to_numpy(), sar.x.to_numpy()))
-    assembly.data.y = np.concatenate((station.y.to_numpy(), sar.y.to_numpy()))
-    assembly.data.z = np.concatenate((station.z.to_numpy(), sar.z.to_numpy()))
-    assembly.data.block_label = np.concatenate(
-        (station.block_label.to_numpy(), sar.block_label.to_numpy())
-    )
-    assembly.index.sar_coordinate_idx = np.arange(
-        len(station), len(station) + len(sar)
-    )  # TODO: Not sure this is correct
-    return assembly
-
-
 def process_segment(segment, config, meshes):
     """Add derived fields to segment dataframe."""
     if bool(config.snap_segments):
@@ -785,23 +753,6 @@ def assign_mesh_segment_labels(
 
     assert east_labels is not None and west_labels is not None
     return east_labels, west_labels, closest_segment_idx
-
-
-def station_row_keep(assembly):
-    """Determines which station rows should be retained based on up velocities
-    TODO: I do not understand this!!!
-    TODO: The logic in the first conditional seems to indicate that if there are
-    no vertical velocities as a part of the data then they should be eliminated.
-    TODO: Perhaps it would be better to make this a flag in config???
-    """
-    if np.sum(np.abs(assembly.data.up_vel)) == 0:
-        assembly.index.station_row_keep = np.setdiff1d(
-            np.arange(0, assembly.index.sz_rotation[0]),
-            np.arange(2, assembly.index.sz_rotation[0], 3),
-        )
-    else:
-        assembly.index.station_row_keep = np.arange(0, assembly.index.sz_rotation[1])
-    return assembly
 
 
 def make_default_segment(length):
