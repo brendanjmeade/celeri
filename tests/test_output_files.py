@@ -6,7 +6,7 @@ import numpy as np
 from loguru import logger
 import celeri
 from celeri.celeri_util import get_newest_run_folder
-from celeri.operators import _OperatorBuilder, Assembly, _store_elastic_operators, _hash_elastic_operator_input
+from celeri.operators import _OperatorBuilder, _store_elastic_operators, _hash_elastic_operator_input
 
 test_logger = logger.bind(name="test_output_files")
 
@@ -78,9 +78,7 @@ def test_smart_segment_recompute(config_file):
             for item in cache_dir.iterdir():
                 if item.is_file() and item.suffix == ".hdf5":
                     item.unlink()
-        assembly = Assembly(data=dict(), sigma=dict(), index=dict())
         operators = _OperatorBuilder(model)
-        operators.assembly = assembly
         _store_elastic_operators(model, operators)
 
         input_hash = _hash_elastic_operator_input(
@@ -95,7 +93,6 @@ def test_smart_segment_recompute(config_file):
         model = celeri.build_model(config_file, override_segment=pd.read_csv(Path("tests/data/segment/wna_segment1.csv")))
         test_logger.info("Selectively recomputing operators with modified segment file")
         operators2 = _OperatorBuilder(model)
-        operators2.assembly = assembly
         _store_elastic_operators(model, operators2)
 
         assert cache_file.exists(), "Cache file should still exist after selective recompute"
@@ -106,7 +103,6 @@ def test_smart_segment_recompute(config_file):
         # Compute from scratch (cache file renamed, so it will recompute everything)
         test_logger.info("Fully recomputing operators using modified segment file")
         operators3 = _OperatorBuilder(model)
-        operators3.assembly = assembly
         _store_elastic_operators(model, operators3)
 
         new_cache_file = cache_dir / f"{input_hash}.hdf5"
