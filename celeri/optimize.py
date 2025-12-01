@@ -5,7 +5,7 @@ import warnings
 from collections import namedtuple
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import cast
+from typing import Any, cast
 
 import cvxopt
 import cvxpy as cp
@@ -1347,10 +1347,12 @@ def solve_sqp2(
     solver = default_solve_kwargs.pop("solver")
 
     # Storage for all warnings across loop iterations
-    all_warnings = []
+    all_warnings: list[dict[str, Any]] = []
 
-    # Intializing this so that warnings check will run even with no iteration case
-    iteration_number = 0
+    # Intialize loop variables that are also referenced outside the loop.
+    iteration_number = -1
+    num_oob: int | None = None
+
     for iteration_number in range(max_iter):
         # QP solve in context manager to capture warnings
         with warnings.catch_warnings(record=True) as caught_warnings:
