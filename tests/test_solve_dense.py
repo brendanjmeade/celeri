@@ -1,19 +1,20 @@
 import pytest
 import celeri
 
-
+@pytest.mark.array_compare
 @pytest.mark.parametrize(
-    "config_file, eigen, tde",
+    "config_name, eigen, tde",
     [
-        ("./tests/configs/test_japan_config.json", True, True),
-        ("./tests/configs/test_japan_config.json", False, True),
-        ("./tests/configs/test_japan_config.json", False, False),
-        ("./tests/configs/test_wna_config.json", True, True),
-        ("./tests/configs/test_wna_config.json", False, True),
-        ("./tests/configs/test_wna_config.json", False, False),
+        ("test_japan_config", True, True),
+        ("test_japan_config", False, True),
+        ("test_japan_config", False, False),
+        ("test_wna_config", True, True),
+        ("test_wna_config", False, True),
+        ("test_wna_config", False, False),
     ],
 )
-def test_japan_dense(config_file, eigen: bool, tde: bool):
+def test_japan_dense(config_name, eigen: bool, tde: bool):
+    config_file = f"./tests/configs/{config_name}.json"
     config = celeri.get_config(config_file)
     model = celeri.build_model(config)
 
@@ -21,7 +22,7 @@ def test_japan_dense(config_file, eigen: bool, tde: bool):
 
     assert hasattr(estimation, "tde_rates")
     assert hasattr(estimation, "east_vel_residual")
-    return
+    return estimation.state_vector
 
 def test_japan_dense_error():
     config_file_name = "./tests/configs/test_japan_config.json"
@@ -30,13 +31,3 @@ def test_japan_dense_error():
     with pytest.raises(ValueError):
         celeri.assemble_and_solve_dense(model, eigen=True, tde=False)
     return
-
-@pytest.mark.array_compare
-def test_wna_dense_state_vector():
-    config_file = "./data/config/wna_config.json"
-    config = celeri.get_config(config_file)
-    model = celeri.build_model(config)
-
-    estimation = celeri.assemble_and_solve_dense(model, eigen=True, tde=True)
-    return estimation.state_vector
-
