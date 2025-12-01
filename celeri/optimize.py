@@ -1375,6 +1375,11 @@ def solve_sqp2(
     num_oob: int | None = None
 
     for iteration_number in range(max_iter):
+        # Within each iteration we solve the convexified QP and tighten the bounds.
+        # We stop if:
+        # 1. We have reached the maximum number of iterations
+        # 2. We have fixed all out-of-bounds values, and there's no more annealing to do
+
         # QP solve in context manager to capture warnings
         with warnings.catch_warnings(record=True) as caught_warnings:
             warnings.simplefilter("always")
