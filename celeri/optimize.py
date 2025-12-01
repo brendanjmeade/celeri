@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 import warnings
 from collections import namedtuple
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -963,18 +963,18 @@ def _tighten_kinematic_bounds(
     factor: float = 0.5,
     iteration_number: int,
     num_oob: int,
-    annealing_schedule: list[float],
+    remaining_annealing_schedule: list[float],
 ):
     assert factor > 0 and factor < 1
 
     if num_oob > 0:
         looseness = 0
-    elif len(annealing_schedule) == 0:
+    elif len(remaining_annealing_schedule) == 0:
         raise MinimizationComplete()
     else:
         # We have fixed all OOBs, and annealing is enabled, so use the first remaining
         # value in the annealing schedule as the loosenenss.
-        looseness = annealing_schedule.pop(0)
+        looseness = remaining_annealing_schedule.pop(0)
         print(f"Loosening constraints by {looseness}")
 
     def tighten_item(limits: SlipRateLimitItem, coupling: SlipRateItem):
@@ -1294,7 +1294,7 @@ def solve_sqp2(
     objective: Sqp2Objective | None = None,
     operators: Operators | None = None,
     annealing_enabled: bool | None = None,
-    annealing_schedule: list[float] | None = None,
+    annealing_schedule: Sequence[float] | None = None,
 ) -> Estimation:
     """Iteratively solve a constrained optimization problem for fault slip rates.
 
@@ -1323,6 +1323,21 @@ def solve_sqp2(
         annealing_enabled = model.config.sqp2_annealing_enabled
     if annealing_schedule is None:
         annealing_schedule = model.config.sqp2_annealing_schedule
+
+    # Initialize the working/remaining annealing schedule.
+    remaining_annealing_schedule: list[float]
+    if annealing_enabled:
+        if annealing_schedule is None:
+            raise ValueError(
+                "Annealing is enabled, but no annealing schedule is provided."
+            )
+        else:
+            # Make a working copy of the annealing schedule so that we can pop off values
+            # without mutating the original.
+            remaining_annealing_schedule = list(annealing_schedule)
+    else:
+        # No annealing is equivalent to an empty annealing schedule.
+        remaining_annealing_schedule = []
 
     limits = SlipRateLimit.from_model(model)
 
@@ -1394,7 +1409,7 @@ def solve_sqp2(
                 factor=reduction_factor,
                 tighten_all=True,
                 iteration_number=iteration_number,
-                annealing_schedule=annealing_schedule,
+                remaining_annealing_schedule=remaining_annealing_schedule,
                 num_oob=num_oob,
             )
         except MinimizationComplete:
