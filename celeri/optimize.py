@@ -1293,6 +1293,7 @@ def solve_sqp2(
     rescale_constraints: bool = True,
     objective: Sqp2Objective | None = None,
     operators: Operators | None = None,
+    annealing_enabled: bool | None = None,
     annealing_schedule: list[float] | None = None,
 ) -> Estimation:
     """Iteratively solve a constrained optimization problem for fault slip rates.
@@ -1311,12 +1312,17 @@ def solve_sqp2(
         rescale_constraints: bool
         objective: Objective
         operators: operators.Operators
+        annealing_enabled: bool
+        annealing_schedule: Sequence[float] (mm/yr)
 
     Returns:
         An Estimation object containing the optimization results.
     """
+    # Set values from config if not provided.
+    if annealing_enabled is None:
+        annealing_enabled = model.config.sqp2_annealing_enabled
     if annealing_schedule is None:
-        annealing_schedule = []
+        annealing_schedule = model.config.sqp2_annealing_schedule
 
     limits = SlipRateLimit.from_model(model)
 
