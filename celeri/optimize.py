@@ -964,7 +964,53 @@ def _tighten_kinematic_bounds(
     iteration_number: int,
     num_oob: int,
     remaining_annealing_schedule: list[float],
-):
+) -> None:
+    """Tighten (or loosen) coupling constraint bounds for the SQP solver.
+
+    Background:
+        The coupling constraints define a feasible region that is a double-sided
+        cone, with one convex component for positive kinematic velocities and one for
+        negative. The union of the two components is non-convex. To
+        formulate a tractable optimization problem, we use a convex approximation
+        with box constraints that we iteratively tighten towards the current
+        solution.
+
+    This function is called after each SQP iteration to adjust the bounds:
+    - During normal iterations (when `num_oob > 0`): bounds are tightened by
+      moving them a fraction (`factor`) closer to the current kinematic solution.
+    - During annealing (when `num_oob == 0` and annealing is enabled): bounds
+      are slightly loosened to allow the solver to escape local minima.
+
+    Args:
+        minimizer: The current optimization state containing slip rates and limits.
+        tighten_all: If True, tighten bounds for all mesh elements uniformly.
+            If False, only tighten bounds for elements that are currently
+            out-of-bounds (selective tightening).
+        factor: Fraction by which to reduce the gap between the current kinematic
+            value and each bound. Must be in (0, 1). Default 0.5 means bounds
+            move halfway towards the current solution each iteration.
+        iteration_number: Current iteration index (for logging/debugging).
+        num_oob: Number of mesh elements currently violating coupling bounds.
+        remaining_annealing_schedule: Mutable list of looseness values (mm/yr)
+            for annealing passes. When `num_oob == 0`, the first value is popped
+            and used to widen bounds, allowing the solver to explore nearby
+            solutions. When this list is exhausted and `num_oob == 0`,
+            `MinimizationComplete` is raised.
+
+    Raises:
+        MinimizationComplete: When all values are within bounds and no annealing
+            passes remain. This signals that the optimization should terminate.
+        ValueError: If coupling bounds are partially defined (must have both
+            lower and upper, or neither).
+
+    Note:
+        The bound update formula is:
+            upper_new = kinematic + factor * (upper_old - kinematic) + looseness
+            lower_new = kinematic + factor * (lower_old - kinematic) - looseness
+
+        Where `looseness` is 0 during normal tightening, or a positive value
+        from the annealing schedule when loosening constraints.
+    """
     assert factor > 0 and factor < 1
 
     if num_oob > 0:
