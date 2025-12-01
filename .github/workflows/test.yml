@@ -39,7 +39,7 @@ jobs:
       - name: Test
         if: ${{ matrix.tests-to-run == 'japan' }}
         run: |
-          pixi run -e ${{ matrix.pixi-environment }} pytest ./tests/test_solve_dense.py
+          pixi run -e ${{ matrix.pixi-environment }} pytest ./tests/test_solve_dense.py --array-compare
       - name: Test
         if: ${{ matrix.tests-to-run == 'optimize_sqp' }}
         run: |
