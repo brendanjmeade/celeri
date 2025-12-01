@@ -1,6 +1,7 @@
 import pytest
 import celeri
 import math
+import numpy as np
 
 def is_prime(n):
     if n <= 1:
@@ -14,7 +15,43 @@ def is_prime(n):
             return False
     return True
 
-@pytest.mark.array_compare(rtol=1e-5, atol=0.1)
+@pytest.mark.array_compare
+@pytest.mark.parametrize(
+    "config_name",
+    ["test_japan_config", "test_wna_config"],
+)
+def test_operator_tde_to_velocities(config_name):
+    config_file = f"./tests/configs/{config_name}.json"
+    config = celeri.get_config(config_file)
+    model = celeri.build_model(config)
+
+    estimation = celeri.assemble_and_solve_dense(model, eigen=True, tde=True)
+
+    assert estimation.operators.tde is not None
+    operator = estimation.operators.tde.tde_to_velocities[0]
+    rng = np.random.default_rng(seed=0)
+    indices = rng.choice(len(operator), size=25, replace=False)
+    return operator[indices, :]
+
+@pytest.mark.array_compare
+@pytest.mark.parametrize(
+    "config_name",
+    ["test_japan_config", "test_wna_config"],
+)
+def test_operator_eigen_to_tde_slip(config_name):
+    config_file = f"./tests/configs/{config_name}.json"
+    config = celeri.get_config(config_file)
+    model = celeri.build_model(config)
+
+    estimation = celeri.assemble_and_solve_dense(model, eigen=True, tde=True)
+
+    assert estimation.operators.eigen is not None
+    operator = estimation.operators.eigen.eigenvectors_to_tde_slip[0]
+    rng = np.random.default_rng(seed=0)
+    indices = rng.choice(len(operator), size=25, replace=False)
+    return operator[indices, :]
+    
+@pytest.mark.array_compare
 @pytest.mark.parametrize(
     "config_name, eigen, tde",
     [
