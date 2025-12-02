@@ -964,7 +964,12 @@ def _store_elastic_operators(
 
         cache = config.elastic_operator_cache_dir / f"{input_hash}.hdf5"
 
-        if cache.exists():
+        if cache.exists() and config.force_recompute:
+            logger.info(
+                f"Force recompute enabled. Ignoring cached elastic operators at {cache}"
+            )
+
+        if cache.exists() and not config.force_recompute:
             logger.info(f"Found cached elastic operators at {cache}")
             hdf5_file = h5py.File(cache, "r")
             cached_operator = np.array(
@@ -1045,7 +1050,8 @@ def _store_elastic_operators(
                     return
 
         else:
-            logger.info("Precomputed elastic operator file not found. Computing operators")
+            if not config.force_recompute:
+                logger.info("Precomputed elastic operator file not found. Computing operators")
 
     else:
         logger.info(
