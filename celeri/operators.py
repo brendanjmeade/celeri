@@ -10,6 +10,7 @@ import pandas as pd
 import scipy
 from loguru import logger
 from pandas import DataFrame
+from rich.progress import track
 from scipy import spatial
 from scipy.sparse import csr_matrix
 
@@ -1002,12 +1003,12 @@ def _store_elastic_operators(
                 operators.slip_rate_to_okada_to_velocities = cached_operator.copy()
 
                 if len(changed_segment_indices) > 0:
-                    for seg_idx in changed_segment_indices:
+                    for seg_idx in track(changed_segment_indices, description="Recomputing changed segments"):
                         single_segment = segment.iloc[
                             seg_idx : seg_idx + 1
                         ].reset_index(drop=True)
                         new_columns = get_segment_station_operator_okada(
-                            single_segment, station, config
+                            single_segment, station, config, progress_bar=False
                         )
                         col_start = 3 * seg_idx
                         col_end = col_start + 3
