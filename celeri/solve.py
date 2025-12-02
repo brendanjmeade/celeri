@@ -137,30 +137,49 @@ class Estimation:
     @cached_property
     def mesh_estimate(self) -> pd.DataFrame | None:
         """A dataframe containing the estimated slip rates and couplings for each mesh."""
-        if self.operators.tde is None or self.operators.eigen is None:
+        if self.operators.tde is None:
             return None
         if self.tde_strike_slip_rates is None or self.tde_dip_slip_rates is None:
             return None
         meshes = self.model.meshes
         mesh_outputs_list = []
+        # Use smoothed versions if eigen operators are available, otherwise use non-smoothed
+        use_smooth = self.operators.eigen is not None
         for i in range(len(meshes)):
-            # Get values, using zeros as default when None
-            strike_slip_rate_kinematic = (
-                self.tde_strike_slip_rates_kinematic_smooth.get(i, None)
-            )
-            dip_slip_rate_kinematic = self.tde_dip_slip_rates_kinematic_smooth.get(
-                i, None
-            )
-
-            strike_slip_coupling = None
-            if self.tde_strike_slip_rates_coupling_smooth is not None:
-                strike_slip_coupling = self.tde_strike_slip_rates_coupling_smooth.get(
+            if use_smooth:
+                strike_slip_rate_kinematic = (
+                    self.tde_strike_slip_rates_kinematic_smooth.get(i, None)
+                )
+                dip_slip_rate_kinematic = self.tde_dip_slip_rates_kinematic_smooth.get(
+                    i, None
+                )
+            else:
+                strike_slip_rate_kinematic = (
+                    self.tde_strike_slip_rates_kinematic.get(i, None)
+                )
+                dip_slip_rate_kinematic = self.tde_dip_slip_rates_kinematic.get(
                     i, None
                 )
 
+            strike_slip_coupling = None
+            if use_smooth:
+                if self.tde_strike_slip_rates_coupling_smooth is not None:
+                    strike_slip_coupling = self.tde_strike_slip_rates_coupling_smooth.get(
+                        i, None
+                    )
+            else:
+                if self.tde_strike_slip_rates_coupling is not None:
+                    strike_slip_coupling = self.tde_strike_slip_rates_coupling.get(
+                        i, None
+                    )
+
             dip_slip_coupling = None
-            if self.tde_dip_slip_rates_coupling_smooth is not None:
-                dip_slip_coupling = self.tde_dip_slip_rates_coupling_smooth.get(i, None)
+            if use_smooth:
+                if self.tde_dip_slip_rates_coupling_smooth is not None:
+                    dip_slip_coupling = self.tde_dip_slip_rates_coupling_smooth.get(i, None)
+            else:
+                if self.tde_dip_slip_rates_coupling is not None:
+                    dip_slip_coupling = self.tde_dip_slip_rates_coupling.get(i, None)
 
             # Create arrays of zeros with appropriate length if values are None
             n_elements = len(meshes[i].lon1)
