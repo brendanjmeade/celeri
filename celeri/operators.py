@@ -1008,7 +1008,7 @@ def _store_elastic_operators(
                             seg_idx : seg_idx + 1
                         ].reset_index(drop=True)
                         new_columns = get_segment_station_operator_okada(
-                            single_segment, station, config, disable_progress=True
+                            single_segment, station, config, progress_bar=False
                         )
                         col_start = 3 * seg_idx
                         col_end = col_start + 3

@@ -131,7 +131,7 @@ def get_rotation_displacements(lon_obs, lat_obs, omega_x, omega_y, omega_z):
     return vel_east, vel_north, vel_up
 
 
-def get_segment_station_operator_okada(segment, station, config, *, disable_progress=False):
+def get_segment_station_operator_okada(segment, station, config, *, progress_bar=True):
     """Calculates the elastic displacement partial derivatives based on the Okada
     formulation, using the source and receiver geometries defined in
     dicitonaries segment and stations. Before calculating the partials for
@@ -154,7 +154,7 @@ def get_segment_station_operator_okada(segment, station, config, *, disable_prog
         segment: Segment data
         station: Station data
         config: Configuration object
-        disable_progress: If True, suppress the progress bar (useful when called in a loop)
+        progress_bar: If True, show a progress bar
 
     """
     if station.empty:
@@ -166,7 +166,7 @@ def get_segment_station_operator_okada(segment, station, config, *, disable_prog
     n_stations = len(station)
     okada_segment_operator = np.full((3 * n_stations, 3 * n_segments), np.nan)
     # Loop through each segment and calculate displacements for each slip component
-    segment_iter = range(len(segment)) if disable_progress else track(range(len(segment)), description="Rectangular segment elastic")
+    segment_iter = range(len(segment)) if not progress_bar else track(range(len(segment)), description="Rectangular segment elastic")
     for i in segment_iter:
         for slip_type in ["strike", "dip", "tensile"]:
             # Each `u` has shape (n_stations, )
