@@ -907,9 +907,6 @@ def _compare_segments(
         "azimuth",
     ]
 
-    if len(cached_segments) != len(current_segments):
-        return list(range(len(current_segments)))
-
     cached_geom = cached_segments[geometric_columns].copy()
     current_geom = current_segments[geometric_columns].copy()
 
@@ -982,12 +979,44 @@ def _store_elastic_operators(
                 )
                 cached_operator = None
             else:
-                changed_segment_indices = _compare_segments(cached_segments, segment)
-                if len(changed_segment_indices) == 0:
-                    logger.info(
-                        "No source geometry changed since last computation. Using cached operator."
-                    )
-                    operators.slip_rate_to_okada_to_velocities = cached_operator
+                # Check if segments have been added or removed
+                if cached_segments["name"].tolist() != segment["name"].tolist():
+                    logger.info("Segments have been added or removed since last computation. Recomputing operators.")
+                    cached_operator = None
+                elif cached_operator is not None:
+                    changed_segment_indices = _compare_segments(cached_segments, segment)
+                    if len(changed_segment_indices) == 0:
+                        logger.info(
+                            "No source geometry changed since last computation. Using cached operator."
+                        )
+                        operators.slip_rate_to_okada_to_velocities = cached_operator
+
+                        if tde:
+                            hdf5_file = h5py.File(cache, "r")
+                            for i in range(len(meshes)):
+                                operators.tde_to_velocities[i] = np.array(
+                                    hdf5_file.get("tde_to_velocities_" + str(i))
+                                )
+                            hdf5_file.close()
+                        return
+
+                    logger.info(f"Recomputing {len(changed_segment_indices)} segments")
+
+                    operators.slip_rate_to_okada_to_velocities = cached_operator.copy()
+
+                    if len(changed_segment_indices) > 0:
+                        for seg_idx in track(changed_segment_indices, description="Recomputing changed segments"):
+                            single_segment = segment.iloc[
+                                seg_idx : seg_idx + 1
+                            ].reset_index(drop=True)
+                            new_columns = get_segment_station_operator_okada(
+                                single_segment, station, config, progress_bar=False
+                            )
+                            col_start = 3 * seg_idx
+                            col_end = col_start + 3
+                            operators.slip_rate_to_okada_to_velocities[
+                                :, col_start:col_end
+                            ] = new_columns
 
                     if tde:
                         hdf5_file = h5py.File(cache, "r")
@@ -996,53 +1025,27 @@ def _store_elastic_operators(
                                 hdf5_file.get("tde_to_velocities_" + str(i))
                             )
                         hdf5_file.close()
-                    return
 
-                logger.info(f"Recomputing {len(changed_segment_indices)} segments")
-
-                operators.slip_rate_to_okada_to_velocities = cached_operator.copy()
-
-                if len(changed_segment_indices) > 0:
-                    for seg_idx in track(changed_segment_indices, description="Recomputing changed segments"):
-                        single_segment = segment.iloc[
-                            seg_idx : seg_idx + 1
-                        ].reset_index(drop=True)
-                        new_columns = get_segment_station_operator_okada(
-                            single_segment, station, config, progress_bar=False
-                        )
-                        col_start = 3 * seg_idx
-                        col_end = col_start + 3
-                        operators.slip_rate_to_okada_to_velocities[
-                            :, col_start:col_end
-                        ] = new_columns
-
-                if tde:
-                    hdf5_file = h5py.File(cache, "r")
-                    for i in range(len(meshes)):
-                        operators.tde_to_velocities[i] = np.array(
-                            hdf5_file.get("tde_to_velocities_" + str(i))
-                        )
+                    logger.info("Caching updated elastic operators")
+                    cache.parent.mkdir(parents=True, exist_ok=True)
+                    hdf5_file = h5py.File(cache, "w")
+                    hdf5_file.create_dataset(
+                        "slip_rate_to_okada_to_velocities",
+                        data=operators.slip_rate_to_okada_to_velocities,
+                    )
+                    if tde:
+                        for i in range(len(meshes)):
+                            hdf5_file.create_dataset(
+                                "tde_to_velocities_" + str(i),
+                                data=operators.tde_to_velocities[i],
+                            )
+                    _save_segments_to_hdf5(segment, hdf5_file)
                     hdf5_file.close()
 
-                logger.info("Caching updated elastic operators")
-                cache.parent.mkdir(parents=True, exist_ok=True)
-                hdf5_file = h5py.File(cache, "w")
-                hdf5_file.create_dataset(
-                    "slip_rate_to_okada_to_velocities",
-                    data=operators.slip_rate_to_okada_to_velocities,
-                )
-                if tde:
-                    for i in range(len(meshes)):
-                        hdf5_file.create_dataset(
-                            "tde_to_velocities_" + str(i),
-                            data=operators.tde_to_velocities[i],
-                        )
-                _save_segments_to_hdf5(segment, hdf5_file)
-                hdf5_file.close()
+                    return
 
-                return
-
-        logger.info("Precomputed elastic operator file not found. Computing operators")
+        else:
+            logger.info("Precomputed elastic operator file not found. Computing operators")
 
     else:
         logger.info(
