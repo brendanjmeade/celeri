@@ -70,6 +70,9 @@ class Config(BaseModel):
     elastic_operator_cache_dir: Path | None = None
     """Location of a hdf5 file to cache elastic operators"""
 
+    force_recompute: bool = False
+    """When True, recomputes all operators even if cached versions are present."""
+
     # Weights for various constraints and parameters in penalized linear inversion
     block_constraint_weight: float = 1e24
     block_constraint_weight_max: float = 1e20

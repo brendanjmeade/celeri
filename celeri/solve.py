@@ -674,7 +674,7 @@ class Estimation:
         self.operators.to_disk(output_dir / "operators")
 
         if self.mcmc_trace is not None:
-            self.mcmc_trace.to_datatree().to_zarr(output_dir / "mcmc_trace.zarr")
+            self.mcmc_trace.to_datatree().to_zarr(output_dir / "mcmc_trace.zarr", consolidated=False)
         # We skip saving the trace, it shouldn't be needed later
         dataclass_to_disk(self, output_dir, skip={"operators", "trace", "mcmc_trace"})
 
