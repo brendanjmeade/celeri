@@ -201,8 +201,8 @@ def test_dense_sol(config_name, eigen: bool, tde: bool):
     assert hasattr(estimation, "east_vel_residual")
 
     rng = np.random.default_rng(seed=0)
-    indices = rng.choice(len(estimation.state_vector), size=25, replace=False)
-    return estimation.state_vector[indices]
+    #indices = rng.choice(len(estimation.state_vector), size=25, replace=False)
+    return estimation.state_vector
 
 def test_japan_dense_error():
     config_file_name = "./tests/configs/test_japan_config.json"
