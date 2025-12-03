@@ -13,7 +13,7 @@ jobs:
       matrix:
         os: ["ubuntu-latest"]
         pixi-environment: ["default"]
-        tests-to-run: ["japan"]
+        tests-to-run: ["japan", "other", "optimize_sqp"]
     name: Test (${{ matrix.pixi-environment }}, ${{ matrix.tests-to-run }})
     runs-on: ${{ matrix.os }}
     defaults:
@@ -33,10 +33,14 @@ jobs:
           # over the lockfile, and locally overwrite the lockfile accordingly.
           frozen: false
       - name: Test
+        if: ${{ matrix.tests-to-run == 'other' }}
         run: |
-          pixi run -e ${{ matrix.pixi-environment }} pytest ./tests/test_solve_dense.py --arraydiff-generate-path=/tmp/arraydiff-results
-      - name: Upload arraydiff results
-        uses: actions/upload-artifact@v4
-        with:
-          name: arraydiff-results
-          path: /tmp/arraydiff-results
+          pixi run -e ${{ matrix.pixi-environment }} pytest ./tests/test_closure.py ./tests/test_okada_equals_cutde.py ./tests/test_optimize.py ./tests/test_serialize.py ./tests/test_output_files.py
+      - name: Test
+        if: ${{ matrix.tests-to-run == 'japan' }}
+        run: |
+          pixi run -e ${{ matrix.pixi-environment }} pytest ./tests/test_solve_dense.py --arraydiff
+      - name: Test
+        if: ${{ matrix.tests-to-run == 'optimize_sqp' }}
+        run: |
+          pixi run -e ${{ matrix.pixi-environment }} pytest ./tests/test_optimize_sqp.py

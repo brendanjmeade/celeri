@@ -200,8 +200,8 @@ def test_dense_sol(config_name, eigen: bool, tde: bool):
     assert hasattr(estimation, "tde_rates")
     assert hasattr(estimation, "east_vel_residual")
 
-    rng = np.random.default_rng(seed=0)
-    #indices = rng.choice(len(estimation.state_vector), size=25, replace=False)
+    scale = np.abs(estimation.operators.full_dense_operator).max(0)
+    estimation.state_vector = estimation.state_vector / scale
     return estimation.state_vector
 
 def test_japan_dense_error():
