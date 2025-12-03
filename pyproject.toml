@@ -125,7 +125,6 @@ replacement = '[\1](https://github.com/brendanjmeade/celeri/tree/main/\g<2>)'
 
 [tool.pytest.ini_options]
 addopts = "-s --tb=short"
-filterwarnings = "ignore::scipy.linalg.LinAlgWarning"
 
 [tool.ruff]
 line-length = 88
