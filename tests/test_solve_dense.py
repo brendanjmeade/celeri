@@ -201,7 +201,7 @@ def test_dense_sol(config_name, eigen: bool, tde: bool):
     assert hasattr(estimation, "east_vel_residual")
 
     scale = np.abs(estimation.operators.full_dense_operator).max(0)
-    estimation.state_vector = estimation.state_vector / scale
+    estimation.state_vector = estimation.state_vector * scale
     return estimation.state_vector
 
 def test_japan_dense_error():
