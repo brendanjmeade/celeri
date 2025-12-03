@@ -29,6 +29,28 @@ def test_operator_tde_to_velocities(config_name):
     "config_name",
     ["test_japan_config", "test_wna_config"],
 )
+def test_operator_eigen_to_velocities(config_name):
+    config_file = f"./tests/configs/{config_name}.json"
+    config = celeri.get_config(config_file)
+    model = celeri.build_model(config)
+
+    estimation = celeri.assemble_and_solve_dense(model, eigen=True, tde=True)
+
+    assert estimation.operators.eigen is not None
+
+    operator = estimation.operators.eigen.eigen_to_velocities[0]
+    rng = np.random.default_rng(seed=0)
+    size = min(min(len(operator), len(operator[0])), 50)
+    idx_rows = rng.choice(len(operator), size=size, replace=False)
+    idx_cols = rng.choice(len(operator[0]), size=size, replace=False)
+
+    return operator[np.ix_(idx_rows, idx_cols)]
+
+@pytest.mark.array_compare
+@pytest.mark.parametrize(
+    "config_name",
+    ["test_japan_config", "test_wna_config"],
+)
 def test_operator_eigen_to_tde_slip(config_name):
     config_file = f"./tests/configs/{config_name}.json"
     config = celeri.get_config(config_file)
