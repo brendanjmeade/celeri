@@ -120,8 +120,9 @@ class Config(BaseModel):
     segment_slip_rate_regularization_sigma: float | None = 100
     """Like `segment_slip_rate_regularization`, but for use in `solve_mcmc`.
 
-    The regularization is implemented as a Gaussian prior with this
-    standard deviation in mm/yr.
+    The regularization is implemented as a Student's t prior with this
+    standard deviation in mm/yr, and 5 degrees of freedom. This means that 
+    sigma has an inverse relationship with the severity of the regularization.
     """
 
     segment_slip_rate_bound_sigma: float = 1.0
@@ -182,6 +183,9 @@ class Config(BaseModel):
 
     mcmc_draws: int | None = None
     """Number of MCMC samples to draw after tuning."""
+
+    mcmc_seed: int | None = None
+    """Random seed for MCMC sampling."""
 
     mcmc_chains: int = 1
     """Number of parallel MCMC chains to run."""

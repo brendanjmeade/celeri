@@ -151,6 +151,13 @@ def parse_args() -> argparse.Namespace:
         required=False,
         help="Number of MCMC samples to draw",
     )
+    parser.add_argument(
+        "--mcmc-seed",
+        type=int,
+        default=None,
+        required=False,
+        help="Random seed for MCMC sampling",
+    )
 
     return parser.parse_args()
 
