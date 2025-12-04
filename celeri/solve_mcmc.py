@@ -671,6 +671,7 @@ def solve_mcmc(
         "tune": model.config.mcmc_tune,
         "store_unconstrained": True,
         "store_gradient": True,
+        "seed": model.config.mcmc_seed,
     }
     kwargs.update(sample_kwargs or {})
     trace = nutpie.sample(compiled, **kwargs)
