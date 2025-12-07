@@ -1,11 +1,10 @@
 import json
-import subprocess
 from pathlib import Path
 
 import h5py
 import pandas as pd
 import pytest
-
+import celeri
 from celeri.celeri_util import get_newest_run_folder
 
 
@@ -17,15 +16,13 @@ from celeri.celeri_util import get_newest_run_folder
 )
 def test_celeri_solve_creates_output_files(config_file):
     """Test that celeri_solve.py creates the HDF5 file and CSV files via write_output()."""
-    subprocess.check_call(
-        [
-            "python",
-            "celeri/scripts/celeri_solve.py",
-            config_file,
-            "--solve_type",
-            "dense",
-        ],
-    )
+    # Load config and set solve type
+    config = celeri.get_config(config_file)
+    config.solve_type = "dense"
+    
+    model = celeri.build_model(config)
+    estimation = celeri.build_and_solve_dense(model)
+    celeri.write_output(estimation)
 
     run_dir = get_newest_run_folder(base=Path(__file__).parent.parent / "runs")
     run_name = run_dir.name
@@ -44,8 +41,8 @@ def test_celeri_solve_creates_output_files(config_file):
         assert isinstance(segment_dataset, h5py.Dataset), "'segment' is not a Dataset"
 
         with open(config_file) as f:
-            config = json.load(f)
-        segment_file_path = config["segment_file_name"]
+            config_json = json.load(f)
+        segment_file_path = config_json["segment_file_name"]
         segment_file = Path(config_file).parent / segment_file_path
 
         segment_df = pd.read_csv(segment_file)
@@ -62,8 +59,8 @@ def test_celeri_solve_creates_output_files(config_file):
         assert isinstance(station_dataset, h5py.Dataset), "'station' is not a Dataset"
 
         with open(config_file) as f:
-            config = json.load(f)
-        station_file_path = config["station_file_name"]
+            config_json = json.load(f)
+        station_file_path = config_json["station_file_name"]
         station_file = Path(config_file).parent / station_file_path
 
         station_df = pd.read_csv(station_file)
