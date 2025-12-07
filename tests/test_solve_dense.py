@@ -4,17 +4,18 @@ import celeri
 
 
 @pytest.mark.parametrize(
-    "config_file, eigen, tde",
+    "config_name, eigen, tde",
     [
-        ("./tests/configs/test_japan_config.json", True, True),
-        ("./tests/configs/test_japan_config.json", False, True),
-        ("./tests/configs/test_japan_config.json", False, False),
-        ("./tests/configs/test_wna_config.json", True, True),
-        ("./tests/configs/test_wna_config.json", False, True),
-        ("./tests/configs/test_wna_config.json", False, False),
+        ("test_japan_config", True, True),
+        ("test_japan_config", False, True),
+        ("test_japan_config", False, False),
+        ("test_wna_config", True, True),
+        ("test_wna_config", False, True),
+        ("test_wna_config", False, False),
     ],
 )
-def test_japan_dense(config_file, eigen: bool, tde: bool):
+def test_dense_sol(config_name, eigen: bool, tde: bool):
+    config_file = f"./tests/configs/{config_name}.json"
     config = celeri.get_config(config_file)
     model = celeri.build_model(config)
 
