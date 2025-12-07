@@ -1,8 +1,8 @@
 import pytest
-
 import celeri
+import numpy as np
 
-
+@pytest.mark.array_compare(rtol=1e-4, atol=1e-9)
 @pytest.mark.parametrize(
     "config_name, eigen, tde",
     [
@@ -21,9 +21,12 @@ def test_dense_sol(config_name, eigen: bool, tde: bool):
 
     estimation = celeri.assemble_and_solve_dense(model, eigen=eigen, tde=tde)
 
-    estimation.tde_rates  # noqa: B018
-    estimation.east_vel_residual  # noqa: B018
+    assert hasattr(estimation, "tde_rates")
+    assert hasattr(estimation, "east_vel_residual")
 
+    scale = np.abs(estimation.operators.full_dense_operator).max(0)
+    estimation.state_vector = estimation.state_vector * scale
+    return estimation.state_vector
 
 def test_japan_dense_error():
     config_file_name = "./tests/configs/test_japan_config.json"
@@ -31,3 +34,4 @@ def test_japan_dense_error():
 
     with pytest.raises(ValueError):
         celeri.assemble_and_solve_dense(model, eigen=True, tde=False)
+    return
