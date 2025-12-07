@@ -485,6 +485,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/pytensor-2.35.1-py313hd2d30e1_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/pytensor-base-2.35.1-np2py313h73dcb5b_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pytest-9.0.1-pyhcf101f3_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/pytest-arraydiff-0.6.1-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/python-3.13.9-hc97d973_101_cp313.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/python-dateutil-2.9.0.post0-pyhe01879c_2.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/python-fastjsonschema-2.21.2-pyhe01879c_0.conda
@@ -1069,6 +1070,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-64/pytensor-2.35.1-py313h62e6224_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/pytensor-base-2.35.1-np2py313h77a8fbf_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pytest-9.0.1-pyhcf101f3_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/pytest-arraydiff-0.6.1-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/python-3.13.9-h17c18a5_101_cp313.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/python-dateutil-2.9.0.post0-pyhe01879c_2.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/python-fastjsonschema-2.21.2-pyhe01879c_0.conda
@@ -1620,6 +1622,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/pytensor-2.31.7-py313h13cdef6_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/pytensor-base-2.31.7-np2py313h08a1e76_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pytest-9.0.1-pyhcf101f3_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/pytest-arraydiff-0.6.1-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/python-3.13.9-hfc2f54d_101_cp313.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/python-dateutil-2.9.0.post0-pyhe01879c_2.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/python-fastjsonschema-2.21.2-pyhe01879c_0.conda
@@ -2112,6 +2115,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/win-64/pytensor-2.35.1-py313h74068b0_0.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/pytensor-base-2.35.1-np2py313h776c0ec_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pytest-9.0.1-pyhcf101f3_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/pytest-arraydiff-0.6.1-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/python-3.13.9-h09917c8_101_cp313.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/python-dateutil-2.9.0.post0-pyhe01879c_2.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/python-fastjsonschema-2.21.2-pyhe01879c_0.conda
@@ -4757,7 +4761,7 @@ packages:
   timestamp: 1762108501827
 - pypi: ./
   name: celeri
-  version: 0.0.4.post1.dev173+g8c385a5a4.d20251126
+  version: 0.0.4.post1.dev221+ged67a1fd1
   sha256: 699f3d9fa16e9fd792cf9c4405acbfe2c49a72c9759802456f443620d3b52280
   requires_dist:
   - cartopy
@@ -22166,6 +22170,19 @@ packages:
   - pkg:pypi/pytest?source=compressed-mapping
   size: 299017
   timestamp: 1763049198670
+- conda: https://conda.anaconda.org/conda-forge/noarch/pytest-arraydiff-0.6.1-pyhd8ed1ab_1.conda
+  sha256: 69ec4405a84dd32fc43ff8715be366d7125fb07bba55a78196e3805a34894e9f
+  md5: 801a196e88d66188bb7c998440c6d7d2
+  depends:
+  - numpy
+  - pytest >=4.6
+  - python >=3.9
+  license: BSD-3-Clause
+  license_family: BSD
+  purls:
+  - pkg:pypi/pytest-arraydiff?source=hash-mapping
+  size: 15439
+  timestamp: 1745589403074
 - conda: https://conda.anaconda.org/conda-forge/linux-64/python-3.13.9-hc97d973_101_cp313.conda
   build_number: 101
   sha256: e89da062abd0d3e76c8d3b35d3cafc5f0d05914339dcb238f9e3675f2a58d883
