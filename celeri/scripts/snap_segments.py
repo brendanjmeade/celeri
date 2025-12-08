@@ -121,8 +121,6 @@ def make_default_segment(length):
                 "dip",
                 "locking_depth",
                 "locking_depth_flag",
-                "dip_sig",
-                "dip_flag",
                 "ss_rate",
                 "ss_rate_sig",
                 "ss_rate_flag",
@@ -178,7 +176,7 @@ def main():
             mesh_config_dict = mesh_param[i].copy()
             mesh_config_dict["file_name"] = args.mesh_parameters_file_name
             mesh_config = MeshConfig.model_validate(mesh_config_dict)
-            
+
             mesh = Mesh.from_params(mesh_config)
             meshes.append(mesh)
             logger.success(f"Read: {mesh_param[i]['mesh_filename']}")
