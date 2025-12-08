@@ -970,7 +970,7 @@ def _tighten_kinematic_bounds(
     Background:
         The coupling constraints require:
 
-            coupling_lower * kinematic <= elastic <= coupling_upper * kinematic
+            coupling_lower <= elastic / kinematic <= coupling_upper
 
         In (kinematic, elastic) space, this defines a "bowtie" or double-sided
         cone: one triangular wedge for positive kinematic velocities, and one
