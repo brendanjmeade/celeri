@@ -75,17 +75,7 @@ class Config(BaseModel):
 
     # Weights for various constraints and parameters in penalized linear inversion
     block_constraint_weight: float = 1e24
-    block_constraint_weight_max: float = 1e20
-    block_constraint_weight_min: float = 1e20
-    block_constraint_weight_steps: int = 1
     slip_constraint_weight: float = 100000
-    slip_constraint_weight_max: float = 100000
-    slip_constraint_weight_min: float = 100000
-    slip_constraint_weight_steps: int = 1
-    station_data_weight: int = 1
-    station_data_weight_max: int = 1
-    station_data_weight_min: int = 1
-    station_data_weight_steps: int = 1
 
     segment_slip_rate_regularization: float = 1.0
     """Weight for regularizing slip rates towards 0. 
@@ -141,15 +131,11 @@ class Config(BaseModel):
     sqp2_objective: Sqp2Objective = "qr_sum_of_squares"
     """Objective function to use in `solve_sqp2`."""
 
-    global_elastic_cutoff_distance: int = 2000000
-    global_elastic_cutoff_distance_flag: int = 0
-
-    # TODO(Brendan): They were marked as unused, but are still used in the code.
+    # Default values for segment specified locking depth overrides
     locking_depth_flag2: int = 25
     locking_depth_flag3: int = 15
     locking_depth_flag4: int = 10
     locking_depth_flag5: int = 5
-    locking_depth_overide_value: int = 15
     locking_depth_override_flag: int = 0
 
     # Plotting defaults
@@ -168,7 +154,6 @@ class Config(BaseModel):
 
     snap_segments: int = 0
     solve_type: str = "hmatrix"
-    strain_method: int = 1
     tri_con_weight: int = 1000000
 
     unit_sigmas: bool = False
