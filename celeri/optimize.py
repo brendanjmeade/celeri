@@ -1021,7 +1021,11 @@ def _tighten_kinematic_bounds(
         # We have fixed all OOBs, and annealing is enabled, so use the first remaining
         # value in the annealing schedule as the loosenenss.
         looseness = remaining_annealing_schedule.pop(0)
-        print(f"Loosening constraints by {looseness}")
+        print(
+            f"ANNEALING\n"
+            f"Achieved objective 2-norm: {minimizer.objective_norm2.value}\n"
+            f"Now loosening constraints by {looseness} mm/yr\n"
+        )
 
     def tighten_item(limits: SlipRateLimitItem, coupling: SlipRateItem):
         elastic = coupling.elastic_numpy()
