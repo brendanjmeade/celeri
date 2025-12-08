@@ -999,7 +999,8 @@ def _tighten_kinematic_bounds(
 
     This function is called after each SQP iteration to adjust the bounds:
     - During normal iterations (when `num_oob > 0`): bounds are tightened by
-      moving them a fraction (`factor`) closer to the current kinematic solution.
+      reducing their distance to the current kinematic solution to a fraction
+      (`factor`) of the previous distance.
     - During annealing (when `num_oob == 0` and annealing is enabled): bounds
       are slightly loosened to allow the solver to escape local minima.
 
@@ -1008,9 +1009,11 @@ def _tighten_kinematic_bounds(
         tighten_all: If True, tighten bounds for all mesh elements uniformly.
             If False, only tighten bounds for elements that are currently
             out-of-bounds (selective tightening).
-        factor: Fraction by which to reduce the gap between the current kinematic
-            value and each bound. Must be in (0, 1). Default 0.5 means bounds
-            move halfway towards the current solution each iteration.
+        factor: Fraction to which the gap between the current kinematic value and
+            each bound is reduced. Must be in (0, 1). Default 0.5 means bounds
+            move halfway towards the current solution each iteration. Values near
+            0 cause bounds to tighten quickly; values near 1 cause bounds to
+            tighten slowly.
         iteration_number: Current iteration index (for logging/debugging).
         num_oob: Number of mesh elements currently violating coupling bounds.
         remaining_annealing_schedule: Mutable list of looseness values (mm/yr)
