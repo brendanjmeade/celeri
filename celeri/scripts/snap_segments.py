@@ -24,7 +24,7 @@ def snap_segments(segment, meshes):
     all_edge_segment = make_default_segment(0)
     for i in range(len(meshes)):
         these_segments = np.where(
-            (segment.mesh_flag != 0) & (segment.mesh_file_index == i + 1)
+            (segment.mesh_flag != 0) & (segment.mesh_file_index == i)
         )[0]
         cut_segment_idx = np.append(cut_segment_idx, these_segments)
         # Get top coordinates of the mesh
@@ -64,7 +64,7 @@ def snap_segments(segment, meshes):
         edge_segs.locking_depth = -15
         edge_segs.mesh_flag = +1
         edge_segs.mesh_file_index = +i + 1
-        all_edge_segment = all_edge_segment.append(edge_segs)
+        all_edge_segment = pd.concat([all_edge_segment, edge_segs])
 
     # Get indices of segments to keep
     keep_segment_idx = np.setdiff1d(range(len(segment.lon1)), cut_segment_idx)
@@ -102,7 +102,7 @@ def snap_segments(segment, meshes):
                 1, closest_edge_idx[i]
             ]
     # Merge with mesh edge segments
-    new_segment = keep_segment.append(all_edge_segment)
+    new_segment = pd.concat([keep_segment, all_edge_segment])
     new_index = range(len(new_segment))
     new_segment.index = new_index
     return new_segment
@@ -143,8 +143,9 @@ def make_default_segment(length):
         default_segment[key] = np.zeros_like(length_vec)
     default_segment.locking_depth = +15
     default_segment.dip = +90
+    default_segment["name"] = default_segment["name"].astype(str)
     for i in range(len(default_segment.name)):
-        default_segment.name[i] = "segment_" + str(i)
+        default_segment.loc[i, "name"] = str("segment_" + str(i))
     return default_segment
 
 
@@ -178,7 +179,7 @@ def main():
             mesh_config_dict = mesh_param[i].copy()
             mesh_config_dict["file_name"] = args.mesh_parameters_file_name
             mesh_config = MeshConfig.model_validate(mesh_config_dict)
-            
+
             mesh = Mesh.from_params(mesh_config)
             meshes.append(mesh)
             logger.success(f"Read: {mesh_param[i]['mesh_filename']}")
