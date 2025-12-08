@@ -968,12 +968,34 @@ def _tighten_kinematic_bounds(
     """Tighten (or loosen) coupling constraint bounds for the SQP solver.
 
     Background:
-        The coupling constraints define a feasible region that is a double-sided
-        cone, with one convex component for positive kinematic velocities and one for
-        negative. The union of the two components is non-convex. To
-        formulate a tractable optimization problem, we use a convex approximation
-        with box constraints that we iteratively tighten towards the current
-        solution.
+        The coupling constraints require:
+
+            coupling_lower * kinematic <= elastic <= coupling_upper * kinematic
+
+        In (kinematic, elastic) space, this defines a "bowtie" or double-sided
+        cone: one triangular wedge for positive kinematic velocities, and one
+        for negative. The union of these two wedges is non-convex.
+
+        To obtain a tractable convex optimization problem, we impose bounds on
+        the kinematic slip rate:
+
+            kinematic_lower ≤ kinematic ≤ kinematic_upper
+
+        The intersection of these kinematic bounds with the bowtie produces two
+        disconnected triangular regions (one per wedge). The convex hull of this
+        intersection is a trapezoid with:
+
+        - Two vertical edges from the kinematic bounds (left at kinematic_lower,
+          right at kinematic_upper)
+        - Two sloped edges connecting the corners where the kinematic bounds
+          intersect the bowtie boundary
+
+        This trapezoid is a convex relaxation of the original non-convex
+        constraint. As the kinematic bounds are iteratively tightened toward
+        the current solution, the trapezoid shrinks. Once the bounds have the
+        same sign (both positive or both negative), the trapezoid degenerates
+        into a single triangular wedge—exactly matching one component of the
+        original bowtie constraint.
 
     This function is called after each SQP iteration to adjust the bounds:
     - During normal iterations (when `num_oob > 0`): bounds are tightened by
