@@ -3,10 +3,6 @@ import celeri
 import numpy as np
 
 @pytest.mark.array_compare(rtol=1e-4, atol=1e-9)
-@pytest.mark.parametrize(
-    "config_name",
-    ["test_japan_config", "test_wna_config"],
-)
 def test_operator_tde_to_velocities(config_name):
     config_file = f"./tests/configs/{config_name}.json"
     config = celeri.get_config(config_file)
@@ -25,10 +21,6 @@ def test_operator_tde_to_velocities(config_name):
     return operator[np.ix_(idx_rows, idx_cols)]
 
 @pytest.mark.array_compare(rtol=1e-4, atol=1e-9)
-@pytest.mark.parametrize(
-    "config_name",
-    ["test_japan_config", "test_wna_config"],
-)
 def test_operator_eigen_to_velocities(config_name):
     config_file = f"./tests/configs/{config_name}.json"
     config = celeri.get_config(config_file)
@@ -47,10 +39,6 @@ def test_operator_eigen_to_velocities(config_name):
     return operator[np.ix_(idx_rows, idx_cols)]
 
 @pytest.mark.array_compare(rtol=1e-4, atol=1e-9)
-@pytest.mark.parametrize(
-    "config_name",
-    ["test_japan_config", "test_wna_config"],
-)
 def test_operator_eigen_to_tde_slip(config_name):
     config_file = f"./tests/configs/{config_name}.json"
     config = celeri.get_config(config_file)
@@ -69,10 +57,6 @@ def test_operator_eigen_to_tde_slip(config_name):
     return operator[np.ix_(idx_rows, idx_cols)]
 
 @pytest.mark.array_compare(rtol=1e-4, atol=1e-9)
-@pytest.mark.parametrize(
-    "config_name",
-    ["test_japan_config", "test_wna_config"],
-)
 def test_operator_eigen_to_tde_bcs(config_name):
     config_file = f"./tests/configs/{config_name}.json"
     config = celeri.get_config(config_file)
@@ -91,10 +75,6 @@ def test_operator_eigen_to_tde_bcs(config_name):
     return operator[np.ix_(idx_rows, idx_cols)]
 
 @pytest.mark.array_compare(rtol=1e-4, atol=1e-9)
-@pytest.mark.parametrize(
-    "config_name",
-    ["test_japan_config", "test_wna_config"],
-)
 def test_operator_slip_rate_to_okada_to_velocities(config_name):
     config_file = f"./tests/configs/{config_name}.json"
     config = celeri.get_config(config_file)
@@ -113,10 +93,6 @@ def test_operator_slip_rate_to_okada_to_velocities(config_name):
     return operator[np.ix_(idx_rows, idx_cols)]
 
 @pytest.mark.array_compare(rtol=1e-4, atol=1e-9)
-@pytest.mark.parametrize(
-    "config_name",
-    ["test_japan_config", "test_wna_config"],
-)
 def test_operator_block_strain_rate_to_velocities(config_name):
     config_file = f"./tests/configs/{config_name}.json"
     config = celeri.get_config(config_file)
@@ -134,11 +110,7 @@ def test_operator_block_strain_rate_to_velocities(config_name):
 
     return operator[np.ix_(idx_rows, idx_cols)]
 
-@pytest.mark.array_compare(rtol=1e-4, atol=1e-9)
-@pytest.mark.parametrize(
-    "config_name",
-    ["test_japan_config", "test_wna_config"],
-)
+@pytest.mark.array_compare(rtol=1e-4, atol=1e-9)    
 def test_operator_rotation_to_slip_rate(config_name):
     config_file = f"./tests/configs/{config_name}.json"
     config = celeri.get_config(config_file)
@@ -157,10 +129,6 @@ def test_operator_rotation_to_slip_rate(config_name):
     return operator[np.ix_(idx_rows, idx_cols)]
 
 @pytest.mark.array_compare(rtol=1e-4, atol=1e-9)
-@pytest.mark.parametrize(
-    "config_name",
-    ["test_japan_config", "test_wna_config"],
-)
 def test_operator_rotation_to_tri_slip_rate(config_name):
     config_file = f"./tests/configs/{config_name}.json"
     config = celeri.get_config(config_file)
