@@ -965,7 +965,7 @@ class MinimizationComplete(Exception):
     pass
 
 
-def _tighten_kinematic_bounds(
+def _tighten_kinematic_anchors(
     minimizer: Minimizer,
     *,
     tighten_all: bool = True,
@@ -1582,7 +1582,7 @@ def solve_sqp2(
         num_oob, _total = minimizer.out_of_bounds()
 
         try:
-            _tighten_kinematic_bounds(
+            _tighten_kinematic_anchors(
                 minimizer,
                 factor=reduction_factor,
                 tighten_all=True,
