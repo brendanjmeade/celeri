@@ -177,7 +177,16 @@ class SlipRate:
 
 @dataclass(kw_only=True)
 class SlipRateLimitItem:
-    """Slip rate limits for a single mesh, either for strike or dip slip."""
+    """Slip rate limits for a single mesh, either for strike or dip slip.
+
+    Attributes
+    ----------
+    kinematic_lower, kinematic_upper : np.ndarray | None
+        Geometric anchor values along the kinematic axis used to construct
+        the convex envelope of the bowtie constraint. These are NOT hard
+        bounds on the kinematic velocity; see `_tighten_coupling_bounds`
+        for details.
+    """
 
     kinematic_lower: np.ndarray | None
     kinematic_upper: np.ndarray | None
@@ -265,9 +274,9 @@ class SlipRateLimitItem:
         elastic = np.zeros(self.constraints_matrix_elastic.shape)
         const = np.zeros(self.constraints_vector.shape)
 
-        # Define boundary points in (kinematic, elastic) space
+        # Define anchor points in (kinematic, elastic) space
 
-        # The lower left corner of the subset
+        # The lower-left anchor point (at kinematic_lower)
         lower_left_kinematic = self.kinematic_lower
         lower_left_elastic = np.where(
             self.kinematic_lower < 0,
@@ -275,7 +284,7 @@ class SlipRateLimitItem:
             self.kinematic_lower * coupling_lower,
         )
 
-        # The upper left corner of the subset
+        # The upper-left anchor point (at kinematic_lower)
         upper_left_kinematic = self.kinematic_lower
         upper_left_elastic = np.where(
             self.kinematic_lower < 0,
@@ -283,7 +292,7 @@ class SlipRateLimitItem:
             self.kinematic_lower * coupling_upper,
         )
 
-        # The lower right corner of the subset
+        # The lower-right anchor point (at kinematic_upper)
         lower_right_kinematic = self.kinematic_upper
         lower_right_elastic = np.where(
             self.kinematic_upper < 0,
@@ -291,7 +300,7 @@ class SlipRateLimitItem:
             self.kinematic_upper * coupling_lower,
         )
 
-        # The upper right corner of the subset
+        # The upper-right anchor point (at kinematic_upper)
         upper_right_kinematic = self.kinematic_upper
         upper_right_elastic = np.where(
             self.kinematic_upper < 0,
@@ -409,7 +418,7 @@ class SlipRateLimitItem:
         # Create a figure
         fig, ax = plt.subplots(figsize=figsize)
 
-        # Get the kinematic bounds for this index
+        # Get the kinematic anchor values for this index
         k_lower = self.kinematic_lower[index]
         k_upper = self.kinematic_upper[index]
 
@@ -1129,7 +1138,7 @@ def _tighten_kinematic_bounds(
         raise MinimizationComplete()
     else:
         # We have fixed all OOBs, and annealing is enabled, so use the first remaining
-        # value in the annealing schedule as the loosenenss.
+        # value in the annealing schedule as the looseness.
         looseness = remaining_annealing_schedule.pop(0)
         print(
             f"ANNEALING\n"
@@ -1154,7 +1163,8 @@ def _tighten_kinematic_bounds(
 
         if limits.kinematic_lower is None or limits.kinematic_upper is None:
             raise ValueError(
-                "Invalid coupling bounds. Must have both lower and upper bounds or neither."
+                "Invalid kinematic anchor values. "
+                "Must have both lower and upper anchor values, or neither."
             )
 
         upper = limits.kinematic_upper.copy()
@@ -1193,16 +1203,19 @@ def _tighten_kinematic_bounds(
             diff = lower[oob] - target
             lower[oob] = target + factor * diff
 
-        # Just fix the sign once the interval only positive or negative
+        # Once the anchor values have the same sign, the constraint region
+        # coincides with one branch of the original bowtie. Both sloped
+        # constraint lines pass through the origin, so any pair of anchor
+        # values with the correct sign defines the same lines. We use
+        # canonical values [0, 1] or [-1, 0].
+
+        # First the positive kinematic velocities
         fixed_sign = lower >= 0
         lower[fixed_sign] = 0.0
-        # Any positive value will do, because we only care about the line
-        # that passes through the point
         upper[fixed_sign] = 1.0
 
+        # Then the negative kinematic velocities
         fixed_sign = upper <= 0
-        # Any negative value will do, because we only care about the line
-        # that passes through the point
         lower[fixed_sign] = -1.0
         upper[fixed_sign] = 0.0
 
