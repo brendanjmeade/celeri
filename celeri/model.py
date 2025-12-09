@@ -294,6 +294,7 @@ def process_sar(sar, config):
         sar["block_label"] = []
     return sar
 
+
 def process_segment(segment, config, meshes):
     """Add derived fields to segment dataframe."""
     if bool(config.snap_segments):
@@ -767,8 +768,6 @@ def make_default_segment(length):
             "dip",
             "locking_depth",
             "locking_depth_flag",
-            "dip_sig",
-            "dip_flag",
             "ss_rate",
             "ss_rate_sig",
             "ss_rate_flag",

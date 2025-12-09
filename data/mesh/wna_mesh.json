@@ -10,7 +10,6 @@
     "top_slip_rate_weight": 1e2,
     "bot_slip_rate_weight": 1e2,
     "side_slip_rate_weight": 1e2,
-    "a_priori_slip_filename": "",
     "elastic_constraints_ss": [-5, 5],
     "elastic_constraints_ds": [0, 30],
     "coupling_constraints_ss": [0, 1],

@@ -1,12 +1,7 @@
 {
     "base_runs_folder": "../../runs/",
     "block_constraint_weight": 1e+24,
-    "block_constraint_weight_max": 1e+24,
-    "block_constraint_weight_min": 1e+24,
-    "block_constraint_weight_steps": 1,
     "block_file_name": "../data/block/wna_block_new.csv",
-    "global_elastic_cutoff_distance": 2000000,
-    "global_elastic_cutoff_distance_flag": 0,
     "lat_range": [
         30,
         52
@@ -15,7 +10,6 @@
     "locking_depth_flag3": 15,
     "locking_depth_flag4": 10,
     "locking_depth_flag5": 5,
-    "locking_depth_overide_value": 15,
     "locking_depth_override_flag": 0,
     "lon_range": [
         225,
@@ -34,17 +28,9 @@
     "sar_file_name": null,
     "segment_file_name": "../data/segment/wna_segment0.csv",
     "slip_constraint_weight": 1e5,
-    "slip_constraint_weight_max": 0.00001,
-    "slip_constraint_weight_min": 0.00001,
-    "slip_constraint_weight_steps": 1,
     "snap_segments": 0,
     "solve_type": "dense",
-    "station_data_weight": 1,
-    "station_data_weight_max": 1,
-    "station_data_weight_min": 1,
-    "station_data_weight_steps": 1,
     "station_file_name": "../../data/station/wna_station.csv",
-    "strain_method": 0,
     "tri_con_weight": 1e2,
     "unit_sigmas": 0
 }

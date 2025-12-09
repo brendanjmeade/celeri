@@ -121,8 +121,6 @@ def make_default_segment(length):
                 "dip",
                 "locking_depth",
                 "locking_depth_flag",
-                "dip_sig",
-                "dip_flag",
                 "ss_rate",
                 "ss_rate_sig",
                 "ss_rate_flag",
