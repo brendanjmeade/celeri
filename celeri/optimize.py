@@ -184,7 +184,7 @@ class SlipRateLimitItem:
     kinematic_lower, kinematic_upper : np.ndarray | None
         Geometric anchor values along the kinematic axis used to construct
         the convex envelope of the bowtie constraint. These are NOT hard
-        bounds on the kinematic velocity; see `_tighten_coupling_bounds`
+        bounds on the kinematic velocity; see `_tighten_kinematic_anchors`
         for details.
     """
 
