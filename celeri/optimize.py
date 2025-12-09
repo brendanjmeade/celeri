@@ -3,9 +3,9 @@ from __future__ import annotations
 import time
 import warnings
 from collections import namedtuple
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import cast
+from typing import Any, cast
 
 import cvxopt
 import cvxpy as cp
@@ -952,13 +952,102 @@ def build_cvxpy_problem(
     )
 
 
+class MinimizationComplete(Exception):
+    pass
+
+
 def _tighten_kinematic_bounds(
     minimizer: Minimizer,
     *,
     tighten_all: bool = True,
     factor: float = 0.5,
-):
+    iteration_number: int,
+    num_oob: int,
+    remaining_annealing_schedule: list[float],
+) -> None:
+    """Tighten (or loosen) coupling constraint bounds for the SQP solver.
+
+    Background:
+        The coupling constraints require:
+
+            coupling_lower * kinematic <= elastic <= coupling_upper * kinematic
+
+        In (kinematic, elastic) space, this defines a "bowtie" or double-sided
+        cone: one triangular wedge for positive kinematic velocities, and one
+        for negative. The union of these two wedges is non-convex.
+
+        To obtain a tractable convex optimization problem, we impose bounds on
+        the kinematic slip rate:
+
+            kinematic_lower ≤ kinematic ≤ kinematic_upper
+
+        The intersection of these kinematic bounds with the bowtie produces two
+        disconnected triangular regions (one per wedge). The convex hull of this
+        intersection is a trapezoid with:
+
+        - Two vertical edges from the kinematic bounds (left at kinematic_lower,
+          right at kinematic_upper)
+        - Two sloped edges connecting the corners where the kinematic bounds
+          intersect the bowtie boundary
+
+        This trapezoid is a convex relaxation of the original non-convex
+        constraint. As the kinematic bounds are iteratively tightened toward
+        the current solution, the trapezoid shrinks. Once the bounds have the
+        same sign (both positive or both negative), the trapezoid degenerates
+        into a single triangular wedge—exactly matching one component of the
+        original bowtie constraint.
+
+    This function is called after each SQP iteration to adjust the bounds:
+    - During normal iterations (when `num_oob > 0`): bounds are tightened by
+      moving them a fraction (`factor`) closer to the current kinematic solution.
+    - During annealing (when `num_oob == 0` and annealing is enabled): bounds
+      are slightly loosened to allow the solver to escape local minima.
+
+    Args:
+        minimizer: The current optimization state containing slip rates and limits.
+        tighten_all: If True, tighten bounds for all mesh elements uniformly.
+            If False, only tighten bounds for elements that are currently
+            out-of-bounds (selective tightening).
+        factor: Fraction by which to reduce the gap between the current kinematic
+            value and each bound. Must be in (0, 1). Default 0.5 means bounds
+            move halfway towards the current solution each iteration.
+        iteration_number: Current iteration index (for logging/debugging).
+        num_oob: Number of mesh elements currently violating coupling bounds.
+        remaining_annealing_schedule: Mutable list of looseness values (mm/yr)
+            for annealing passes. When `num_oob == 0`, the first value is popped
+            and used to widen bounds, allowing the solver to explore nearby
+            solutions. When this list is exhausted and `num_oob == 0`,
+            `MinimizationComplete` is raised.
+
+    Raises:
+        MinimizationComplete: When all values are within bounds and no annealing
+            passes remain. This signals that the optimization should terminate.
+        ValueError: If coupling bounds are partially defined (must have both
+            lower and upper, or neither).
+
+    Note:
+        The bound update formula is:
+            upper_new = kinematic + factor * (upper_old - kinematic) + looseness
+            lower_new = kinematic + factor * (lower_old - kinematic) - looseness
+
+        Where `looseness` is 0 during normal tightening, or a positive value
+        from the annealing schedule when loosening constraints.
+    """
     assert factor > 0 and factor < 1
+
+    if num_oob > 0:
+        looseness = 0
+    elif len(remaining_annealing_schedule) == 0:
+        raise MinimizationComplete()
+    else:
+        # We have fixed all OOBs, and annealing is enabled, so use the first remaining
+        # value in the annealing schedule as the loosenenss.
+        looseness = remaining_annealing_schedule.pop(0)
+        print(
+            f"ANNEALING\n"
+            f"Achieved objective 2-norm: {minimizer.objective_norm2.value}\n"
+            f"Now loosening constraints by {looseness} mm/yr\n"
+        )
 
     def tighten_item(limits: SlipRateLimitItem, coupling: SlipRateItem):
         elastic = coupling.elastic_numpy()
@@ -986,9 +1075,9 @@ def _tighten_kinematic_bounds(
         if tighten_all:
             target = kinematic
             diff = upper - target
-            upper = target + factor * diff
+            upper = target + factor * diff + looseness
             diff = lower - target
-            lower = target + factor * diff
+            lower = target + factor * diff - looseness
         else:
             pos = kinematic > 0
             oob = (
@@ -1125,7 +1214,7 @@ class MinimizerTrace:
         print(f"Iteration: {iter_num}")
         print(f"{oob} of {total} velocities are out-of-bounds")
         print(f"Non-convex constraint loss: {nonconvex_loss:.2e}")
-        print(f"residual 2-norm: {objective:.5e}")
+        print(f"residual 2-norm: {objective}")
         print(f"Iteration took {iter_time:.2f}s")
         print()
 
@@ -1276,6 +1365,8 @@ def solve_sqp2(
     rescale_constraints: bool = True,
     objective: Sqp2Objective | None = None,
     operators: Operators | None = None,
+    annealing_enabled: bool | None = None,
+    annealing_schedule: Sequence[float] | None = None,
 ) -> Estimation:
     """Iteratively solve a constrained optimization problem for fault slip rates.
 
@@ -1293,10 +1384,33 @@ def solve_sqp2(
         rescale_constraints: bool
         objective: Objective
         operators: operators.Operators
+        annealing_enabled: bool
+        annealing_schedule: Sequence[float] (mm/yr)
 
     Returns:
         An Estimation object containing the optimization results.
     """
+    # Set values from config if not provided.
+    if annealing_enabled is None:
+        annealing_enabled = model.config.sqp2_annealing_enabled
+    if annealing_schedule is None:
+        annealing_schedule = model.config.sqp2_annealing_schedule
+
+    # Initialize the working/remaining annealing schedule.
+    remaining_annealing_schedule: list[float]
+    if annealing_enabled:
+        if annealing_schedule is None:
+            raise ValueError(
+                "Annealing is enabled, but no annealing schedule is provided."
+            )
+        else:
+            # Make a working copy of the annealing schedule so that we can pop off values
+            # without mutating the original.
+            remaining_annealing_schedule = list(annealing_schedule)
+    else:
+        # No annealing is equivalent to an empty annealing schedule.
+        remaining_annealing_schedule = []
+
     limits = SlipRateLimit.from_model(model)
 
     if objective is None:
@@ -1326,11 +1440,18 @@ def solve_sqp2(
     solver = default_solve_kwargs.pop("solver")
 
     # Storage for all warnings across loop iterations
-    all_warnings = []
+    all_warnings: list[dict[str, Any]] = []
 
-    # Intializing this so that warnings check will run even with no iteration case
-    num_iter = 0
-    for num_iter in range(max_iter):
+    # Intialize loop variables that are also referenced outside the loop.
+    iteration_number = -1
+    num_oob: int | None = None
+
+    for iteration_number in range(max_iter):
+        # Within each iteration we solve the convexified QP and tighten the bounds.
+        # We stop if:
+        # 1. We have reached the maximum number of iterations
+        # 2. We have fixed all out-of-bounds values, and there's no more annealing to do
+
         # QP solve in context manager to capture warnings
         with warnings.catch_warnings(record=True) as caught_warnings:
             warnings.simplefilter("always")
@@ -1345,7 +1466,7 @@ def solve_sqp2(
         for warning in caught_warnings:
             all_warnings.append(  # noqa: PERF401
                 {
-                    "iteration": num_iter,
+                    "iteration_number": iteration_number,
                     "message": str(warning.message),
                     "category": warning.category.__name__,
                     "filename": warning.filename,
@@ -1357,24 +1478,36 @@ def solve_sqp2(
         if verbose:
             trace.print_last_progress()
 
-        num_oob, total = minimizer.out_of_bounds()
-        if num_oob == 0:
-            break
+        num_oob, _total = minimizer.out_of_bounds()
 
-        _tighten_kinematic_bounds(
-            minimizer,
-            factor=reduction_factor,
-            tighten_all=True,
-        )
+        try:
+            _tighten_kinematic_bounds(
+                minimizer,
+                factor=reduction_factor,
+                tighten_all=True,
+                iteration_number=iteration_number,
+                remaining_annealing_schedule=remaining_annealing_schedule,
+                num_oob=num_oob,
+            )
+        except MinimizationComplete:
+            break
+    else:
+        # No MinimizationComplete exception was raised.
+        assert iteration_number == max_iter - 1
+        if num_oob is not None and num_oob > 0:
+            logger.warning(
+                f"SQP iteration: Reached maximum number of {max_iter} iterations, "
+                f"but there are still {num_oob} out-of-bounds values."
+            )
 
     # Log warning if the last iteration includes an error
     if all_warnings:
-        if all_warnings[-1]["iteration"] == num_iter:
+        if all_warnings[-1]["iteration_number"] == iteration_number:
             logger.warning(f"SQP iteration: {all_warnings[-1]['message']}")
         else:
-            iterations_with_warnings = [d["iteration"] for d in all_warnings]
+            iterations_with_warnings = [d["iteration_number"] for d in all_warnings]
             logger.info(
-                f"SQP iteration: Warnings in iterations {iterations_with_warnings} of {num_iter + 1} total iterations"
+                f"SQP iteration: Warnings in iterations {iterations_with_warnings} of {iteration_number + 1} total iterations"
             )
     else:
         logger.info("SQP iteration: Ran with no warnings")

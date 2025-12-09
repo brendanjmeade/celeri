@@ -534,7 +534,10 @@ def _add_segment_constraints(model: Model, operators: Operators, rotation):
         if np.any(bound_flags):
             lower_bounds = getattr(model.segment, lower_attr).values[bound_flags == 1]
             upper_bounds = getattr(model.segment, upper_attr).values[bound_flags == 1]
-            bound_sig = model.config.segment_slip_rate_bound_sigma
+            if "slip_rate_bound_sigma" in model.segment.columns:
+                bound_sig = model.segment.slip_rate_bound_sigma.values[bound_flags == 1]
+            else:
+                bound_sig = model.config.segment_slip_rate_bound_sigma
             pm.Censored(
                 f"segment_{comp}_slip_rate_lower_bound",
                 dist=pm.Normal.dist(

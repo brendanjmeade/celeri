@@ -75,20 +75,10 @@ class Config(BaseModel):
 
     # Weights for various constraints and parameters in penalized linear inversion
     block_constraint_weight: float = 1e24
-    block_constraint_weight_max: float = 1e20
-    block_constraint_weight_min: float = 1e20
-    block_constraint_weight_steps: int = 1
     slip_constraint_weight: float = 100000
-    slip_constraint_weight_max: float = 100000
-    slip_constraint_weight_min: float = 100000
-    slip_constraint_weight_steps: int = 1
-    station_data_weight: int = 1
-    station_data_weight_max: int = 1
-    station_data_weight_min: int = 1
-    station_data_weight_steps: int = 1
 
     segment_slip_rate_regularization: float = 1.0
-    """Weight for regularizing slip rates towards 0. 
+    """Weight for regularizing slip rates towards 0.
     Applied to segments with *s_rate_flag = 2 in the segment file.
 
     A value of zero indicates no regularization.
@@ -136,20 +126,21 @@ class Config(BaseModel):
 
     We can interpret this as a measurment error of the slip rate bound
     itself.
+
+    This config value can be overridden on a per-segment basis by including
+    a `slip_rate_bound_sigma` column in the segment file. If present, each
+    segment will use its own sigma value from that column (defaults to 1.0
+    if the column is missing).
     """
 
     sqp2_objective: Sqp2Objective = "qr_sum_of_squares"
     """Objective function to use in `solve_sqp2`."""
 
-    global_elastic_cutoff_distance: int = 2000000
-    global_elastic_cutoff_distance_flag: int = 0
-
-    # TODO(Brendan): They were marked as unused, but are still used in the code.
+    # Default values for segment specified locking depth overrides
     locking_depth_flag2: int = 25
     locking_depth_flag3: int = 15
     locking_depth_flag4: int = 10
     locking_depth_flag5: int = 5
-    locking_depth_overide_value: int = 15
     locking_depth_override_flag: int = 0
 
     # Plotting defaults
@@ -168,7 +159,6 @@ class Config(BaseModel):
 
     snap_segments: int = 0
     solve_type: str = "hmatrix"
-    strain_method: int = 1
     tri_con_weight: int = 1000000
 
     unit_sigmas: bool = False
@@ -234,6 +224,35 @@ class Config(BaseModel):
     over-representing those regions.
 
     Only used when mcmc_station_weighting is "voronoi".
+    """
+
+    sqp2_annealing_enabled: bool = False
+    """Enable annealing to search for a more optimal solution.
+
+    The SQP2 solver iteratively tightens coupling constraints until convergence
+    (no out-of-bounds values). When annealing is enabled, the solver continues
+    beyond this point: for each value in `sqp2_annealing_schedule`, it loosens
+    the constraints by that amount and runs another SQP pass, potentially
+    converging to a solution with a lower residual.
+
+    Set to False for a single-shot solve (faster, often sufficient).
+    Set to True to enable multi-pass annealing (slower, may find better solutions).
+    """
+
+    sqp2_annealing_schedule: list[float] = [0.125, 0.125, 0.125]
+    """Looseness values (mm/yr) for each annealing pass.
+
+    After the solver converges with no out-of-bounds values, each value in this
+    list triggers an additional SQP pass where the coupling constraints are
+    temporarily widened by that amount (added to upper bounds, subtracted from
+    lower bounds). This allows the solver to escape local minima and potentially
+    find a more optimal solution.
+
+    The default [0.125, 0.125, 0.125] performs three annealing passes, each
+    loosening constraints by 0.125 mm/yr. An empty list [] is equivalent to
+    disabling annealing (single-shot solve).
+
+    Only used when `sqp2_annealing_enabled` is True.
     """
 
     include_vertical_vel: bool = False

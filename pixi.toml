@@ -52,6 +52,7 @@ pyarrow = ">=20.0.0"
 cartopy = ">=0.25.0"
 shapely = ">=2.1.1"
 opt_einsum = ">=3.4.0,<4"
+pytest-arraydiff = ">=0.6.1,<0.7"
 
 [target.linux-64.dependencies]
 libblas = { version = "*", build = "*_mkl" }
