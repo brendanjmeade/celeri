@@ -974,10 +974,53 @@ def _tighten_kinematic_bounds(
 
         In (kinematic, elastic) space, this defines a "bowtie" or double-sided
         cone: one triangular wedge for positive kinematic velocities, and one
-        for negative. The union of these two wedges is non-convex.
+        for negative. The union of these two wedges is non-convex:
 
-        To obtain a tractable convex optimization problem, we impose bounds on
-        the kinematic slip rate:
+                                        elastic                   slope = coupling_upper
+                                           ^                      /:
+                                           |                     /::
+                                           |                    /::::
+                                           |                   /:::::
+                                           |                  /::::::
+                                           |                 /::::::::      non-convex
+                                           |                /:::::::::      unbounded
+                                           |               /::::::::::  <-- allowed
+                                           |              /::::::::::::     region
+                                           |             /:::::::::::::
+                                           |            /::::::::::::::
+                                           |           /::::::::::::::::
+                                           |          /:::::::::::::::::
+                                           |         /::::::::::::::::::
+                                           |        /::::::::::::::::::::
+                                           |       /:::::::::::::::::::::
+                                           |      /::::::::::::::::::::::
+                                           |     /::::::::::::::::::::::::
+                                           |    /:::::::::::::::::::::::::
+                                           |   /::::::::::::::::::::::::::
+                                           |  /::::::::::::::::::::::::::::
+                                           | /:::::::::::::::::::::::::::::
+                                           |/::::::::::::::::::::::::::::::
+        -----------------------------------+--------------------------------> kinematic
+         :::::::::::::::::::::::::::::::::/|        coupling_lower = 0
+          :::::::::::::::::::::::::::::::/ |
+           :::::::::::::::::::::::::::::/  |
+            :::::::::::::::::::::::::::/   |
+             :::::::::::::::::::::::::/    |
+              :::::::::::::::::::::::/     |
+               :::::::::::::::::::::/      |
+                :::::::::::::::::::/       |
+                 :::::::::::::::::/        |
+                  :::::::::::::::/         |
+                   :::::::::::::/          |
+                    :::::::::::/           |
+                     :::::::::/            |
+                      :::::::/             |
+                       :::::/              |
+                        :::/               |
+                         :/                |
+
+        To obtain a tractable convex optimization problem, we impose artificial
+        bounds on the kinematic slip rate:
 
             kinematic_lower ≤ kinematic ≤ kinematic_upper
 
@@ -988,7 +1031,50 @@ def _tighten_kinematic_bounds(
         - Two vertical edges from the kinematic bounds (left at kinematic_lower,
           right at kinematic_upper)
         - Two sloped edges connecting the corners where the kinematic bounds
-          intersect the bowtie boundary
+          intersect the bowtie boundary:
+
+                                        elastic
+                                           ^                      /  /:
+                                           |                     / ,'::
+                                           |                    / /:::::
+                                           |                   /,`::::::
+                                           |                  //::::::::
+                                           |                 *:::::::::::      convex
+                                           |                /|:::::::::::      unbounded
+                                           |              ,/:|:::::::::::  <-- allowed
+                                           |             //::|::::::::::::     region
+                                           |           ,`/:::|::::::::::::
+                                           |          /:/::::|::::::::::::
+                                           |        ,`:/:::::|:::::::::::::
+                                           |       /::/::::::|:::::::::::::
+                                           |     ,`::/:::::::|:::::::::::::
+                                           |    /:::/::::::::|::::::::::::::
+                                           |  ,`:::/:::::::::|::::::::::::::
+                                           | /::::/::::::::::|::::::::::::::
+                                           |`::::/:::::::::::|:::::::::::::::
+                                          /|::::/::::::::::::|:::::::::::::,-
+                              kinematic ,`:|:::/:::::::::::::|::::::::::,-`
+                                lower  /:::|::/::::::::::::::|:::::::,-`
+                                  |  ,`::::|:/:::::::::::::::|::::,-`
+                                  v /::::::|/::::::::::::::::|:,-`
+        --------------------------*--------+-----------------*--------------> kinematic
+                                 /|:::::::/|:::::::::::::,-` ^
+                               ,`:|::::::/:|::::::::::,-`    |
+                              /:::|:::::/::|:::::::,-`   kinematic
+                            ,`::::|::::/:::|::::,-`        upper
+                           /::::::|:::/::::|:,-`
+                         ,`:::::::|::/::::,|`
+                        /:::::::::|:/::,-` |
+                      ,`::::::::::|/,-`    |
+                     /:::::::::::,*`       |
+                   ,`:::::::::,-`/         |
+                  /::::::::,-`  /          |
+                ,`::::::,-`    /           |
+               /:::::,-`      /            |
+             ,`:::,-`        /             |
+            /::,-`          /              |
+          ,`,-`            /               |
+         /-`              /                |
 
         This trapezoid is a convex relaxation of the original non-convex
         constraint. As the kinematic bounds are iteratively tightened toward
