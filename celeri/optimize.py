@@ -1019,27 +1019,22 @@ def _tighten_kinematic_bounds(
                         :::/               |
                          :/                |
 
-        To obtain a tractable convex optimization problem, we impose artificial
-        bounds on the kinematic slip rate:
-
-            kinematic_lower ≤ kinematic ≤ kinematic_upper
-
-        The intersection of these kinematic bounds with the bowtie produces two
-        disconnected triangular regions (one per wedge). The convex hull of this
-        intersection is a trapezoid with:
-
-        - Two vertical edges from the kinematic bounds (left at kinematic_lower,
-          right at kinematic_upper)
-        - Two sloped edges connecting the corners where the kinematic bounds
-          intersect the bowtie boundary:
+        If we knew the sign of each kinematic velocity, then we could restrict to
+        the corresponding wedge, and the constraints would be convex. To obtain a
+        tractable convex optimization problem without assuming the sign ahead of
+        time, we construct an approximate convex envelope. Concretely, we
+        introduce two auxiliary kinematic anchor values, `kinematic_lower` and
+        `kinematic_upper`. These are geometric construction points along the
+        kinematic axis that determine where we intersect the bowtie to build the
+        convex envelope:
 
                                         elastic
                                            ^                      /  /:
                                            |                     / ,'::
                                            |                    / /:::::
                                            |                   /,`::::::
-                                           |                  //::::::::
-                                           |                 *:::::::::::      convex
+                                           |      anchor      //::::::::
+                                           |       point --> X:::::::::::      convex
                                            |                /|:::::::::::      unbounded
                                            |              ,/:|:::::::::::  <-- allowed
                                            |             //::|::::::::::::     region
@@ -1057,7 +1052,7 @@ def _tighten_kinematic_bounds(
                                 lower  /:::|::/::::::::::::::|:::::::,-`
                                   |  ,`::::|:/:::::::::::::::|::::,-`
                                   v /::::::|/::::::::::::::::|:,-`
-        --------------------------*--------+-----------------*--------------> kinematic
+        --------------------------X--------+-----------------X--------------> kinematic
                                  /|:::::::/|:::::::::::::,-` ^
                                ,`:|::::::/:|::::::::::,-`    |
                               /:::|:::::/::|:::::::,-`   kinematic
@@ -1066,7 +1061,7 @@ def _tighten_kinematic_bounds(
                          ,`:::::::|::/::::,|`
                         /:::::::::|:/::,-` |
                       ,`::::::::::|/,-`    |
-                     /:::::::::::,*`       |
+                     /:::::::::::,X`       |
                    ,`:::::::::,-`/         |
                   /::::::::,-`  /          |
                 ,`::::::,-`    /           |
@@ -1076,42 +1071,46 @@ def _tighten_kinematic_bounds(
           ,`,-`            /               |
          /-`              /                |
 
-        This trapezoid is a convex relaxation of the original non-convex
-        constraint. As the kinematic bounds are iteratively tightened toward
-        the current solution, the trapezoid shrinks. Once the bounds have the
-        same sign (both positive or both negative), the trapezoid degenerates
-        into a single triangular wedge—exactly matching one component of the
-        original bowtie constraint.
+        From these two anchor values we define four anchor points where the vertical
+        lines at `kinematic_lower` and `kinematic_upper` intersect the bowtie
+        boundary. Two artificial linear inequality constraints are then defined by
+        connecting the upper and lower pairs of anchor points. The resulting allowed
+        region is an unbounded infinite wedge-shaped region (or an infinite strip if
+        the upper and lower lines are parallel).
 
-    This function is called after each SQP iteration to adjust the bounds:
-    - During normal iterations (when `num_oob > 0`): bounds are tightened by
+        When `kinematic_lower` and `kinematic_upper` have the same sign, the
+        wedge coincides with exactly one branch of the original bowtie.
+
+    This function is called after each SQP iteration to adjust the anchor values:
+    - During normal iterations (when `num_oob > 0`): anchor values are tightened by
       reducing their distance to the current kinematic solution to a fraction
       (`factor`) of the previous distance.
-    - During annealing (when `num_oob == 0` and annealing is enabled): bounds
-      are slightly loosened to allow the solver to escape local minima.
+    - During annealing (when `num_oob == 0` and annealing is enabled): anchor
+      values are slightly loosened to allow the solver to escape local minima.
 
     Args:
-        minimizer: The current optimization state containing slip rates and limits.
-        tighten_all: If True, tighten bounds for all mesh elements uniformly.
-            If False, only tighten bounds for elements that are currently
+        minimizer: The current optimization state containing slip rates and
+            anchor values (limits).
+        tighten_all: If True, tighten anchor values for all mesh elements uniformly.
+            If False, only tighten anchor values for elements that are currently
             out-of-bounds (selective tightening).
         factor: Fraction to which the gap between the current kinematic value and
-            each bound is reduced. Must be in (0, 1). Default 0.5 means bounds
-            move halfway towards the current solution each iteration. Values near
-            0 cause bounds to tighten quickly; values near 1 cause bounds to
-            tighten slowly.
+            each anchor value is reduced. Must be in (0, 1). Default 0.5 means
+            anchor values move halfway towards the current solution each iteration.
+            Values near 0 cause anchor values to tighten quickly; values near 1
+            cause them to tighten slowly.
         iteration_number: Current iteration index (for logging/debugging).
         num_oob: Number of mesh elements currently violating coupling bounds.
         remaining_annealing_schedule: Mutable list of looseness values (mm/yr)
             for annealing passes. When `num_oob == 0`, the first value is popped
-            and used to widen bounds, allowing the solver to explore nearby
+            and used to widen anchor values, allowing the solver to explore nearby
             solutions. When this list is exhausted and `num_oob == 0`,
             `MinimizationComplete` is raised.
 
     Raises:
         MinimizationComplete: When all values are within bounds and no annealing
             passes remain. This signals that the optimization should terminate.
-        ValueError: If coupling bounds are partially defined (must have both
+        ValueError: If anchor values are partially defined (must have both
             lower and upper, or neither).
 
     Note:
