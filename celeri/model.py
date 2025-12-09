@@ -123,6 +123,9 @@ def read_data(config: Config):
         if f"{name}_rate_bound_max" not in segment.columns:
             segment[f"{name}_rate_bound_max"] = 1.0
 
+    if "slip_rate_bound_sigma" not in segment.columns:
+        segment["slip_rate_bound_sigma"] = 1.0
+
     logger.success(f"Read: {config.segment_file_name}")
 
     # Read block data

@@ -126,6 +126,11 @@ class Config(BaseModel):
 
     We can interpret this as a measurment error of the slip rate bound
     itself.
+
+    This config value can be overridden on a per-segment basis by including
+    a `slip_rate_bound_sigma` column in the segment file. If present, each
+    segment will use its own sigma value from that column (defaults to 1.0
+    if the column is missing).
     """
 
     sqp2_objective: Sqp2Objective = "qr_sum_of_squares"
