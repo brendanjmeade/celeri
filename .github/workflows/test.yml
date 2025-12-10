@@ -40,7 +40,8 @@ jobs:
           ./tests/test_okada_equals_cutde.py \
           ./tests/test_serialize.py \
           ./tests/test_output_files.py \
-          ./tests/test_cache.py
+          ./tests/test_cache.py \
+          ./tests/test_snap_segments.py
       - name: Test
         if: ${{ matrix.tests-to-run == 'solve' }}
         run: |
