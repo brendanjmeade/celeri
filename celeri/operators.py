@@ -936,14 +936,14 @@ def _store_elastic_operators(
     """Calculate (or load previously calculated) elastic operators from
     both fully locked segments and TDE-parameterized surfaces.
 
-    Supports selective recomputation when only some source segments change.
+    Supports selective recomputation when only some source segment geometries 
+    change, in place. If the segment file has changed, rows have been added or removed,
+    or `force_recompute` is True, the operators will be recomputed from scratch.
 
     Args:
-        operators (Dict): Data structure which the elastic operators will be added to
-        meshes (List): Geometries of meshes
-        segment (pd.DataFrame): All segment data
-        station (pd.DataFrame): All station data
-        config (Dict): All config data
+        operators (_OperatorBuilder): Data structure which the elastic operators will be added to
+        model (Model): Model instance
+        tde (bool): Whether to compute TDE operators
     """
     config = model.config
     meshes = model.meshes

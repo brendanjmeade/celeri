@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - test-cleanup
   pull_request:
 
 jobs:
@@ -13,7 +14,7 @@ jobs:
       matrix:
         os: ["ubuntu-latest"]
         pixi-environment: ["default"]
-        tests-to-run: ["japan", "other", "optimize_sqp"]
+        tests-to-run: ["solve", "optimize", "other"]
     name: Test (${{ matrix.pixi-environment }}, ${{ matrix.tests-to-run }})
     runs-on: ${{ matrix.os }}
     defaults:
@@ -35,12 +36,17 @@ jobs:
       - name: Test
         if: ${{ matrix.tests-to-run == 'other' }}
         run: |
-          pixi run -e ${{ matrix.pixi-environment }} pytest ./tests/test_closure.py ./tests/test_okada_equals_cutde.py ./tests/test_optimize.py ./tests/test_serialize.py ./tests/test_output_files.py
+          pixi run -e ${{ matrix.pixi-environment }} pytest ./tests/test_closure.py \
+          ./tests/test_okada_equals_cutde.py \
+          ./tests/test_serialize.py \
+          ./tests/test_output_files.py \
+          ./tests/test_cache.py
       - name: Test
-        if: ${{ matrix.tests-to-run == 'japan' }}
+        if: ${{ matrix.tests-to-run == 'solve' }}
         run: |
           pixi run -e ${{ matrix.pixi-environment }} pytest ./tests/test_solve_dense.py --arraydiff
       - name: Test
-        if: ${{ matrix.tests-to-run == 'optimize_sqp' }}
+        if: ${{ matrix.tests-to-run == 'optimize' }}
         run: |
-          pixi run -e ${{ matrix.pixi-environment }} pytest ./tests/test_optimize_sqp.py
+          pixi run -e ${{ matrix.pixi-environment }} pytest ./tests/test_optimize_sqp.py \
+          ./tests/test_optimize.py

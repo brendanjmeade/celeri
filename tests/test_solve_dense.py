@@ -148,7 +148,7 @@ def test_operator_rotation_to_tri_slip_rate(config_name):
 
 @pytest.mark.array_compare(rtol=1e-4, atol=1e-9)
 @pytest.mark.parametrize(
-    "config_name, eigen, tde",
+    "config_file, eigen, tde",
     [
         ("test_japan_config", True, True),
         ("test_japan_config", False, True),
@@ -158,8 +158,8 @@ def test_operator_rotation_to_tri_slip_rate(config_name):
         ("test_wna_config", False, False),
     ],
 )
-def test_dense_sol(config_name, eigen: bool, tde: bool):
-    config_file = f"./tests/configs/{config_name}.json"
+def test_dense_sol(config_file, eigen: bool, tde: bool):
+    config_file = f"./tests/configs/{config_file}.json"
     config = celeri.get_config(config_file)
     model = celeri.build_model(config)
 
