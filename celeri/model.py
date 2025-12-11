@@ -123,6 +123,10 @@ def read_data(config: Config):
         if f"{name}_rate_bound_max" not in segment.columns:
             segment[f"{name}_rate_bound_max"] = 1.0
 
+        if f"{name}_reg_flag" not in segment.columns:
+            segment[f"{name}_reg_flag"] = 1
+            segment.loc[segment[f"{name}_rate_bound_flag"] == 1, f"{name}_reg_flag"] = 0
+
     logger.success(f"Read: {config.segment_file_name}")
 
     # Read block data
@@ -134,38 +138,9 @@ def read_data(config: Config):
     meshes = []
     meshes = [Mesh.from_params(mesh_param) for mesh_param in config.mesh_params]
 
-    # Read station data
-    if config.station_file_name is None:
-        columns = pd.Index(
-            [
-                "lon",
-                "lat",
-                "corr",
-                "other1",
-                "name",
-                "east_vel",
-                "north_vel",
-                "east_sig",
-                "north_sig",
-                "flag",
-                "up_vel",
-                "up_sig",
-                "east_adjust",
-                "north_adjust",
-                "up_adjust",
-                "depth",
-                "x",
-                "y",
-                "z",
-                "block_label",
-            ]
-        )
-        station = pd.DataFrame(columns=columns)
-        logger.info("No station_file_name")
-    else:
-        station = pd.read_csv(config.station_file_name)
-        station = station.loc[:, ~station.columns.str.match("Unnamed")]
-        logger.success(f"Read: {config.station_file_name}")
+    station = pd.read_csv(config.station_file_name)
+    station = station.loc[:, ~station.columns.str.match("Unnamed")]
+    logger.success(f"Read: {config.station_file_name}")
 
     # Read Mogi source data
     if config.mogi_file_name is None:
