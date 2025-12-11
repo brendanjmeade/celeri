@@ -235,8 +235,8 @@ class Config(BaseModel):
     the constraints by that amount and runs another SQP pass, potentially
     converging to a solution with a lower residual.
 
-    Set to False for a single-shot solve (faster, often sufficient).
-    Set to True to enable multi-pass annealing (slower, may find better solutions).
+    Set to False for a standard solve (stops after initial convergence).
+    Set to True to enable annealing (takes longer, but may find a better solution).
     """
 
     sqp2_annealing_schedule: list[float] = [0.125, 0.125, 0.125]
