@@ -21,6 +21,8 @@
 - Blazingly fast elastic calculations via [Ben Thompson's](https://github.com/tbenthompson) [cutde](https://github.com/tbenthompson/cutde)
 - Easy I/O with standard file types (`.csv`, `.json`, `.hdf5`, `.pkl`)
 
+See the [wiki](https://github.com/brendanjmeade/celeri/wiki) for more detailed information.
+
 ## Getting started
 
 `celeri` can be run from the command line or from a Jupyter notebook.
@@ -87,8 +89,6 @@ celeri-solve <my_config.json>
 - This will create a folder in the `runs/` directory that contains all output files.  New folders are created automatically for each run and are sequentially numbered.
 
 - All relative paths in `*_config.json` are resolved relative to the directory containing the config file. Absolute paths are used as-is.
-
-- **NOTE: In the current release, several warnings/errors will be thrown, but they do not impact the calculations.  These result from: https://github.com/numpy/numpy/issues/28687.  These are patched in numpy 2.3 and will go away once Numba releases with https://github.com/numba/numba/pull/10110 merged.**
 
 ### `celeri-forward`
 
