@@ -19,6 +19,11 @@ if TYPE_CHECKING or importlib.util.find_spec("pymc") is None:
 else:
     from pymc import Model as PymcModel
 
+    # Apply numerical stability fix for censored Normal distributions.
+    # This is a workaround for https://github.com/pymc-devs/pymc/pull/7996
+    # Fixes issue https://github.com/brendanjmeade/celeri/issues/341
+    import celeri.censored_distribution_stability_hotfix  # noqa: F401
+
 
 DIRECTION_IDX = {
     "strike_slip": slice(None, None, 2),
