@@ -2150,7 +2150,6 @@ def get_eigenvalues_and_eigenvectors(n_eigenvalues, x, y, z, distance_exponent):
     # Calculate correlation matrix
     correlation_matrix = np.exp(-(distance_matrix**distance_exponent))
 
-    # https://stackoverflow.com/questions/12167654/fastest-way-to-compute-k-largest-eigenvalues-and-corresponding-eigenvectors-with
     eigenvalues, eigenvectors = scipy.linalg.eigh(
         correlation_matrix,
         subset_by_index=[n_tde - n_eigenvalues, n_tde - 1],
@@ -2169,7 +2168,7 @@ def _store_eigenvectors_to_tde_slip(model: Model, operators: _OperatorBuilder):
 
     for i in range(len(meshes)):
         logger.info(f"Start: Eigenvectors to TDE slip for mesh: {meshes[i].file_name}")
-        # Get eigenvectors for curren mesh
+        # Get eigenvectors for current mesh
         _, eigenvectors = get_eigenvalues_and_eigenvectors(
             meshes[i].n_modes,
             meshes[i].x_centroid,

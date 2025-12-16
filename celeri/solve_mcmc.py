@@ -6,6 +6,7 @@ import pandas as pd
 from loguru import logger
 from scipy import linalg, spatial
 
+from celeri.celeri_util import get_keep_index_12
 from celeri.constants import RADIUS_EARTH
 from celeri.model import Model
 from celeri.operators import Operators, build_operators
@@ -72,7 +73,7 @@ def _get_eigen_modes(
     to_velocity = operators.eigen.eigen_to_velocities[mesh][
         :, start_idx : start_idx + n_eigs
     ]
-    # return _clean_operator(eigenvectors), _clean_operator(to_velocity)
+    
     return eigenvectors, to_velocity
 
 
@@ -157,7 +158,7 @@ def _station_vel_from_elastic_mesh(
 
 def _coupling_component(
     model: Model,
-    mesh: int,
+    mesh_idx: int,
     kind: Literal["strike_slip", "dip_slip"],
     rotation,
     operators: Operators,
@@ -175,35 +176,35 @@ def _coupling_component(
 
     idx = DIRECTION_IDX[kind]
 
-    if mesh not in operators.rotation_to_tri_slip_rate:
+    if mesh_idx not in operators.rotation_to_tri_slip_rate:
         raise ValueError(
-            f"Mesh {mesh} does not have well defined kinematic slip rates. "
+            f"Mesh {mesh_idx} does not have well defined kinematic slip rates. "
             "Coupling constraints cannot be used."
         )
 
-    operator = operators.rotation_to_tri_slip_rate[mesh][idx, :]
+    operator = operators.rotation_to_tri_slip_rate[mesh_idx][idx, :]
     kinematic = _operator_mult(operator, rotation)
-    pm.Deterministic(f"kinematic_{mesh}_{kind}", kinematic)
+    pm.Deterministic(f"kinematic_{mesh_idx}_{kind}", kinematic)
 
     eigenvectors, _ = _get_eigen_modes(
         model,
-        mesh,
+        mesh_idx,
         kind,
         operators,
         out_idx=idx,
     )
     n_eigs = eigenvectors.shape[1]
-    coefs = pm.Normal(f"coupling_coefs_{mesh}_{kind}", mu=0, sigma=10, shape=n_eigs)
+    coefs = pm.Normal(f"coupling_coefs_{mesh_idx}_{kind}", mu=0, sigma=10, shape=n_eigs)
 
     coupling_field = _operator_mult(eigenvectors, coefs)
     coupling_field = _constrain_field(coupling_field, lower, upper)
-    pm.Deterministic(f"coupling_{mesh}_{kind}", coupling_field)
+    pm.Deterministic(f"coupling_{mesh_idx}_{kind}", coupling_field)
     elastic = kinematic * coupling_field
-    pm.Deterministic(f"elastic_{mesh}_{kind}", elastic)
+    pm.Deterministic(f"elastic_{mesh_idx}_{kind}", elastic)
 
     elastic_velocity = _station_vel_from_elastic_mesh(
         model,
-        mesh,
+        mesh_idx,
         kind,
         elastic,
         operators,
@@ -213,16 +214,18 @@ def _coupling_component(
 
 def _elastic_component(
     model: Model,
-    mesh: int,
+    mesh_idx: int,
     kind: Literal["strike_slip", "dip_slip"],
-    rotation,
     operators: Operators,
     lower: float | None,
     upper: float | None,
 ):
     """Model elastic slip rate as a linear combination of eigenmodes.
+    Creates parameters for raw elastic eigenmode coefficients, then adds 
+    scaled elastic eigenmodes as deterministic variables. Also adds a 
+    deterministic variable for the elastic slip rate field.
 
-    Return the resulting elastic velocity at the station locations.
+    Returns the resulting elastic velocity at the station locations.
     """
     assert operators.eigen is not None
     assert operators.tde is not None
@@ -241,17 +244,17 @@ def _elastic_component(
 
     eigenvectors, to_velocity = _get_eigen_modes(
         model,
-        mesh,
+        mesh_idx,
         kind,
         operators,
         out_idx=idx,
     )
     n_eigs = eigenvectors.shape[1]
 
-    raw = pm.Normal(f"elastic_eigen_raw_{mesh}_{kind}", shape=n_eigs)
-    param = pm.Deterministic(f"elastic_eigen_{mesh}_{kind}", scale * raw)
+    raw = pm.Normal(f"elastic_eigen_raw_{mesh_idx}_{kind}", shape=n_eigs)
+    param = pm.Deterministic(f"elastic_eigen_{mesh_idx}_{kind}", scale * raw)
     elastic = _constrain_field(_operator_mult(eigenvectors, param), lower, upper)
-    pm.Deterministic(f"elastic_{mesh}_{kind}", elastic)
+    pm.Deterministic(f"elastic_{mesh_idx}_{kind}", elastic)
 
     # Compute elastic velocity at stations. The operator already
     # includes a negative sign.
@@ -269,7 +272,7 @@ def _elastic_component(
     else:
         elastic_velocity = _station_vel_from_elastic_mesh(
             model,
-            mesh,
+            mesh_idx,
             kind,
             elastic,
             operators,
@@ -323,7 +326,6 @@ def _mesh_component(
                     model,
                     mesh,
                     kind,
-                    rotation,
                     operators,
                     lower=rate_limit.lower,
                     upper=rate_limit.upper,
@@ -631,6 +633,139 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
     return pymc_model
 
 
+def _interleaved_idx_to_element_idx(interleaved_idx: np.ndarray) -> np.ndarray:
+    """Convert interleaved 2-component indices to element indices."""
+    if len(interleaved_idx) == 0:
+        return np.array([], dtype=int)
+    return np.unique(interleaved_idx[0::2] // 2)
+
+
+def _get_eigenpairs(
+    n_eigenvalues: int,
+    x: np.ndarray,
+    y: np.ndarray,
+    z: np.ndarray,
+    constrained_element_idx: np.ndarray,
+    distance_exponent: float = 1.0,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Compute KL eigenmodes from a conditional covariance matrix.
+
+    Computes eigenmodes for TDE slip where certain elements are constrained
+    to zero slip. The eigenmodes are computed from the conditional covariance:
+    Σ_u|c = Σ_uu - Σ_uc @ Σ_cc^{-1} @ Σ_cu
+    """
+    n_tde = x.size
+    constrained_idx = np.asarray(constrained_element_idx, dtype=int)
+
+    # Identify unconstrained elements
+    all_idx = np.arange(n_tde)
+    unconstrained_idx = np.setdiff1d(all_idx, constrained_idx)
+    n_unconstrained = len(unconstrained_idx)
+
+    if n_unconstrained == 0:
+        raise ValueError("All elements are constrained; no free parameters remain.")
+
+    # Build full correlation matrix
+    centroid_coordinates = np.array([x, y, z]).T
+    distance_matrix = spatial.distance.cdist(
+        centroid_coordinates, centroid_coordinates, "euclidean"
+    )
+    distance_matrix = (distance_matrix - np.min(distance_matrix)) / np.ptp(
+        distance_matrix
+    )
+    correlation_matrix = np.exp(-(distance_matrix**distance_exponent))
+
+    # Partition and compute conditional covariance
+    sigma_uu = correlation_matrix[np.ix_(unconstrained_idx, unconstrained_idx)]
+    sigma_uc = correlation_matrix[np.ix_(unconstrained_idx, constrained_idx)]
+    sigma_cc = correlation_matrix[np.ix_(constrained_idx, constrained_idx)]
+
+    sigma_cc_inv_sigma_cu = linalg.solve(sigma_cc, sigma_uc.T, assume_a="pos")
+    cov_matrix = sigma_uu - sigma_uc @ sigma_cc_inv_sigma_cu
+    cov_matrix = (cov_matrix + cov_matrix.T) / 2
+
+    n_eigenvalues = min(n_eigenvalues, n_unconstrained)
+
+    eigenvalues, eigenvectors_reduced = linalg.eigh(
+        cov_matrix,
+        subset_by_index=[n_unconstrained - n_eigenvalues, n_unconstrained - 1],
+    )
+    eigenvalues = np.real(eigenvalues)
+    eigenvectors_reduced = np.real(eigenvectors_reduced)
+    eigenvectors_reduced[np.abs(eigenvectors_reduced) < 1e-6] = 0.0
+
+    ordered_index = np.flip(np.argsort(eigenvalues))
+    eigenvalues = eigenvalues[ordered_index]
+    eigenvectors_reduced = eigenvectors_reduced[:, ordered_index]
+
+    eigenvectors = np.zeros((n_tde, n_eigenvalues))
+    eigenvectors[unconstrained_idx, :] = eigenvectors_reduced
+
+    return eigenvalues, eigenvectors, unconstrained_idx
+
+
+def _rebuild_constrained_eigenmode_operators(model: Model, operators: Operators) -> None:
+    """Rebuild eigenmode operators using conditional covariance for MCMC.
+
+    This replaces the standard eigenmodes with conditional eigenmodes that
+    hard-constrain TDE slip at bot_slip_idx to zero, for meshes that have
+    bot_slip_rate_constraint == 1.
+
+    Modifies operators.eigen in place.
+    """
+    assert operators.eigen is not None
+    assert operators.tde is not None
+
+    for i, mesh in enumerate(model.meshes):
+        if mesh.config.bot_slip_rate_constraint != 1 or len(mesh.bot_slip_idx) == 0:
+            continue
+
+        constrained_element_idx = _interleaved_idx_to_element_idx(mesh.bot_slip_idx)
+        logger.info(
+            f"Rebuilding eigenmodes with {len(constrained_element_idx)} "
+            f"constrained elements for mesh: {mesh.file_name}"
+        )
+
+        _, eigenvectors, _ = _get_eigenpairs(
+            mesh.n_modes,
+            mesh.x_centroid,
+            mesh.y_centroid,
+            mesh.z_centroid,
+            constrained_element_idx,
+            distance_exponent=1.0,
+        )
+
+        # Rebuild eigenvectors_to_tde_slip
+        operators.eigen.eigenvectors_to_tde_slip[i] = np.zeros(
+            (
+                2 * eigenvectors.shape[0],
+                mesh.config.n_modes_strike_slip + mesh.config.n_modes_dip_slip,
+            )
+        )
+        operators.eigen.eigenvectors_to_tde_slip[i][
+            0::2, 0 : mesh.config.n_modes_strike_slip
+        ] = eigenvectors[:, 0 : mesh.config.n_modes_strike_slip]
+        operators.eigen.eigenvectors_to_tde_slip[i][
+            1::2,
+            mesh.config.n_modes_strike_slip : mesh.config.n_modes_strike_slip
+            + mesh.config.n_modes_dip_slip,
+        ] = eigenvectors[:, 0 : mesh.config.n_modes_dip_slip]
+
+        # Rebuild eigen_to_velocities
+        tde_keep_row_index = get_keep_index_12(
+            operators.tde.tde_to_velocities[i].shape[0]
+        )
+        tde_keep_col_index = get_keep_index_12(
+            operators.tde.tde_to_velocities[i].shape[1]
+        )
+        operators.eigen.eigen_to_velocities[i] = (
+            -operators.tde.tde_to_velocities[i][tde_keep_row_index, :][
+                :, tde_keep_col_index
+            ]
+            @ operators.eigen.eigenvectors_to_tde_slip[i]
+        )
+
+
 def solve_mcmc(
     model: Model,
     *,
@@ -663,6 +798,9 @@ def solve_mcmc(
         raise ValueError(
             "Operators must have both TDE and eigen components for MCMC solve."
         )
+
+    # Rebuild eigenmode operators with conditional covariance matrix on unconstrained TDEs
+    _rebuild_constrained_eigenmode_operators(model, operators)
 
     pymc_model = _build_pymc_model(model, operators)
 
