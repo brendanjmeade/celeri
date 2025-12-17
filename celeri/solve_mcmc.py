@@ -49,9 +49,9 @@ def _operator_mult(operator: np.ndarray, vector):
     return operator.astype("f").copy(order="F") @ vector.astype("f")
 
 
-def _get_eigen_modes(
+def _get_eigenmodes(
     model: Model,
-    mesh: int,
+    mesh_idx: int,
     kind: Literal["strike_slip", "dip_slip"],
     operators: Operators,
     out_idx: slice,
@@ -60,25 +60,25 @@ def _get_eigen_modes(
     assert operators.eigen is not None
 
     if kind == "strike_slip":
-        n_eigs = model.meshes[mesh].config.n_modes_strike_slip
+        n_eigs = model.meshes[mesh_idx].config.n_modes_strike_slip
         start_idx = 0
     else:
-        n_eigs = model.meshes[mesh].config.n_modes_dip_slip
-        start_idx = model.meshes[mesh].config.n_modes_strike_slip
+        n_eigs = model.meshes[mesh_idx].config.n_modes_dip_slip
+        start_idx = model.meshes[mesh_idx].config.n_modes_strike_slip
 
-    eigenvectors = operators.eigen.eigenvectors_to_tde_slip[mesh][
+    eigenvectors = operators.eigen.eigenvectors_to_tde_slip[mesh_idx][
         out_idx, start_idx : start_idx + n_eigs
     ]
-    to_velocity = operators.eigen.eigen_to_velocities[mesh][
+    to_velocity = operators.eigen.eigen_to_velocities[mesh_idx][
         :, start_idx : start_idx + n_eigs
     ]
-    # return _clean_operator(eigenvectors), _clean_operator(to_velocity)
+    
     return eigenvectors, to_velocity
 
 
 def _station_vel_from_elastic_mesh(
     model: Model,
-    mesh: int,
+    mesh_idx: int,
     kind: Literal["strike_slip", "dip_slip"],
     elastic,
     operators: Operators,
@@ -89,7 +89,7 @@ def _station_vel_from_elastic_mesh(
     ----------
     model : Model
         The model instance
-    mesh : int
+    mesh_idx : int
         Index of the mesh
     kind : Literal["strike_slip", "dip_slip"]
         Type of slip
@@ -110,7 +110,7 @@ def _station_vel_from_elastic_mesh(
     method = model.config.mcmc_station_velocity_method
 
     if method == "low_rank":
-        to_station = operators.tde.tde_to_velocities[mesh][:, idx.start : None : 3]
+        to_station = operators.tde.tde_to_velocities[mesh_idx][:, idx.start : None : 3]
         u, s, vh = linalg.svd(to_station, full_matrices=False)
         threshold = 1e-5
         mask = s > threshold
@@ -121,9 +121,9 @@ def _station_vel_from_elastic_mesh(
         return elastic_velocity.astype("d")
     elif method == "project_to_eigen":
         assert operators.eigen is not None
-        eigenvectors, to_velocity = _get_eigen_modes(
+        eigenvectors, to_velocity = _get_eigenmodes(
             model,
-            mesh,
+            mesh_idx,
             kind,
             operators,
             out_idx=idx,
@@ -145,7 +145,7 @@ def _station_vel_from_elastic_mesh(
         ).ravel()  # type: ignore[attr-defined]
         return elastic_velocity
     elif method == "direct":
-        to_station = operators.tde.tde_to_velocities[mesh][:, idx.start : None : 3]
+        to_station = operators.tde.tde_to_velocities[mesh_idx][:, idx.start : None : 3]
         elastic_velocity = _operator_mult(-to_station, elastic)
         return elastic_velocity
     else:
@@ -157,7 +157,7 @@ def _station_vel_from_elastic_mesh(
 
 def _coupling_component(
     model: Model,
-    mesh: int,
+    mesh_idx: int,
     kind: Literal["strike_slip", "dip_slip"],
     rotation,
     operators: Operators,
@@ -172,38 +172,38 @@ def _coupling_component(
     assert operators.tde is not None
 
     import pymc as pm
-
+    kind_short = {"strike_slip": "ss", "dip_slip": "ds"}
     idx = DIRECTION_IDX[kind]
 
-    if mesh not in operators.rotation_to_tri_slip_rate:
+    if mesh_idx not in operators.rotation_to_tri_slip_rate:
         raise ValueError(
-            f"Mesh {mesh} does not have well defined kinematic slip rates. "
+            f"Mesh {mesh_idx} does not have well defined kinematic slip rates. "
             "Coupling constraints cannot be used."
         )
 
-    operator = operators.rotation_to_tri_slip_rate[mesh][idx, :]
+    operator = operators.rotation_to_tri_slip_rate[mesh_idx][idx, :]
     kinematic = _operator_mult(operator, rotation)
-    pm.Deterministic(f"kinematic_{mesh}_{kind}", kinematic)
+    pm.Deterministic(f"kinematic_{mesh_idx}_{kind_short[kind]}", kinematic)
 
-    eigenvectors, _ = _get_eigen_modes(
+    eigenvectors, _ = _get_eigenmodes(
         model,
-        mesh,
+        mesh_idx,
         kind,
         operators,
         out_idx=idx,
     )
     n_eigs = eigenvectors.shape[1]
-    coefs = pm.Normal(f"coupling_coefs_{mesh}_{kind}", mu=0, sigma=10, shape=n_eigs)
+    coefs = pm.Normal(f"coupling_coefs_{mesh_idx}_{kind_short[kind]}", mu=0, sigma=10, shape=n_eigs, dims=f"eigenmode_{kind_short[kind]}")
 
     coupling_field = _operator_mult(eigenvectors, coefs)
     coupling_field = _constrain_field(coupling_field, lower, upper)
-    pm.Deterministic(f"coupling_{mesh}_{kind}", coupling_field)
+    pm.Deterministic(f"coupling_{mesh_idx}_{kind_short[kind]}", coupling_field)
     elastic = kinematic * coupling_field
-    pm.Deterministic(f"elastic_{mesh}_{kind}", elastic)
+    pm.Deterministic(f"elastic_{mesh_idx}_{kind_short[kind]}", elastic)
 
     elastic_velocity = _station_vel_from_elastic_mesh(
         model,
-        mesh,
+        mesh_idx,
         kind,
         elastic,
         operators,
@@ -213,23 +213,25 @@ def _coupling_component(
 
 def _elastic_component(
     model: Model,
-    mesh: int,
+    mesh_idx: int,
     kind: Literal["strike_slip", "dip_slip"],
-    rotation,
     operators: Operators,
     lower: float | None,
     upper: float | None,
 ):
     """Model elastic slip rate as a linear combination of eigenmodes.
+    Creates parameters for raw elastic eigenmode coefficients, then adds 
+    scaled elastic eigenmodes as deterministic variables. Also adds a 
+    deterministic variable for the elastic slip rate field.
 
-    Return the resulting elastic velocity at the station locations.
+    Returns the resulting elastic velocity at the station locations.
     """
     assert operators.eigen is not None
     assert operators.tde is not None
 
     import pymc as pm
     import pytensor.tensor as pt
-
+    kind_short = {"strike_slip": "ss", "dip_slip": "ds"}
     idx = DIRECTION_IDX[kind]
 
     scale = 0.0
@@ -239,19 +241,19 @@ def _elastic_component(
     scale = scale / len(operators.eigen.eigen_to_velocities)
     scale = 1 / np.sqrt(scale)
 
-    eigenvectors, to_velocity = _get_eigen_modes(
+    eigenvectors, to_velocity = _get_eigenmodes(
         model,
-        mesh,
+        mesh_idx,
         kind,
         operators,
         out_idx=idx,
     )
     n_eigs = eigenvectors.shape[1]
 
-    raw = pm.Normal(f"elastic_eigen_raw_{mesh}_{kind}", shape=n_eigs)
-    param = pm.Deterministic(f"elastic_eigen_{mesh}_{kind}", scale * raw)
+    raw = pm.Normal(f"elastic_eigen_raw_{mesh_idx}_{kind_short[kind]}", shape=n_eigs, dims=f"eigenmode_{kind_short[kind]}")
+    param = pm.Deterministic(f"elastic_eigen_{mesh_idx}_{kind_short[kind]}", scale * raw)
     elastic = _constrain_field(_operator_mult(eigenvectors, param), lower, upper)
-    pm.Deterministic(f"elastic_{mesh}_{kind}", elastic)
+    pm.Deterministic(f"elastic_{mesh_idx}_{kind_short[kind]}", elastic)
 
     # Compute elastic velocity at stations. The operator already
     # includes a negative sign.
@@ -269,7 +271,7 @@ def _elastic_component(
     else:
         elastic_velocity = _station_vel_from_elastic_mesh(
             model,
-            mesh,
+            mesh_idx,
             kind,
             elastic,
             operators,
@@ -280,7 +282,7 @@ def _elastic_component(
 
 def _mesh_component(
     model: Model,
-    mesh: int,
+    mesh_idx: int,
     rotation,
     operators: Operators,
 ):
@@ -289,11 +291,11 @@ def _mesh_component(
     kinds: tuple[Literal["strike_slip"], Literal["dip_slip"]] = ("strike_slip", "dip_slip")
     for kind in kinds:
         if kind == "strike_slip":
-            coupling_limit = model.meshes[mesh].config.coupling_constraints_ss
-            rate_limit = model.meshes[mesh].config.elastic_constraints_ss
+            coupling_limit = model.meshes[mesh_idx].config.coupling_constraints_ss
+            rate_limit = model.meshes[mesh_idx].config.elastic_constraints_ss
         else:
-            coupling_limit = model.meshes[mesh].config.coupling_constraints_ds
-            rate_limit = model.meshes[mesh].config.elastic_constraints_ds
+            coupling_limit = model.meshes[mesh_idx].config.coupling_constraints_ds
+            rate_limit = model.meshes[mesh_idx].config.elastic_constraints_ds
 
         has_rate_limit = rate_limit.lower is not None or rate_limit.upper is not None
         has_coupling_limit = (
@@ -302,7 +304,7 @@ def _mesh_component(
 
         if has_rate_limit and has_coupling_limit:
             raise ValueError(
-                f"Mesh {mesh} cannot have both rate and coupling constraints "
+                f"Mesh {mesh_idx} cannot have both rate and coupling constraints "
                 f"for {kind}."
             )
 
@@ -310,7 +312,7 @@ def _mesh_component(
             rates.append(
                 _coupling_component(
                     model,
-                    mesh,
+                    mesh_idx,
                     kind,
                     rotation,
                     operators,
@@ -322,9 +324,8 @@ def _mesh_component(
             rates.append(
                 _elastic_component(
                     model,
-                    mesh,
+                    mesh_idx,
                     kind,
-                    rotation,
                     operators,
                     lower=rate_limit.lower,
                     upper=rate_limit.upper,
@@ -454,11 +455,13 @@ def _add_station_velocity_likelihood(model: Model, mu):
             f"{(areas >= effective_area).sum()}"
         )
 
-        pm.StudentT(
+        pm.CustomDist(
             "station_velocity",
-            mu=mu,
-            sigma=sigma,
-            nu=6,
+            weight[:, None],
+            mu,
+            sigma,
+            logp=lh,
+            random=random,
             observed=data,
             dims=("station", "xy"),
         )
@@ -491,7 +494,7 @@ def _add_segment_constraints(model: Model, operators: Operators, rotation):
                 observed=np.zeros((model.segment[f"{kind}_reg_flag"] == 1).sum()),
             )
 
-    pm.Deterministic("segment_slip_rate", segment_rates, dims=("segment", "ss_ds_ts"))
+    pm.Deterministic("segment_slip_rate", segment_rates, dims=("segment", "slip_comp"))
 
     # Slip rate observations
     for comp, flag_attr, rate_attr, sig_attr in [
@@ -582,29 +585,44 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
 
     import pymc as pm
 
+    has_block_strain_rate = operators.block_strain_rate_to_velocities.shape[1] > 0
+    has_mogi = operators.mogi_to_velocities.shape[1] > 0
+
     coords = {
-        "block_strain_rate_param": pd.RangeIndex(
-            operators.block_strain_rate_to_velocities.shape[1]
-        ),
         "global_float_block_rotation_param": pd.RangeIndex(
             operators.global_float_block_rotation.shape[1]
         ),
-        "mogi_param": pd.RangeIndex(operators.mogi_to_velocities.shape[1]),
         "rotation_param": pd.RangeIndex(operators.rotation_to_velocities.shape[1]),
         "station": model.station.index,
         "segment": model.segment.index,
         "xyz": pd.Index(["x", "y", "z"]),
         "xy": pd.Index(["x", "y"]),
-        "ss_ds_ts": pd.Index(["strike_slip", "dip_slip", "tensile_slip"]),
+        "slip_comp": pd.Index(["strike_slip", "dip_slip", "tensile_slip"]),
+        "eigenmode_ss": pd.RangeIndex(model.meshes[0].config.n_modes_strike_slip),
+        "eigenmode_ds": pd.RangeIndex(model.meshes[0].config.n_modes_dip_slip),
     }
 
+    if has_block_strain_rate:
+        coords["block_strain_rate_param"] = pd.RangeIndex(
+            operators.block_strain_rate_to_velocities.shape[1]
+        )
+    if has_mogi:
+        coords["mogi_param"] = pd.RangeIndex(operators.mogi_to_velocities.shape[1])
+
     with pm.Model(coords=coords) as pymc_model:
-        # Add velocity components
-        block_strain_rate_velocity = _add_block_strain_rate_component(operators)
         rotation, rotation_velocity, rotation_okada_velocity = _add_rotation_component(
             operators
         )
-        mogi_velocity = _add_mogi_component(operators)
+
+        if has_block_strain_rate:
+            block_strain_rate_velocity = _add_block_strain_rate_component(operators)
+        else:
+            block_strain_rate_velocity = 0
+
+        if has_mogi:
+            mogi_velocity = _add_mogi_component(operators)
+        else:
+            mogi_velocity = 0
 
         # Add elastic velocity from meshes
         elastic_velocities = []
@@ -612,7 +630,6 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
             elastic_velocities.append(_mesh_component(model, key, rotation, operators))
         elastic_velocity = sum(elastic_velocities)
 
-        # Combine all velocity components
         mu = (
             block_strain_rate_velocity
             + rotation_velocity
@@ -622,7 +639,6 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
         )
         mu = mu.reshape((len(model.station), 3))[:, :2]
         mu_det = pm.Deterministic("mu", mu, dims=("station", "xy"))
-        # Add likelihoods and constraints
         _add_station_velocity_likelihood(model, mu_det)
         _add_segment_constraints(model, operators, rotation)
 
@@ -701,13 +717,15 @@ def _state_vector_from_draw(
     n_params = operators_tde.full_dense_operator.shape[1]
     state_vector = np.zeros(n_params)
 
-    start = operators_tde.index.start_block_strain_col
-    end = operators_tde.index.end_block_strain_col
-    state_vector[start:end] = trace.posterior.block_strain_rate.values
+    if "block_strain_rate" in trace.posterior:
+        start = operators_tde.index.start_block_strain_col
+        end = operators_tde.index.end_block_strain_col
+        state_vector[start:end] = trace.posterior.block_strain_rate.values
 
-    start = operators_tde.index.start_mogi_col
-    end = operators_tde.index.end_mogi_col
-    state_vector[start:end] = trace.posterior.mogi.values
+    if "mogi" in trace.posterior:
+        start = operators_tde.index.start_mogi_col
+        end = operators_tde.index.end_mogi_col
+        state_vector[start:end] = trace.posterior.mogi.values
 
     start = operators_tde.index.start_block_col
     end = operators_tde.index.end_block_col
