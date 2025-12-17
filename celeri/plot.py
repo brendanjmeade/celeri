@@ -151,6 +151,7 @@ def plot_input_summary(
     lon_range: tuple | None = None,
     lat_range: tuple | None = None,
     quiver_scale: float = 1e2,
+    save: bool = True
 ):
     """Plot overview figures showing observed and modeled velocities as well
     as velocity decomposition and estimates slip rates.
@@ -160,6 +161,7 @@ def plot_input_summary(
         lon_range (Tuple): Latitude range (min, max)
         lat_range (Tuple): Latitude range (min, max)
         quiver_scale (float): Scaling for velocity arrows
+        save (bool): Whether to save the figure to disk
     """
     if lon_range is None:
         lon_range = model.config.lon_range
@@ -353,11 +355,10 @@ def plot_input_summary(
         pc = mc.PolyCollection(verts, edgecolor="none", linewidth=0.25, cmap="Oranges")
         pc.set_array(is_constrained_tde)
         ax.add_collection(pc)
-        # ax.autoscale()
 
     plt.suptitle("inputs")
 
-    if model.config.output_path.exists():
+    if save and model.config.output_path.exists():
         plt.savefig(model.config.output_path / "plot_input_summary.png", dpi=500)
         plt.savefig(model.config.output_path / "plot_input_summary.pdf")
         logger.success(
@@ -375,6 +376,7 @@ def plot_estimation_summary(
     lon_range: tuple | None = None,
     lat_range: tuple | None = None,
     quiver_scale: float | None = None,
+    save: bool = True,
 ):
     """Plot overview figures showing observed and modeled velocities as well
     as velocity decomposition and estimates slip rates.
@@ -385,6 +387,7 @@ def plot_estimation_summary(
         lon_range (Tuple): Latitude range (min, max)
         lat_range (Tuple): Latitude range (min, max)
         quiver_scale (float): Scaling for velocity arrows
+        save (bool): Whether to save the figure to disk
     """
     if lon_range is None:
         lon_range = model.config.lon_range
@@ -596,15 +599,11 @@ def plot_estimation_summary(
         f"mae = {mean_average_error:.2f} (mm/yr), mse = {mean_squared_error:.2f} (mm/yr)^2"
     )
 
-    if model.config.output_path.exists():
+    if save and model.config.output_path.exists():
         plt.savefig(model.config.output_path / "plot_estimation_summary.png", dpi=500)
         plt.savefig(model.config.output_path / "plot_estimation_summary.pdf")
+        logger.success(f"Wrote figures {model.config.output_path}/plot_estimation_summary.(pdf, png)")
     plt.show(block=False)
-
-    logger.success(
-        f"Wrote figures {model.config.output_path}/plot_estimation_summary.(pdf, png)"
-    )
-
 
 def plot_matrix_abs_log(matrix):
     plt.figure(figsize=(10, 10))
