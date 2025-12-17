@@ -37,11 +37,11 @@ def _constrain_field(values, lower: float | None, upper: float | None):
 
     if lower is not None and upper is not None:
         scale = upper - lower
-        return pm.math.sigmoid(values) * scale + lower
+        return pm.math.sigmoid(values) * scale + lower # type: ignore[attr-defined]
     if lower is not None:
-        return pm.math.softplus(values) + lower
+        return pm.math.softplus(values) + lower # type: ignore[attr-defined]
     if upper is not None:
-        return upper - pm.math.softplus(-values)
+        return upper - pm.math.softplus(-values) # type: ignore[attr-defined]
     return values
 
 
@@ -142,7 +142,7 @@ def _station_vel_from_elastic_mesh(
                 np.zeros((len(model.station), 1)),
             ],
             axis=-1,
-        ).ravel()
+        ).ravel()  # type: ignore[attr-defined]
         return elastic_velocity
     elif method == "direct":
         to_station = operators.tde.tde_to_velocities[mesh][:, idx.start : None : 3]
@@ -265,7 +265,7 @@ def _elastic_component(
                 np.zeros((len(model.station), 1)),
             ],
             axis=-1,
-        ).ravel()
+        ).ravel()  # type: ignore[attr-defined]
     else:
         elastic_velocity = _station_vel_from_elastic_mesh(
             model,
@@ -286,7 +286,8 @@ def _mesh_component(
 ):
     rates = []
 
-    for kind in ["strike_slip", "dip_slip"]:
+    kinds: tuple[Literal["strike_slip"], Literal["dip_slip"]] = ("strike_slip", "dip_slip")
+    for kind in kinds:
         if kind == "strike_slip":
             coupling_limit = model.meshes[mesh].config.coupling_constraints_ss
             rate_limit = model.meshes[mesh].config.elastic_constraints_ss
@@ -301,8 +302,8 @@ def _mesh_component(
 
         if has_rate_limit and has_coupling_limit:
             raise ValueError(
-                "Cannot have both rate and coupling constraints "
-                f"for mesh {mesh} {kind}."
+                f"Mesh {mesh} cannot have both rate and coupling constraints "
+                f"for {kind}."
             )
 
         if has_coupling_limit:
@@ -429,7 +430,7 @@ def _add_station_velocity_likelihood(model: Model, mu):
         effective_area = model.config.mcmc_station_effective_area
 
         voroni = spatial.SphericalVoronoi(
-            model.station[["x", "y", "z"]].values, RADIUS_EARTH
+            model.station[["x", "y", "z"]].values, int(RADIUS_EARTH)
         )
         areas = voroni.calculate_areas()
 
@@ -453,13 +454,11 @@ def _add_station_velocity_likelihood(model: Model, mu):
             f"{(areas >= effective_area).sum()}"
         )
 
-        pm.CustomDist(
+        pm.StudentT(
             "station_velocity",
-            weight[:, None],
-            mu,
-            sigma,
-            logp=lh,
-            random=random,
+            mu=mu,
+            sigma=sigma,
+            nu=6,
             observed=data,
             dims=("station", "xy"),
         )
@@ -622,13 +621,12 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
             + elastic_velocity
         )
         mu = mu.reshape((len(model.station), 3))[:, :2]
-        pm.Deterministic("mu", mu, dims=("station", "xy"))
-
+        mu_det = pm.Deterministic("mu", mu, dims=("station", "xy"))
         # Add likelihoods and constraints
-        _add_station_velocity_likelihood(model, mu)
+        _add_station_velocity_likelihood(model, mu_det)
         _add_segment_constraints(model, operators, rotation)
 
-    return pymc_model
+    return pymc_model  # type: ignore[return-value]
 
 
 def solve_mcmc(
@@ -667,7 +665,7 @@ def solve_mcmc(
     pymc_model = _build_pymc_model(model, operators)
 
     compiled = nutpie.compile_pymc_model(
-        pymc_model,
+        pymc_model,  # type: ignore[arg-type]
         backend=model.config.mcmc_backend,
     )
     kwargs = {
