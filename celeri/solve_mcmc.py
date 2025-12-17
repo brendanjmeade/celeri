@@ -470,6 +470,48 @@ def _add_station_velocity_likelihood(model: Model, mu):
         )
 
 
+def _constrain_bottom(model: Model, mesh_idx: int, sigma: float = 1.0):
+    """Add constraint for elastic slip at bottom mesh elements to be near zero.
+
+    Adds an artificial observation of 0 to the elastic slip on elements at
+    mesh.bot_slip_idx using a HalfNormal likelihood on the absolute value.
+
+    Parameters
+    ----------
+    model : Model
+        The model instance
+    mesh_idx : int
+        Index of the mesh
+    sigma : float
+        Standard deviation of the HalfNormal distribution (default: 1.0)
+    """
+    import pymc as pm
+    import pytensor.tensor as pt
+
+    def _interleaved_idx_to_element_idx(interleaved_idx: np.ndarray) -> np.ndarray:
+        """Convert interleaved 2-component indices to element indices."""
+        if len(interleaved_idx) == 0:
+            return np.array([], dtype=int)
+        return np.unique(interleaved_idx[0::2] // 2)
+
+    bot_idx = _interleaved_idx_to_element_idx(model.meshes[mesh_idx].bot_slip_idx)
+
+    if len(bot_idx) == 0:
+        logger.warning(f"Mesh {mesh_idx} has no bottom slip indices, skipping constraint")
+        return
+
+    for kind in ["strike_slip", "dip_slip"]:
+        var_name = f"elastic_{mesh_idx}_{kind}"
+        elastic = pm.modelcontext(None)[var_name]
+        elastic_at_bottom = elastic[bot_idx]
+
+        pm.HalfNormal(
+            f"bottom_constraint_{mesh_idx}_{kind}",
+            sigma=sigma,
+            observed=pt.abs(elastic_at_bottom),
+        )
+
+
 def _add_segment_constraints(model: Model, operators: Operators, rotation):
     """Add segment slip rate constraints to the PyMC model.
 
@@ -625,6 +667,8 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
         pm.Deterministic("mu", mu, dims=("station", "xy"))
 
         # Add likelihoods and constraints
+        for mesh_idx in range(len(model.meshes)):
+            _constrain_bottom(model, mesh_idx, sigma=1.0)
         _add_station_velocity_likelihood(model, mu)
         _add_segment_constraints(model, operators, rotation)
 
