@@ -172,7 +172,7 @@ def _coupling_component(
     assert operators.tde is not None
 
     import pymc as pm
-    kind_short = {"strike_slip": "ss", "dip_slip": "ds"}
+    kind_short = {"strike_slip": "ss", "dip_slip": "ds"}[kind]
     idx = DIRECTION_IDX[kind]
 
     if mesh_idx not in operators.rotation_to_tri_slip_rate:
@@ -183,7 +183,7 @@ def _coupling_component(
 
     operator = operators.rotation_to_tri_slip_rate[mesh_idx][idx, :]
     kinematic = _operator_mult(operator, rotation)
-    pm.Deterministic(f"kinematic_{mesh_idx}_{kind_short[kind]}", kinematic)
+    pm.Deterministic(f"kinematic_{mesh_idx}_{kind_short}", kinematic)
 
     eigenvectors, _ = _get_eigenmodes(
         model,
@@ -193,13 +193,13 @@ def _coupling_component(
         out_idx=idx,
     )
     n_eigs = eigenvectors.shape[1]
-    coefs = pm.Normal(f"coupling_coefs_{mesh_idx}_{kind_short[kind]}", mu=0, sigma=10, shape=n_eigs, dims=f"eigenmode_{kind_short[kind]}")
+    coefs = pm.Normal(f"coupling_coefs_{mesh_idx}_{kind_short}", mu=0, sigma=10, shape=n_eigs)
 
     coupling_field = _operator_mult(eigenvectors, coefs)
     coupling_field = _constrain_field(coupling_field, lower, upper)
-    pm.Deterministic(f"coupling_{mesh_idx}_{kind_short[kind]}", coupling_field)
+    pm.Deterministic(f"coupling_{mesh_idx}_{kind_short}", coupling_field)
     elastic = kinematic * coupling_field
-    pm.Deterministic(f"elastic_{mesh_idx}_{kind_short[kind]}", elastic)
+    pm.Deterministic(f"elastic_{mesh_idx}_{kind_short}", elastic)
 
     elastic_velocity = _station_vel_from_elastic_mesh(
         model,
@@ -231,7 +231,7 @@ def _elastic_component(
 
     import pymc as pm
     import pytensor.tensor as pt
-    kind_short = {"strike_slip": "ss", "dip_slip": "ds"}
+    kind_short = {"strike_slip": "ss", "dip_slip": "ds"}[kind]
     idx = DIRECTION_IDX[kind]
 
     scale = 0.0
@@ -250,10 +250,10 @@ def _elastic_component(
     )
     n_eigs = eigenvectors.shape[1]
 
-    raw = pm.Normal(f"elastic_eigen_raw_{mesh_idx}_{kind_short[kind]}", shape=n_eigs, dims=f"eigenmode_{kind_short[kind]}")
-    param = pm.Deterministic(f"elastic_eigen_{mesh_idx}_{kind_short[kind]}", scale * raw)
+    raw = pm.Normal(f"elastic_eigen_raw_{mesh_idx}_{kind_short}", shape=n_eigs)
+    param = pm.Deterministic(f"elastic_eigen_{mesh_idx}_{kind_short}", scale * raw)
     elastic = _constrain_field(_operator_mult(eigenvectors, param), lower, upper)
-    pm.Deterministic(f"elastic_{mesh_idx}_{kind_short[kind]}", elastic)
+    pm.Deterministic(f"elastic_{mesh_idx}_{kind_short}", elastic)
 
     # Compute elastic velocity at stations. The operator already
     # includes a negative sign.
@@ -546,7 +546,7 @@ def _add_segment_constraints(model: Model, operators: Operators, rotation):
             else:
                 bound_sig = model.config.segment_slip_rate_bound_sigma
             pm.Censored(
-                f"segment_{comp}_slip_rate_lower_bound",
+                f"segment_{comp}_rate_lower_bound",
                 dist=pm.Normal.dist(
                     mu=segment_rates[
                         bound_flags == 1,
@@ -560,7 +560,7 @@ def _add_segment_constraints(model: Model, operators: Operators, rotation):
             )
 
             pm.Censored(
-                f"segment_{comp}_slip_rate_upper_bound",
+                f"segment_{comp}_rate_upper_bound",
                 dist=pm.Normal.dist(
                     mu=segment_rates[
                         bound_flags == 1,
@@ -598,8 +598,6 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
         "xyz": pd.Index(["x", "y", "z"]),
         "xy": pd.Index(["x", "y"]),
         "slip_comp": pd.Index(["strike_slip", "dip_slip", "tensile_slip"]),
-        "eigenmode_ss": pd.RangeIndex(model.meshes[0].config.n_modes_strike_slip),
-        "eigenmode_ds": pd.RangeIndex(model.meshes[0].config.n_modes_dip_slip),
     }
 
     if has_block_strain_rate:
