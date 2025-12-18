@@ -8,6 +8,7 @@ from celeri.mesh import ScalarBound
 
 test_logger = logger.bind(name="test_output_files")
 
+
 @pytest.mark.parametrize(
     "config_file",
     [
@@ -18,11 +19,11 @@ def test_celeri_solve_creates_output_files(config_file):
     """Test that celeri_solve.py creates the HDF5 file and CSV files via write_output()."""
     config = celeri.get_config(config_file)
     config.solve_type = "dense"
-    
+
     model = celeri.build_model(config)
     estimation = celeri.build_and_solve_dense(model)
     celeri.write_output(estimation)
-    
+
     run_dir = get_newest_run_folder(base=Path(__file__).parent.parent / "runs")
     run_name = run_dir.name
     hdf5_file = run_dir / f"model_{run_name}.hdf5"
@@ -45,6 +46,7 @@ def test_celeri_solve_creates_output_files(config_file):
     for csv_file in csv_files:
         csv_path = run_dir / csv_file
         assert csv_path.exists(), f"CSV file not created: {csv_path}"
+
 
 @pytest.mark.parametrize(
     "config_file",

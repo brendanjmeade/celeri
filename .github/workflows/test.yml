@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - test-cleanup
   pull_request:
 
 jobs:
@@ -36,12 +35,10 @@ jobs:
       - name: Test
         if: ${{ matrix.tests-to-run == 'other' }}
         run: |
-          pixi run -e ${{ matrix.pixi-environment }} pytest ./tests/test_closure.py \
-          ./tests/test_okada_equals_cutde.py \
-          ./tests/test_serialize.py \
-          ./tests/test_output_files.py \
-          ./tests/test_cache.py \
-          ./tests/test_snap_segments.py
+          pixi run -e ${{ matrix.pixi-environment }} pytest ./tests/ \
+          --ignore=./tests/test_solve_dense.py \
+          --ignore=./tests/test_optimize_sqp.py \
+          --ignore=./tests/test_optimize.py
       - name: Test
         if: ${{ matrix.tests-to-run == 'solve' }}
         run: |

@@ -36,6 +36,7 @@ def model(small_test_config_path: Path):
 def operators(model):
     return build_operators(model, eigen=True)
 
+
 @pytest.mark.parametrize(
     "smooth_kinematic, objective",
     [

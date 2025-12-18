@@ -1,14 +1,22 @@
-import pytest
+import tempfile
 from pathlib import Path
+
 import h5py
+import numpy as np
 import pandas as pd
 import pytest
-import numpy as np
 from loguru import logger
+
 import celeri
-from celeri.operators import _OperatorBuilder, _store_elastic_operators, _hash_elastic_operator_input
+from celeri.config import get_config
+from celeri.operators import (
+    _OperatorBuilder,
+    _hash_elastic_operator_input,
+    _store_elastic_operators,
+)
 
 test_logger = logger.bind(name="test_output_files")
+
 
 @pytest.mark.parametrize(
     "config_file",
@@ -18,27 +26,25 @@ test_logger = logger.bind(name="test_output_files")
 )
 def test_smart_segment_recompute(config_file):
     """Test that selective recompute works correctly when segments change.
-    
+
     This test verifies the selective recomputation feature of elastic operators:
     1. First computes operators from scratch and caches them
     2. Modifies a segment file and triggers selective recompute (only changed segments)
     3. Renames the cache file and recomputes from scratch
     4. Compares the selective recompute results with full recompute to ensure they match
-    
+
     Args:
         config_file: Path to the test configuration file
     """
-    logger.disable("celeri")
-    cache_dir = None
-    try:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        cache_dir = Path(tmpdir)
+
+        # Load config and redirect cache to temp directory
+        config = get_config(config_file)
+        config.elastic_operator_cache_dir = cache_dir
+
         test_logger.info("Computing operator with original segment file")
-        model = celeri.build_model(config_file)
-        assert model.config.elastic_operator_cache_dir is not None, "elastic_operator_cache_dir must be set"
-        cache_dir = Path(model.config.elastic_operator_cache_dir)
-        if cache_dir.exists():
-            for item in cache_dir.iterdir():
-                if item.is_file() and item.suffix == ".hdf5":
-                    item.unlink()
+        model = celeri.build_model(config)
         operators = _OperatorBuilder(model)
         _store_elastic_operators(model, operators)
 
@@ -51,7 +57,11 @@ def test_smart_segment_recompute(config_file):
         cache_file = cache_dir / f"{input_hash}.hdf5"
         assert cache_file.exists(), f"Cache file should exist: {cache_file}"
 
-        model = celeri.build_model(config_file, override_segment=pd.read_csv(Path("tests/data/segment/wna_segment1.csv")))
+        # Build model with modified segment file
+        model = celeri.build_model(
+            config,
+            override_segment=pd.read_csv(Path("tests/data/segment/wna_segment1.csv")),
+        )
         test_logger.info("Selectively recomputing operators with modified segment file")
         operators2 = _OperatorBuilder(model)
         _store_elastic_operators(model, operators2)
@@ -85,9 +95,3 @@ def test_smart_segment_recompute(config_file):
                     f"[{name}] Arrays should be equal (within tolerance). "
                     f"Max difference: {max_diff}"
                 )
-    finally:
-        logger.enable("celeri")
-        if cache_dir is not None and cache_dir.exists():
-            test_logger.info(f"Cleaning up cache directory: {cache_dir}")
-            for cache_file in cache_dir.glob("*.hdf5"):
-                cache_file.unlink()

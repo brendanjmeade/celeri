@@ -166,7 +166,11 @@ def get_segment_station_operator_okada(segment, station, config, *, progress_bar
     n_stations = len(station)
     okada_segment_operator = np.full((3 * n_stations, 3 * n_segments), np.nan)
     # Loop through each segment and calculate displacements for each slip component
-    segment_iter = range(len(segment)) if not progress_bar else track(range(len(segment)), description="Rectangular segment elastic")
+    segment_iter = (
+        range(len(segment))
+        if not progress_bar
+        else track(range(len(segment)), description="Rectangular segment elastic")
+    )
     for i in segment_iter:
         for slip_type in ["strike", "dip", "tensile"]:
             # Each `u` has shape (n_stations, )
