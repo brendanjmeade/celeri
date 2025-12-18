@@ -116,6 +116,10 @@ class MeshConfig(BaseModel):
     # `side_slip_rate_weight` if the TDE eigenmodes are used.
     eigenmode_slip_rate_constraint_weight: float = 1.0
 
+    # Sigma for the artificial observed 0s on elastic velocities at the bottom
+    # boundary, used in MCMC sampling when bot_slip_rate_constraint == 1.
+    bot_elastic_constraint_sigma: float = 0.5
+
     # Filename for fixed slip rates, not currently used
     a_priori_slip_filename: Path | None = None
 
@@ -219,7 +223,24 @@ def _compute_ordered_edge_nodes(mesh: dict):
 
 
 def _compute_mesh_edge_elements(mesh: dict):
-    # Find indices of elements lining top, bottom, and sides of each mesh
+    """
+    Compute mesh boundary elements that are classified as top, bottom, or side.
+
+    Modifies the `mesh` dictionary in-place by adding boolean arrays 
+    indicating which elements are on the top, bottom, or side of the mesh boundary. 
+    The classification is based on the depth of each element's vertices. 
+    Top elements are those that are relatively shallow, bottom elements are deepest, 
+    and sides are edges that are on the boundary but not classified as top or bottom.
+
+    Args:
+        mesh (dict): A mesh dictionary with keys including "points" (vertex coordinates), 
+            "verts" (triangular element vertex indices), and (on exit) "ordered_edge_nodes".
+
+    Modifies:
+        mesh["top_elements"]: np.ndarray of bool, True for elements on the top surface.
+        mesh["bot_elements"]: np.ndarray of bool, True for elements on the bottom surface.
+        mesh["side_elements"]: np.ndarray of bool, True for elements on mesh sides.
+    """
 
     _compute_ordered_edge_nodes(mesh)
 
@@ -295,7 +316,6 @@ def _compute_mesh_edge_elements(mesh: dict):
     depth_count, depth_bins = np.histogram(centroid_depths[tops], bins="doane")
     depth_bin_min = depth_bins[0:-1]
     depth_bin_max = depth_bins[1:]
-    np.std(depth_bins)
     zero_idx = np.where(depth_count == 0)[0]
     if len(zero_idx) > 0:
         if np.abs(depth_bin_max[zero_idx[0]] - depth_bin_min[zero_idx[-1] + 1]) > 10:
@@ -324,7 +344,6 @@ def _compute_mesh_edge_elements(mesh: dict):
     depth_count, depth_bins = np.histogram(centroid_depths[bots], bins="doane")
     depth_bin_min = depth_bins[0:-1]
     depth_bin_max = depth_bins[1:]
-    np.std(depth_bins)
     zero_idx = np.where(depth_count == 0)[0]
     if len(zero_idx) > 0:
         if abs(depth_bin_min[zero_idx[-1]] - depth_bin_max[zero_idx[0] - 1]) > 10:
@@ -458,8 +477,9 @@ class Mesh:
                  Bool indicating if each triangle is a bottom element. Each triangle along the edge of the mesh will
                  naturally have two vertices which compose the outer edge that actually belongs to the perimeter of the mesh,
                  and a third "interior" vertex. A bottom element is defined as an edge triangle such that the depth
-                 difference between the interior vertex and the midpoint of the outer edge is more negative than the depth
-                 difference between the other two vertices.
+                 difference between the interior vertex and the midpoint of the outer edge is more negative than the negative
+                 of the absolute depth difference between the two edge vertices. Additionally, elements are filtered to ensure
+                 they are really deep using histogram analysis of centroid depths.
              top_elements: np.ndarray
                  Bool indicating top elements, the opposite of bottom elements.
              side_elements: np.ndarray
