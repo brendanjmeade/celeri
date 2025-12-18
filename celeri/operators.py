@@ -665,9 +665,7 @@ def build_operators(model: Model, *, eigen: bool = True, tde: bool = True) -> Op
     )
 
     # Soft block motion constraints
-    operators.block_motion_constraints = _store_block_motion_constraints(
-        model
-    )
+    operators.block_motion_constraints = _store_block_motion_constraints(model)
 
     # Soft slip rate constraints
     operators.slip_rate_constraints = get_slip_rate_constraints(model)
@@ -936,14 +934,14 @@ def _store_elastic_operators(
     """Calculate (or load previously calculated) elastic operators from
     both fully locked segments and TDE-parameterized surfaces.
 
-    Supports selective recomputation when only some source segments change.
+    Supports selective recomputation when only some source segment geometries
+    change, in place. If the segment file has changed, rows have been added or removed,
+    or `force_recompute` is True, the operators will be recomputed from scratch.
 
     Args:
-        operators (Dict): Data structure which the elastic operators will be added to
-        meshes (List): Geometries of meshes
-        segment (pd.DataFrame): All segment data
-        station (pd.DataFrame): All station data
-        config (Dict): All config data
+        operators (_OperatorBuilder): Data structure which the elastic operators will be added to
+        model (Model): Model instance
+        tde (bool): Whether to compute TDE operators
     """
     config = model.config
     meshes = model.meshes
@@ -986,10 +984,14 @@ def _store_elastic_operators(
             else:
                 # Check if segments have been added or removed
                 if cached_segments["name"].tolist() != segment["name"].tolist():
-                    logger.info("Segments have been added or removed since last computation. Recomputing operators.")
+                    logger.info(
+                        "Segments have been added or removed since last computation. Recomputing operators."
+                    )
                     cached_operator = None
                 elif cached_operator is not None:
-                    changed_segment_indices = _compare_segments(cached_segments, segment)
+                    changed_segment_indices = _compare_segments(
+                        cached_segments, segment
+                    )
                     if len(changed_segment_indices) == 0:
                         logger.info(
                             "No source geometry changed since last computation. Using cached operator."
@@ -1010,7 +1012,10 @@ def _store_elastic_operators(
                     operators.slip_rate_to_okada_to_velocities = cached_operator.copy()
 
                     if len(changed_segment_indices) > 0:
-                        for seg_idx in track(changed_segment_indices, description="Recomputing changed segments"):
+                        for seg_idx in track(
+                            changed_segment_indices,
+                            description="Recomputing changed segments",
+                        ):
                             single_segment = segment.iloc[
                                 seg_idx : seg_idx + 1
                             ].reset_index(drop=True)
@@ -1051,7 +1056,9 @@ def _store_elastic_operators(
 
         else:
             if not config.force_recompute:
-                logger.info("Precomputed elastic operator file not found. Computing operators")
+                logger.info(
+                    "Precomputed elastic operator file not found. Computing operators"
+                )
 
     else:
         logger.info(
@@ -1104,6 +1111,7 @@ def _store_all_mesh_smoothing_matrices(model: Model, operators: _OperatorBuilder
         operators.smoothing_matrix[i] = get_tri_smoothing_matrix(
             meshes[i].share, meshes[i].tri_shared_sides_distances
         )
+
 
 def _store_tde_slip_rate_constraints(model: Model, operators: _OperatorBuilder):
     """Construct TDE slip rate constraint matrices for each mesh.
@@ -1363,7 +1371,7 @@ def _get_slip_rate_constraints_data(model: Model) -> np.ndarray:
 def _get_slip_rake_constraints_index(model: Model) -> np.ndarray:
     """Compute slip rake constraints index from model."""
     segment = model.segment
-    if 'rake_flag' in segment.columns:
+    if "rake_flag" in segment.columns:
         return np.where(segment.rake_flag == 1)[0]
     else:
         return np.array([], dtype=int)
@@ -1375,7 +1383,7 @@ def get_slip_rate_constraints(model: Model) -> np.ndarray:
     slip_rate_constraint_partials = get_rotation_to_slip_rate_partials(
         segment, model.block
     )
-    
+
     # Filter partials to only include constrained segments
     slip_rate_constraints_idx = _get_slip_rate_constraints_index(model)
     slip_rate_constraint_partials = slip_rate_constraint_partials[
@@ -1387,18 +1395,18 @@ def get_slip_rate_constraints(model: Model) -> np.ndarray:
 def get_slip_rake_constraints(model: Model) -> np.ndarray:
     """Get slip rake constraint partials."""
     segment = model.segment
-    
+
     # Get slip rake constraints index
     slip_rake_constraints_idx = _get_slip_rake_constraints_index(model)
-    
+
     if len(slip_rake_constraints_idx) == 0:
         return np.array([])
-    
+
     # Calculate the full set of slip rate partials
     slip_rate_constraint_partials = get_rotation_to_slip_rate_partials(
         segment, model.block
     )
-    
+
     # Figure out effective rake. This is a simple correction of the rake data by the calculated strike of the segment
     # The idea is that the source of the rake constraint will include its own strike (and dip), which may differ from the model segment geometry
     # TODO: Full three-dimensional rotation of rake vector, based on strike and dip of constraint source?
@@ -1407,10 +1415,8 @@ def get_slip_rake_constraints(model: Model) -> np.ndarray:
     )
 
     # Get component indices of slip rate partials
-    rake_constraint_component_indices = get_2component_index(
-        slip_rake_constraints_idx
-    )
-    
+    rake_constraint_component_indices = get_2component_index(slip_rake_constraints_idx)
+
     # Rotate slip partials about effective rake. We just want to use the second row (second basis vector) of a full rotation matrix, because we want to set slip in that direction to zero as a constraint
     slip_rake_constraint_partials = (
         np.cos(np.radians(effective_rakes))
@@ -1418,13 +1424,11 @@ def get_slip_rake_constraints(model: Model) -> np.ndarray:
         + np.sin(np.radians(effective_rakes))
         * slip_rate_constraint_partials[rake_constraint_component_indices[1::2]]
     )
-    
+
     return slip_rake_constraint_partials
 
 
-def _get_data_vector_no_meshes(
-    model: Model, index: Index
-) -> np.ndarray:
+def _get_data_vector_no_meshes(model: Model, index: Index) -> np.ndarray:
     data_vector = np.zeros(
         2 * index.n_stations
         + 3 * index.n_block_constraints
@@ -1451,9 +1455,7 @@ def _get_data_vector_no_meshes(
     return data_vector
 
 
-def _get_data_vector(
-    model: Model, index: Index
-) -> np.ndarray:
+def _get_data_vector(model: Model, index: Index) -> np.ndarray:
     assert index.tde is not None
 
     data_vector = np.zeros(
@@ -1483,9 +1485,7 @@ def _get_data_vector(
     return data_vector
 
 
-def _get_data_vector_eigen(
-    model: Model, index: Index
-) -> np.ndarray:
+def _get_data_vector_eigen(model: Model, index: Index) -> np.ndarray:
     assert index.tde is not None
     assert index.eigen is not None
 
