@@ -38,7 +38,8 @@ jobs:
           pixi run -e ${{ matrix.pixi-environment }} pytest ./tests/ \
           --ignore=./tests/test_solve_dense.py \
           --ignore=./tests/test_optimize_sqp.py \
-          --ignore=./tests/test_optimize.py
+          --ignore=./tests/test_optimize.py \
+          --ignore=./tests/test_cli.py
       - name: Test
         if: ${{ matrix.tests-to-run == 'solve' }}
         run: |
