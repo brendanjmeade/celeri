@@ -154,18 +154,16 @@ class Estimation:
                     i, None
                 )
             else:
-                strike_slip_rate_kinematic = (
-                    self.tde_strike_slip_rates_kinematic.get(i, None)
-                )
-                dip_slip_rate_kinematic = self.tde_dip_slip_rates_kinematic.get(
+                strike_slip_rate_kinematic = self.tde_strike_slip_rates_kinematic.get(
                     i, None
                 )
+                dip_slip_rate_kinematic = self.tde_dip_slip_rates_kinematic.get(i, None)
 
             strike_slip_coupling = None
             if use_smooth:
                 if self.tde_strike_slip_rates_coupling_smooth is not None:
-                    strike_slip_coupling = self.tde_strike_slip_rates_coupling_smooth.get(
-                        i, None
+                    strike_slip_coupling = (
+                        self.tde_strike_slip_rates_coupling_smooth.get(i, None)
                     )
             else:
                 if self.tde_strike_slip_rates_coupling is not None:
@@ -176,7 +174,9 @@ class Estimation:
             dip_slip_coupling = None
             if use_smooth:
                 if self.tde_dip_slip_rates_coupling_smooth is not None:
-                    dip_slip_coupling = self.tde_dip_slip_rates_coupling_smooth.get(i, None)
+                    dip_slip_coupling = self.tde_dip_slip_rates_coupling_smooth.get(
+                        i, None
+                    )
             else:
                 if self.tde_dip_slip_rates_coupling is not None:
                     dip_slip_coupling = self.tde_dip_slip_rates_coupling.get(i, None)
@@ -674,7 +674,9 @@ class Estimation:
         self.operators.to_disk(output_dir / "operators")
 
         if self.mcmc_trace is not None:
-            self.mcmc_trace.to_datatree().to_zarr(output_dir / "mcmc_trace.zarr", consolidated=False)
+            self.mcmc_trace.to_datatree().to_zarr(
+                output_dir / "mcmc_trace.zarr", consolidated=False
+            )
         # We skip saving the trace, it shouldn't be needed later
         dataclass_to_disk(self, output_dir, skip={"operators", "trace", "mcmc_trace"})
 
