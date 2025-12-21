@@ -604,8 +604,11 @@ class Estimation:
 
         assert self.operators.eigen is not None
         for i in range(len(self.operators.tde.tde_to_velocities)):
+            # Use station_row_keep_index to respect vertical flag
             vel_tde += (
-                -self.operators.eigen.eigen_to_velocities[i]
+                -self.operators.eigen.eigen_to_velocities[i][
+                    self.index.station_row_keep_index, :
+                ]
                 @ self.state_vector[
                     index.eigen.start_col_eigen[i] : index.eigen.end_col_eigen[i]
                 ]
