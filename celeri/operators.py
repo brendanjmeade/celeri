@@ -471,10 +471,6 @@ class Operators:
     # that the index is then correct for those use cases.
     @cached_property
     def full_dense_operator(self) -> np.ndarray:
-        if self.tde is None:
-            return _get_full_dense_operator_block_only(self)
-        if self.eigen is not None:
-            return get_full_dense_operator_eigen(self)
         return get_full_dense_operator(self)
 
     @property
@@ -712,19 +708,16 @@ def build_operators(model: Model, *, eigen: bool = True, tde: bool = True) -> Op
     if eigen:
         # EIGEN Eigenvector to velocity matrix
         for i in range(index.n_meshes):
-            # Eliminate vertical elastic velocities
-            tde_keep_row_index = get_keep_index_12(
-                operators.tde_to_velocities[i].shape[0]
-            )
+            # Slice columns to only strike-slip and dip-slip (exclude tensile)
             tde_keep_col_index = get_keep_index_12(
                 operators.tde_to_velocities[i].shape[1]
             )
 
             # Create eigenvector to velocities operator
+            # Keep all 3 velocity components; use station_row_keep_index when
+            # inserting into the full operator to handle vertical flag
             operators.eigen_to_velocities[i] = (
-                -operators.tde_to_velocities[i][tde_keep_row_index, :][
-                    :, tde_keep_col_index
-                ]
+                -operators.tde_to_velocities[i][:, tde_keep_col_index]
                 @ operators.eigenvectors_to_tde_slip[i]
             )
 
@@ -1688,23 +1681,14 @@ def _get_weighting_vector_eigen(model: Model, index: Index) -> np.ndarray:
     return weighting_vector
 
 
-def _get_full_dense_operator_block_only(operators: Operators) -> np.ndarray:
-    index = operators.index
+def _insert_common_block_operators(
+    operator: np.ndarray, operators: Operators, index: Index
+) -> None:
+    """Insert block rotation, block motion constraints, and slip rate constraints.
 
-    # Initialize linear operator
-    operator = np.zeros(
-        (
-            index.end_station_row
-            + 3 * index.n_block_constraints
-            + index.n_slip_rate_constraints,
-            3 * index.n_blocks,
-        )
-    )
-
+    This is common to all three operator types (block_only, tde, eigen).
+    """
     # Insert block rotations and elastic velocities from fully locked segments
-    operators.rotation_to_slip_rate_to_okada_to_velocities = (
-        operators.slip_rate_to_okada_to_velocities @ operators.rotation_to_slip_rate
-    )
     operator[
         index.start_station_row : index.end_station_row,
         index.start_block_col : index.end_block_col,
@@ -1726,18 +1710,48 @@ def _get_full_dense_operator_block_only(operators: Operators) -> np.ndarray:
         index.start_slip_rate_constraints_row : index.end_slip_rate_constraints_row,
         index.start_block_col : index.end_block_col,
     ] = operators.slip_rate_constraints
+
+
+def _insert_block_strain_and_mogi(
+    operator: np.ndarray, operators: Operators, index: Index
+) -> None:
+    """Insert block strain and Mogi source operators.
+
+    This is common to tde and eigen operator types.
+    """
+    # Insert block strain operator
+    operator[
+        index.start_station_row : index.end_station_row,
+        index.start_block_strain_col : index.end_block_strain_col,
+    ] = operators.block_strain_rate_to_velocities[index.station_row_keep_index, :]
+
+    # Insert Mogi source operators
+    operator[
+        index.start_station_row : index.end_station_row,
+        index.start_mogi_col : index.end_mogi_col,
+    ] = operators.mogi_to_velocities[index.station_row_keep_index, :]
+
+
+def _get_full_dense_operator_block_only(operators: Operators) -> np.ndarray:
+    index = operators.index
+    operator = np.zeros(
+        (
+            index.end_station_row
+            + 3 * index.n_block_constraints
+            + index.n_slip_rate_constraints,
+            3 * index.n_blocks,
+        )
+    )
+
+    _insert_common_block_operators(operator, operators, index)
     return operator
 
 
-def get_full_dense_operator(operators: Operators) -> np.ndarray:
-    # TODO: This should either take an OperatorBuilder as input and
-    # store the final operator *or* return the final operator, but not
-    # modify the operator in place
+def _get_full_dense_operator_tde(operators: Operators) -> np.ndarray:
+    """Build full dense operator for TDE (non-eigen) case."""
     index = operators.index
     model = operators.model
     assert index.tde is not None
-
-    assert operators.eigen is None
     assert operators.tde is not None
 
     operator = np.zeros(
@@ -1754,30 +1768,7 @@ def get_full_dense_operator(operators: Operators) -> np.ndarray:
         )
     )
 
-    # DEBUG:
-    # IPython.embed(banner1="")
-
-    operator[
-        index.start_station_row : index.end_station_row,
-        index.start_block_col : index.end_block_col,
-    ] = (
-        operators.rotation_to_velocities[index.station_row_keep_index, :]
-        - operators.rotation_to_slip_rate_to_okada_to_velocities[
-            index.station_row_keep_index, :
-        ]
-    )
-
-    # Insert block motion constraints
-    operator[
-        index.start_block_constraints_row : index.end_block_constraints_row,
-        index.start_block_col : index.end_block_col,
-    ] = operators.block_motion_constraints
-
-    # Insert slip rate constraints
-    operator[
-        index.start_slip_rate_constraints_row : index.end_slip_rate_constraints_row,
-        index.start_block_col : index.end_block_col,
-    ] = operators.slip_rate_constraints
+    _insert_common_block_operators(operator, operators, index)
 
     # Insert all TDE operators
     for i in range(len(model.meshes)):
@@ -1842,38 +1833,18 @@ def get_full_dense_operator(operators: Operators) -> np.ndarray:
                 model.meshes[i].side_slip_idx,
                 :,
             ]
-    # Insert block strain operator
-    operator[
-        index.start_station_row : index.end_station_row,
-        index.start_block_strain_col : index.end_block_strain_col,
-    ] = operators.block_strain_rate_to_velocities[index.station_row_keep_index, :]
 
-    # Insert Mogi source operators
-    operator[
-        index.start_station_row : index.end_station_row,
-        index.start_mogi_col : index.end_mogi_col,
-    ] = operators.mogi_to_velocities[index.station_row_keep_index, :]
-    # Insert TDE coupling constraints into estimation operator
-    # The identity matrices were already inserted as part of the standard slip constraints,
-    # so here we can just insert the rotation-to-slip partials into the block rotation columns
-    # operator[
-    #     index.start_tde_coup_constraint_row[i] : index.end_tde_coup_constraint_row[
-    #         i
-    #     ],
-    #     index.start_block_col : index.end_block_col,
-    # ] = operators.tde_coupling_constraints[i]
-
+    _insert_block_strain_and_mogi(operator, operators, index)
     return operator
 
 
-def get_full_dense_operator_eigen(operators: Operators):
-    # TODO deduplicate with get_full_dense_operator and get_full_dense_operator_block_only
+def _get_full_dense_operator_eigen(operators: Operators) -> np.ndarray:
+    """Build full dense operator for eigen case."""
     index = operators.index
     model = operators.model
 
     assert index.tde is not None
     assert index.eigen is not None
-
     assert operators.eigen is not None
     assert operators.tde is not None
 
@@ -1891,39 +1862,16 @@ def get_full_dense_operator_eigen(operators: Operators):
         )
     )
 
-    operator[
-        index.start_station_row : index.end_station_row,
-        index.start_block_col : index.end_block_col,
-    ] = (
-        operators.rotation_to_velocities[index.station_row_keep_index, :]
-        - operators.rotation_to_slip_rate_to_okada_to_velocities[
-            index.station_row_keep_index, :
-        ]
-    )
-
-    # Insert block motion constraints
-    operator[
-        index.start_block_constraints_row : index.end_block_constraints_row,
-        index.start_block_col : index.end_block_col,
-    ] = operators.block_motion_constraints
-
-    # Insert slip rate constraints
-    operator[
-        index.start_slip_rate_constraints_row : index.end_slip_rate_constraints_row,
-        index.start_block_col : index.end_block_col,
-    ] = operators.slip_rate_constraints
+    _insert_common_block_operators(operator, operators, index)
 
     # EIGEN Eigenvector to velocity matrix
     for i in range(index.n_meshes):
         # Insert eigenvector to velocities operator
+        # Use station_row_keep_index to respect vertical flag
         operator[
             index.start_station_row : index.end_station_row,
             index.eigen.start_col_eigen[i] : index.eigen.end_col_eigen[i],
-        ] = operators.eigen.eigen_to_velocities[i]
-
-    tde_keep_row_index = get_keep_index_12(
-        list(operators.tde.tde_to_velocities.values())[-1].shape[0]
-    )
+        ] = operators.eigen.eigen_to_velocities[i][index.station_row_keep_index, :]
 
     # EIGEN Eigenvector to TDE boundary conditions matrix
     for i in range(index.n_meshes):
@@ -1942,19 +1890,33 @@ def get_full_dense_operator_eigen(operators: Operators):
             index.eigen.start_col_eigen[i] : index.eigen.end_col_eigen[i],
         ] = operators.eigen.eigen_to_tde_bcs[i]
 
-    # EIGEN: Block strain operator
-    operator[
-        0 : 2 * index.n_stations,
-        index.start_block_strain_col : index.end_block_strain_col,
-    ] = operators.block_strain_rate_to_velocities[tde_keep_row_index, :]
-
-    # EIGEN: Mogi operator
-    operator[
-        0 : 2 * index.n_stations,
-        index.start_mogi_col : index.end_mogi_col,
-    ] = operators.mogi_to_velocities[tde_keep_row_index, :]
-
+    _insert_block_strain_and_mogi(operator, operators, index)
     return operator
+
+
+def get_full_dense_operator(operators: Operators) -> np.ndarray:
+    """Build the full dense operator matrix based on the operator type.
+
+    Automatically determines which operator type to build based on the
+    presence of eigen/tde operators.
+
+    Args:
+        operators: The Operators object containing all sub-operators.
+
+    Returns:
+        The full dense operator matrix.
+    """
+    if operators.eigen is not None:
+        return _get_full_dense_operator_eigen(operators)
+    elif operators.tde is not None:
+        return _get_full_dense_operator_tde(operators)
+    else:
+        return _get_full_dense_operator_block_only(operators)
+
+
+def get_full_dense_operator_eigen(operators: Operators) -> np.ndarray:
+    """Deprecated: Use get_full_dense_operator instead."""
+    return _get_full_dense_operator_eigen(operators)
 
 
 def get_slip_rate_bounds(segment, block):
