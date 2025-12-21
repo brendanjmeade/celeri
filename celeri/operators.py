@@ -223,7 +223,7 @@ class Index:
     @property
     def n_operator_rows(self) -> int:
         base = (
-            2 * self.n_stations
+            self.end_station_row
             + 3 * self.n_block_constraints
             + self.n_slip_rate_constraints
         )
@@ -246,7 +246,7 @@ class Index:
     def n_operator_rows_eigen(self) -> int:
         assert self.eigen is not None
         base = (
-            2 * self.n_stations
+            self.end_station_row
             + 3 * self.n_block_constraints
             + self.n_slip_rate_constraints
         )
