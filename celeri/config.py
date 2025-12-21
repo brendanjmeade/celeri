@@ -255,7 +255,7 @@ class Config(BaseModel):
     Only used when `sqp2_annealing_enabled` is True.
     """
 
-    include_vertical_vel: bool = False
+    include_vertical_velocity: bool = False
     """When True, include vertical velocity component in station velocity predictions and data fitting.
     
     By default, only horizontal (east and north) velocity components are included in the model.

@@ -88,7 +88,7 @@ class Estimation:
         station["model_north_vel_block_strain_rate"] = self.north_vel_block_strain_rate
         station["model_east_vel_mogi"] = self.east_vel_mogi
         station["model_north_vel_mogi"] = self.north_vel_mogi
-        if self.model.config.include_vertical_vel:
+        if self.model.config.include_vertical_velocity:
             station["model_up_vel"] = self.up_vel
             station["model_up_vel_residual"] = self.up_vel_residual
             station["model_up_vel_rotation"] = self.up_vel_rotation
@@ -242,23 +242,23 @@ class Estimation:
     @property
     def vel(self) -> np.ndarray:
         """The estimated velocities at the stations."""
-        n_components = 3 if self.model.config.include_vertical_vel else 2
+        n_components = 3 if self.model.config.include_vertical_velocity else 2
         return self.predictions[0 : n_components * self.index.n_stations]
 
     @property
     def east_vel(self) -> np.ndarray:
         """The estimated east velocities at the stations."""
-        return self.vel[0::3 if self.model.config.include_vertical_vel else 2]
+        return self.vel[0::3 if self.model.config.include_vertical_velocity else 2]
 
     @property
     def north_vel(self) -> np.ndarray:
         """The estimated north velocities at the stations."""
-        return self.vel[1::3 if self.model.config.include_vertical_vel else 2]
+        return self.vel[1::3 if self.model.config.include_vertical_velocity else 2]
 
     @property
     def up_vel(self) -> np.ndarray:
         """The estimated up velocities at the stations."""
-        if not self.model.config.include_vertical_vel:
+        if not self.model.config.include_vertical_velocity:
             return np.zeros(self.index.n_stations)
         return self.vel[2::3]
 
@@ -275,7 +275,7 @@ class Estimation:
     @property
     def up_vel_residual(self) -> np.ndarray:
         """The residual between the estimated and observed up velocities at the stations."""
-        if not self.model.config.include_vertical_vel:
+        if not self.model.config.include_vertical_velocity:
             return np.zeros(self.index.n_stations)
         return self.up_vel - self.model.station.up_vel
 
@@ -423,19 +423,19 @@ class Estimation:
     @property
     def east_vel_rotation(self) -> np.ndarray:
         """Returns an np.array of shape (n_stations,), containing the east velocity components for each station."""
-        step = 3 if self.model.config.include_vertical_vel else 2
+        step = 3 if self.model.config.include_vertical_velocity else 2
         return self.vel_rotation[0::step]
 
     @property
     def north_vel_rotation(self) -> np.ndarray:
         """Returns an np.array of shape (n_stations,), containing the north velocity components for each station."""
-        step = 3 if self.model.config.include_vertical_vel else 2
+        step = 3 if self.model.config.include_vertical_velocity else 2
         return self.vel_rotation[1::step]
 
     @property
     def up_vel_rotation(self) -> np.ndarray:
         """Returns an np.array of shape (n_stations,), containing the up velocity components for each station."""
-        if not self.model.config.include_vertical_vel:
+        if not self.model.config.include_vertical_velocity:
             return np.zeros(self.index.n_stations)
         return self.vel_rotation[2::3]
 
@@ -452,19 +452,19 @@ class Estimation:
     @property
     def east_vel_elastic_segment(self) -> np.ndarray:
         """East component of elastic velocities on the segments from Okada."""
-        step = 3 if self.model.config.include_vertical_vel else 2
+        step = 3 if self.model.config.include_vertical_velocity else 2
         return self.vel_elastic_segment[0::step]
 
     @property
     def north_vel_elastic_segment(self) -> np.ndarray:
         """North component of elastic velocities on the segments from Okada."""
-        step = 3 if self.model.config.include_vertical_vel else 2
+        step = 3 if self.model.config.include_vertical_velocity else 2
         return self.vel_elastic_segment[1::step]
 
     @property
     def up_vel_elastic_segment(self) -> np.ndarray:
         """Up component of elastic velocities on the segments from Okada."""
-        if not self.model.config.include_vertical_vel:
+        if not self.model.config.include_vertical_velocity:
             return np.zeros(self.index.n_stations)
         return self.vel_elastic_segment[2::3]
 
@@ -481,19 +481,19 @@ class Estimation:
     @property
     def east_vel_block_strain_rate(self) -> np.ndarray:
         """East component of velocities from block strain rates."""
-        step = 3 if self.model.config.include_vertical_vel else 2
+        step = 3 if self.model.config.include_vertical_velocity else 2
         return self.vel_block_strain_rate[0::step]
 
     @property
     def north_vel_block_strain_rate(self) -> np.ndarray:
         """North component of velocities from block strain rates."""
-        step = 3 if self.model.config.include_vertical_vel else 2
+        step = 3 if self.model.config.include_vertical_velocity else 2
         return self.vel_block_strain_rate[1::step]
 
     @property
     def up_vel_block_strain_rate(self) -> np.ndarray:
         """Up component of velocities from block strain rates."""
-        if not self.model.config.include_vertical_vel:
+        if not self.model.config.include_vertical_velocity:
             return np.zeros(self.index.n_stations)
         return self.vel_block_strain_rate[2::3]
 
@@ -561,19 +561,19 @@ class Estimation:
     @property
     def east_vel_mogi(self) -> np.ndarray:
         """East component of velocities from Mogi sources."""
-        step = 3 if self.model.config.include_vertical_vel else 2
+        step = 3 if self.model.config.include_vertical_velocity else 2
         return self.vel_mogi[0::step]
 
     @property
     def north_vel_mogi(self) -> np.ndarray:
         """North component of velocities from Mogi sources."""
-        step = 3 if self.model.config.include_vertical_vel else 2
+        step = 3 if self.model.config.include_vertical_velocity else 2
         return self.vel_mogi[1::step]
 
     @property
     def up_vel_mogi(self) -> np.ndarray:
         """Up component of velocities from Mogi sources."""
-        if not self.model.config.include_vertical_vel:
+        if not self.model.config.include_vertical_velocity:
             return np.zeros(self.index.n_stations)
         return self.vel_mogi[2::3]
 
@@ -587,7 +587,7 @@ class Estimation:
 
         assert self.operators.tde is not None
 
-        n_components = 3 if self.model.config.include_vertical_vel else 2
+        n_components = 3 if self.model.config.include_vertical_velocity else 2
         vel_tde = np.zeros(n_components * self.index.n_stations)
 
         if index.eigen is None:
@@ -617,7 +617,7 @@ class Estimation:
         """East component of velocities from TDE."""
         if (vel := self.vel_tde) is None:
             return None
-        step = 3 if self.model.config.include_vertical_vel else 2
+        step = 3 if self.model.config.include_vertical_velocity else 2
         return vel[0::step]
 
     @property
@@ -625,13 +625,13 @@ class Estimation:
         """North component of velocities from TDE."""
         if (vel := self.vel_tde) is None:
             return None
-        step = 3 if self.model.config.include_vertical_vel else 2
+        step = 3 if self.model.config.include_vertical_velocity else 2
         return vel[1::step]
 
     @property
     def up_vel_tde(self) -> np.ndarray | None:
         """Up component of velocities from TDE."""
-        if not self.model.config.include_vertical_vel:
+        if not self.model.config.include_vertical_velocity:
             return None if self.vel_tde is None else np.zeros(self.index.n_stations)
         if (vel := self.vel_tde) is None:
             return None
