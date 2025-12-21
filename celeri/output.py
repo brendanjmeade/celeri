@@ -20,6 +20,17 @@ if typing.TYPE_CHECKING:
 def write_output(
     estimation: Estimation,
 ):
+    """
+    Write model, configuration, and estimation outputs to disk.
+
+    This function saves the estimation result, model, stations, segments, meshes, and configuration
+    to the config's specified output path.
+
+    Args:
+        estimation (Estimation): The result of the model estimation/solve, containing 
+            operators, model, and output data to be saved.
+    """
+
     config = estimation.model.config
     output_path = Path(config.output_path)
     estimation.to_disk(output_path)
@@ -81,7 +92,7 @@ def write_output(
         mesh_end_idx = 0
         for i in range(len(meshes)):
             grp = hdf.create_group(f"meshes/mesh_{i:05}")
-            mesh_name = os.path.splitext(os.path.basename(meshes[i].file_name))[0]
+            mesh_name = meshes[i].name
             grp.create_dataset(
                 "mesh_name",
                 data=mesh_name.encode("utf-8"),
