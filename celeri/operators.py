@@ -2552,7 +2552,7 @@ def _get_index_eigen(model: Model) -> Index:
             eigen.start_col_eigen[i] = 3 * index.n_blocks
             eigen.end_col_eigen[i] = eigen.start_col_eigen[i] + eigen.n_modes_mesh[i]
             eigen.start_tde_row_eigen[i] = 0
-            eigen.end_row_eigen[i] = 2 * index.n_stations
+            eigen.end_row_eigen[i] = index.end_station_row
 
         # Meshes after first mesh
         else:
@@ -2560,7 +2560,7 @@ def _get_index_eigen(model: Model) -> Index:
             eigen.start_col_eigen[i] = eigen.end_col_eigen[i - 1]
             eigen.end_col_eigen[i] = eigen.start_col_eigen[i] + eigen.n_modes_mesh[i]
             eigen.start_tde_row_eigen[i] = 0
-            eigen.end_row_eigen[i] = 2 * index.n_stations
+            eigen.end_row_eigen[i] = index.end_station_row
 
     # EIGEN: Set initial values to follow segment slip rate constraints
     eigen.start_tde_constraint_row_eigen[0] = index.end_slip_rate_constraints_row
