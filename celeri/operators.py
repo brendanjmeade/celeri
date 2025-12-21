@@ -147,7 +147,7 @@ class Index:
         n_block_constraints : int
             The number of block constraints in the model.
         station_row_keep_index : np.ndarray
-            Indices for station velocity rows in the full operator. When `include_vertical_vel=False`,
+            Indices for station velocity rows in the full operator. When `include_vertical_velocity=False`,
             contains only horizontal components (east, north); when `True`, contains all 3 components
             (east, north, up). Length equals `end_station_row`, which is (2 or 3) * n_stations.
         start_station_row : int
@@ -1525,7 +1525,7 @@ def _get_data_vector_no_meshes(model: Model, index: Index) -> np.ndarray:
     )
 
     # Add GPS stations to data vector
-    if model.config.include_vertical_vel:
+    if model.config.include_vertical_velocity:
         data_vector[index.start_station_row : index.end_station_row] = interleave3(
             model.station.east_vel.to_numpy(),
             model.station.north_vel.to_numpy(),
@@ -1563,7 +1563,7 @@ def _get_data_vector(model: Model, index: Index) -> np.ndarray:
     )
 
     # Add GPS stations to data vector
-    if model.config.include_vertical_vel:
+    if model.config.include_vertical_velocity:
         data_vector[index.start_station_row : index.end_station_row] = interleave3(
             model.station.east_vel.to_numpy(),
             model.station.north_vel.to_numpy(),
@@ -1600,7 +1600,7 @@ def _get_data_vector_eigen(model: Model, index: Index) -> np.ndarray:
     )
 
     # Add GPS stations to data vector
-    if model.config.include_vertical_vel:
+    if model.config.include_vertical_velocity:
         data_vector[index.start_station_row : index.end_station_row] = interleave3(
             model.station.east_vel.to_numpy(),
             model.station.north_vel.to_numpy(),
@@ -1636,7 +1636,7 @@ def _get_weighting_vector(model: Model, index: Index):
         + 2 * index.n_tde_total
         + index.n_tde_constraints_total
     )
-    if model.config.include_vertical_vel:
+    if model.config.include_vertical_velocity:
         weighting_vector[index.start_station_row : index.end_station_row] = interleave3(
             1 / (model.station.east_sig**2),
             1 / (model.station.north_sig**2),
@@ -1673,7 +1673,7 @@ def _get_weighting_vector_no_meshes(model: Model, index: Index) -> np.ndarray:
         + 3 * index.n_block_constraints
         + index.n_slip_rate_constraints
     )
-    if model.config.include_vertical_vel:
+    if model.config.include_vertical_velocity:
         weighting_vector[index.start_station_row : index.end_station_row] = interleave3(
             1 / (station.east_sig**2),
             1 / (station.north_sig**2),
@@ -1709,7 +1709,7 @@ def get_weighting_vector_single_mesh_for_col_norms(
         + index.tde.n_tde_constraints[mesh_index]
     )
 
-    if model.config.include_vertical_vel:
+    if model.config.include_vertical_velocity:
         weighting_vector[0 : index.end_station_row] = interleave3(
             1 / (station.east_sig**2),
             1 / (station.north_sig**2),
@@ -1743,7 +1743,7 @@ def _get_weighting_vector_eigen(model: Model, index: Index) -> np.ndarray:
         + index.n_tde_constraints_total
     )
 
-    if model.config.include_vertical_vel:
+    if model.config.include_vertical_velocity:
         weighting_vector[index.start_station_row : index.end_station_row] = interleave3(
             1 / (model.station.east_sig**2),
             1 / (model.station.north_sig**2),
@@ -2589,7 +2589,7 @@ def _get_index_no_meshes(model: Model):
     n_strain_blocks = model.block.strain_rate_flag.sum()
 
     # Determine number of components per station based on config
-    include_vertical = model.config.include_vertical_vel
+    include_vertical = model.config.include_vertical_velocity
     n_station_components = 3 if include_vertical else 2
     n_station_rows = n_station_components * n_stations
 
