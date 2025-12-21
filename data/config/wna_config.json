@@ -32,5 +32,6 @@
     "solve_type": "dense",
     "station_file_name": "../station/wna_station.csv",
     "tri_con_weight": 1e2,
-    "unit_sigmas": 0
+    "unit_sigmas": 0,
+    "include_vertical_vel": false
 }
