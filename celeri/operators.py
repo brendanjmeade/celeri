@@ -147,8 +147,9 @@ class Index:
         n_block_constraints : int
             The number of block constraints in the model.
         station_row_keep_index : np.ndarray
-            The indices comprising the horizontal (spherical plane) vector components acting on the stations, for assigning
-            horizontal-only forces in the full operator, e.g. block strain. Length is (2 * n_stations). Created using `celeri.utils.get_keep_index_12`.
+            Indices for station velocity rows in the full operator. When `include_vertical_vel=False`,
+            contains only horizontal components (east, north); when `True`, contains all 3 components
+            (east, north, up). Length equals `end_station_row`, which is (2 or 3) * n_stations.
         start_station_row : int
             The starting index of the station rows in the full operator.
         end_station_row : int
