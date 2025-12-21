@@ -573,13 +573,11 @@ def _add_station_velocity_likelihood(model: Model, mu):
             f"{(areas >= effective_area).sum()}"
         )
 
-        pm.CustomDist(
+        pm.StudentT(
             "station_velocity",
-            weight[:, None],
-            mu,
-            sigma,
-            logp=lh,
-            random=random,
+            mu=mu,
+            sigma=sigma,
+            nu=6,
             observed=data,
             dims=("station", "xy"),
         )
