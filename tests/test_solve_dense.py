@@ -197,3 +197,38 @@ def test_japan_dense_error():
     with pytest.raises(ValueError):
         celeri.assemble_and_solve_dense(model, eigen=True, tde=False)
     return
+
+
+@pytest.mark.parametrize("config_name", ["test_japan_config", "test_wna_config"])
+def test_vel_tde_eigen(config_name):
+    """Test that TDE velocity components are computed correctly in eigen case.
+
+    Verifies that vel_tde and its east/north components are computed with correct
+    shapes and finite values when using eigen decomposition.
+    """
+    config_file = f"./tests/configs/{config_name}.json"
+    config = celeri.get_config(config_file)
+    model = celeri.build_model(config)
+
+    estimation = celeri.assemble_and_solve_dense(model, eigen=True, tde=True)
+    n_stations = len(model.station)
+
+    # Verify vel_tde is computed and has correct shape
+    vel_tde = estimation.vel_tde
+    assert vel_tde is not None
+    assert vel_tde.shape == (2 * n_stations,)
+    assert np.all(np.isfinite(vel_tde))
+
+    # Verify component accessors work and have correct shapes
+    east_vel_tde = estimation.east_vel_tde
+    north_vel_tde = estimation.north_vel_tde
+    assert east_vel_tde is not None
+    assert north_vel_tde is not None
+    assert east_vel_tde.shape == (n_stations,)
+    assert north_vel_tde.shape == (n_stations,)
+    assert np.all(np.isfinite(east_vel_tde))
+    assert np.all(np.isfinite(north_vel_tde))
+
+    # Verify interleaving is correct
+    np.testing.assert_array_equal(east_vel_tde, vel_tde[0::2])
+    np.testing.assert_array_equal(north_vel_tde, vel_tde[1::2])
