@@ -1522,15 +1522,22 @@ def get_slip_rake_constraints(model: Model) -> np.ndarray:
 
 def _get_data_vector_no_meshes(model: Model, index: Index) -> np.ndarray:
     data_vector = np.zeros(
-        2 * index.n_stations
+        index.end_station_row
         + 3 * index.n_block_constraints
         + index.n_slip_rate_constraints
     )
 
     # Add GPS stations to data vector
-    data_vector[index.start_station_row : index.end_station_row] = interleave2(
-        model.station.east_vel.to_numpy(), model.station.north_vel.to_numpy()
-    )
+    if model.config.include_vertical_vel:
+        data_vector[index.start_station_row : index.end_station_row] = interleave3(
+            model.station.east_vel.to_numpy(),
+            model.station.north_vel.to_numpy(),
+            model.station.up_vel.to_numpy()
+        )
+    else:
+        data_vector[index.start_station_row : index.end_station_row] = interleave2(
+            model.station.east_vel.to_numpy(), model.station.north_vel.to_numpy()
+        )
 
     # Add block motion constraints to data vector
     block_constraints = _get_block_constraints_data(model)
@@ -1551,7 +1558,7 @@ def _get_data_vector(model: Model, index: Index) -> np.ndarray:
     assert index.tde is not None
 
     data_vector = np.zeros(
-        2 * index.n_stations
+        index.end_station_row
         + 3 * index.n_block_constraints
         + index.n_slip_rate_constraints
         + 2 * index.n_tde_total
@@ -1559,9 +1566,16 @@ def _get_data_vector(model: Model, index: Index) -> np.ndarray:
     )
 
     # Add GPS stations to data vector
-    data_vector[index.start_station_row : index.end_station_row] = interleave2(
-        model.station.east_vel.to_numpy(), model.station.north_vel.to_numpy()
-    )
+    if model.config.include_vertical_vel:
+        data_vector[index.start_station_row : index.end_station_row] = interleave3(
+            model.station.east_vel.to_numpy(),
+            model.station.north_vel.to_numpy(),
+            model.station.up_vel.to_numpy()
+        )
+    else:
+        data_vector[index.start_station_row : index.end_station_row] = interleave2(
+            model.station.east_vel.to_numpy(), model.station.north_vel.to_numpy()
+        )
 
     # Add block motion constraints to data vector
     block_constraints = _get_block_constraints_data(model)
@@ -1582,16 +1596,23 @@ def _get_data_vector_eigen(model: Model, index: Index) -> np.ndarray:
     assert index.eigen is not None
 
     data_vector = np.zeros(
-        2 * index.n_stations
+        index.end_station_row
         + 3 * index.n_block_constraints
         + index.n_slip_rate_constraints
         + index.n_tde_constraints_total
     )
 
     # Add GPS stations to data vector
-    data_vector[index.start_station_row : index.end_station_row] = interleave2(
-        model.station.east_vel.to_numpy(), model.station.north_vel.to_numpy()
-    )
+    if model.config.include_vertical_vel:
+        data_vector[index.start_station_row : index.end_station_row] = interleave3(
+            model.station.east_vel.to_numpy(),
+            model.station.north_vel.to_numpy(),
+            model.station.up_vel.to_numpy()
+        )
+    else:
+        data_vector[index.start_station_row : index.end_station_row] = interleave2(
+            model.station.east_vel.to_numpy(), model.station.north_vel.to_numpy()
+        )
 
     # Add block motion constraints to data vector
     block_constraints = _get_block_constraints_data(model)
@@ -1612,15 +1633,22 @@ def _get_weighting_vector(model: Model, index: Index):
 
     # Initialize and build weighting matrix
     weighting_vector = np.ones(
-        2 * index.n_stations
+        index.end_station_row
         + 3 * index.n_block_constraints
         + index.n_slip_rate_constraints
         + 2 * index.n_tde_total
         + index.n_tde_constraints_total
     )
-    weighting_vector[index.start_station_row : index.end_station_row] = interleave2(
-        1 / (model.station.east_sig**2), 1 / (model.station.north_sig**2)
-    )
+    if model.config.include_vertical_vel:
+        weighting_vector[index.start_station_row : index.end_station_row] = interleave3(
+            1 / (model.station.east_sig**2),
+            1 / (model.station.north_sig**2),
+            1 / (model.station.up_sig**2)
+        )
+    else:
+        weighting_vector[index.start_station_row : index.end_station_row] = interleave2(
+            1 / (model.station.east_sig**2), 1 / (model.station.north_sig**2)
+        )
     weighting_vector[
         index.start_block_constraints_row : index.end_block_constraints_row
     ] = model.config.block_constraint_weight
@@ -1644,13 +1672,20 @@ def _get_weighting_vector_no_meshes(model: Model, index: Index) -> np.ndarray:
     # NOTE: Consider combining with above
     # Initialize and build weighting matrix
     weighting_vector = np.ones(
-        2 * index.n_stations
+        index.end_station_row
         + 3 * index.n_block_constraints
         + index.n_slip_rate_constraints
     )
-    weighting_vector[index.start_station_row : index.end_station_row] = interleave2(
-        1 / (station.east_sig**2), 1 / (station.north_sig**2)
-    )
+    if model.config.include_vertical_vel:
+        weighting_vector[index.start_station_row : index.end_station_row] = interleave3(
+            1 / (station.east_sig**2),
+            1 / (station.north_sig**2),
+            1 / (station.up_sig**2)
+        )
+    else:
+        weighting_vector[index.start_station_row : index.end_station_row] = interleave2(
+            1 / (station.east_sig**2), 1 / (station.north_sig**2)
+        )
     weighting_vector[
         index.start_block_constraints_row : index.end_block_constraints_row
     ] = 1.0
@@ -1672,20 +1707,27 @@ def get_weighting_vector_single_mesh_for_col_norms(
 
     # Initialize and build weighting matrix
     weighting_vector = np.ones(
-        2 * index.n_stations
+        index.end_station_row
         + 2 * index.tde.n_tde[mesh_index]
         + index.tde.n_tde_constraints[mesh_index]
     )
 
-    weighting_vector[0 : 2 * index.n_stations] = interleave2(
-        1 / (station.east_sig**2), 1 / (station.north_sig**2)
-    )
+    if model.config.include_vertical_vel:
+        weighting_vector[0 : index.end_station_row] = interleave3(
+            1 / (station.east_sig**2),
+            1 / (station.north_sig**2),
+            1 / (station.up_sig**2)
+        )
+    else:
+        weighting_vector[0 : index.end_station_row] = interleave2(
+            1 / (station.east_sig**2), 1 / (station.north_sig**2)
+        )
 
     weighting_vector[
-        2 * index.n_stations : 2 * index.n_stations + 2 * index.tde.n_tde[mesh_index]
+        index.end_station_row : index.end_station_row + 2 * index.tde.n_tde[mesh_index]
     ] = mesh.config.smoothing_weight * np.ones(2 * index.tde.n_tde[mesh_index])
 
-    weighting_vector[2 * index.n_stations + 2 * index.tde.n_tde[mesh_index] : :] = (
+    weighting_vector[index.end_station_row + 2 * index.tde.n_tde[mesh_index] : :] = (
         config.tri_con_weight * np.ones(index.tde.n_tde_constraints[mesh_index])
     )
 
@@ -1698,15 +1740,22 @@ def _get_weighting_vector_eigen(model: Model, index: Index) -> np.ndarray:
 
     # Initialize and build weighting matrix
     weighting_vector = np.ones(
-        2 * index.n_stations
+        index.end_station_row
         + 3 * index.n_block_constraints
         + index.n_slip_rate_constraints
         + index.n_tde_constraints_total
     )
 
-    weighting_vector[index.start_station_row : index.end_station_row] = interleave2(
-        1 / (model.station.east_sig**2), 1 / (model.station.north_sig**2)
-    )
+    if model.config.include_vertical_vel:
+        weighting_vector[index.start_station_row : index.end_station_row] = interleave3(
+            1 / (model.station.east_sig**2),
+            1 / (model.station.north_sig**2),
+            1 / (model.station.up_sig**2)
+        )
+    else:
+        weighting_vector[index.start_station_row : index.end_station_row] = interleave2(
+            1 / (model.station.east_sig**2), 1 / (model.station.north_sig**2)
+        )
 
     weighting_vector[
         index.start_block_constraints_row : index.end_block_constraints_row
@@ -1737,7 +1786,7 @@ def _get_full_dense_operator_block_only(operators: Operators) -> np.ndarray:
     # Initialize linear operator
     operator = np.zeros(
         (
-            2 * index.n_stations
+            index.end_station_row
             + 3 * index.n_block_constraints
             + index.n_slip_rate_constraints,
             3 * index.n_blocks,
@@ -1785,7 +1834,7 @@ def get_full_dense_operator(operators: Operators) -> np.ndarray:
 
     operator = np.zeros(
         (
-            2 * index.n_stations
+            index.end_station_row
             + 3 * index.n_block_constraints
             + index.n_slip_rate_constraints
             + 2 * index.n_tde_total
@@ -1826,16 +1875,15 @@ def get_full_dense_operator(operators: Operators) -> np.ndarray:
     assert operators.tde.tde_to_velocities is not None
     for i in range(len(model.meshes)):
         # Insert TDE to velocity matrix
-        tde_keep_row_index = get_keep_index_12(
-            operators.tde.tde_to_velocities[i].shape[0]
-        )
+        # Use station_row_keep_index for rows to respect vertical flag
+        # TDE columns are always 2-component (strike and dip slip)
         tde_keep_col_index = get_keep_index_12(
             operators.tde.tde_to_velocities[i].shape[1]
         )
         operator[
             index.start_station_row : index.end_station_row,
             index.tde.start_tde_col[i] : index.tde.end_tde_col[i],
-        ] = -operators.tde.tde_to_velocities[i][tde_keep_row_index, :][
+        ] = -operators.tde.tde_to_velocities[i][index.station_row_keep_index, :][
             :, tde_keep_col_index
         ]
 
@@ -1925,7 +1973,7 @@ def get_full_dense_operator_eigen(operators: Operators):
     # Initialize linear operator
     operator = np.zeros(
         (
-            2 * index.n_stations
+            index.end_station_row
             + 3 * index.n_block_constraints
             + index.n_slip_rate_constraints
             + index.n_tde_constraints_total,
@@ -2418,6 +2466,23 @@ def rotation_vector_err_to_euler_pole_err(omega_x, omega_y, omega_z, omega_cov):
     return euler_lon_err, euler_lat_err, euler_rate_err
 
 
+def _get_station_row_keep_index(n_stations: int, include_vertical: bool) -> np.ndarray:
+    """Get indices for station rows based on whether vertical component is included.
+    
+    Args:
+        n_stations: Number of stations
+        include_vertical: If True, include all 3 components (east, north, up).
+                         If False, include only horizontal components (east, north).
+    
+    Returns:
+        Array of indices to keep for station rows.
+    """
+    if include_vertical:
+        return np.arange(3 * n_stations)  # All components: [0, 1, 2, 3, 4, 5, ...]
+    else:
+        return get_keep_index_12(3 * n_stations)  # Horizontal only: [0, 1, 3, 4, 6, 7, ...]
+
+
 def _get_index(model: Model) -> Index:
     # TODO: Adapt this to use the dataclasses as in get_index_eigen
     # TODO: But better integrate it with the other get_index_* functions?
@@ -2551,6 +2616,11 @@ def _get_index_no_meshes(model: Model):
     n_segments = len(model.segment)
     n_strain_blocks = model.block.strain_rate_flag.sum()
 
+    # Determine number of components per station based on config
+    include_vertical = model.config.include_vertical_vel
+    n_station_components = 3 if include_vertical else 2
+    n_station_rows = n_station_components * n_stations
+
     return Index(
         n_blocks=n_blocks,
         n_segments=n_segments,
@@ -2559,16 +2629,16 @@ def _get_index_no_meshes(model: Model):
         n_mogis=n_mogi,
         vertical_velocities=np.arange(2, 3 * n_stations, 3),
         n_block_constraints=n_block_constraints,
-        station_row_keep_index=get_keep_index_12(3 * n_stations),
+        station_row_keep_index=_get_station_row_keep_index(n_stations, include_vertical),
         start_station_row=0,
-        end_station_row=2 * n_stations,
+        end_station_row=n_station_rows,
         start_block_col=0,
         end_block_col=3 * n_blocks,
-        start_block_constraints_row=2 * n_stations,
-        end_block_constraints_row=(2 * n_stations + 3 * n_block_constraints),
-        start_slip_rate_constraints_row=(2 * n_stations + 3 * n_block_constraints),
+        start_block_constraints_row=n_station_rows,
+        end_block_constraints_row=(n_station_rows + 3 * n_block_constraints),
+        start_slip_rate_constraints_row=(n_station_rows + 3 * n_block_constraints),
         end_slip_rate_constraints_row=(
-            2 * n_stations + 3 * n_block_constraints + n_slip_rate_constraints
+            n_station_rows + 3 * n_block_constraints + n_slip_rate_constraints
         ),
         n_slip_rate_constraints=n_slip_rate_constraints,
         start_block_strain_col=3 * n_blocks,
