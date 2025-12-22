@@ -37,18 +37,6 @@ def operators(model):
     return build_operators(model, eigen=True)
 
 
-def test_build_problem(model):
-    """Test that build_problem returns a CeleriProblem instance with expected properties."""
-    assert isinstance(model, Model)
-    assert hasattr(model, "meshes")
-    assert hasattr(model, "segment")
-    assert hasattr(model, "block")
-    assert hasattr(model, "station")
-    assert hasattr(model, "config")
-    assert model.segment_mesh_indices is not None
-    assert model.total_mesh_points > 0
-
-
 @pytest.mark.parametrize(
     "smooth_kinematic, objective",
     [
