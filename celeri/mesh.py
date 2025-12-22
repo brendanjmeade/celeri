@@ -116,9 +116,11 @@ class MeshConfig(BaseModel):
     # `side_slip_rate_weight` if the TDE eigenmodes are used.
     eigenmode_slip_rate_constraint_weight: float = 1.0
 
-    # Sigma for the artificial observed 0s on elastic velocities at the bottom
-    # boundary, used in MCMC sampling when bot_slip_rate_constraint == 1.
+    # Sigma for the artificial observed 0s on elastic velocities at the
+    # boundaries, used in MCMC sampling when the corresponding constraint == 1.
+    top_elastic_constraint_sigma: float = 0.5
     bot_elastic_constraint_sigma: float = 0.5
+    side_elastic_constraint_sigma: float = 0.5
 
     # Filename for fixed slip rates, not currently used
     a_priori_slip_filename: Path | None = None
