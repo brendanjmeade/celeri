@@ -656,6 +656,15 @@ def plot_mesh(
     x_edge = np.append(x_edge, x_coords[mesh.ordered_edge_nodes[0, 0]])
     y_edge = np.append(y_edge, y_coords[mesh.ordered_edge_nodes[0, 0]])
     ax.plot(x_edge, y_edge, color="black", linewidth=1)
+
+    # Ensure the aspect ratio of lat/lon is correct (no stretch)
+    ax.set_aspect("equal", adjustable="box")
+
+    # Optionally, also set proper plot limits to tightly fit the mesh if desired:
+    margin = 0.01 * max(x_coords.max() - x_coords.min(), y_coords.max() - y_coords.min())
+    ax.set_xlim(x_coords.min() - margin, x_coords.max() + margin)
+    ax.set_ylim(y_coords.min() - margin, y_coords.max() + margin)
+
     return pc
 
 
