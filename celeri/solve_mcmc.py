@@ -72,7 +72,7 @@ def _get_eigenmodes(
     to_velocity = operators.eigen.eigen_to_velocities[mesh_idx][
         :, start_idx : start_idx + n_eigs
     ]
-    
+
     return eigenvectors, to_velocity
 
 
@@ -166,7 +166,8 @@ def _coupling_component(
 ):
     """Model elastic slip rate as coupling * kinematic slip rate.
 
-    Return the resulting elastic velocity at the station locations.
+    Returns the estimated elastic slip rates on the TDEs and the 
+    velocities at the stations due to them.
     """
     assert operators.eigen is not None
     assert operators.tde is not None
@@ -198,17 +199,17 @@ def _coupling_component(
     coupling_field = _operator_mult(eigenvectors, coefs)
     coupling_field = _constrain_field(coupling_field, lower, upper)
     pm.Deterministic(f"coupling_{mesh_idx}_{kind_short}", coupling_field)
-    elastic = kinematic * coupling_field
-    pm.Deterministic(f"elastic_{mesh_idx}_{kind_short}", elastic)
+    elastic_tde = kinematic * coupling_field
+    pm.Deterministic(f"elastic_{mesh_idx}_{kind_short}", elastic_tde)
 
-    elastic_velocity = _station_vel_from_elastic_mesh(
+    station_vels = _station_vel_from_elastic_mesh(
         model,
         mesh_idx,
         kind,
-        elastic,
+        elastic_tde,
         operators,
     )
-    return elastic_velocity.astype("d")
+    return elastic_tde, station_vels.astype("d")
 
 
 def _elastic_component(
@@ -224,7 +225,8 @@ def _elastic_component(
     scaled elastic eigenmodes as deterministic variables. Also adds a 
     deterministic variable for the elastic slip rate field.
 
-    Returns the resulting elastic velocity at the station locations.
+    Returns the estimated elastic slip rates on the TDEs and the 
+    velocities at the stations due to them.
     """
     assert operators.eigen is not None
     assert operators.tde is not None
@@ -252,32 +254,32 @@ def _elastic_component(
 
     raw = pm.Normal(f"elastic_eigen_raw_{mesh_idx}_{kind_short}", shape=n_eigs)
     param = pm.Deterministic(f"elastic_eigen_{mesh_idx}_{kind_short}", scale * raw)
-    elastic = _constrain_field(_operator_mult(eigenvectors, param), lower, upper)
-    pm.Deterministic(f"elastic_{mesh_idx}_{kind_short}", elastic)
+    elastic_tde = _constrain_field(_operator_mult(eigenvectors, param), lower, upper)
+    pm.Deterministic(f"elastic_{mesh_idx}_{kind_short}", elastic_tde)
 
     # Compute elastic velocity at stations. The operator already
     # includes a negative sign.
     if lower is None and upper is None:
-        elastic_velocity = _operator_mult(to_velocity, param)
+        station_vels = _operator_mult(to_velocity, param)
         # We need to return a station velocity for all three components,
         # not just north and east.
-        elastic_velocity = pt.concatenate(
+        station_vels = pt.concatenate(
             [
-                elastic_velocity.reshape((len(model.station), 2)),
+                station_vels.reshape((len(model.station), 2)),
                 np.zeros((len(model.station), 1)),
             ],
             axis=-1,
         ).ravel()  # type: ignore[attr-defined]
     else:
-        elastic_velocity = _station_vel_from_elastic_mesh(
+        station_vels = _station_vel_from_elastic_mesh(
             model,
             mesh_idx,
             kind,
-            elastic,
+            elastic_tde,
             operators,
         )
 
-    return elastic_velocity
+    return elastic_tde, station_vels
 
 
 def _mesh_component(
@@ -309,8 +311,7 @@ def _mesh_component(
             )
 
         if has_coupling_limit:
-            rates.append(
-                _coupling_component(
+            elastic_tde, station_vels = _coupling_component(
                     model,
                     mesh_idx,
                     kind,
@@ -319,10 +320,8 @@ def _mesh_component(
                     lower=coupling_limit.lower,
                     upper=coupling_limit.upper,
                 )
-            )
         else:
-            rates.append(
-                _elastic_component(
+            elastic_tde, station_vels = _elastic_component(
                     model,
                     mesh_idx,
                     kind,
@@ -330,8 +329,39 @@ def _mesh_component(
                     lower=rate_limit.lower,
                     upper=rate_limit.upper,
                 )
-            )
+
+        rates.append(station_vels)
+        _add_tde_elastic_constraints(model, mesh_idx, elastic_tde, kind)
     return sum(rates)
+
+def _add_tde_elastic_constraints(
+    model: Model, 
+    mesh_idx: int, 
+    elastic_tde: np.ndarray, 
+    kind: Literal["strike_slip", "dip_slip"]
+    ):
+    """Add TDE elastic constraints to the PyMC model.
+
+    Adds penalty to nonzero elements on top, bottom, and side boundaries of mesh
+    with artificial observed 0s.
+    """
+    import pymc as pm
+    mesh = model.meshes[mesh_idx]
+    for name, elements, constraint_flag, sigma in [
+    ("top", mesh.top_elements, mesh.config.top_slip_rate_constraint, mesh.config.top_elastic_constraint_sigma),
+    ("bot", mesh.bot_elements, mesh.config.bot_slip_rate_constraint, mesh.config.bot_elastic_constraint_sigma),
+    ("side", mesh.side_elements, mesh.config.side_slip_rate_constraint, mesh.config.side_elastic_constraint_sigma),
+        ]:
+        if constraint_flag == 1:
+            idx = np.where(elements)[0]
+            constrained_tde = elastic_tde[idx]
+
+            pm.Normal(
+                f"{name}_constraint_{mesh_idx}_{kind}",
+                mu=constrained_tde,
+                sigma=sigma,
+                observed=np.zeros(len(idx)),
+            )
 
 
 def _add_block_strain_rate_component(operators: Operators):
