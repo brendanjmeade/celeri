@@ -615,13 +615,14 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
 
     import pymc as pm
 
-    has_block_strain_rate = operators.block_strain_rate_to_velocities.shape[1] > 0
-    has_mogi = operators.mogi_to_velocities.shape[1] > 0
-
     coords = {
+        "block_strain_rate_param": pd.RangeIndex(
+            operators.block_strain_rate_to_velocities.shape[1]
+        ),
         "global_float_block_rotation_param": pd.RangeIndex(
             operators.global_float_block_rotation.shape[1]
         ),
+        "mogi_param": pd.RangeIndex(operators.mogi_to_velocities.shape[1]),
         "rotation_param": pd.RangeIndex(operators.rotation_to_velocities.shape[1]),
         "station": model.station.index,
         "segment": model.segment.index,
@@ -630,27 +631,14 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
         "slip_comp": pd.Index(["strike_slip", "dip_slip", "tensile_slip"]),
     }
 
-    if has_block_strain_rate:
-        coords["block_strain_rate_param"] = pd.RangeIndex(
-            operators.block_strain_rate_to_velocities.shape[1]
-        )
-    if has_mogi:
-        coords["mogi_param"] = pd.RangeIndex(operators.mogi_to_velocities.shape[1])
-
     with pm.Model(coords=coords) as pymc_model:
+        block_strain_rate_velocity = _add_block_strain_rate_component(operators)
+
         rotation, rotation_velocity, rotation_okada_velocity = _add_rotation_component(
             operators
         )
 
-        if has_block_strain_rate:
-            block_strain_rate_velocity = _add_block_strain_rate_component(operators)
-        else:
-            block_strain_rate_velocity = 0
-
-        if has_mogi:
-            mogi_velocity = _add_mogi_component(operators)
-        else:
-            mogi_velocity = 0
+        mogi_velocity = _add_mogi_component(operators)
 
         # Add elastic velocity from meshes
         elastic_velocities = []
@@ -745,15 +733,13 @@ def _state_vector_from_draw(
     n_params = operators_tde.full_dense_operator.shape[1]
     state_vector = np.zeros(n_params)
 
-    if "block_strain_rate" in trace.posterior:
-        start = operators_tde.index.start_block_strain_col
-        end = operators_tde.index.end_block_strain_col
-        state_vector[start:end] = trace.posterior.block_strain_rate.values
+    start = operators_tde.index.start_block_strain_col
+    end = operators_tde.index.end_block_strain_col
+    state_vector[start:end] = trace.posterior.block_strain_rate.values
 
-    if "mogi" in trace.posterior:
-        start = operators_tde.index.start_mogi_col
-        end = operators_tde.index.end_mogi_col
-        state_vector[start:end] = trace.posterior.mogi.values
+    start = operators_tde.index.start_mogi_col
+    end = operators_tde.index.end_mogi_col
+    state_vector[start:end] = trace.posterior.mogi.values
 
     start = operators_tde.index.start_block_col
     end = operators_tde.index.end_block_col
