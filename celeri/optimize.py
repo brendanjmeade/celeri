@@ -177,7 +177,16 @@ class SlipRate:
 
 @dataclass(kw_only=True)
 class SlipRateLimitItem:
-    """Slip rate limits for a single mesh, either for strike or dip slip."""
+    """Slip rate limits for a single mesh, either for strike or dip slip.
+
+    Attributes
+    ----------
+    kinematic_lower, kinematic_upper : np.ndarray | None
+        Geometric anchor values along the kinematic axis used to construct
+        the convex envelope of the bowtie constraint. These are NOT hard
+        bounds on the kinematic velocity; see `_tighten_kinematic_anchors`
+        for details.
+    """
 
     kinematic_lower: np.ndarray | None
     kinematic_upper: np.ndarray | None
@@ -265,9 +274,9 @@ class SlipRateLimitItem:
         elastic = np.zeros(self.constraints_matrix_elastic.shape)
         const = np.zeros(self.constraints_vector.shape)
 
-        # Define boundary points in (kinematic, elastic) space
+        # Define anchor points in (kinematic, elastic) space
 
-        # The lower left corner of the subset
+        # The lower-left anchor point (at kinematic_lower)
         lower_left_kinematic = self.kinematic_lower
         lower_left_elastic = np.where(
             self.kinematic_lower < 0,
@@ -275,7 +284,7 @@ class SlipRateLimitItem:
             self.kinematic_lower * coupling_lower,
         )
 
-        # The upper left corner of the subset
+        # The upper-left anchor point (at kinematic_lower)
         upper_left_kinematic = self.kinematic_lower
         upper_left_elastic = np.where(
             self.kinematic_lower < 0,
@@ -283,7 +292,7 @@ class SlipRateLimitItem:
             self.kinematic_lower * coupling_upper,
         )
 
-        # The lower right corner of the subset
+        # The lower-right anchor point (at kinematic_upper)
         lower_right_kinematic = self.kinematic_upper
         lower_right_elastic = np.where(
             self.kinematic_upper < 0,
@@ -291,7 +300,7 @@ class SlipRateLimitItem:
             self.kinematic_upper * coupling_lower,
         )
 
-        # The upper right corner of the subset
+        # The upper-right anchor point (at kinematic_upper)
         upper_right_kinematic = self.kinematic_upper
         upper_right_elastic = np.where(
             self.kinematic_upper < 0,
@@ -409,7 +418,7 @@ class SlipRateLimitItem:
         # Create a figure
         fig, ax = plt.subplots(figsize=figsize)
 
-        # Get the kinematic bounds for this index
+        # Get the kinematic anchor values for this index
         k_lower = self.kinematic_lower[index]
         k_upper = self.kinematic_upper[index]
 
@@ -956,7 +965,7 @@ class MinimizationComplete(Exception):
     pass
 
 
-def _tighten_kinematic_bounds(
+def _tighten_kinematic_anchors(
     minimizer: Minimizer,
     *,
     tighten_all: bool = True,
@@ -970,59 +979,147 @@ def _tighten_kinematic_bounds(
     Background:
         The coupling constraints require:
 
-            coupling_lower * kinematic <= elastic <= coupling_upper * kinematic
+            coupling_lower <= elastic / kinematic <= coupling_upper
 
         In (kinematic, elastic) space, this defines a "bowtie" or double-sided
         cone: one triangular wedge for positive kinematic velocities, and one
-        for negative. The union of these two wedges is non-convex.
+        for negative. The union of these two wedges is non-convex:
 
-        To obtain a tractable convex optimization problem, we impose bounds on
-        the kinematic slip rate:
+                                        elastic                   slope = coupling_upper
+                                           ^                      /:
+                                           |                     /::
+                                           |                    /::::
+                                           |                   /:::::
+                                           |                  /::::::
+                                           |                 /::::::::      non-convex
+                                           |                /:::::::::      unbounded
+                                           |               /::::::::::  <-- allowed
+                                           |              /::::::::::::     region
+                                           |             /:::::::::::::
+                                           |            /::::::::::::::
+                                           |           /::::::::::::::::
+                                           |          /:::::::::::::::::
+                                           |         /::::::::::::::::::
+                                           |        /::::::::::::::::::::
+                                           |       /:::::::::::::::::::::
+                                           |      /::::::::::::::::::::::
+                                           |     /::::::::::::::::::::::::
+                                           |    /:::::::::::::::::::::::::
+                                           |   /::::::::::::::::::::::::::
+                                           |  /::::::::::::::::::::::::::::
+                                           | /:::::::::::::::::::::::::::::
+                                           |/::::::::::::::::::::::::::::::
+        -----------------------------------+--------------------------------> kinematic
+         :::::::::::::::::::::::::::::::::/|        coupling_lower = 0
+          :::::::::::::::::::::::::::::::/ |
+           :::::::::::::::::::::::::::::/  |
+            :::::::::::::::::::::::::::/   |
+             :::::::::::::::::::::::::/    |
+              :::::::::::::::::::::::/     |
+               :::::::::::::::::::::/      |
+                :::::::::::::::::::/       |
+                 :::::::::::::::::/        |
+                  :::::::::::::::/         |
+                   :::::::::::::/          |
+                    :::::::::::/           |
+                     :::::::::/            |
+                      :::::::/             |
+                       :::::/              |
+                        :::/               |
+                         :/                |
 
-            kinematic_lower ≤ kinematic ≤ kinematic_upper
+        If we knew the sign of each kinematic velocity, then we could restrict to
+        the corresponding wedge, and the constraints would be convex. To obtain a
+        tractable convex optimization problem without assuming the sign ahead of
+        time, we construct an approximate convex envelope. Concretely, we
+        introduce two auxiliary kinematic anchor values, `kinematic_lower` and
+        `kinematic_upper`. These are geometric construction points along the
+        kinematic axis that determine where we intersect the bowtie to build the
+        convex envelope:
 
-        The intersection of these kinematic bounds with the bowtie produces two
-        disconnected triangular regions (one per wedge). The convex hull of this
-        intersection is a trapezoid with:
+                                        elastic
+                                           ^                      /  /:
+                                           |                     / ,'::
+                                           |                    / /:::::
+                                           |                   /,`::::::
+                                           |      anchor      //::::::::
+                                           |       point --> X:::::::::::      convex
+                                           |                /|:::::::::::      unbounded
+                                           |              ,/:|:::::::::::  <-- allowed
+                                           |             //::|::::::::::::     region
+                                           |           ,`/:::|::::::::::::
+                                           |          /:/::::|::::::::::::
+                                           |        ,`:/:::::|:::::::::::::
+                                           |       /::/::::::|:::::::::::::
+                                           |     ,`::/:::::::|:::::::::::::
+                                           |    /:::/::::::::|::::::::::::::
+                                           |  ,`:::/:::::::::|::::::::::::::
+                                           | /::::/::::::::::|::::::::::::::
+                                           |`::::/:::::::::::|:::::::::::::::
+                                          /|::::/::::::::::::|:::::::::::::,-
+                              kinematic ,`:|:::/:::::::::::::|::::::::::,-`
+                                lower  /:::|::/::::::::::::::|:::::::,-`
+                                  |  ,`::::|:/:::::::::::::::|::::,-`
+                                  v /::::::|/::::::::::::::::|:,-`
+        --------------------------X--------+-----------------X--------------> kinematic
+                                 /|:::::::/|:::::::::::::,-` ^
+                               ,`:|::::::/:|::::::::::,-`    |
+                              /:::|:::::/::|:::::::,-`   kinematic
+                            ,`::::|::::/:::|::::,-`        upper
+                           /::::::|:::/::::|:,-`
+                         ,`:::::::|::/::::,|`
+                        /:::::::::|:/::,-` |
+                      ,`::::::::::|/,-`    |
+                     /:::::::::::,X`       |
+                   ,`:::::::::,-`/         |
+                  /::::::::,-`  /          |
+                ,`::::::,-`    /           |
+               /:::::,-`      /            |
+             ,`:::,-`        /             |
+            /::,-`          /              |
+          ,`,-`            /               |
+         /-`              /                |
 
-        - Two vertical edges from the kinematic bounds (left at kinematic_lower,
-          right at kinematic_upper)
-        - Two sloped edges connecting the corners where the kinematic bounds
-          intersect the bowtie boundary
+        From these two anchor values we define four anchor points where the vertical
+        lines at `kinematic_lower` and `kinematic_upper` intersect the bowtie
+        boundary. Two artificial linear inequality constraints are then defined by
+        connecting the upper and lower pairs of anchor points. The resulting allowed
+        region is an unbounded infinite wedge-shaped region (or an infinite strip if
+        the upper and lower lines are parallel).
 
-        This trapezoid is a convex relaxation of the original non-convex
-        constraint. As the kinematic bounds are iteratively tightened toward
-        the current solution, the trapezoid shrinks. Once the bounds have the
-        same sign (both positive or both negative), the trapezoid degenerates
-        into a single triangular wedge—exactly matching one component of the
-        original bowtie constraint.
+        When `kinematic_lower` and `kinematic_upper` have the same sign, the
+        wedge coincides with exactly one branch of the original bowtie.
 
-    This function is called after each SQP iteration to adjust the bounds:
-    - During normal iterations (when `num_oob > 0`): bounds are tightened by
-      moving them a fraction (`factor`) closer to the current kinematic solution.
-    - During annealing (when `num_oob == 0` and annealing is enabled): bounds
-      are slightly loosened to allow the solver to escape local minima.
+    This function is called after each SQP iteration to adjust the anchor values:
+    - During normal iterations (when `num_oob > 0`): anchor values are tightened by
+      reducing their distance to the current kinematic solution to a fraction
+      (`factor`) of the previous distance.
+    - During annealing (when `num_oob == 0` and annealing is enabled): anchor
+      values are slightly loosened to allow the solver to escape local minima.
 
     Args:
-        minimizer: The current optimization state containing slip rates and limits.
-        tighten_all: If True, tighten bounds for all mesh elements uniformly.
-            If False, only tighten bounds for elements that are currently
+        minimizer: The current optimization state containing slip rates and
+            anchor values (limits).
+        tighten_all: If True, tighten anchor values for all mesh elements uniformly.
+            If False, only tighten anchor values for elements that are currently
             out-of-bounds (selective tightening).
-        factor: Fraction by which to reduce the gap between the current kinematic
-            value and each bound. Must be in (0, 1). Default 0.5 means bounds
-            move halfway towards the current solution each iteration.
+        factor: Fraction to which the gap between the current kinematic value and
+            each anchor value is reduced. Must be in (0, 1). Default 0.5 means
+            anchor values move halfway towards the current solution each iteration.
+            Values near 0 cause anchor values to tighten quickly; values near 1
+            cause them to tighten slowly.
         iteration_number: Current iteration index (for logging/debugging).
         num_oob: Number of mesh elements currently violating coupling bounds.
         remaining_annealing_schedule: Mutable list of looseness values (mm/yr)
             for annealing passes. When `num_oob == 0`, the first value is popped
-            and used to widen bounds, allowing the solver to explore nearby
+            and used to widen anchor values, allowing the solver to explore nearby
             solutions. When this list is exhausted and `num_oob == 0`,
             `MinimizationComplete` is raised.
 
     Raises:
         MinimizationComplete: When all values are within bounds and no annealing
             passes remain. This signals that the optimization should terminate.
-        ValueError: If coupling bounds are partially defined (must have both
+        ValueError: If anchor values are partially defined (must have both
             lower and upper, or neither).
 
     Note:
@@ -1041,7 +1138,7 @@ def _tighten_kinematic_bounds(
         raise MinimizationComplete()
     else:
         # We have fixed all OOBs, and annealing is enabled, so use the first remaining
-        # value in the annealing schedule as the loosenenss.
+        # value in the annealing schedule as the looseness.
         looseness = remaining_annealing_schedule.pop(0)
         print(
             f"ANNEALING\n"
@@ -1066,7 +1163,8 @@ def _tighten_kinematic_bounds(
 
         if limits.kinematic_lower is None or limits.kinematic_upper is None:
             raise ValueError(
-                "Invalid coupling bounds. Must have both lower and upper bounds or neither."
+                "Invalid kinematic anchor values. "
+                "Must have both lower and upper anchor values, or neither."
             )
 
         upper = limits.kinematic_upper.copy()
@@ -1105,16 +1203,19 @@ def _tighten_kinematic_bounds(
             diff = lower[oob] - target
             lower[oob] = target + factor * diff
 
-        # Just fix the sign once the interval only positive or negative
+        # Once the anchor values have the same sign, the constraint region
+        # coincides with one branch of the original bowtie. Both sloped
+        # constraint lines pass through the origin, so any pair of anchor
+        # values with the correct sign defines the same lines. We use
+        # canonical values [0, 1] or [-1, 0].
+
+        # First the positive kinematic velocities
         fixed_sign = lower >= 0
         lower[fixed_sign] = 0.0
-        # Any positive value will do, because we only care about the line
-        # that passes through the point
         upper[fixed_sign] = 1.0
 
+        # Then the negative kinematic velocities
         fixed_sign = upper <= 0
-        # Any negative value will do, because we only care about the line
-        # that passes through the point
         lower[fixed_sign] = -1.0
         upper[fixed_sign] = 0.0
 
@@ -1481,7 +1582,7 @@ def solve_sqp2(
         num_oob, _total = minimizer.out_of_bounds()
 
         try:
-            _tighten_kinematic_bounds(
+            _tighten_kinematic_anchors(
                 minimizer,
                 factor=reduction_factor,
                 tighten_all=True,
