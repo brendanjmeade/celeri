@@ -4,40 +4,17 @@
 import argparse
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
-import addict
-import meshio
 import numpy as np
 import pandas as pd
-import pyproj
 from loguru import logger
 from scipy.spatial.distance import cdist
 
-import celeri
+from celeri.mesh import Mesh, MeshConfig
 
 # Global constants
-GEOID = pyproj.Geod(ellps="WGS84")
-KM2M = 1.0e3
-M2MM = 1.0e3
-RADIUS_EARTH = np.float64((GEOID.a + GEOID.b) / 2)
 DEG_PER_MYR_TO_RAD_PER_YR = 1 / 1e6  # TODO: What should this conversion be?
-N_MESH_DIM = 3
-
-
-def sph2cart(lon, lat, radius):
-    lon_rad = np.deg2rad(lon)
-    lat_rad = np.deg2rad(lat)
-    x = radius * np.cos(lat_rad) * np.cos(lon_rad)
-    y = radius * np.cos(lat_rad) * np.sin(lon_rad)
-    z = radius * np.sin(lat_rad)
-    return x, y, z
-
-
-def cart2sph(x, y, z):
-    azimuth = np.arctan2(y, x)
-    elevation = np.arctan2(z, np.sqrt(x**2 + y**2))
-    r = np.sqrt(x**2 + y**2 + z**2)
-    return azimuth, elevation, r
 
 
 def snap_segments(segment, meshes):
@@ -47,7 +24,7 @@ def snap_segments(segment, meshes):
     all_edge_segment = make_default_segment(0)
     for i in range(len(meshes)):
         these_segments = np.where(
-            (segment.mesh_flag != 0) & (segment.mesh_file_index == i + 1)
+            (segment.mesh_flag != 0) & (segment.mesh_file_index == i)
         )[0]
         cut_segment_idx = np.append(cut_segment_idx, these_segments)
         # Get top coordinates of the mesh
@@ -72,22 +49,22 @@ def snap_segments(segment, meshes):
         top_edge_indices = np.sort(np.hstack((top_edge_indices1, top_edge_indices2)))
         # Get new segment coordinates from these indices
         edge_segs = make_default_segment(len(top_edge_indices))
-        edge_segs.lon1 = meshes[i].meshio_object.points[
+        edge_segs.lon1 = meshes[i].points[
             meshes[i].ordered_edge_nodes[top_edge_indices, 0], 0
         ]
-        edge_segs.lat1 = meshes[i].meshio_object.points[
+        edge_segs.lat1 = meshes[i].points[
             meshes[i].ordered_edge_nodes[top_edge_indices, 0], 1
         ]
-        edge_segs.lon2 = meshes[i].meshio_object.points[
+        edge_segs.lon2 = meshes[i].points[
             meshes[i].ordered_edge_nodes[top_edge_indices, 1], 0
         ]
-        edge_segs.lat2 = meshes[i].meshio_object.points[
+        edge_segs.lat2 = meshes[i].points[
             meshes[i].ordered_edge_nodes[top_edge_indices, 1], 1
         ]
         edge_segs.locking_depth = -15
         edge_segs.mesh_flag = +1
         edge_segs.mesh_file_index = +i + 1
-        all_edge_segment = all_edge_segment.append(edge_segs)
+        all_edge_segment = pd.concat([all_edge_segment, edge_segs])
 
     # Get indices of segments to keep
     keep_segment_idx = np.setdiff1d(range(len(segment.lon1)), cut_segment_idx)
@@ -125,7 +102,7 @@ def snap_segments(segment, meshes):
                 1, closest_edge_idx[i]
             ]
     # Merge with mesh edge segments
-    new_segment = keep_segment.append(all_edge_segment)
+    new_segment = pd.concat([keep_segment, all_edge_segment])
     new_index = range(len(new_segment))
     new_segment.index = new_index
     return new_segment
@@ -144,8 +121,6 @@ def make_default_segment(length):
                 "dip",
                 "locking_depth",
                 "locking_depth_flag",
-                "dip_sig",
-                "dip_flag",
                 "ss_rate",
                 "ss_rate_sig",
                 "ss_rate_flag",
@@ -166,8 +141,9 @@ def make_default_segment(length):
         default_segment[key] = np.zeros_like(length_vec)
     default_segment.locking_depth = +15
     default_segment.dip = +90
+    default_segment["name"] = default_segment["name"].astype(str)
     for i in range(len(default_segment.name)):
-        default_segment.name[i] = "segment_" + str(i)
+        default_segment.loc[i, "name"] = str("segment_" + str(i))
     return default_segment
 
 
@@ -184,14 +160,13 @@ def main():
         type=Path,
         help="Name of mesh parameter file.",
     )
-    args = addict.Dict(vars(parser.parse_args()))
+    args = SimpleNamespace(**vars(parser.parse_args()))
 
     # Read segment data
     segment = pd.read_csv(args.segment_file_name)
     segment = segment.loc[:, ~segment.columns.str.match("Unnamed")]
     logger.success(f"Read: {args.segment_file_name}")
 
-    # Read mesh data - List of dictionary version
     meshes = []
     with args.mesh_parameters_file_name.open() as f:
         mesh_param = json.load(f)
@@ -199,86 +174,13 @@ def main():
 
     if len(mesh_param) > 0:
         for i in range(len(mesh_param)):
-            meshes.append(addict.Dict())
-            meshes[i].meshio_object = meshio.read(mesh_param[i]["mesh_filename"])
-            meshes[i].file_name = mesh_param[i]["mesh_filename"]
-            meshes[i].verts = meshes[i].meshio_object.get_cells_type("triangle")
+            mesh_config_dict = mesh_param[i].copy()
+            mesh_config_dict["file_name"] = args.mesh_parameters_file_name
+            mesh_config = MeshConfig.model_validate(mesh_config_dict)
 
-            # Expand mesh coordinates
-            meshes[i].lon1 = meshes[i].meshio_object.points[meshes[i].verts[:, 0], 0]
-            meshes[i].lon2 = meshes[i].meshio_object.points[meshes[i].verts[:, 1], 0]
-            meshes[i].lon3 = meshes[i].meshio_object.points[meshes[i].verts[:, 2], 0]
-            meshes[i].lat1 = meshes[i].meshio_object.points[meshes[i].verts[:, 0], 1]
-            meshes[i].lat2 = meshes[i].meshio_object.points[meshes[i].verts[:, 1], 1]
-            meshes[i].lat3 = meshes[i].meshio_object.points[meshes[i].verts[:, 2], 1]
-            meshes[i].dep1 = meshes[i].meshio_object.points[meshes[i].verts[:, 0], 2]
-            meshes[i].dep2 = meshes[i].meshio_object.points[meshes[i].verts[:, 1], 2]
-            meshes[i].dep3 = meshes[i].meshio_object.points[meshes[i].verts[:, 2], 2]
-            meshes[i].centroids = np.mean(
-                meshes[i].meshio_object.points[meshes[i].verts, :], axis=1
-            )
-            # Cartesian coordinates in meters
-            meshes[i].x1, meshes[i].y1, meshes[i].z1 = sph2cart(
-                meshes[i].lon1,
-                meshes[i].lat1,
-                RADIUS_EARTH + KM2M * meshes[i].dep1,
-            )
-            meshes[i].x2, meshes[i].y2, meshes[i].z2 = sph2cart(
-                meshes[i].lon2,
-                meshes[i].lat2,
-                RADIUS_EARTH + KM2M * meshes[i].dep2,
-            )
-            meshes[i].x3, meshes[i].y3, meshes[i].z3 = sph2cart(
-                meshes[i].lon3,
-                meshes[i].lat3,
-                RADIUS_EARTH + KM2M * meshes[i].dep3,
-            )
-
-            # Cartesian triangle centroids
-            meshes[i].x_centroid = (meshes[i].x1 + meshes[i].x2 + meshes[i].x3) / 3.0
-            meshes[i].y_centroid = (meshes[i].y1 + meshes[i].y2 + meshes[i].y3) / 3.0
-            meshes[i].z_centroid = (meshes[i].z1 + meshes[i].z2 + meshes[i].z3) / 3.0
-
-            # Cross products for orientations
-            tri_leg1 = np.transpose(
-                [
-                    np.deg2rad(meshes[i].lon2 - meshes[i].lon1),
-                    np.deg2rad(meshes[i].lat2 - meshes[i].lat1),
-                    (1 + KM2M * meshes[i].dep2 / RADIUS_EARTH)
-                    - (1 + KM2M * meshes[i].dep1 / RADIUS_EARTH),
-                ]
-            )
-            tri_leg2 = np.transpose(
-                [
-                    np.deg2rad(meshes[i].lon3 - meshes[i].lon1),
-                    np.deg2rad(meshes[i].lat3 - meshes[i].lat1),
-                    (1 + KM2M * meshes[i].dep3 / RADIUS_EARTH)
-                    - (1 + KM2M * meshes[i].dep1 / RADIUS_EARTH),
-                ]
-            )
-            meshes[i].nv = np.cross(tri_leg1, tri_leg2)
-            azimuth, elevation, r = cart2sph(
-                meshes[i].nv[:, 0],
-                meshes[i].nv[:, 1],
-                meshes[i].nv[:, 2],
-            )
-            meshes[i].strike = celeri.wrap2360(-np.rad2deg(azimuth))
-            meshes[i].dip = 90 - np.rad2deg(elevation)
-            meshes[i].dip_flag = meshes[i].dip != 90
-            meshes[i].smoothing_weight = mesh_param[i]["smoothing_weight"]
-            meshes[i].top_slip_rate_constraint = mesh_param[i][
-                "top_slip_rate_constraint"
-            ]
-            meshes[i].bot_slip_rate_constraint = mesh_param[i][
-                "bot_slip_rate_constraint"
-            ]
-            meshes[i].side_slip_rate_constraint = mesh_param[i][
-                "side_slip_rate_constraint"
-            ]
-            meshes[i].n_tde = meshes[i].lon1.size
-            celeri.get_mesh_edge_elements(meshes)
+            mesh = Mesh.from_params(mesh_config)
+            meshes.append(mesh)
             logger.success(f"Read: {mesh_param[i]['mesh_filename']}")
-        celeri.get_mesh_perimeter(meshes)
 
         new_segment = snap_segments(segment, meshes)
         segpath = args.segment_file_name.resolve()

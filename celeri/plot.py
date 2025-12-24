@@ -1,22 +1,20 @@
 from __future__ import annotations
 
-import typing
 from dataclasses import dataclass, field
 from typing import Any
 
 import cartopy.io.shapereader as shpreader
-import matplotlib
-import matplotlib.collections
+import colorcet as cc
 import matplotlib.collections as mc
 import matplotlib.lines as mlines
 import matplotlib.patches as mpatches
-import matplotlib.path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from loguru import logger
 from matplotlib import cm
-from matplotlib.colors import Normalize
+from matplotlib.colors import LinearSegmentedColormap, Normalize
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from shapely.geometry import (
     GeometryCollection,
     LineString,
@@ -27,15 +25,15 @@ from shapely.geometry import (
 )
 
 from celeri.constants import EPS
+from celeri.mesh import Mesh
 from celeri.model import Model
+from celeri.optimize_sqp import _get_coupling
+from celeri.solve import Estimation
 from celeri.spatial import (
     get_okada_displacements,
     get_rotation_displacements,
     get_strain_rate_displacements,
 )
-
-if typing.TYPE_CHECKING:
-    from celeri.solve import Estimation
 
 
 @dataclass(kw_only=True)
@@ -153,6 +151,7 @@ def plot_input_summary(
     lon_range: tuple | None = None,
     lat_range: tuple | None = None,
     quiver_scale: float = 1e2,
+    save: bool = True
 ):
     """Plot overview figures showing observed and modeled velocities as well
     as velocity decomposition and estimates slip rates.
@@ -162,6 +161,7 @@ def plot_input_summary(
         lon_range (Tuple): Latitude range (min, max)
         lat_range (Tuple): Latitude range (min, max)
         quiver_scale (float): Scaling for velocity arrows
+        save (bool): Whether to save the figure to disk
     """
     if lon_range is None:
         lon_range = model.config.lon_range
@@ -271,7 +271,7 @@ def plot_input_summary(
     # Plot mogi sources
     subplot_index += 1
     plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
-    plt.title("Mogi sources")
+    plt.title("Mogi Sources")
     common_plot_elements(segment, lon_range, lat_range)
     if len(mogi.lon > 0):
         plt.plot(mogi.lon, mogi.lat, "r+")
@@ -282,7 +282,7 @@ def plot_input_summary(
     # Plot a priori slip rate constraints
     subplot_index += 1
     plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
-    plt.title("strike-slip rate constraints")
+    plt.title("Strike-Slip Rate Constraints")
     common_plot_elements(segment, lon_range, lat_range)
     for i in range(len(segment)):
         if segment.ss_rate_flag[i] == 1:
@@ -299,7 +299,7 @@ def plot_input_summary(
 
     subplot_index += 1
     plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
-    plt.title("dip-slip rate constraints")
+    plt.title("Dip-Slip Rate Constraints")
     common_plot_elements(segment, lon_range, lat_range)
     for i in range(len(segment)):
         if segment.ds_rate_flag[i] == 1:
@@ -316,7 +316,7 @@ def plot_input_summary(
 
     subplot_index += 1
     plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
-    plt.title("tensile-slip rate constraints")
+    plt.title("Tensile-Slip Rate Constraints")
     common_plot_elements(segment, lon_range, lat_range)
     for i in range(len(segment)):
         if segment.ts_rate_flag[i] == 1:
@@ -333,7 +333,7 @@ def plot_input_summary(
 
     subplot_index += 1
     plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
-    plt.title("slip rate constraints")
+    plt.title("Slip Rate Constraints")
     common_plot_elements(segment, lon_range, lat_range)
     for i in range(len(meshes)):
         is_constrained_tde = np.zeros(meshes[i].n_tde)
@@ -352,16 +352,13 @@ def plot_input_summary(
         ax = plt.gca()
         xy = np.c_[x_coords, y_coords]
         verts = xy[vertex_array]
-        pc = matplotlib.collections.PolyCollection(
-            verts, edgecolor="none", linewidth=0.25, cmap="Oranges"
-        )
+        pc = mc.PolyCollection(verts, edgecolor="none", linewidth=0.25, cmap="Oranges")
         pc.set_array(is_constrained_tde)
         ax.add_collection(pc)
-        # ax.autoscale()
 
     plt.suptitle("inputs")
 
-    if model.config.output_path is not None:
+    if save and model.config.output_path.exists():
         plt.savefig(model.config.output_path / "plot_input_summary.png", dpi=500)
         plt.savefig(model.config.output_path / "plot_input_summary.pdf")
         logger.success(
@@ -379,6 +376,7 @@ def plot_estimation_summary(
     lon_range: tuple | None = None,
     lat_range: tuple | None = None,
     quiver_scale: float | None = None,
+    save: bool = True,
 ):
     """Plot overview figures showing observed and modeled velocities as well
     as velocity decomposition and estimates slip rates.
@@ -389,6 +387,7 @@ def plot_estimation_summary(
         lon_range (Tuple): Latitude range (min, max)
         lat_range (Tuple): Latitude range (min, max)
         quiver_scale (float): Scaling for velocity arrows
+        save (bool): Whether to save the figure to disk
     """
     if lon_range is None:
         lon_range = model.config.lon_range
@@ -427,15 +426,13 @@ def plot_estimation_summary(
         plt.ylim([lat_range[0], lat_range[1]])
         plt.gca().set_aspect("equal", adjustable="box")
 
-    max_sigma_cutoff = 99.0
-    n_subplot_rows = 4
+    n_subplot_rows = 3
     n_subplot_cols = 3
-    subplot_index = 0
+    subplot_index = 1
 
-    plt.figure(figsize=(12, 16))
-    subplot_index += 1
+    plt.figure(figsize=(18, 18))
     ax1 = plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index)
-    plt.title("observed velocities")
+    plt.title("Observed Velocities")
     common_plot_elements(segment, lon_range, lat_range)
     plt.quiver(
         station.lon,
@@ -449,7 +446,7 @@ def plot_estimation_summary(
 
     subplot_index += 1
     plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
-    plt.title("model velocities")
+    plt.title("Model Velocities")
     common_plot_elements(segment, lon_range, lat_range)
     plt.quiver(
         station.lon,
@@ -463,7 +460,7 @@ def plot_estimation_summary(
 
     subplot_index += 1
     plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
-    plt.title("residual velocities")
+    plt.title("Residual Velocities")
     common_plot_elements(segment, lon_range, lat_range)
     plt.quiver(
         station.lon,
@@ -477,7 +474,7 @@ def plot_estimation_summary(
 
     subplot_index += 1
     plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
-    plt.title("rotation velocities")
+    plt.title("Rotation Velocities")
     common_plot_elements(segment, lon_range, lat_range)
     plt.quiver(
         station.lon,
@@ -491,7 +488,7 @@ def plot_estimation_summary(
 
     subplot_index += 1
     plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
-    plt.title("elastic segment velocities")
+    plt.title("Elastic Segment Velocities")
     common_plot_elements(segment, lon_range, lat_range)
     plt.quiver(
         station.lon,
@@ -509,7 +506,7 @@ def plot_estimation_summary(
             plt.subplot(
                 n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1
             )
-            plt.title("elastic tde velocities")
+            plt.title("Elastic TDE Velocities")
             common_plot_elements(segment, lon_range, lat_range)
             plt.quiver(
                 station.lon,
@@ -521,152 +518,71 @@ def plot_estimation_summary(
                 color="black",
             )
 
-    def plot_slip_rates(title, slip_rates, slip_rate_sigmas, color):
-        plt.subplot(
-            n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1
-        )
-        plt.title(title)
-        common_plot_elements(segment, lon_range, lat_range)
-        for i in range(len(segment)):
-            if slip_rate_sigmas is not None:
-                sigma = slip_rate_sigmas[i]
-            else:
-                sigma = 0.0
-            if sigma < max_sigma_cutoff:
-                plt.text(
-                    segment.mid_lon_plate_carree[i],
-                    segment.mid_lat_plate_carree[i],
-                    f"{slip_rates[i]:.1f}({sigma:.1f})",
-                    color=color,
-                    clip_on=True,
-                    horizontalalignment="center",
-                    verticalalignment="center",
-                    fontsize=7,
-                )
-            else:
-                plt.text(
-                    segment.mid_lon_plate_carree[i],
-                    segment.mid_lat_plate_carree[i],
-                    f"{slip_rates[i]:.1f}(*)",
-                    color=color,
-                    clip_on=True,
-                    horizontalalignment="center",
-                    verticalalignment="center",
-                    fontsize=7,
-                )
-
-    subplot_index += 1
-    plot_slip_rates(
-        "segment strike-slip \n (negative right-lateral)",
-        estimation.strike_slip_rates,
-        estimation.strike_slip_rate_sigma,
-        "red",
-    )
-
-    subplot_index += 1
-    plot_slip_rates(
-        "segment dip-slip \n (positive convergences)",
-        estimation.dip_slip_rates,
-        estimation.dip_slip_rate_sigma,
-        "blue",
-    )
-
-    subplot_index += 1
-    plot_slip_rates(
-        "segment tensile-slip \n (negative convergences)",
-        estimation.tensile_slip_rates,
-        estimation.tensile_slip_rate_sigma,
-        "green",
-    )
-
     if model.config.solve_type != "dense_no_meshes":
         if len(meshes) > 0:
-            subplot_index += 1
-            plt.subplot(
-                n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1
-            )
-            plt.title("TDE slip (strike-slip)")
-            common_plot_elements(segment, lon_range, lat_range)
-            # plot_meshes(meshes, estimation.tde_strike_slip_rates, plt.gca())
-            fill_value_dict = estimation.tde_strike_slip_rates
-            assert fill_value_dict is not None
-            fill_value_range = (0, 0)
-            for mesh_idx in fill_value_dict:
-                fill_value_range = (
-                    min(fill_value_range[0], float(np.min(fill_value_dict[mesh_idx]))),
-                    max(fill_value_range[1], float(np.max(fill_value_dict[mesh_idx]))),
-                )
-
-            ax = plt.gca()
-            for i in range(len(meshes)):
-                fill_value = fill_value_dict[i]
-                x_coords = meshes[i].points[:, 0]
-                y_coords = meshes[i].points[:, 1]
-                vertex_array = np.asarray(meshes[i].verts)
-
-                xy = np.c_[x_coords, y_coords]
-                verts = xy[vertex_array]
-                pc = matplotlib.collections.PolyCollection(
-                    verts, edgecolor="none", cmap="rainbow"
-                )
-                pc.set_array(fill_value)
-                pc.set_clim(fill_value_range)
-                ax.add_collection(pc)
-                # ax.autoscale()
-                if i == len(meshes) - 1:
-                    plt.colorbar(pc, label="slip (mm/yr)")
-
-                # Add mesh edge
-                x_edge = x_coords[meshes[i].ordered_edge_nodes[:, 0]]
-                y_edge = y_coords[meshes[i].ordered_edge_nodes[:, 0]]
-                x_edge = np.append(x_edge, x_coords[meshes[0].ordered_edge_nodes[0, 0]])
-                y_edge = np.append(y_edge, y_coords[meshes[0].ordered_edge_nodes[0, 0]])
-                plt.plot(x_edge, y_edge, color="black", linewidth=1)
+            tde_strike_slip_dict = estimation.tde_strike_slip_rates
+            tde_dip_slip_dict = estimation.tde_dip_slip_rates
+            assert tde_strike_slip_dict is not None
+            assert tde_dip_slip_dict is not None
 
             subplot_index += 1
             plt.subplot(
                 n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1
             )
-            plt.title("TDE slip (dip-slip)")
+            plt.title("TDE Slip (strike-slip, mm/yr)")
             common_plot_elements(segment, lon_range, lat_range)
-            # plot_meshes(meshes, estimation.tde_dip_slip_rates, plt.gca())
-            fill_value_dict = estimation.tde_dip_slip_rates
-            assert fill_value_dict is not None
-            fill_value_range = (0, 0)
-            for mesh_idx in fill_value_dict:
-                fill_value_range = (
-                    min(fill_value_range[0], float(np.min(fill_value_dict[mesh_idx]))),
-                    max(fill_value_range[1], float(np.max(fill_value_dict[mesh_idx]))),
-                )
+
+            all_values = np.concatenate(
+                [np.ravel(vals) for vals in tde_strike_slip_dict.values()]
+            )
+            vmin = np.min(all_values)
+            vmax = np.max(all_values)
+
             ax = plt.gca()
+            pc = None
             for i in range(len(meshes)):
-                fill_value = fill_value_dict[i]
-                x_coords = meshes[i].points[:, 0]
-                y_coords = meshes[i].points[:, 1]
-                vertex_array = np.asarray(meshes[i].verts)
-
-                xy = np.c_[x_coords, y_coords]
-                verts = xy[vertex_array]
-                pc = matplotlib.collections.PolyCollection(
-                    verts, edgecolor="none", cmap="rainbow"
+                pc = plot_mesh(
+                    meshes[i],
+                    fill_value=tde_strike_slip_dict[i],
+                    ax=ax,
+                    vmin=vmin,
+                    vmax=vmax,
                 )
-                pc.set_array(fill_value)
-                pc.set_clim(fill_value_range)
-                ax.add_collection(pc)
-                # ax.autoscale()
-                if i == len(meshes) - 1:
-                    plt.colorbar(pc, label="slip (mm/yr)")
+            plt.colorbar(pc, ax=ax, shrink=0.7)
 
-                # Add mesh edge
-                x_edge = x_coords[meshes[i].ordered_edge_nodes[:, 0]]
-                y_edge = y_coords[meshes[i].ordered_edge_nodes[:, 0]]
-                x_edge = np.append(x_edge, x_coords[meshes[0].ordered_edge_nodes[0, 0]])
-                y_edge = np.append(y_edge, y_coords[meshes[0].ordered_edge_nodes[0, 0]])
-                plt.plot(x_edge, y_edge, color="black", linewidth=1)
+            subplot_index += 1
+            plt.subplot(
+                n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1
+            )
+
+            plt.title("TDE Slip (dip-slip, mm/yr)")
+            common_plot_elements(segment, lon_range, lat_range)
+
+            all_values = np.concatenate(
+                [np.ravel(vals) for vals in tde_dip_slip_dict.values()]
+            )
+            vmin = np.min(all_values)
+            vmax = np.max(all_values)
+
+            ax = plt.gca()
+            pc = None
+            for i in range(len(meshes)):
+                pc = plot_mesh(
+                    meshes[i],
+                    fill_value=tde_dip_slip_dict[i],
+                    ax=ax,
+                    vmin=vmin,
+                    vmax=vmax,
+                )
+
+            cbar = plt.colorbar(pc, ax=ax, shrink=0.7)
+            n_ticks = 7
+            ticks = np.linspace(vmin, vmax, n_ticks)
+            cbar.set_ticks(ticks)
 
     subplot_index += 1
     plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index)
-    plt.title("Residual velocity histogram")
+    plt.title("Residual Velocity Histogram")
     residual_velocity_vector = np.concatenate(
         (estimation.east_vel_residual.values, estimation.north_vel_residual.values)
     )
@@ -683,14 +599,11 @@ def plot_estimation_summary(
         f"mae = {mean_average_error:.2f} (mm/yr), mse = {mean_squared_error:.2f} (mm/yr)^2"
     )
 
-    plt.savefig(model.config.output_path / "plot_estimation_summary.png", dpi=500)
-    plt.savefig(model.config.output_path / "plot_estimation_summary.pdf")
+    if save and model.config.output_path.exists():
+        plt.savefig(model.config.output_path / "plot_estimation_summary.png", dpi=500)
+        plt.savefig(model.config.output_path / "plot_estimation_summary.pdf")
+        logger.success(f"Wrote figures {model.config.output_path}/plot_estimation_summary.(pdf, png)")
     plt.show(block=False)
-
-    logger.success(
-        f"Wrote figures {model.config.output_path}/plot_estimation_summary.(pdf, png)"
-    )
-
 
 def plot_matrix_abs_log(matrix):
     plt.figure(figsize=(10, 10))
@@ -699,73 +612,113 @@ def plot_matrix_abs_log(matrix):
     plt.show()
 
 
-def plot_meshes(
-    meshes: list,
+def plot_mesh(
+    mesh: Mesh,
     fill_value: np.ndarray,
     ax,
     *,
-    label="slip (mm/yr)",
     vmin=None,
     vmax=None,
-    cmap="rainbow",
-    center=None,
+    cmap="seismic",
+    center=0,
 ):
+    """
+    Plot a 2D or cross-sectional mesh. Determines if a mesh 
+    is cross-sectional by checking the correlation coefficient 
+    between the longitude and latitude of the centroids. If cross-sectional,
+    the mesh is plotted with the x-axis as the along-strike direction and
+    the y-axis as the depth.
+
+    Parameters
+    ----------
+    mesh : Mesh
+        Mesh object containing vertices, centroids, points, and ordered edge nodes.
+    fill_value : np.ndarray
+        Array of values used to color the mesh polygons.
+    ax : matplotlib Axes
+        Matplotlib axes to draw the mesh on. If None, uses current axes.
+    vmin : float, optional
+        Minimum value for color normalization, defaults to array minimum.
+    vmax : float, optional
+        Maximum value for color normalization, defaults to array maximum.
+    cmap : str, optional
+        Colormap to use for coloring polygons (default 'seismic').
+    center : float, optional
+        Center value for diverging colormap normalization (default 0).
+
+    Returns
+    -------
+    pc : matplotlib.collections.PolyCollection
+        The PolyCollection object representing the mesh polygons.
+    """
     import matplotlib.colors as colors
 
     if not ax:
         ax = plt.gca()
 
     if vmin is None:
-        vmin = np.min(fill_value)
+        vmin = np.min([-1e-10, np.min(fill_value)])
     if vmax is None:
-        vmax = np.max(fill_value)
+        vmax = np.max([1e-10, np.max(fill_value)])
 
-    # Create a collection for each mesh
-    collection_list = []
-    # Track the starting index in fill_value for each mesh
-    fill_index = 0
+    norm = colors.TwoSlopeNorm(vmin=vmin, vcenter=center, vmax=vmax)
 
-    if center is not None:
-        norm = colors.TwoSlopeNorm(vmin=vmin, vcenter=center, vmax=vmax)
-    else:
-        norm = colors.Normalize(vmin=vmin, vmax=vmax)
+    points = mesh.points
+    cross_section = np.abs(np.corrcoef(mesh.centroids[:, 0], mesh.centroids[:, 1])[0, 1]) > 0.9
+    if cross_section:
+        lons = points[:, 0]
+        lats = points[:, 1]
+        lon_mean = np.mean(lons)
+        lat_mean = np.mean(lats)
+        lons_centered = lons - lon_mean
+        lats_centered = lats - lat_mean
 
-    for i in range(len(meshes)):
-        x_coords = meshes[i].points[:, 0]
-        y_coords = meshes[i].points[:, 1]
-        vertex_array = np.asarray(meshes[i].verts)
+        coords = np.column_stack([lons_centered, lats_centered])
+        cov = np.cov(coords, rowvar=False)
+        eigenvalues, eigenvectors = np.linalg.eigh(cov)
+        pc1 = eigenvectors[:, np.argmax(eigenvalues)]
 
-        xy = np.c_[x_coords, y_coords]
-        verts = xy[vertex_array]
-        pc = matplotlib.collections.PolyCollection(
-            # verts, edgecolor="none", cmap="rainbow"
-            verts,
-            edgecolor="none",
-            cmap=cmap,
-            norm=norm,
+        along_strike_deg = coords @ pc1
+
+        km_per_deg_lon = 111.32 * np.cos(np.radians(lat_mean))
+        km_per_deg_lat = 110.574
+        scale_factor = np.sqrt(
+            (pc1[0] * km_per_deg_lon) ** 2 + (pc1[1] * km_per_deg_lat) ** 2
         )
+        dim0_coords = along_strike_deg * scale_factor
+        dim1_coords = points[:, 2]
+    else:
+        dim0_coords = points[:, 0]
+        dim1_coords = points[:, 1]
+        
+    vertex_array = np.asarray(mesh.verts)
 
-        # Get the values for this mesh and update the index
-        mesh_values = fill_value[fill_index : fill_index + meshes[i].n_tde]
-        fill_index += meshes[i].n_tde
+    xy = np.c_[dim0_coords, dim1_coords]
+    verts = xy[vertex_array]
+    pc = mc.PolyCollection(
+        verts,
+        edgecolor="none",
+        cmap=cmap,
+        norm=norm,
+    )
 
-        pc.set_array(mesh_values)
-        pc.set_clim(vmin, vmax)  # Set the color limits for all collections
-        ax.add_collection(pc)
-        collection_list.append(pc)
+    pc.set_array(fill_value)
+    pc.set_clim(vmin, vmax)
+    ax.add_collection(pc)
 
-        # Add mesh edge
-        x_edge = x_coords[meshes[i].ordered_edge_nodes[:, 0]]
-        y_edge = y_coords[meshes[i].ordered_edge_nodes[:, 0]]
-        x_edge = np.append(x_edge, x_coords[meshes[0].ordered_edge_nodes[0, 0]])
-        y_edge = np.append(y_edge, y_coords[meshes[0].ordered_edge_nodes[0, 0]])
-        ax.plot(x_edge, y_edge, color="black", linewidth=1)
+    x_edge = dim0_coords[mesh.ordered_edge_nodes[:, 0]]
+    y_edge = dim1_coords[mesh.ordered_edge_nodes[:, 0]]
+    x_edge = np.append(x_edge, dim0_coords[mesh.ordered_edge_nodes[0, 0]])
+    y_edge = np.append(y_edge, dim1_coords[mesh.ordered_edge_nodes[0, 0]])
+    ax.plot(x_edge, y_edge, color="black", linewidth=0.5)
 
-    # Create a single colorbar for all collections
-    if collection_list:
-        plt.colorbar(collection_list[0], label=label, ax=ax)
+    ax.set_aspect("equal", adjustable="box")
 
-    ax.autoscale()
+    margin = 0.01 * max(dim0_coords.max() - dim0_coords.min(), dim1_coords.max() - dim1_coords.min())
+    ax.set_xlim(dim0_coords.min() - margin, dim0_coords.max() + margin)
+    ax.set_ylim(dim1_coords.min() - margin, dim1_coords.max() + margin)
+
+    return pc
 
 
 def plot_segment_displacements(
@@ -1228,7 +1181,7 @@ def plot_vels(
 
     Parameters
     ----------
-    p (addict.Dict): A dictionary containing plotting parameters.
+    p (PlotParams): A PlotParams object containing plotting parameters.
     segment (DataFrame): A DataFrame containing segment information with columns
                          'lon1', 'lon2', 'lat1', and 'lat2' representing the
                          starting and ending coordinates of each segment.
@@ -1511,9 +1464,7 @@ def plot_fault_geometry(p, segment, meshes):
         ax = plt.gca()
         xy = np.c_[x_coords, y_coords]
         verts = xy[vertex_array]
-        pc = matplotlib.collections.PolyCollection(
-            verts, edgecolor="none", alpha=0.2, facecolor="red"
-        )
+        pc = mc.PolyCollection(verts, edgecolor="none", alpha=0.2, facecolor="red")
         ax.add_collection(pc)
 
         # Add mesh edge
@@ -1653,3 +1604,243 @@ def plot_coastlines(lon_min, lat_min, lon_max, lat_max):
 
     line_collection = mc.LineCollection(coastlines, colors="black", linewidths=0.5)
     plt.gca().add_collection(line_collection)
+
+
+def plot_coupling(estimation: Estimation, *, mesh_idx: int):
+    operators = estimation.operators
+    block = estimation.model.block
+    index = operators.index
+    meshes = estimation.model.meshes
+
+    assert operators.eigen is not None
+    assert index.eigen is not None
+
+    # Multiply rotation vector components by TDE slip rate partials
+    kinematic = (
+        operators.rotation_to_tri_slip_rate[mesh_idx]
+        @ estimation.state_vector[0 : 3 * len(block)]
+    )
+
+    elastic = (
+        operators.eigen.eigenvectors_to_tde_slip[mesh_idx]
+        @ estimation.state_vector[
+            index.eigen.start_col_eigen[mesh_idx] : index.eigen.end_col_eigen[mesh_idx]
+        ]
+    )
+
+    # Calculate final coupling and smoothed kinematic
+    tde_coupling_ss, kinematic_tde_rates_ss_smooth = _get_coupling(
+        meshes[mesh_idx].lon_centroid,
+        meshes[mesh_idx].lat_centroid,
+        elastic[0::2],
+        kinematic[0::2],
+        smoothing_length_scale=meshes[
+            mesh_idx
+        ].config.iterative_coupling_smoothing_length_scale,
+        kinematic_slip_regularization_scale=meshes[
+            mesh_idx
+        ].config.iterative_coupling_kinematic_slip_regularization_scale,
+    )
+
+    tde_coupling_ds, kinematic_tde_rates_ds_smooth = _get_coupling(
+        meshes[mesh_idx].lon_centroid,
+        meshes[mesh_idx].lat_centroid,
+        elastic[1::2],
+        kinematic[1::2],
+        smoothing_length_scale=meshes[
+            mesh_idx
+        ].config.iterative_coupling_smoothing_length_scale,
+        kinematic_slip_regularization_scale=meshes[
+            mesh_idx
+        ].config.iterative_coupling_kinematic_slip_regularization_scale,
+    )
+
+    # Strike-slip
+    plt.figure(figsize=(15, 2))
+    plt.subplot(1, 4, 1)
+    plot_mesh(meshes[mesh_idx], fill_value=kinematic[0::2], ax=plt.gca())
+    plt.title("ss kinematic")
+
+    plt.subplot(1, 4, 2)
+    plot_mesh(meshes[mesh_idx], fill_value=kinematic_tde_rates_ss_smooth, ax=plt.gca())
+    plt.title("ss kinematic (smooth)")
+
+    plt.subplot(1, 4, 3)
+    plot_mesh(meshes[mesh_idx], fill_value=elastic[0::2], ax=plt.gca())
+    plt.title("ss elastic")
+
+    plt.subplot(1, 4, 4)
+    plot_mesh(meshes[mesh_idx], fill_value=tde_coupling_ss, ax=plt.gca())
+    plt.title("ss coupling")
+
+    # Dip-slip
+    plt.figure(figsize=(15, 2))
+    plt.subplot(1, 4, 1)
+    plot_mesh(meshes[mesh_idx], fill_value=kinematic[1::2], ax=plt.gca())
+    plt.title("ds kinematic")
+
+    plt.subplot(1, 4, 2)
+    plot_mesh(meshes[mesh_idx], fill_value=kinematic_tde_rates_ds_smooth, ax=plt.gca())
+    plt.title("ds kinematic (smooth)")
+
+    plt.subplot(1, 4, 3)
+    plot_mesh(meshes[mesh_idx], fill_value=elastic[1::2], ax=plt.gca())
+    plt.title("ds elastic")
+
+    plt.subplot(1, 4, 4)
+    plot_mesh(meshes[mesh_idx], fill_value=tde_coupling_ds, ax=plt.gca())
+    plt.title("ds coupling")
+
+    plt.show()
+
+
+def _plot_common_evolution_elements():
+    plt.xlim([-90, 90])
+    plt.ylim([-90, 90])
+    plt.xticks([-90, 0, 90])
+    plt.yticks([-90, 0, 90])
+    plt.gca().set_aspect("equal")
+
+
+def _plot_evolution(mesh: Mesh, field1: np.ndarray, field2: np.ndarray):
+    LINE_COLOR = "lightgray"
+    for i in range(mesh.n_tde):
+        plt.plot(
+            field1[i, :],
+            field2[i, :],
+            "-",
+            linewidth=0.1,
+            color=LINE_COLOR,
+            zorder=1,
+        )
+    plt.plot(field1[:, -1], field2[:, -1], ".k", markersize=0.5)
+
+
+def plot_coupling_evolution(estimation: Estimation, *, mesh_idx: int):
+    mesh = estimation.model.meshes[mesh_idx]
+
+    if estimation.trace is None:
+        raise ValueError("Estimation trace is not available for plotting.")
+
+    store_ss_kinematic = estimation.trace["ss_kinematic"]
+    store_ss_elcon = estimation.trace["ss_estimated"]
+    store_ss_lower = estimation.trace["ss_lower"]
+    store_ss_upper = estimation.trace["ss_upper"]
+    store_ds_kinematic = estimation.trace["ds_kinematic"]
+    store_ds_elcon = estimation.trace["ds_estimated"]
+    store_ds_lower = estimation.trace["ds_lower"]
+    store_ds_upper = estimation.trace["ds_upper"]
+
+    def plot_background():
+        REGULARIZATION_RATE = 1.0
+        levels = 101
+        j = np.linspace(-100, 100, 1000)
+        b = np.linspace(-100, 100, 1000)
+        j_grid, b_grid = np.meshgrid(j, b)
+        j_grid_orig = np.copy(j_grid)
+        b_grid_orig = np.copy(b_grid)
+        coupling, _ = _get_coupling(
+            0,
+            0,
+            b_grid.flatten(),
+            j_grid.flatten(),
+            smoothing_length_scale=0.0,
+            kinematic_slip_regularization_scale=REGULARIZATION_RATE,
+        )
+        coupling_grid = np.reshape(coupling, (1000, 1000))
+        coupling_grid[coupling_grid > 1.0] = np.nan
+        coupling_grid[coupling_grid < 0.0] = np.nan
+
+        # Create half colormap
+        # Retrieve a colorcet colormap
+        # full_cmap = cc.cm["coolwarm_r"]  # Replace with your desired colormap
+        # full_cmap = cc.cm["CET_D8_r"]  # Replace with your desired colormap
+        # full_cmap = cc.cm["cwr_r"]  # Replace with your desired colormap
+        full_cmap = cc.cm["bmy_r"]  # Replace with your desired colormap
+
+        # Extract half of the colormap
+        n_colors = full_cmap.N  # Total number of colors in the colormap
+        half_cmap = LinearSegmentedColormap.from_list(
+            "half_cmap", full_cmap(np.linspace(0, 0.5, n_colors // 2))
+        )
+        # cmap = half_cmap.reversed()
+        cmap = half_cmap
+
+        ch = plt.contourf(
+            j_grid_orig, b_grid_orig, coupling_grid, cmap=cmap, levels=levels
+        )
+        return ch
+
+    plt.figure(figsize=(10, 10))
+
+    plt.subplot(2, 2, 1)
+    ch = plot_background()
+    _plot_evolution(mesh, store_ss_kinematic[mesh_idx], store_ss_elcon[mesh_idx])
+    _plot_common_evolution_elements()
+    plt.xlabel("$v$ strike-slip kinematic (mm/yr)")
+    plt.ylabel("$v$ strike-slip elastic (mm/yr)")
+    cax = inset_axes(
+        plt.gca(),
+        width="20%",
+        height="30%",
+        loc="upper right",
+        bbox_to_anchor=(0.0, 0.0, 0.07, 0.95),  # Position in axes fraction
+        bbox_transform=plt.gca().transAxes,
+        borderpad=0,
+    )
+    plt.colorbar(ch, cax=cax, ticks=[0.0, 1.0], label="coupling")
+
+    plt.subplot(2, 2, 2)
+    ch = plot_background()
+    _plot_evolution(mesh, store_ss_kinematic[mesh_idx], store_ss_lower[mesh_idx])
+    _plot_evolution(mesh, store_ss_kinematic[mesh_idx], store_ss_upper[mesh_idx])
+    _plot_common_evolution_elements()
+    plt.xlabel("$v$ strike-slip kinematic (mm/yr)")
+    plt.ylabel("$v$ strike-slip bounds (mm/yr)")
+    cax = inset_axes(
+        plt.gca(),
+        width="20%",
+        height="30%",
+        loc="upper right",
+        bbox_to_anchor=(0.0, 0.0, 0.07, 0.95),  # Position in axes fraction
+        bbox_transform=plt.gca().transAxes,
+        borderpad=0,
+    )
+    plt.colorbar(ch, cax=cax, ticks=[0.0, 1.0], label="coupling")
+
+    plt.subplot(2, 2, 3)
+    ch = plot_background()
+    _plot_evolution(mesh, store_ds_kinematic[mesh_idx], store_ds_elcon[mesh_idx])
+    _plot_common_evolution_elements()
+    plt.xlabel("$v$ dip-slip kinematic (mm/yr)")
+    plt.ylabel("$v$ dip-slip elastic (mm/yr)")
+    cax = inset_axes(
+        plt.gca(),
+        width="20%",
+        height="30%",
+        loc="upper right",
+        bbox_to_anchor=(0.0, 0.0, 0.07, 0.95),  # Position in axes fraction
+        bbox_transform=plt.gca().transAxes,
+        borderpad=0,
+    )
+    plt.colorbar(ch, cax=cax, ticks=[0.0, 1.0], label="coupling")
+
+    plt.subplot(2, 2, 4)
+    ch = plot_background()
+    _plot_evolution(mesh, store_ds_kinematic[mesh_idx], store_ds_lower[mesh_idx])
+    _plot_evolution(mesh, store_ds_kinematic[mesh_idx], store_ds_upper[mesh_idx])
+    _plot_common_evolution_elements()
+    plt.xlabel("$v$ dip-slip kinematic (mm/yr)")
+    plt.ylabel("$v$ dip-slip bounds (mm/yr)")
+    cax = inset_axes(
+        plt.gca(),
+        width="20%",
+        height="30%",
+        loc="upper right",
+        bbox_to_anchor=(0.0, 0.0, 0.07, 0.95),  # Position in axes fraction
+        bbox_transform=plt.gca().transAxes,
+        borderpad=0,
+    )
+    plt.colorbar(ch, cax=cax, ticks=[0.0, 1.0], label="coupling")
+    plt.suptitle(f"{mesh.name}")
+    plt.show()

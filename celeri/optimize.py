@@ -3,9 +3,9 @@ from __future__ import annotations
 import time
 import warnings
 from collections import namedtuple
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Literal, cast
+from typing import Any, cast
 
 import cvxopt
 import cvxpy as cp
@@ -14,6 +14,7 @@ import numpy as np
 from loguru import logger
 from scipy import linalg, sparse
 
+from celeri.config import Sqp2Objective
 from celeri.mesh import ScalarBound
 from celeri.model import Model
 from celeri.operators import (
@@ -126,17 +127,17 @@ class SlipRate:
     def out_of_bounds_coupling(
         self, *, smooth_kinematic: bool, tol: float = 1e-8, limits: SlipRateLimit
     ) -> tuple[int, int]:
-        oob1, total1 = self.strike_slip.out_of_bounds_coupling(
+        oob_ss, total_ss = self.strike_slip.out_of_bounds_coupling(
             smooth_kinematic=smooth_kinematic,
             tol=tol,
             coupling_bounds=limits.strike_slip.coupling_bounds,
         )
-        oob2, total2 = self.dip_slip.out_of_bounds_coupling(
+        oob_ds, total_ds = self.dip_slip.out_of_bounds_coupling(
             smooth_kinematic=smooth_kinematic,
             tol=tol,
             coupling_bounds=limits.dip_slip.coupling_bounds,
         )
-        return oob1 + oob2, total1 + total2
+        return oob_ss + oob_ds, total_ss + total_ds
 
     def out_of_bounds_detailed(
         self, *, smooth_kinematic: bool, tol: float = 1e-8, limits: SlipRateLimit
@@ -176,7 +177,16 @@ class SlipRate:
 
 @dataclass(kw_only=True)
 class SlipRateLimitItem:
-    """Slip rate limits for a single mesh, either for strike or dip slip."""
+    """Slip rate limits for a single mesh, either for strike or dip slip.
+
+    Attributes
+    ----------
+    kinematic_lower, kinematic_upper : np.ndarray | None
+        Geometric anchor values along the kinematic axis used to construct
+        the convex envelope of the bowtie constraint. These are NOT hard
+        bounds on the kinematic velocity; see `_tighten_kinematic_anchors`
+        for details.
+    """
 
     kinematic_lower: np.ndarray | None
     kinematic_upper: np.ndarray | None
@@ -264,9 +274,9 @@ class SlipRateLimitItem:
         elastic = np.zeros(self.constraints_matrix_elastic.shape)
         const = np.zeros(self.constraints_vector.shape)
 
-        # Define boundary points in (kinematic, elastic) space
+        # Define anchor points in (kinematic, elastic) space
 
-        # The lower left corner of the subset
+        # The lower-left anchor point (at kinematic_lower)
         lower_left_kinematic = self.kinematic_lower
         lower_left_elastic = np.where(
             self.kinematic_lower < 0,
@@ -274,7 +284,7 @@ class SlipRateLimitItem:
             self.kinematic_lower * coupling_lower,
         )
 
-        # The upper left corner of the subset
+        # The upper-left anchor point (at kinematic_lower)
         upper_left_kinematic = self.kinematic_lower
         upper_left_elastic = np.where(
             self.kinematic_lower < 0,
@@ -282,7 +292,7 @@ class SlipRateLimitItem:
             self.kinematic_lower * coupling_upper,
         )
 
-        # The lower right corner of the subset
+        # The lower-right anchor point (at kinematic_upper)
         lower_right_kinematic = self.kinematic_upper
         lower_right_elastic = np.where(
             self.kinematic_upper < 0,
@@ -290,7 +300,7 @@ class SlipRateLimitItem:
             self.kinematic_upper * coupling_lower,
         )
 
-        # The upper right corner of the subset
+        # The upper-right anchor point (at kinematic_upper)
         upper_right_kinematic = self.kinematic_upper
         upper_right_elastic = np.where(
             self.kinematic_upper < 0,
@@ -408,7 +418,7 @@ class SlipRateLimitItem:
         # Create a figure
         fig, ax = plt.subplots(figsize=figsize)
 
-        # Get the kinematic bounds for this index
+        # Get the kinematic anchor values for this index
         k_lower = self.kinematic_lower[index]
         k_upper = self.kinematic_upper[index]
 
@@ -477,6 +487,8 @@ class SlipRateLimitItem:
 
 @dataclass
 class SlipRateLimit:
+    """Class to store slip rates constraints for optimization problem"""
+
     strike_slip: SlipRateLimitItem
     dip_slip: SlipRateLimitItem
 
@@ -546,6 +558,25 @@ class SlipRateLimit:
 
 @dataclass
 class Minimizer:
+    """A class to store the results of an optimization run.
+
+    Attributes
+    ----------
+    model: Model
+    operators: Operators
+    cp_problem: cvxpy.Problem
+    params_raw: cvxpy.Expression
+        Raw parameters.
+    params: cvxpy.Expression
+        Scaled parameters.
+    params_scale: np.ndarray
+    objective_norm2: cp.Expression
+    constraint_scale: np.ndarray
+    slip_rate: list[SlipRate]
+    slip_rate_limits: list[SlipRateLimit]
+    smooth_kinematic: bool = True
+    """
+
     model: Model
     operators: Operators
     cp_problem: cp.Problem
@@ -650,16 +681,6 @@ class Minimizer:
         return loss
 
 
-Objective = Literal[
-    "expanded_norm2",
-    "sum_of_squares",
-    "qr_sum_of_squares",
-    "svd_sum_of_squares",
-    "norm2",
-    "norm1",
-]
-
-
 def build_cvxpy_problem(
     model: Model,
     *,
@@ -668,7 +689,7 @@ def build_cvxpy_problem(
     velocity_limits: list[SlipRateLimit] | None = None,
     smooth_kinematic: bool = True,
     slip_rate_reduction: float | None = None,
-    objective: Objective = "qr_sum_of_squares",
+    objective: Sqp2Objective = "qr_sum_of_squares",
     rescale_parameters: bool = True,
     rescale_constraints: bool = True,
     operators: Operators | None = None,
@@ -846,6 +867,8 @@ def build_cvxpy_problem(
             objective_val = cp.norm1(C_hat @ params_raw - d)
         case "norm2":
             objective_val = objective_norm2
+        case "huber":
+            objective_val = cp.sum(cp.huber(C_hat @ params_raw - d, M=5))
         case _:
             raise ValueError(f"Unknown objective type: {objective}")
 
@@ -862,9 +885,64 @@ def build_cvxpy_problem(
     A_hat_ = A_hat / A_scale[:, None]
     b_hat = b / A_scale
 
-    if len(b) > 0:
+    if len(b) > 0 and model.config.segment_slip_rate_hard_bounds:
         constraint = adapt_operator(A_hat_) @ params_raw <= b_hat
         constraints.append(constraint)
+
+    segment_slip_rate = (
+        operators.rotation_to_slip_rate @ params[: operators.index.n_blocks * 3]
+    )
+    gamma = model.config.segment_slip_rate_regularization
+    if gamma != 0.0:
+        subset = np.concatenate(
+            [
+                model.segment.ss_rate_flag == 2,
+                model.segment.ds_rate_flag == 2,
+                model.segment.ts_rate_flag == 2,
+            ]
+        )
+        objective_val = objective_val + gamma * cp.sum_squares(
+            segment_slip_rate[subset]
+        )
+
+    segment_slip_rate = segment_slip_rate.reshape((-1, 3), order="C")
+    # Add segment slip rate bounds
+    for comp, bound_flag_attr, lower_attr, upper_attr in [
+        (
+            "strike_slip",
+            "ss_rate_bound_flag",
+            "ss_rate_bound_min",
+            "ss_rate_bound_max",
+        ),
+        (
+            "dip_slip",
+            "ds_rate_bound_flag",
+            "ds_rate_bound_min",
+            "ds_rate_bound_max",
+        ),
+        (
+            "tensile_slip",
+            "ts_rate_bound_flag",
+            "ts_rate_bound_min",
+            "ts_rate_bound_max",
+        ),
+    ]:
+        bound_flags = getattr(model.segment, bound_flag_attr).values
+        if np.any(bound_flags):
+            lower_bounds = getattr(model.segment, lower_attr).values[bound_flags == 1]
+            upper_bounds = getattr(model.segment, upper_attr).values[bound_flags == 1]
+            bound_sig = model.config.segment_slip_rate_bound_weight
+
+            comp_idx = {"strike_slip": 0, "dip_slip": 1, "tensile_slip": 2}[comp]
+            slip_rates_comp = segment_slip_rate[:, comp_idx][bound_flags == 1]
+            if lower_bounds.size > 0:
+                objective_val = objective_val + bound_sig * cp.sum_squares(
+                    cp.pos(lower_bounds - slip_rates_comp)
+                )
+            if upper_bounds.size > 0:
+                objective_val = objective_val + bound_sig * cp.sum_squares(
+                    cp.pos(slip_rates_comp - upper_bounds)
+                )
 
     cp_problem = cp.Problem(cp.Minimize(objective_val), constraints)
 
@@ -883,13 +961,190 @@ def build_cvxpy_problem(
     )
 
 
-def _tighten_kinematic_bounds(
+class MinimizationComplete(Exception):
+    pass
+
+
+def _tighten_kinematic_anchors(
     minimizer: Minimizer,
     *,
     tighten_all: bool = True,
     factor: float = 0.5,
-):
+    iteration_number: int,
+    num_oob: int,
+    remaining_annealing_schedule: list[float],
+) -> None:
+    """Tighten (or loosen) coupling constraint bounds for the SQP solver.
+
+    Background:
+        The coupling constraints require:
+
+            coupling_lower <= elastic / kinematic <= coupling_upper
+
+        In (kinematic, elastic) space, this defines a "bowtie" or double-sided
+        cone: one triangular wedge for positive kinematic velocities, and one
+        for negative. The union of these two wedges is non-convex:
+
+                                        elastic                   slope = coupling_upper
+                                           ^                      /:
+                                           |                     /::
+                                           |                    /::::
+                                           |                   /:::::
+                                           |                  /::::::
+                                           |                 /::::::::      non-convex
+                                           |                /:::::::::      unbounded
+                                           |               /::::::::::  <-- allowed
+                                           |              /::::::::::::     region
+                                           |             /:::::::::::::
+                                           |            /::::::::::::::
+                                           |           /::::::::::::::::
+                                           |          /:::::::::::::::::
+                                           |         /::::::::::::::::::
+                                           |        /::::::::::::::::::::
+                                           |       /:::::::::::::::::::::
+                                           |      /::::::::::::::::::::::
+                                           |     /::::::::::::::::::::::::
+                                           |    /:::::::::::::::::::::::::
+                                           |   /::::::::::::::::::::::::::
+                                           |  /::::::::::::::::::::::::::::
+                                           | /:::::::::::::::::::::::::::::
+                                           |/::::::::::::::::::::::::::::::
+        -----------------------------------+--------------------------------> kinematic
+         :::::::::::::::::::::::::::::::::/|        coupling_lower = 0
+          :::::::::::::::::::::::::::::::/ |
+           :::::::::::::::::::::::::::::/  |
+            :::::::::::::::::::::::::::/   |
+             :::::::::::::::::::::::::/    |
+              :::::::::::::::::::::::/     |
+               :::::::::::::::::::::/      |
+                :::::::::::::::::::/       |
+                 :::::::::::::::::/        |
+                  :::::::::::::::/         |
+                   :::::::::::::/          |
+                    :::::::::::/           |
+                     :::::::::/            |
+                      :::::::/             |
+                       :::::/              |
+                        :::/               |
+                         :/                |
+
+        If we knew the sign of each kinematic velocity, then we could restrict to
+        the corresponding wedge, and the constraints would be convex. To obtain a
+        tractable convex optimization problem without assuming the sign ahead of
+        time, we construct an approximate convex envelope. Concretely, we
+        introduce two auxiliary kinematic anchor values, `kinematic_lower` and
+        `kinematic_upper`. These are geometric construction points along the
+        kinematic axis that determine where we intersect the bowtie to build the
+        convex envelope:
+
+                                        elastic
+                                           ^                      /  /:
+                                           |                     / ,'::
+                                           |                    / /:::::
+                                           |                   /,`::::::
+                                           |      anchor      //::::::::
+                                           |       point --> X:::::::::::      convex
+                                           |                /|:::::::::::      unbounded
+                                           |              ,/:|:::::::::::  <-- allowed
+                                           |             //::|::::::::::::     region
+                                           |           ,`/:::|::::::::::::
+                                           |          /:/::::|::::::::::::
+                                           |        ,`:/:::::|:::::::::::::
+                                           |       /::/::::::|:::::::::::::
+                                           |     ,`::/:::::::|:::::::::::::
+                                           |    /:::/::::::::|::::::::::::::
+                                           |  ,`:::/:::::::::|::::::::::::::
+                                           | /::::/::::::::::|::::::::::::::
+                                           |`::::/:::::::::::|:::::::::::::::
+                                          /|::::/::::::::::::|:::::::::::::,-
+                              kinematic ,`:|:::/:::::::::::::|::::::::::,-`
+                                lower  /:::|::/::::::::::::::|:::::::,-`
+                                  |  ,`::::|:/:::::::::::::::|::::,-`
+                                  v /::::::|/::::::::::::::::|:,-`
+        --------------------------X--------+-----------------X--------------> kinematic
+                                 /|:::::::/|:::::::::::::,-` ^
+                               ,`:|::::::/:|::::::::::,-`    |
+                              /:::|:::::/::|:::::::,-`   kinematic
+                            ,`::::|::::/:::|::::,-`        upper
+                           /::::::|:::/::::|:,-`
+                         ,`:::::::|::/::::,|`
+                        /:::::::::|:/::,-` |
+                      ,`::::::::::|/,-`    |
+                     /:::::::::::,X`       |
+                   ,`:::::::::,-`/         |
+                  /::::::::,-`  /          |
+                ,`::::::,-`    /           |
+               /:::::,-`      /            |
+             ,`:::,-`        /             |
+            /::,-`          /              |
+          ,`,-`            /               |
+         /-`              /                |
+
+        From these two anchor values we define four anchor points where the vertical
+        lines at `kinematic_lower` and `kinematic_upper` intersect the bowtie
+        boundary. Two artificial linear inequality constraints are then defined by
+        connecting the upper and lower pairs of anchor points. The resulting allowed
+        region is an unbounded infinite wedge-shaped region (or an infinite strip if
+        the upper and lower lines are parallel).
+
+        When `kinematic_lower` and `kinematic_upper` have the same sign, the
+        wedge coincides with exactly one branch of the original bowtie.
+
+    This function is called after each SQP iteration to adjust the anchor values:
+    - During normal iterations (when `num_oob > 0`): anchor values are tightened by
+      reducing their distance to the current kinematic solution to a fraction
+      (`factor`) of the previous distance.
+    - During annealing (when `num_oob == 0` and annealing is enabled): anchor
+      values are slightly loosened to allow the solver to escape local minima.
+
+    Args:
+        minimizer: The current optimization state containing slip rates and
+            anchor values (limits).
+        tighten_all: If True, tighten anchor values for all mesh elements uniformly.
+            If False, only tighten anchor values for elements that are currently
+            out-of-bounds (selective tightening).
+        factor: Fraction to which the gap between the current kinematic value and
+            each anchor value is reduced. Must be in (0, 1). Default 0.5 means
+            anchor values move halfway towards the current solution each iteration.
+            Values near 0 cause anchor values to tighten quickly; values near 1
+            cause them to tighten slowly.
+        iteration_number: Current iteration index (for logging/debugging).
+        num_oob: Number of mesh elements currently violating coupling bounds.
+        remaining_annealing_schedule: Mutable list of looseness values (mm/yr)
+            for annealing passes. When `num_oob == 0`, the first value is popped
+            and used to widen anchor values, allowing the solver to explore nearby
+            solutions. When this list is exhausted and `num_oob == 0`,
+            `MinimizationComplete` is raised.
+
+    Raises:
+        MinimizationComplete: When all values are within bounds and no annealing
+            passes remain. This signals that the optimization should terminate.
+        ValueError: If anchor values are partially defined (must have both
+            lower and upper, or neither).
+
+    Note:
+        The bound update formula is:
+            upper_new = kinematic + factor * (upper_old - kinematic) + looseness
+            lower_new = kinematic + factor * (lower_old - kinematic) - looseness
+
+        Where `looseness` is 0 during normal tightening, or a positive value
+        from the annealing schedule when loosening constraints.
+    """
     assert factor > 0 and factor < 1
+
+    if num_oob > 0:
+        looseness = 0
+    elif len(remaining_annealing_schedule) == 0:
+        raise MinimizationComplete()
+    else:
+        # We have fixed all OOBs, and annealing is enabled, so use the first remaining
+        # value in the annealing schedule as the looseness.
+        looseness = remaining_annealing_schedule.pop(0)
+        print(
+            f"ANNEALING\n"
+            f"Achieved objective 2-norm: {minimizer.objective_norm2.value}\n"
+            f"Now loosening constraints by {looseness} mm/yr\n"
+        )
 
     def tighten_item(limits: SlipRateLimitItem, coupling: SlipRateItem):
         elastic = coupling.elastic_numpy()
@@ -908,7 +1163,8 @@ def _tighten_kinematic_bounds(
 
         if limits.kinematic_lower is None or limits.kinematic_upper is None:
             raise ValueError(
-                "Invalid coupling bounds. Must have both lower and upper bounds or neither."
+                "Invalid kinematic anchor values. "
+                "Must have both lower and upper anchor values, or neither."
             )
 
         upper = limits.kinematic_upper.copy()
@@ -917,9 +1173,9 @@ def _tighten_kinematic_bounds(
         if tighten_all:
             target = kinematic
             diff = upper - target
-            upper = target + factor * diff
+            upper = target + factor * diff + looseness
             diff = lower - target
-            lower = target + factor * diff
+            lower = target + factor * diff - looseness
         else:
             pos = kinematic > 0
             oob = (
@@ -947,16 +1203,19 @@ def _tighten_kinematic_bounds(
             diff = lower[oob] - target
             lower[oob] = target + factor * diff
 
-        # Just fix the sign once the interval only positive or negative
+        # Once the anchor values have the same sign, the constraint region
+        # coincides with one branch of the original bowtie. Both sloped
+        # constraint lines pass through the origin, so any pair of anchor
+        # values with the correct sign defines the same lines. We use
+        # canonical values [0, 1] or [-1, 0].
+
+        # First the positive kinematic velocities
         fixed_sign = lower >= 0
         lower[fixed_sign] = 0.0
-        # Any positive value will do, because we only care about the line
-        # that passes through the point
         upper[fixed_sign] = 1.0
 
+        # Then the negative kinematic velocities
         fixed_sign = upper <= 0
-        # Any negative value will do, because we only care about the line
-        # that passes through the point
         lower[fixed_sign] = -1.0
         upper[fixed_sign] = 0.0
 
@@ -976,6 +1235,42 @@ def _tighten_kinematic_bounds(
 
 @dataclass
 class MinimizerTrace:
+    """A class to track the progress of an optimization run across iterations.
+
+    Attributes
+    ----------
+    model: Model
+        The model being optimized.
+    params: list[np.ndarray]
+        Scaled parameters at each iteration.
+    params_raw: list[np.ndarray]
+        Raw (unscaled) parameters at each iteration.
+    slip_rates: list[list[SlipRate]]
+        Slip rates at each iteration, organized by mesh segment.
+    slip_rate_limits: list[list[SlipRateLimit]]
+        Slip rate limits at each iteration, organized by mesh segment.
+    objective: list[float]
+        Objective function value at each iteration.
+    objective_norm2: list[float]
+        L2 norm of the objective function residual at each iteration.
+    nonconvex_constraint_loss: list[float]
+        Non-convex constraint loss at each iteration.
+    out_of_bounds: list[int]
+        Number of velocities out of bounds at each iteration.
+    out_of_bounds_detailed: list[np.ndarray]
+        Detailed out-of-bounds information at each iteration.
+    iter_time: list[float]
+        Time taken for each iteration in seconds.
+    total_time: float
+        Total elapsed time since initialization.
+    start_time: float
+        Timestamp when the trace was initialized.
+    last_update_time: float
+        Timestamp of the last update.
+    minimizer: Minimizer
+        The optimization result.
+    """
+
     model: Model
     params: list[np.ndarray]
     params_raw: list[np.ndarray]
@@ -1020,7 +1315,7 @@ class MinimizerTrace:
         print(f"Iteration: {iter_num}")
         print(f"{oob} of {total} velocities are out-of-bounds")
         print(f"Non-convex constraint loss: {nonconvex_loss:.2e}")
-        print(f"residual 2-norm: {objective:.5e}")
+        print(f"residual 2-norm: {objective}")
         print(f"Iteration took {iter_time:.2f}s")
         print()
 
@@ -1133,7 +1428,7 @@ def _custom_cvxopt_solve(problem: cp.Problem, **kwargs):
     problem.unpack_results(sol, chain, inverse_data)  # type: ignore
 
 
-def _custom_solve(problem: cp.Problem, solver: str, objective: Objective, **kwargs):
+def _custom_solve(problem: cp.Problem, solver: str, objective: Sqp2Objective, **kwargs):
     if solver == "CUSTOM_CVXOPT":
         if objective not in [
             "expanded_norm2",
@@ -1169,8 +1464,10 @@ def solve_sqp2(
     verbose: bool = False,
     rescale_parameters: bool = True,
     rescale_constraints: bool = True,
-    objective: Objective = "qr_sum_of_squares",
+    objective: Sqp2Objective | None = None,
     operators: Operators | None = None,
+    annealing_enabled: bool | None = None,
+    annealing_schedule: Sequence[float] | None = None,
 ) -> Estimation:
     """Iteratively solve a constrained optimization problem for fault slip rates.
 
@@ -1184,11 +1481,41 @@ def solve_sqp2(
         solve_kwargs: Additional keyword arguments passed to the solver
         reduction_factor: Factor to reduce bounds by in each iteration (0-1)
         verbose: Whether to print progress information
+        rescale_parameters: bool
+        rescale_constraints: bool
+        objective: Objective
+        operators: operators.Operators
+        annealing_enabled: bool
+        annealing_schedule: Sequence[float] (mm/yr)
 
     Returns:
-        A trace object containing the optimization history
+        An Estimation object containing the optimization results.
     """
+    # Set values from config if not provided.
+    if annealing_enabled is None:
+        annealing_enabled = model.config.sqp2_annealing_enabled
+    if annealing_schedule is None:
+        annealing_schedule = model.config.sqp2_annealing_schedule
+
+    # Initialize the working/remaining annealing schedule.
+    remaining_annealing_schedule: list[float]
+    if annealing_enabled:
+        if annealing_schedule is None:
+            raise ValueError(
+                "Annealing is enabled, but no annealing schedule is provided."
+            )
+        else:
+            # Make a working copy of the annealing schedule so that we can pop off values
+            # without mutating the original.
+            remaining_annealing_schedule = list(annealing_schedule)
+    else:
+        # No annealing is equivalent to an empty annealing schedule.
+        remaining_annealing_schedule = []
+
     limits = SlipRateLimit.from_model(model)
+
+    if objective is None:
+        objective = model.config.sqp2_objective
 
     minimizer = build_cvxpy_problem(
         model,
@@ -1214,11 +1541,18 @@ def solve_sqp2(
     solver = default_solve_kwargs.pop("solver")
 
     # Storage for all warnings across loop iterations
-    all_warnings = []
+    all_warnings: list[dict[str, Any]] = []
 
-    # Intializing this so that warnings check will run even with no iteration case
-    num_iter = 0
-    for num_iter in range(max_iter):
+    # Intialize loop variables that are also referenced outside the loop.
+    iteration_number = -1
+    num_oob: int | None = None
+
+    for iteration_number in range(max_iter):
+        # Within each iteration we solve the convexified QP and tighten the bounds.
+        # We stop if:
+        # 1. We have reached the maximum number of iterations
+        # 2. We have fixed all out-of-bounds values, and there's no more annealing to do
+
         # QP solve in context manager to capture warnings
         with warnings.catch_warnings(record=True) as caught_warnings:
             warnings.simplefilter("always")
@@ -1233,7 +1567,7 @@ def solve_sqp2(
         for warning in caught_warnings:
             all_warnings.append(  # noqa: PERF401
                 {
-                    "iteration": num_iter,
+                    "iteration_number": iteration_number,
                     "message": str(warning.message),
                     "category": warning.category.__name__,
                     "filename": warning.filename,
@@ -1245,24 +1579,36 @@ def solve_sqp2(
         if verbose:
             trace.print_last_progress()
 
-        num_oob, total = minimizer.out_of_bounds()
-        if num_oob == 0:
-            break
+        num_oob, _total = minimizer.out_of_bounds()
 
-        _tighten_kinematic_bounds(
-            minimizer,
-            factor=reduction_factor,
-            tighten_all=True,
-        )
+        try:
+            _tighten_kinematic_anchors(
+                minimizer,
+                factor=reduction_factor,
+                tighten_all=True,
+                iteration_number=iteration_number,
+                remaining_annealing_schedule=remaining_annealing_schedule,
+                num_oob=num_oob,
+            )
+        except MinimizationComplete:
+            break
+    else:
+        # No MinimizationComplete exception was raised.
+        assert iteration_number == max_iter - 1
+        if num_oob is not None and num_oob > 0:
+            logger.warning(
+                f"SQP iteration: Reached maximum number of {max_iter} iterations, "
+                f"but there are still {num_oob} out-of-bounds values."
+            )
 
     # Log warning if the last iteration includes an error
     if all_warnings:
-        if all_warnings[-1]["iteration"] == num_iter:
+        if all_warnings[-1]["iteration_number"] == iteration_number:
             logger.warning(f"SQP iteration: {all_warnings[-1]['message']}")
         else:
-            iterations_with_warnings = [d["iteration"] for d in all_warnings]
+            iterations_with_warnings = [d["iteration_number"] for d in all_warnings]
             logger.info(
-                f"SQP iteration: Warnings in iterations {iterations_with_warnings} of {num_iter + 1} total iterations"
+                f"SQP iteration: Warnings in iterations {iterations_with_warnings} of {iteration_number + 1} total iterations"
             )
     else:
         logger.info("SQP iteration: Ran with no warnings")
@@ -1273,7 +1619,7 @@ def solve_sqp2(
 def benchmark_solve(
     model: Model,
     *,
-    objective: Objective,
+    objective: Sqp2Objective,
     rescale_parameters: bool,
     rescale_constraints: bool,
     solver: str,

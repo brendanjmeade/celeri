@@ -2,19 +2,18 @@ import copy
 from dataclasses import dataclass
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from loguru import logger
+from matplotlib import path
 from scipy.spatial.distance import cdist
 
 from celeri import celeri_closure
-from celeri.celeri_util import polygon_area, sph2cart
+from celeri.celeri_util import sph2cart
 from celeri.config import Config, get_config
 from celeri.constants import GEOID, RADIUS_EARTH
 from celeri.mesh import Mesh
-import matplotlib.pyplot as plt
-from matplotlib.patches import Polygon as MatplotlibPolygon
-from matplotlib import path
 
 
 @dataclass
@@ -124,6 +123,10 @@ def read_data(config: Config):
         if f"{name}_rate_bound_max" not in segment.columns:
             segment[f"{name}_rate_bound_max"] = 1.0
 
+        if f"{name}_reg_flag" not in segment.columns:
+            segment[f"{name}_reg_flag"] = 1
+            segment.loc[segment[f"{name}_rate_bound_flag"] == 1, f"{name}_reg_flag"] = 0
+
     logger.success(f"Read: {config.segment_file_name}")
 
     # Read block data
@@ -135,38 +138,9 @@ def read_data(config: Config):
     meshes = []
     meshes = [Mesh.from_params(mesh_param) for mesh_param in config.mesh_params]
 
-    # Read station data
-    if config.station_file_name is None:
-        columns = pd.Index(
-            [
-                "lon",
-                "lat",
-                "corr",
-                "other1",
-                "name",
-                "east_vel",
-                "north_vel",
-                "east_sig",
-                "north_sig",
-                "flag",
-                "up_vel",
-                "up_sig",
-                "east_adjust",
-                "north_adjust",
-                "up_adjust",
-                "depth",
-                "x",
-                "y",
-                "z",
-                "block_label",
-            ]
-        )
-        station = pd.DataFrame(columns=columns)
-        logger.info("No station_file_name")
-    else:
-        station = pd.read_csv(config.station_file_name)
-        station = station.loc[:, ~station.columns.str.match("Unnamed")]
-        logger.success(f"Read: {config.station_file_name}")
+    station = pd.read_csv(config.station_file_name)
+    station = station.loc[:, ~station.columns.str.match("Unnamed")]
+    logger.success(f"Read: {config.station_file_name}")
 
     # Read Mogi source data
     if config.mogi_file_name is None:
@@ -294,37 +268,6 @@ def process_sar(sar, config):
         sar["x"] = []
         sar["block_label"] = []
     return sar
-
-
-def merge_geodetic_data(assembly, station, sar):
-    """Merge GPS and InSAR data to a single assembly object."""
-    assembly.data.n_stations = len(station)
-    assembly.data.n_sar = len(sar)
-    assembly.data.east_vel = station.east_vel.to_numpy()
-    assembly.sigma.east_sig = station.east_sig.to_numpy()
-    assembly.data.north_vel = station.north_vel.to_numpy()
-    assembly.sigma.north_sig = station.north_sig.to_numpy()
-    assembly.data.up_vel = station.up_vel.to_numpy()
-    assembly.sigma.up_sig = station.up_sig.to_numpy()
-    assembly.data.sar_line_of_sight_change_val = sar.line_of_sight_change_val.to_numpy()
-    assembly.sigma.sar_line_of_sight_change_sig = (
-        sar.line_of_sight_change_sig.to_numpy()
-    )
-    assembly.data.lon = np.concatenate((station.lon.to_numpy(), sar.lon.to_numpy()))
-    assembly.data.lat = np.concatenate((station.lat.to_numpy(), sar.lat.to_numpy()))
-    assembly.data.depth = np.concatenate(
-        (station.depth.to_numpy(), sar.depth.to_numpy())
-    )
-    assembly.data.x = np.concatenate((station.x.to_numpy(), sar.x.to_numpy()))
-    assembly.data.y = np.concatenate((station.y.to_numpy(), sar.y.to_numpy()))
-    assembly.data.z = np.concatenate((station.z.to_numpy(), sar.z.to_numpy()))
-    assembly.data.block_label = np.concatenate(
-        (station.block_label.to_numpy(), sar.block_label.to_numpy())
-    )
-    assembly.index.sar_coordinate_idx = np.arange(
-        len(station), len(station) + len(sar)
-    )  # TODO: Not sure this is correct
-    return assembly
 
 
 def process_segment(segment, config, meshes):
@@ -743,21 +686,49 @@ def assign_block_labels(segment, station, block, mogi, sar):
     return closure, segment, station, block, mogi, sar
 
 
-def station_row_keep(assembly):
-    """Determines which station rows should be retained based on up velocities
-    TODO: I do not understand this!!!
-    TODO: The logic in the first conditional seems to indicate that if there are
-    no vertical velocities as a part of the data then they should be eliminated.
-    TODO: Perhaps it would be better to make this a flag in config???
+def assign_mesh_segment_labels(
+    model: Model, mesh_idx: int
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """For a mesh, finds the closest segment midpoint and assigns
+    the east and west block labels from that segment.
+
+    Returns:
+        closest_segment_idx: indices of closest segments
+        east_labels: block labels on eastern side
+        west_labels: block labels on western side
     """
-    if np.sum(np.abs(assembly.data.up_vel)) == 0:
-        assembly.index.station_row_keep = np.setdiff1d(
-            np.arange(0, assembly.index.sz_rotation[0]),
-            np.arange(2, assembly.index.sz_rotation[0], 3),
-        )
-    else:
-        assembly.index.station_row_keep = np.arange(0, assembly.index.sz_rotation[1])
-    return assembly
+    # Find subset of segments that are replaced by this mesh
+    seg_replace_idx = np.where(
+        (model.segment.mesh_flag != 0) & (model.segment.mesh_file_index == mesh_idx)
+    )
+
+    # Find closest segment midpoint to each element centroid, using scipy.spatial.cdist
+    model.meshes[mesh_idx].closest_segment_idx = seg_replace_idx[0][
+        cdist(
+            np.array(
+                [
+                    model.meshes[mesh_idx].lon_centroid,
+                    model.meshes[mesh_idx].lat_centroid,
+                ]
+            ).T,
+            np.array(
+                [
+                    model.segment.mid_lon[seg_replace_idx[0]],
+                    model.segment.mid_lat[seg_replace_idx[0]],
+                ]
+            ).T,
+        ).argmin(axis=1)
+    ]
+
+    # Add segment labels to elements
+    closest_segment_idx = model.meshes[mesh_idx].closest_segment_idx
+    assert closest_segment_idx is not None
+
+    east_labels = np.array(model.segment.east_labels[closest_segment_idx])
+    west_labels = np.array(model.segment.west_labels[closest_segment_idx])
+
+    assert east_labels is not None and west_labels is not None
+    return east_labels, west_labels, closest_segment_idx
 
 
 def make_default_segment(length):
@@ -772,8 +743,6 @@ def make_default_segment(length):
             "dip",
             "locking_depth",
             "locking_depth_flag",
-            "dip_sig",
-            "dip_flag",
             "ss_rate",
             "ss_rate_sig",
             "ss_rate_flag",

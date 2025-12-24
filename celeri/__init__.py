@@ -10,7 +10,6 @@ from celeri.celeri_util import (
     get_transverse_projection,
     interleave2,
     interleave3,
-    read_run,
     wrap2360,
 )
 from celeri.cli import parse_args, process_args
@@ -21,12 +20,10 @@ from celeri.model import (
     assign_block_labels,
     build_model,
     create_output_folder,
-    merge_geodetic_data,
     process_sar,
     process_segment,
     process_station,
     read_data,
-    station_row_keep,
 )
 from celeri.operators import (
     Operators,
@@ -51,8 +48,6 @@ from celeri.operators import (
 )
 from celeri.optimize import solve_sqp2
 from celeri.optimize_sqp import (
-    plot_coupling,
-    plot_coupling_evolution,
     plot_iterative_convergence,
     solve_sqp,
 )
@@ -61,13 +56,15 @@ from celeri.plot import (
     get_default_plotting_options,
     plot_coastlines,
     plot_common_elements,
+    plot_coupling,
+    plot_coupling_evolution,
     plot_estimation_summary,
     plot_fault_geometry,
     plot_input_summary,
     plot_land,
     plot_matrix_abs_log,
+    plot_mesh,
     plot_mesh_mode,
-    plot_meshes,
     plot_residuals,
     plot_rotation_components,
     plot_segment_displacements,
@@ -151,7 +148,6 @@ __all__ = [
     "interleave2",
     "interleave3",
     "lsqlin_qp",
-    "merge_geodetic_data",
     "parse_args",
     "plot_coastlines",
     "plot_common_elements",
@@ -163,8 +159,8 @@ __all__ = [
     "plot_iterative_convergence",
     "plot_land",
     "plot_matrix_abs_log",
+    "plot_mesh",
     "plot_mesh_mode",
-    "plot_meshes",
     "plot_residuals",
     "plot_rotation_components",
     "plot_segment_displacements",
@@ -178,11 +174,9 @@ __all__ = [
     "process_segment",
     "process_station",
     "read_data",
-    "read_run",
     "solve_mcmc",
     "solve_sqp",
     "solve_sqp2",
-    "station_row_keep",
     "wrap2360",
     "write_output",
 ]

@@ -6,9 +6,9 @@ import celeri
 @pytest.mark.parametrize(
     "config_file",
     [
-        "./tests/test_japan_config.json",
+        "./tests/configs/test_japan_config.json",
         pytest.param(
-            "./tests/test_western_north_america_config.json",
+            "./tests/configs/test_wna_config.json",
             marks=pytest.mark.xfail(
                 raises=ValueError, reason="Solver did not converge"
             ),

@@ -38,9 +38,9 @@ class ScalarBound(BaseModel):
             return {"lower": lower, "upper": upper}
         return data
 
+
 class MeshConfig(BaseModel):
-    """
-    Configuration for the mesh.
+    """Configuration for the mesh.
 
     Attributes
     ----------
@@ -81,6 +81,7 @@ class MeshConfig(BaseModel):
     elastic_constraints_ds : ScalarBound
         Tuple containing the constrained upper and lower bounds for the elastic rates on the mesh for dip-slip.
     """
+
     # Forbid extra fields when reading from JSON
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
@@ -114,6 +115,12 @@ class MeshConfig(BaseModel):
     # This is used instead of `top_slip_rate_weight`, `bot_slip_rate_weight`, and
     # `side_slip_rate_weight` if the TDE eigenmodes are used.
     eigenmode_slip_rate_constraint_weight: float = 1.0
+
+    # Sigma for the artificial observed 0s on elastic velocities at the
+    # boundaries, used in MCMC sampling when the corresponding constraint == 1.
+    top_elastic_constraint_sigma: float = 0.5
+    bot_elastic_constraint_sigma: float = 0.5
+    side_elastic_constraint_sigma: float = 0.5
 
     # Filename for fixed slip rates, not currently used
     a_priori_slip_filename: Path | None = None
@@ -218,7 +225,24 @@ def _compute_ordered_edge_nodes(mesh: dict):
 
 
 def _compute_mesh_edge_elements(mesh: dict):
-    # Find indices of elements lining top, bottom, and sides of each mesh
+    """
+    Compute mesh boundary elements that are classified as top, bottom, or side.
+
+    Modifies the `mesh` dictionary in-place by adding boolean arrays 
+    indicating which elements are on the top, bottom, or side of the mesh boundary. 
+    The classification is based on the depth of each element's vertices. 
+    Top elements are those that are relatively shallow, bottom elements are deepest, 
+    and sides are edges that are on the boundary but not classified as top or bottom.
+
+    Args:
+        mesh (dict): A mesh dictionary with keys including "points" (vertex coordinates), 
+            "verts" (triangular element vertex indices), and (on exit) "ordered_edge_nodes".
+
+    Modifies:
+        mesh["top_elements"]: np.ndarray of bool, True for elements on the top surface.
+        mesh["bot_elements"]: np.ndarray of bool, True for elements on the bottom surface.
+        mesh["side_elements"]: np.ndarray of bool, True for elements on mesh sides.
+    """
 
     _compute_ordered_edge_nodes(mesh)
 
@@ -294,7 +318,6 @@ def _compute_mesh_edge_elements(mesh: dict):
     depth_count, depth_bins = np.histogram(centroid_depths[tops], bins="doane")
     depth_bin_min = depth_bins[0:-1]
     depth_bin_max = depth_bins[1:]
-    np.std(depth_bins)
     zero_idx = np.where(depth_count == 0)[0]
     if len(zero_idx) > 0:
         if np.abs(depth_bin_max[zero_idx[0]] - depth_bin_min[zero_idx[-1] + 1]) > 10:
@@ -323,7 +346,6 @@ def _compute_mesh_edge_elements(mesh: dict):
     depth_count, depth_bins = np.histogram(centroid_depths[bots], bins="doane")
     depth_bin_min = depth_bins[0:-1]
     depth_bin_max = depth_bins[1:]
-    np.std(depth_bins)
     zero_idx = np.where(depth_count == 0)[0]
     if len(zero_idx) > 0:
         if abs(depth_bin_min[zero_idx[-1]] - depth_bin_max[zero_idx[0] - 1]) > 10:
@@ -339,6 +361,52 @@ def _compute_mesh_edge_elements(mesh: dict):
     sides[np.where(tops != 0)] = False
     sides[np.where(bots != 0)] = False
     mesh["side_elements"] = sides
+
+
+def _compute_n_tde_constraints(
+    n_tde: int,
+    top_slip_idx: np.ndarray,
+    bot_slip_idx: np.ndarray,
+    side_slip_idx: np.ndarray,
+) -> int:
+    """Compute the total number of TDE constraints.
+
+    Builds a constraint matrix and counts rows with at least one constraint,
+    replicating the logic from operators._store_tde_slip_rate_constraints.
+
+    Args:
+        n_tde: Number of triangular elements
+        top_slip_idx: Indices for top boundary constraints
+        bot_slip_idx: Indices for bottom boundary constraints
+        side_slip_idx: Indices for side boundary constraints
+
+    Returns:
+        Total number of constraint rows
+    """
+    tde_slip_rate_constraints = np.zeros((2 * n_tde, 2 * n_tde))
+    end_row = 0
+
+    boundary_slip_indices = [top_slip_idx, bot_slip_idx, side_slip_idx]
+
+    for slip_idx in boundary_slip_indices:
+        if len(slip_idx) > 0:
+            start_row = end_row
+            end_row = start_row + len(slip_idx)
+            tde_slip_rate_constraints[start_row:end_row, slip_idx] = np.eye(
+                len(slip_idx)
+            )
+
+    # Count rows with at least one constraint
+    # Total number of slip constraints:
+    # 2 for each element that has coupling constrained (top, bottom, side, specified indices)
+    # 1 for each additional slip component that is constrained (specified indices)
+
+    # TODO: Number of total constraints is determined by just finding 1 in the
+    # constraint array. This could cause an error when the index Dict is constructed,
+    # if an individual element has a constraint imposed, but that element is also
+    # a constrained edge element. Need to build in some uniqueness tests.
+    sum_constraint_columns = np.sum(tde_slip_rate_constraints, 1)
+    return int(np.sum(sum_constraint_columns > 0))
 
 
 def _compute_mesh_perimeter(mesh: dict):
@@ -359,86 +427,81 @@ def _compute_mesh_perimeter(mesh: dict):
 class Mesh:
     """Triangular mesh for fault modeling.
 
-        Parameters
-        ----------
-        points: np.ndarray
-            The coordinates of the vertices of the mesh.
-        verts: np.ndarray
-            The indices of the vertices composing each triangle of the mesh.
-        lon1: np.ndarray
-            The longitude of the vertex 1 of each triangle of the mesh.
-        lat1: np.ndarray
-            The latitude of the vertex 1 of each triangle of the mesh.
-        dep1: np.ndarray
-            The depth of the vertex 1 of each triangle of the mesh.
-        lon2: np.ndarray
-            The longitude of the vertex 2 of each triangle of the mesh.
-        lat2: np.ndarray
-            The latitude of the vertex 2 of each triangle of the mesh.
-        dep2: np.ndarray
-            The depth of the vertex 2 of each triangle of the mesh.
-        lon3: np.ndarray
-            The longitude of the vertex 3 of each triangle of the mesh.
-        lat3: np.ndarray
-            The latitude of the vertex 3 of each triangle of the mesh.
-        dep3: np.ndarray
-            The depth of the vertex 3 of each triangle of the mesh.
-        centroids: np.ndarray
-            The centroids of the triangles.
-        x_centroid: np.ndarray
-            The x-coordinates of the centroids of the triangles.
-        y_centroid: np.ndarray
-            The y-coordinates of the centroids of the triangles.
-        z_centroid: np.ndarray
-            The z-coordinates of the centroids of the triangles.
-        nv: np.ndarray
-            Normal vectors of the triangles.
-        strike: np.ndarray
-            Magnitude of the strike slip on each triangle.
-        dip: np.ndarray
-            Magnitude of the dip slip on each triangle.
-        dip_flag: np.ndarray
-            Bool indicating the presence of dip slip on each triangle.
-        n_tde: int
-            The number of triangular elements constituting the mesh.
-        areas: np.ndarray
-            The surface areas of the triangles.
-        ordered_edge_nodes: np.ndarray
-            The edges constituting the perimeter of the mesh.
-        side_elements: np.ndarray
-            Bool indicating the presence of side elements on each triangle.
-        bot_elements: np.ndarray
-            Bool indicating if each triangle is a bottom element. Each triangle along the edge of the mesh will
-            naturally have two vertices which compose the outer edge that actually belongs to the perimeter of the mesh,
-            and a third "interior" vertex. A bottom element is defined as an edge triangle such that the depth
-            difference between the interior vertex and the midpoint of the outer edge is more negative than the depth
-            difference between the other two vertices.
-        top_elements: np.ndarray
-            Bool indicating top elements, the opposite of bottom elements.
-        side_elements: np.ndarray
-            Bool indicating edge triangles which are neither top nor bottom elements.
-        config: MeshConfig
-            Configuration of the mesh.
-        share: np.ndarray
-            Array of shape (n_tde, 3) indicating the indices of the up to 3 triangles sharing a side with 
-            each of the n_tde triangles.
-        n_tde_constraints: int
-            Total number of slip rate constraints on the TDEs; equal to 2 * the number of TDEs with coupling 
-            constraints (top, bottom, side, specified indices) + the number of additional slip components (specified indices)
-        top_slip_idx: np.ndarray
-            Indices of the top TDEs which have constraints on their slip rates.
-        coup_idx: np.ndarray
-            Indices of the TDEs which have constraints on their coupling.
-        ss_slip_idx: np.ndarray
-            Indices of the TDEs which have constraints on their strike slip slip rates.
-        ds_slip_idx: np.ndarray
-            Indices of the TDEs which have constraints on their dip slip slip rates.
-        east_labels: np.ndarray
-            Block indices on the eastern fault block of the TDEs.
-        west_labels: np.ndarray
-            Block indices on the western fault block of the TDEs.
-        closest_segment_idx: np.ndarray
-            Indices of the segment with midpoint closest to each TDE's centroid.
+    Parameters
+    ----------
+             points: np.ndarray
+                 The coordinates of the vertices of the mesh.
+             verts: np.ndarray
+                 The indices of the vertices composing each triangle of the mesh.
+             lon1: np.ndarray
+                 The longitude of the vertex 1 of each triangle of the mesh.
+             lat1: np.ndarray
+                 The latitude of the vertex 1 of each triangle of the mesh.
+             dep1: np.ndarray
+                 The depth of the vertex 1 of each triangle of the mesh.
+             lon2: np.ndarray
+                 The longitude of the vertex 2 of each triangle of the mesh.
+             lat2: np.ndarray
+                 The latitude of the vertex 2 of each triangle of the mesh.
+             dep2: np.ndarray
+                 The depth of the vertex 2 of each triangle of the mesh.
+             lon3: np.ndarray
+                 The longitude of the vertex 3 of each triangle of the mesh.
+             lat3: np.ndarray
+                 The latitude of the vertex 3 of each triangle of the mesh.
+             dep3: np.ndarray
+                 The depth of the vertex 3 of each triangle of the mesh.
+             centroids: np.ndarray
+                 The centroids of the triangles.
+             x_centroid: np.ndarray
+                 The x-coordinates of the centroids of the triangles.
+             y_centroid: np.ndarray
+                 The y-coordinates of the centroids of the triangles.
+             z_centroid: np.ndarray
+                 The z-coordinates of the centroids of the triangles.
+             nv: np.ndarray
+                 Normal vectors of the triangles.
+             strike: np.ndarray
+                 Magnitude of the strike slip on each triangle.
+             dip: np.ndarray
+                 Magnitude of the dip slip on each triangle.
+             dip_flag: np.ndarray
+                 Bool indicating the presence of dip slip on each triangle.
+             n_tde: int
+                 The number of triangular elements constituting the mesh.
+             areas: np.ndarray
+                 The surface areas of the triangles.
+             ordered_edge_nodes: np.ndarray
+                 The edges constituting the perimeter of the mesh.
+             side_elements: np.ndarray
+                 Bool indicating the presence of side elements on each triangle.
+             bot_elements: np.ndarray
+                 Bool indicating if each triangle is a bottom element. Each triangle along the edge of the mesh will
+                 naturally have two vertices which compose the outer edge that actually belongs to the perimeter of the mesh,
+                 and a third "interior" vertex. A bottom element is defined as an edge triangle such that the depth
+                 difference between the interior vertex and the midpoint of the outer edge is more negative than the negative
+                 of the absolute depth difference between the two edge vertices. Additionally, elements are filtered to ensure
+                 they are really deep using histogram analysis of centroid depths.
+             top_elements: np.ndarray
+                 Bool indicating top elements, the opposite of bottom elements.
+             side_elements: np.ndarray
+                 Bool indicating edge triangles which are neither top nor bottom elements.
+             config: MeshConfig
+                 Configuration of the mesh.
+             share: np.ndarray
+                 Array of shape (n_tde, 3) indicating the indices of the up to 3 triangles sharing a side with
+                 each of the n_tde triangles.
+             n_tde_constraints: int
+                 Total number of slip rate constraints on the TDEs; equal to 2 * the number of TDEs with coupling
+                 constraints (top, bottom, side, specified indices) + the number of additional slip components (specified indices)
+             top_slip_idx: np.ndarray
+                 Indices of the top TDEs which have constraints on their slip rates.
+             coup_idx: np.ndarray
+                 Indices of the TDEs which have constraints on their coupling.
+             ss_slip_idx: np.ndarray
+                 Indices of the TDEs which have constraints on their strike slip slip rates.
+             ds_slip_idx: np.ndarray
+                 Indices of the TDEs which have constraints on their dip slip slip rates.
     """
 
     points: np.ndarray
@@ -482,25 +545,16 @@ class Mesh:
     x_perimeter: np.ndarray
     y_perimeter: np.ndarray
     config: MeshConfig
-
-    # TOOD(Adrian): Can we move those function into this module
-    # and make them non-optional?
-
-    # Computed in operators._store_all_mesh_smoothing_matrices
-    share: np.ndarray | None = None
-    tri_shared_sides_distances: np.ndarray | None = None
-    n_tde_constraints: int | None = None
-    # computed in operators._store_tde_slip_rate_constraints
-    top_slip_idx: np.ndarray | None = None
-    bot_slip_idx: np.ndarray | None = None
-    side_slip_idx: np.ndarray | None = None
+    share: np.ndarray
+    tri_shared_sides_distances: np.ndarray
+    top_slip_idx: np.ndarray
+    bot_slip_idx: np.ndarray
+    side_slip_idx: np.ndarray
+    n_tde_constraints: int
     coup_idx: np.ndarray | None = None
     ss_slip_idx: np.ndarray | None = None
     ds_slip_idx: np.ndarray | None = None
-    # computed in operators.get_rotation_to_tri_slip_rate_partials
     closest_segment_idx: np.ndarray | None = None
-    east_labels: np.ndarray | None = None
-    west_labels: np.ndarray | None = None
 
     @classmethod
     def from_params(cls, config: MeshConfig):
@@ -615,18 +669,49 @@ class Mesh:
         _compute_mesh_edge_elements(mesh)
         _compute_mesh_perimeter(mesh)
 
+        from celeri.spatial import get_shared_sides, get_tri_shared_sides_distances
+
+        mesh["share"] = get_shared_sides(mesh["verts"])
+        mesh["tri_shared_sides_distances"] = get_tri_shared_sides_distances(
+            mesh["share"],
+            mesh["x_centroid"],
+            mesh["y_centroid"],
+            mesh["z_centroid"],
+        )
+
+        from celeri.celeri_util import get_2component_index
+
+        boundary_constraints = [
+            ("top", config.top_slip_rate_constraint, mesh["top_elements"]),
+            ("bot", config.bot_slip_rate_constraint, mesh["bot_elements"]),
+            ("side", config.side_slip_rate_constraint, mesh["side_elements"]),
+        ]
+        for name, constraint_value, elements in boundary_constraints:
+            if constraint_value > 0:
+                indices = np.asarray(np.where(elements))
+                mesh[f"{name}_slip_idx"] = get_2component_index(indices)
+            else:
+                mesh[f"{name}_slip_idx"] = np.array([], dtype=np.int64)
+
+        mesh["n_tde_constraints"] = _compute_n_tde_constraints(
+            mesh["n_tde"],
+            mesh["top_slip_idx"],
+            mesh["bot_slip_idx"],
+            mesh["side_slip_idx"],
+        )
+
         logger.success(f"Read: {filename}")
         # Convert dict to Mesh dataclass
         return cls(**mesh)
 
     @property
-    def file_name(self) -> Path:
+    def file_name(self) -> Path | None:
         return self.config.mesh_filename
 
     @property
     def name(self) -> str:
         """Return the name of the mesh configuration."""
-        return self.file_name.stem
+        return self.file_name.stem if self.file_name is not None else "unknown"
 
     def to_disk(self, output_dir: str | Path):
         """Save the mesh configuration to a JSON file."""
@@ -658,4 +743,39 @@ class Mesh:
         config = MeshConfig(**config_data)
 
         # Use the general dataclass deserialization function with the config as extra data
-        return dataclass_from_disk(cls, input_dir, extra={"config": config})
+        mesh = dataclass_from_disk(cls, input_dir, extra={"config": config})
+
+        # Compute shared sides and distances if not already loaded (backward compatibility)
+        from celeri.spatial import get_shared_sides, get_tri_shared_sides_distances
+
+        mesh.share = get_shared_sides(mesh.verts)
+        mesh.tri_shared_sides_distances = get_tri_shared_sides_distances(
+            mesh.share,
+            mesh.x_centroid,
+            mesh.y_centroid,
+            mesh.z_centroid,
+        )
+
+        # Compute slip indices for boundary constraints
+        from celeri.celeri_util import get_2component_index
+
+        boundary_constraints = [
+            ("top", config.top_slip_rate_constraint, mesh.top_elements),
+            ("bot", config.bot_slip_rate_constraint, mesh.bot_elements),
+            ("side", config.side_slip_rate_constraint, mesh.side_elements),
+        ]
+        for name, constraint_value, elements in boundary_constraints:
+            if constraint_value > 0:
+                indices = np.asarray(np.where(elements))
+                setattr(mesh, f"{name}_slip_idx", get_2component_index(indices))
+            else:
+                setattr(mesh, f"{name}_slip_idx", np.array([], dtype=np.int64))
+
+        mesh.n_tde_constraints = _compute_n_tde_constraints(
+            mesh.n_tde,
+            mesh.top_slip_idx,
+            mesh.bot_slip_idx,
+            mesh.side_slip_idx,
+        )
+
+        return mesh

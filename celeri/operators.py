@@ -4,15 +4,15 @@ from functools import cached_property
 from pathlib import Path
 from typing import Any, overload
 
-import addict
 import h5py
 import numpy as np
+import pandas as pd
 import scipy
 from loguru import logger
 from pandas import DataFrame
+from rich.progress import track
 from scipy import spatial
 from scipy.sparse import csr_matrix
-from scipy.spatial.distance import cdist
 
 from celeri.celeri_util import (
     cartesian_vector_to_spherical_vector,
@@ -32,7 +32,7 @@ from celeri.constants import (
 from celeri.mesh import ByMesh, Mesh, MeshConfig
 from celeri.model import (
     Model,
-    merge_geodetic_data,
+    assign_mesh_segment_labels,
 )
 from celeri.output import dataclass_from_disk, dataclass_to_disk
 from celeri.spatial import (
@@ -43,9 +43,7 @@ from celeri.spatial import (
     get_rotation_to_slip_rate_partials,
     get_rotation_to_velocities_partials,
     get_segment_station_operator_okada,
-    get_shared_sides,
     get_tde_to_velocities_single_mesh,
-    get_tri_shared_sides_distances,
     get_tri_smoothing_matrix,
     get_tri_smoothing_matrix_simple,
 )
@@ -134,64 +132,64 @@ class EigenIndex:
 
 @dataclass
 class Index:
-    """
-    Index of the full dense linear operators comprising the forward model.
+    """Index of the full dense linear operators comprising the forward model.
 
     Attributes:
-        n_blocks : int 
+        n_blocks : int
             The number of blocks in the model.
-        n_segments : int 
+        n_segments : int
             The number of segments in the model.
-        n_stations : int 
+        n_stations : int
             The number of stations in the model.
-        n_meshes : int 
+        n_meshes : int
             The number of meshes in the model.
-        n_mogis : int 
+        n_mogis : int
             The number of Mogi sources in the model.
-        vertical_velocities : np.ndarray 
+        vertical_velocities : np.ndarray
             The vertical velocities of the stations.
-        n_block_constraints : int 
+        n_block_constraints : int
             The number of block constraints in the model.
         station_row_keep_index : np.ndarray
-            The indices comprising the horizontal (spherical plane) vector components acting on the stations, for assigning 
+            The indices comprising the horizontal (spherical plane) vector components acting on the stations, for assigning
             horizontal-only forces in the full operator, e.g. block strain. Length is (2 * n_stations). Created using `celeri.utils.get_keep_index_12`.
-        start_station_row : int 
+        start_station_row : int
             The starting index of the station rows in the full operator.
-        end_station_row : int 
+        end_station_row : int
             The ending index of the station rows in the full operator.
-        start_block_col : int 
+        start_block_col : int
             The starting index of the block columns in the full operator.
-        end_block_col : int 
+        end_block_col : int
             The ending index of the block columns in the full operator.
-        start_block_constraints_row : int 
+        start_block_constraints_row : int
             The starting index of the block constraints rows in the full operator.
-        end_block_constraints_row : int 
+        end_block_constraints_row : int
             The ending index of the block constraints rows in the full operator.
-        n_slip_rate_constraints : int 
+        n_slip_rate_constraints : int
             The number of slip rate constraints in the model.
-        start_slip_rate_constraints_row : int 
+        start_slip_rate_constraints_row : int
             The starting index of the slip rate constraints rows in the full operator.
-        end_slip_rate_constraints_row : int 
+        end_slip_rate_constraints_row : int
             The ending index of the slip rate constraints rows in the full operator.
-        n_strain_blocks : int 
+        n_strain_blocks : int
             The number of strain blocks in the model.
-        n_block_strain_components : int 
+        n_block_strain_components : int
             The number of block strain components in the model.
-        start_block_strain_col : int 
+        start_block_strain_col : int
             The starting index of the block strain columns in the full operator.
-        end_block_strain_col : int 
+        end_block_strain_col : int
             The ending index of the block strain columns in the full operator.
-        start_mogi_col : int 
+        start_mogi_col : int
             The starting index of the Mogi columns in the full operator.
-        end_mogi_col : int 
+        end_mogi_col : int
             The ending index of the Mogi columns in the full operator.
-        slip_rate_bounds : np.ndarray 
+        slip_rate_bounds : np.ndarray
             The indices of the slip rate bounds in the model.
-        tde : TdeIndex | None 
+        tde : TdeIndex | None
             The TDE index.
-        eigen : EigenIndex | None 
+        eigen : EigenIndex | None
             The Eigen index.
     """
+
     n_blocks: int
     n_segments: int
     n_stations: int
@@ -310,14 +308,6 @@ class Index:
         return dataclass_from_disk(cls, path, extra={"tde": tde, "eigen": eigen})
 
 
-# TODO: Figure out what the types should be
-@dataclass
-class Assembly:
-    data: Any
-    sigma: Any
-    index: Any
-
-
 # TODO(Adrian): Maybe it would be better to use only one of
 # FullTdeOperators or EigenTdeOperators?
 # TODO(Adrian): Maybe some of the operators should be properties?
@@ -364,43 +354,40 @@ class EigenOperators:
 
 @dataclass
 class Operators:
-    """
-    Linear operators comprising the forward model.
+    """Linear operators comprising the forward model.
 
     Attributes:
-        model : Model 
+        model : Model
             The model.
-        index : Index 
+        index : Index
             Indices to access different parts of the full dense operator.
-        assembly : Assembly 
-            Contains data, sigma, and index dictionaries.
-        rotation_to_velocities : np.ndarray 
+        rotation_to_velocities : np.ndarray
             Maps rotational vectors to velocities.
-        block_motion_constraints : np.ndarray 
+        block_motion_constraints : np.ndarray
             Constraints on block motions.
-        slip_rate_constraints : np.ndarray 
+        slip_rate_constraints : np.ndarray
             Limitations on slip rates.
-        rotation_to_slip_rate : np.ndarray 
-            Maps rotations to slip rates.
-        block_strain_rate_to_velocities : np.ndarray 
-            Computes the components of the predicted velocities on the stations due to the homogenous block strain rates. 
+         rotation_to_slip_rate : np.ndarray
+            Maps block rotations to kinematic slip rates along the segments.
+         block_strain_rate_to_velocities : np.ndarray
+             Computes the components of the predicted velocities on the stations due to the homogenous block strain rates.
             Has shape (3 * n_stations, 3 * n_strain_blocks).
-        mogi_to_velocities : np.ndarray 
-            Computes the components of the predicted velocities on the stations due to the Mogi sources. 
+        mogi_to_velocities : np.ndarray
+            Computes the components of the predicted velocities on the stations due to the Mogi sources.
             Has shape (3 * n_stations, n_mogis).
-        slip_rate_to_okada_to_velocities : np.ndarray 
+        slip_rate_to_okada_to_velocities : np.ndarray
             Okada model slip rate to velocity mapping.
-        rotation_to_tri_slip_rate : dict[int, np.ndarray] 
+        rotation_to_tri_slip_rate : dict[int, np.ndarray]
             Rotation to triangular slip rate mapping.
-        rotation_to_slip_rate_to_okada_to_velocities : np.ndarray 
+        rotation_to_slip_rate_to_okada_to_velocities : np.ndarray
             Rotation to slip rate to Okada velocities transformation.
-        smoothing_matrix (dict[int, csr_matrix]): 
+        smoothing_matrix (dict[int, csr_matrix]):
             Smoothing matrices for various meshes.
-        global_float_block_rotation (np.ndarray): 
+        global_float_block_rotation (np.ndarray):
             Global rotation operator for the block.
-        tde (TdeOperators | None): 
+        tde (TdeOperators | None):
             TDE-related operators.
-        eigen (EigenOperators | None): 
+        eigen (EigenOperators | None):
             Operators related to eigenmodes for TDEs.
 
     Methods:
@@ -411,9 +398,9 @@ class Operators:
         weighting_vector: np.ndarray
             Weighting vector for the operator, applying to constraints and station measurements.
     """
+
     model: Model
     index: Index
-    assembly: Assembly
     rotation_to_velocities: np.ndarray
     block_motion_constraints: np.ndarray
     slip_rate_constraints: np.ndarray
@@ -494,10 +481,10 @@ class Operators:
     @property
     def data_vector(self) -> np.ndarray:
         if self.tde is None:
-            return _get_data_vector_no_meshes(self.model, self.assembly, self.index)
+            return _get_data_vector_no_meshes(self.model, self.index)
         if self.eigen is not None:
-            return _get_data_vector_eigen(self.model, self.assembly, self.index)
-        return _get_data_vector(self.model, self.assembly, self.index)
+            return _get_data_vector_eigen(self.model, self.index)
+        return _get_data_vector(self.model, self.index)
 
     @property
     def weighting_vector(self) -> np.ndarray:
@@ -524,8 +511,7 @@ class Operators:
             matrix_path = path / f"smoothing_matrix_{mesh_idx}.npz"
             scipy.sparse.save_npz(matrix_path, smoothing_matrix)
 
-        # TODO: We ignore assembly for now. Do we need to save it?
-        skip = {"tde", "eigen", "index", "model", "smoothing_matrix", "assembly"}
+        skip = {"tde", "eigen", "index", "model", "smoothing_matrix"}
 
         dataclass_to_disk(self, path, skip=skip)
 
@@ -565,9 +551,6 @@ class Operators:
             "index": index,
             "model": model,
             "smoothing_matrix": smoothing_matrix,
-            "assembly": Assembly(
-                data=addict.Dict(), sigma=addict.Dict(), index=addict.Dict()
-            ),
         }
 
         return dataclass_from_disk(cls, path, extra=extra)
@@ -577,7 +560,6 @@ class Operators:
 class _OperatorBuilder:
     model: Model
     index: Index | None = None
-    assembly: Assembly | None = None
     rotation_to_velocities: np.ndarray | None = None
     block_motion_constraints: np.ndarray | None = None
     slip_rate_constraints: np.ndarray | None = None
@@ -599,7 +581,6 @@ class _OperatorBuilder:
 
     def finalize_basic(self) -> Operators:
         assert self.index is not None
-        assert self.assembly is not None
         assert self.rotation_to_velocities is not None
         assert self.block_motion_constraints is not None
         assert self.slip_rate_constraints is not None
@@ -616,7 +597,6 @@ class _OperatorBuilder:
         return Operators(
             model=self.model,
             index=self.index,
-            assembly=self.assembly,
             rotation_to_velocities=self.rotation_to_velocities,
             block_motion_constraints=self.block_motion_constraints,
             slip_rate_constraints=self.slip_rate_constraints,
@@ -670,11 +650,8 @@ class _OperatorBuilder:
 def build_operators(model: Model, *, eigen: bool = True, tde: bool = True) -> Operators:
     if eigen and not tde:
         raise ValueError("eigen operators require tde")
-    assembly = Assembly(data=addict.Dict(), sigma=addict.Dict(), index=addict.Dict())
-    operators = _OperatorBuilder(model)
-    operators.assembly = assembly
 
-    assembly = merge_geodetic_data(assembly, model.station, model.sar)
+    operators = _OperatorBuilder(model)
 
     # Get all elastic operators for segments and TDEs
     _store_elastic_operators(model, operators)
@@ -692,12 +669,10 @@ def build_operators(model: Model, *, eigen: bool = True, tde: bool = True) -> Op
     )
 
     # Soft block motion constraints
-    operators.block_motion_constraints = _store_block_motion_constraints(
-        model, assembly
-    )
+    operators.block_motion_constraints = _store_block_motion_constraints(model)
 
     # Soft slip rate constraints
-    operators.slip_rate_constraints = get_slip_rate_constraints(model, assembly)
+    operators.slip_rate_constraints = get_slip_rate_constraints(model)
 
     # Rotation vectors to slip rate operator
     operators.rotation_to_slip_rate = get_rotation_to_slip_rate_partials(
@@ -721,13 +696,13 @@ def build_operators(model: Model, *, eigen: bool = True, tde: bool = True) -> Op
     _store_tde_slip_rate_constraints(model, operators)
 
     if eigen:
-        index = _get_index_eigen(model, assembly)
+        index = _get_index_eigen(model)
         operators.index = index
 
         # Get KL modes for each mesh
         _store_eigenvectors_to_tde_slip(model, operators)
     else:
-        index = _get_index(model, assembly)
+        index = _get_index(model)
         operators.index = index
 
     # Get rotation to TDE kinematic slip rate operator for all meshes tied to segments
@@ -793,36 +768,168 @@ def _store_gaussian_smoothing_operator(
 
 
 def _hash_elastic_operator_input(
-    meshes: list[MeshConfig], segment: DataFrame, station: DataFrame, config: Config
+    meshes: list[MeshConfig], station: DataFrame, config: Config
 ):
-    """Create a hash from segment, station DataFrames and elastic parameters from config.
-
-    This allows us to check if we need to recompute elastic operators or can use cached ones.
+    """Create a hash from geometric components of station DataFrames and elastic
+    parameters from config. This allows us to check if we need to recompute elastic operators,
+    or if we can use cached ones.
 
     Args:
-        segment: DataFrame containing fault segment information
+        meshes: list[MeshConfig] containing mesh configuration information
         station: DataFrame containing station information
         config: Config object containing material parameters
 
     Returns:
         str: Hash string representing the input data
     """
-    # Convert dataframes to string representations
-    segment_str = segment.to_json()
-    station_str = station.to_json()
-    assert isinstance(segment_str, str)
+    geometric_columns = ["lon", "lat", "depth", "x", "y", "z"]
+    station_geom = station[geometric_columns].copy()
+    station_str = station_geom.to_json()
     assert isinstance(station_str, str)
 
     # Get material parameters
     material_params = f"{config.material_mu}_{config.material_lambda}"
 
-    mesh_configs = [mesh.model_dump_json() for mesh in meshes]
+    constraint_fields = {
+        "n_modes_strike_slip",  # n_modes do not affect the elastic operators
+        "n_modes_dip_slip",
+        "sqp_kinematic_slip_rate_hint_ss",
+        "sqp_kinematic_slip_rate_hint_ds",
+        "top_slip_rate_constraint",
+        "bot_slip_rate_constraint",
+        "top_elastic_constraint_sigma",
+        "bot_elastic_constraint_sigma",
+        "side_elastic_constraint_sigma",
+        "side_slip_rate_constraint",
+        "top_slip_rate_weight",
+        "bot_slip_rate_weight",
+        "side_slip_rate_weight",
+        "eigenmode_slip_rate_constraint_weight",
+        "a_priori_slip_filename",
+        "coupling_constraints_ss",
+        "coupling_constraints_ds",
+        "elastic_constraints_ss",
+        "elastic_constraints_ds",
+        "smoothing_weight",
+    }
 
-    # Combine all inputs and create hash
-    combined_input = "_".join(
-        [segment_str, station_str, material_params, *mesh_configs]
-    )
+    mesh_configs = [mesh.model_dump_json(exclude=constraint_fields) for mesh in meshes]
+    combined_input = "_".join([station_str, material_params, *mesh_configs])
+
     return hashlib.blake2b(combined_input.encode()).hexdigest()[:16]
+
+
+def _save_segments_to_hdf5(segments: DataFrame, hdf5_file: h5py.File) -> None:
+    """Save full segments DataFrame to HDF5 file.
+
+    Args:
+        segments: DataFrame containing segment information
+        hdf5_file: Open HDF5 file handle to save to
+    """
+    if "name" in segments.columns:
+        segment_no_name = segments.drop("name", axis=1)
+        hdf5_file.create_dataset("segments", data=segment_no_name.to_numpy())
+        string_dtype = h5py.string_dtype(encoding="utf-8")
+        hdf5_file.create_dataset(
+            "segments_names",
+            data=segments["name"].to_numpy(dtype=object),
+            dtype=string_dtype,
+        )
+        hdf5_file.attrs["segments_columns"] = np.array(
+            segment_no_name.columns, dtype=h5py.string_dtype()
+        )
+    else:
+        hdf5_file.create_dataset("segments", data=segments.to_numpy())
+        hdf5_file.attrs["segments_columns"] = np.array(
+            segments.columns, dtype=h5py.string_dtype()
+        )
+    hdf5_file.attrs["segments_index"] = segments.index.to_numpy()
+
+
+def _load_segments_from_hdf5(hdf5_file: h5py.File) -> DataFrame | None:
+    """Load segments DataFrame from HDF5 file.
+
+    Args:
+        hdf5_file: Open HDF5 file handle to load from
+
+    Returns:
+        DataFrame with segment information, or None if not found
+    """
+    if "segments" not in hdf5_file:
+        return None
+    try:
+        segments_data = np.array(hdf5_file["segments"])
+        columns_attr = hdf5_file.attrs.get("segments_columns")
+        if columns_attr is None:
+            return None
+        columns_list = [
+            col.decode() if isinstance(col, bytes) else str(col) for col in columns_attr
+        ]
+        index_attr = hdf5_file.attrs.get("segments_index")
+        if index_attr is None:
+            index_array = np.arange(len(segments_data))
+        else:
+            index_array = np.array(index_attr)
+
+        segments = pd.DataFrame(segments_data)
+        segments.columns = pd.Index(columns_list)
+        segments.index = pd.Index(index_array)
+
+        if "segments_names" in hdf5_file:
+            names_dataset = hdf5_file["segments_names"]
+            names_data = np.array(names_dataset)
+            segments["name"] = [
+                name.decode() if isinstance(name, bytes) else str(name)
+                for name in names_data
+            ]
+
+        return segments
+    except Exception:
+        return None
+
+
+def _compare_segments(
+    cached_segments: DataFrame, current_segments: DataFrame
+) -> list[int]:
+    """Compare cached and current segments to find which indices have changed.
+
+    Compares only geometric columns: lon1, lat1, lon2, lat2, locking_depth, dip, azimuth.
+
+    Args:
+        cached_segments: DataFrame with geometric columns from cache
+        current_segments: DataFrame with current geometric columns
+
+    Returns:
+        List of segment indices where any geometric column differs
+    """
+    geometric_columns = [
+        "lon1",
+        "lat1",
+        "lon2",
+        "lat2",
+        "locking_depth",
+        "dip",
+        "azimuth",
+    ]
+
+    cached_geom = cached_segments[geometric_columns].copy()
+    current_geom = current_segments[geometric_columns].copy()
+
+    tolerance = 1e-10
+    changed_indices = []
+    for i in range(len(current_geom)):
+        cached_row = cached_geom.iloc[i]
+        current_row = current_geom.iloc[i]
+        if not np.allclose(
+            cached_row.values,
+            current_row.values,
+            rtol=0,
+            atol=tolerance,
+            equal_nan=True,
+        ):
+            changed_indices.append(i)
+
+    return changed_indices
 
 
 def _store_elastic_operators(
@@ -832,14 +939,16 @@ def _store_elastic_operators(
     tde: bool = True,
 ):
     """Calculate (or load previously calculated) elastic operators from
-    both fully locked segments and TDE parameterizes surfaces.
+    both fully locked segments and TDE-parameterized surfaces.
+
+    Supports selective recomputation when only some source segment geometries
+    change, in place. If the segment file has changed, rows have been added or removed,
+    or `force_recompute` is True, the operators will be recomputed from scratch.
 
     Args:
-        operators (Dict): Elastic operators will be added to this data structure
-        meshes (List): Geometries of meshes
-        segment (pd.DataFrame): All segment data
-        station (pd.DataFrame): All station data
-        config (Dict): All config data
+        operators (_OperatorBuilder): Data structure which the elastic operators will be added to
+        model (Model): Model instance
+        tde (bool): Whether to compute TDE operators
     """
     config = model.config
     meshes = model.meshes
@@ -852,31 +961,115 @@ def _store_elastic_operators(
         if tde:
             input_hash = _hash_elastic_operator_input(
                 [mesh.config for mesh in meshes],
-                segment,
                 station,
                 config,
             )
         else:
-            input_hash = _hash_elastic_operator_input([], segment, station, config)
+            input_hash = _hash_elastic_operator_input([], station, config)
+
         cache = config.elastic_operator_cache_dir / f"{input_hash}.hdf5"
-        if cache.exists():
-            logger.info(f"Using precomputed elastic operators from {cache}")
+
+        if cache.exists() and config.force_recompute:
+            logger.info(
+                f"Force recompute enabled. Ignoring cached elastic operators at {cache}"
+            )
+
+        if cache.exists() and not config.force_recompute:
+            logger.info(f"Found cached elastic operators at {cache}")
             hdf5_file = h5py.File(cache, "r")
-            operators.slip_rate_to_okada_to_velocities = np.array(
+            cached_operator = np.array(
                 hdf5_file.get("slip_rate_to_okada_to_velocities")
             )
-            if tde:
-                for i in range(len(meshes)):
-                    operators.tde_to_velocities[i] = np.array(
-                        hdf5_file.get("tde_to_velocities_" + str(i))
-                    )
+            cached_segments = _load_segments_from_hdf5(hdf5_file)
             hdf5_file.close()
-            return
 
-        logger.info("Precomputed elastic operator file not found, computing operators")
+            if cached_segments is None:
+                logger.info(
+                    "Metadata files not found (old cache format). Recomputing operators."
+                )
+                cached_operator = None
+            else:
+                # Check if segments have been added or removed
+                if cached_segments["name"].tolist() != segment["name"].tolist():
+                    logger.info(
+                        "Segments have been added or removed since last computation. Recomputing operators."
+                    )
+                    cached_operator = None
+                elif cached_operator is not None:
+                    changed_segment_indices = _compare_segments(
+                        cached_segments, segment
+                    )
+                    if len(changed_segment_indices) == 0:
+                        logger.info(
+                            "No source geometry changed since last computation. Using cached operator."
+                        )
+                        operators.slip_rate_to_okada_to_velocities = cached_operator
+
+                        if tde:
+                            hdf5_file = h5py.File(cache, "r")
+                            for i in range(len(meshes)):
+                                operators.tde_to_velocities[i] = np.array(
+                                    hdf5_file.get("tde_to_velocities_" + str(i))
+                                )
+                            hdf5_file.close()
+                        return
+
+                    logger.info(f"Recomputing {len(changed_segment_indices)} segments")
+
+                    operators.slip_rate_to_okada_to_velocities = cached_operator.copy()
+
+                    if len(changed_segment_indices) > 0:
+                        for seg_idx in track(
+                            changed_segment_indices,
+                            description="Recomputing changed segments",
+                        ):
+                            single_segment = segment.iloc[
+                                seg_idx : seg_idx + 1
+                            ].reset_index(drop=True)
+                            new_columns = get_segment_station_operator_okada(
+                                single_segment, station, config, progress_bar=False
+                            )
+                            col_start = 3 * seg_idx
+                            col_end = col_start + 3
+                            operators.slip_rate_to_okada_to_velocities[
+                                :, col_start:col_end
+                            ] = new_columns
+
+                    if tde:
+                        hdf5_file = h5py.File(cache, "r")
+                        for i in range(len(meshes)):
+                            operators.tde_to_velocities[i] = np.array(
+                                hdf5_file.get("tde_to_velocities_" + str(i))
+                            )
+                        hdf5_file.close()
+
+                    logger.info("Caching updated elastic operators")
+                    cache.parent.mkdir(parents=True, exist_ok=True)
+                    hdf5_file = h5py.File(cache, "w")
+                    hdf5_file.create_dataset(
+                        "slip_rate_to_okada_to_velocities",
+                        data=operators.slip_rate_to_okada_to_velocities,
+                    )
+                    if tde:
+                        for i in range(len(meshes)):
+                            hdf5_file.create_dataset(
+                                "tde_to_velocities_" + str(i),
+                                data=operators.tde_to_velocities[i],
+                            )
+                    _save_segments_to_hdf5(segment, hdf5_file)
+                    hdf5_file.close()
+
+                    return
+
+        else:
+            if not config.force_recompute:
+                logger.info(
+                    "Precomputed elastic operator file not found. Computing operators"
+                )
+
     else:
         logger.info(
-            "No precomputed elastic operator file specified, computing operators"
+            "No precomputed elastic operator file specified in config. Computing operators."
         )
 
     operators.slip_rate_to_okada_to_velocities = get_segment_station_operator_okada(
@@ -912,6 +1105,7 @@ def _store_elastic_operators(
                 "tde_to_velocities_" + str(i),
                 data=operators.tde_to_velocities[i],
             )
+    _save_segments_to_hdf5(segment, hdf5_file)
     hdf5_file.close()
 
 
@@ -919,36 +1113,10 @@ def _store_all_mesh_smoothing_matrices(model: Model, operators: _OperatorBuilder
     """Build smoothing matrices for each of the triangular meshes
     stored in meshes.
     """
-    # TODO(Adrian): The first part should be in model.py?
-
     meshes = model.meshes
     for i in range(len(meshes)):
-        # Get smoothing operator for a single mesh.
-        meshes[i].share = get_shared_sides(meshes[i].verts)
-        meshes[i].tri_shared_sides_distances = get_tri_shared_sides_distances(
-            meshes[i].share,
-            meshes[i].x_centroid,
-            meshes[i].y_centroid,
-            meshes[i].z_centroid,
-        )
         operators.smoothing_matrix[i] = get_tri_smoothing_matrix(
             meshes[i].share, meshes[i].tri_shared_sides_distances
-        )
-
-
-def _store_all_mesh_smoothing_matrices_simple(
-    model: Model, operators: _OperatorBuilder
-):
-    """Build smoothing matrices for each of the triangular meshes
-    stored in meshes
-    These are the simple not distance weighted meshes.
-    """
-    meshes = model.meshes
-    for i in range(len(meshes)):
-        # Get smoothing operator for a single mesh.
-        meshes[i].share = get_shared_sides(meshes[i].verts)
-        operators.smoothing_matrix[i] = get_tri_smoothing_matrix_simple(
-            meshes[i].share, N_MESH_DIM
         )
 
 
@@ -979,20 +1147,13 @@ def _store_tde_slip_rate_constraints(model: Model, operators: _OperatorBuilder):
 
         # Process boundary constraints (top, bottom, side)
         boundary_constraints = [
-            ("top", meshes[i].config.top_slip_rate_constraint, meshes[i].top_elements),
-            ("bot", meshes[i].config.bot_slip_rate_constraint, meshes[i].bot_elements),
-            (
-                "side",
-                meshes[i].config.side_slip_rate_constraint,
-                meshes[i].side_elements,
-            ),
+            meshes[i].top_slip_idx,
+            meshes[i].bot_slip_idx,
+            meshes[i].side_slip_idx,
         ]
 
-        for name, constraint_value, elements in boundary_constraints:
-            if constraint_value > 0:
-                indices = np.asarray(np.where(elements))
-                slip_idx = get_2component_index(indices)
-                setattr(meshes[i], f"{name}_slip_idx", slip_idx)
+        for slip_idx in boundary_constraints:
+            if len(slip_idx) > 0:
                 start_row = end_row
                 end_row = start_row + len(slip_idx)
                 tde_slip_rate_constraints[start_row:end_row, slip_idx] = np.eye(
@@ -1005,15 +1166,6 @@ def _store_tde_slip_rate_constraints(model: Model, operators: _OperatorBuilder):
             sum_constraint_columns > 0, :
         ]
         operators.tde_slip_rate_constraints[i] = tde_slip_rate_constraints
-        # Total number of slip constraints:
-        # 2 for each element that has coupling constrained (top, bottom, side, specified indices)
-        # 1 for each additional slip component that is constrained (specified indices)
-
-        # TODO: Number of total constraints is determined by just finding 1 in the
-        # constraint array. This could cause an error when the index Dict is constructed,
-        # if an individual element has a constraint imposed, but that element is also
-        # a constrained edge element. Need to build in some uniqueness tests.
-        meshes[i].n_tde_constraints = np.sum(sum_constraint_columns > 0)
 
 
 def _store_tde_coupling_constraints(model: Model, operators: _OperatorBuilder):
@@ -1039,8 +1191,6 @@ def get_rotation_to_tri_slip_rate_partials(model: Model, mesh_idx: int) -> np.nd
     """Calculate partial derivatives relating relative block motion to TDE slip rates
     for a single mesh. Called within a loop from get_tde_coupling_constraints().
     """
-    # TODO(Adrian): This function modifies model.meshes[mesh_idx] in place.
-    # Should part of this be moved to model.py?
     n_blocks = len(model.block)
     tri_slip_rate_partials = np.zeros((3 * model.meshes[mesh_idx].n_tde, 3 * n_blocks))
 
@@ -1055,41 +1205,16 @@ def get_rotation_to_tri_slip_rate_partials(model: Model, mesh_idx: int) -> np.nd
     tridip[model.meshes[mesh_idx].strike > 180] = (
         180 - tridip[model.meshes[mesh_idx].strike > 180]
     )
-    # Find subset of segments that are replaced by this mesh
-    seg_replace_idx = np.where(
-        (model.segment.mesh_flag != 0) & (model.segment.mesh_file_index == mesh_idx)
-    )
-    # Find closest segment midpoint to each element centroid, using scipy.spatial.cdist
-    model.meshes[mesh_idx].closest_segment_idx = seg_replace_idx[0][
-        cdist(
-            np.array(
-                [
-                    model.meshes[mesh_idx].lon_centroid,
-                    model.meshes[mesh_idx].lat_centroid,
-                ]
-            ).T,
-            np.array(
-                [
-                    model.segment.mid_lon[seg_replace_idx[0]],
-                    model.segment.mid_lat[seg_replace_idx[0]],
-                ]
-            ).T,
-        ).argmin(axis=1)
-    ]
-    # Add segment labels to elements
-    model.meshes[mesh_idx].east_labels = np.array(
-        model.segment.east_labels[model.meshes[mesh_idx].closest_segment_idx]
-    )
-    model.meshes[mesh_idx].west_labels = np.array(
-        model.segment.west_labels[model.meshes[mesh_idx].closest_segment_idx]
+
+    east_labels, west_labels, closest_segment_idx = assign_mesh_segment_labels(
+        model, mesh_idx
     )
 
-    # Find rotation partials for each element
     for el_idx in range(model.meshes[mesh_idx].n_tde):
         # Project velocities from Cartesian to spherical coordinates at element centroids
         row_idx = 3 * el_idx
-        column_idx_east = 3 * model.meshes[mesh_idx].east_labels[el_idx]
-        column_idx_west = 3 * model.meshes[mesh_idx].west_labels[el_idx]
+        column_idx_east = 3 * east_labels[el_idx]
+        column_idx_west = 3 * west_labels[el_idx]
         R = get_cross_partials(
             [
                 model.meshes[mesh_idx].x_centroid[el_idx],
@@ -1183,21 +1308,13 @@ def get_rotation_to_tri_slip_rate_partials(model: Model, mesh_idx: int) -> np.nd
         ns_switch[el_idx] = np.sign(
             90
             - np.abs(
-                tristrike[el_idx]
-                - model.segment.azimuth[
-                    model.meshes[mesh_idx].closest_segment_idx[el_idx]
-                ]
+                tristrike[el_idx] - model.segment.azimuth[closest_segment_idx[el_idx]]
             )
         )
         ew_switch[el_idx] = (
             ns_switch[el_idx]
             * np.sign(tristrike[el_idx] - 90)
-            * np.sign(
-                model.segment.azimuth[
-                    model.meshes[mesh_idx].closest_segment_idx[el_idx]
-                ]
-                - 90
-            )
+            * np.sign(model.segment.azimuth[closest_segment_idx[el_idx]] - 90)
         )
         # ew_switch = 1
         # Insert this element's partials into operator
@@ -1210,159 +1327,93 @@ def get_rotation_to_tri_slip_rate_partials(model: Model, mesh_idx: int) -> np.nd
     return tri_slip_rate_partials
 
 
-def _store_block_motion_constraints(model: Model, assembly: Assembly) -> np.ndarray:
-    """Applying a priori block motion constraints."""
-    # TODO This modifies the assembly object in place. Fix this.
-
+def _store_block_motion_constraints(model: Model) -> np.ndarray:
+    """Get block motion constraint partials."""
     block = model.block
     block_constraint_partials = get_block_motion_constraint_partials(block)
-    assembly.index.block_constraints_idx = np.where(block.rotation_flag == 1)[0]
-
-    assembly.data.n_block_constraints = len(assembly.index.block_constraints_idx)
-    assembly.data.block_constraints = np.zeros(block_constraint_partials.shape[0])
-    assembly.sigma.block_constraints = np.zeros(block_constraint_partials.shape[0])
-    if assembly.data.n_block_constraints > 0:
-        (
-            assembly.data.block_constraints[0::3],
-            assembly.data.block_constraints[1::3],
-            assembly.data.block_constraints[2::3],
-        ) = sph2cart(
-            block.euler_lon[assembly.index.block_constraints_idx],
-            block.euler_lat[assembly.index.block_constraints_idx],
-            np.deg2rad(block.rotation_rate[assembly.index.block_constraints_idx]),
-        )
-        euler_pole_covariance_all = np.diag(
-            np.concatenate(
-                (
-                    np.deg2rad(
-                        block.euler_lat_sig[assembly.index.block_constraints_idx]
-                    ),
-                    np.deg2rad(
-                        block.euler_lon_sig[assembly.index.block_constraints_idx]
-                    ),
-                    np.deg2rad(
-                        block.rotation_rate_sig[assembly.index.block_constraints_idx]
-                    ),
-                )
-            )
-        )
-        (
-            assembly.sigma.block_constraints[0::3],
-            assembly.sigma.block_constraints[1::3],
-            assembly.sigma.block_constraints[2::3],
-        ) = euler_pole_covariance_to_rotation_vector_covariance(
-            assembly.data.block_constraints[0::3],
-            assembly.data.block_constraints[1::3],
-            assembly.data.block_constraints[2::3],
-            euler_pole_covariance_all,
-        )
-    assembly.sigma.block_constraint_weight = model.config.block_constraint_weight
     return block_constraint_partials
 
 
-def get_slip_rate_constraints(model: Model, assembly: Assembly) -> np.ndarray:
-    # TODO This modifies the assembly object in place. Fix this.
+def _get_block_constraints_data(model: Model) -> np.ndarray:
+    """Compute block constraints data from model."""
+    block = model.block
+    block_constraint_partials = get_block_motion_constraint_partials(block)
+    block_constraints_idx = np.where(block.rotation_flag == 1)[0]
+    block_constraints = np.zeros(block_constraint_partials.shape[0])
+    if len(block_constraints_idx) > 0:
+        (
+            block_constraints[0::3],
+            block_constraints[1::3],
+            block_constraints[2::3],
+        ) = sph2cart(
+            block.euler_lon[block_constraints_idx],
+            block.euler_lat[block_constraints_idx],
+            np.deg2rad(block.rotation_rate[block_constraints_idx]),
+        )
+    return block_constraints
 
+
+def _get_slip_rate_constraints_index(model: Model) -> np.ndarray:
+    """Compute slip rate constraints index from model."""
     segment = model.segment
-    n_total_slip_rate_contraints = (
-        np.sum(segment.ss_rate_flag.values)
-        + np.sum(segment.ds_rate_flag.values)
-        + np.sum(segment.ts_rate_flag.values)
-    )
-    if n_total_slip_rate_contraints > 0:
-        logger.info(f"Found {n_total_slip_rate_contraints} slip rate constraints")
-        for i in range(len(segment.lon1)):
-            if segment.ss_rate_flag[i] == 1:
-                logger.info(
-                    "Strike-slip rate constraint on "
-                    + segment.name[i].strip()
-                    + ": rate = "
-                    + f"{segment.ss_rate[i]:.2f}"
-                    + " (mm/yr), 1-sigma uncertainty = +/-"
-                    + f"{segment.ss_rate_sig[i]:.2f}"
-                    + " (mm/yr)"
-                )
-            if segment.ds_rate_flag[i] == 1:
-                logger.info(
-                    "Dip-slip rate constraint on "
-                    + segment.name[i].strip()
-                    + ": rate = "
-                    + f"{segment.ds_rate[i]:.2f}"
-                    + " (mm/yr), 1-sigma uncertainty = +/-"
-                    + f"{segment.ds_rate_sig[i]:.2f}"
-                    + " (mm/yr)"
-                )
-            if segment.ts_rate_flag[i] == 1:
-                logger.info(
-                    "Tensile-slip rate constraint on "
-                    + segment.name[i].strip()
-                    + ": rate = "
-                    + f"{segment.ts_rate[i]:.2f}"
-                    + " (mm/yr), 1-sigma uncertainty = +/-"
-                    + f"{segment.ts_rate_sig[i]:.2f}"
-                    + " (mm/yr)"
-                )
-    else:
-        logger.info("No slip rate constraints")
-
-    slip_rate_constraint_partials = get_rotation_to_slip_rate_partials(
-        segment, model.block
-    )
-
     slip_rate_constraint_flag = interleave3(
         segment.ss_rate_flag, segment.ds_rate_flag, segment.ts_rate_flag
     )
-    assembly.index.slip_rate_constraints = np.where(slip_rate_constraint_flag == 1)[0]
-    assembly.data.n_slip_rate_constraints = len(assembly.index.slip_rate_constraints)
+    return np.where(slip_rate_constraint_flag == 1)[0]
 
-    assembly.data.slip_rate_constraints = interleave3(
+
+def _get_slip_rate_constraints_data(model: Model) -> np.ndarray:
+    """Compute slip rate constraints data from model."""
+    segment = model.segment
+    slip_rate_constraints_idx = _get_slip_rate_constraints_index(model)
+    slip_rate_constraints_all = interleave3(
         segment.ss_rate, segment.ds_rate, segment.ts_rate
     )
-
-    assembly.data.slip_rate_constraints = assembly.data.slip_rate_constraints[
-        assembly.index.slip_rate_constraints
-    ]
-
-    assembly.sigma.slip_rate_constraints = interleave3(
-        segment.ss_rate_sig, segment.ds_rate_sig, segment.ts_rate_sig
-    )
-
-    assembly.sigma.slip_rate_constraints = assembly.sigma.slip_rate_constraints[
-        assembly.index.slip_rate_constraints
-    ]
-
-    slip_rate_constraint_partials = slip_rate_constraint_partials[
-        assembly.index.slip_rate_constraints, :
-    ]
-    assembly.sigma.slip_rate_constraint_weight = model.config.slip_constraint_weight
-    return slip_rate_constraint_partials
-
-
-def get_slip_rake_constraints(model: Model, assembly: Assembly) -> np.ndarray:
-    segment = model.segment
-
-    n_total_slip_rake_contraints = np.sum(segment.rake_flag.values)
-    if n_total_slip_rake_contraints > 0:
-        logger.info(f"Found {n_total_slip_rake_contraints} slip rake constraints")
-        for i in range(len(segment.lon1)):
-            if segment.rake_flag[i] == 1:
-                logger.info(
-                    "Rake constraint on "
-                    + segment.name[i].strip()
-                    + ": rake = "
-                    + f"{segment.rake[i]:.2f}"
-                    + ", constraint strike = "
-                    + f"{segment.rake_strike[i]:.2f}"
-                    + ", 1-sigma uncertainty = +/-"
-                    + f"{segment.rake_sig[i]:.2f}"
-                )
+    if len(slip_rate_constraints_idx) > 0:
+        return slip_rate_constraints_all[slip_rate_constraints_idx]
     else:
-        logger.info("No slip rake constraints")
-    # To keep this a standalone function, let's calculate the full set of slip rate partials
-    # TODO: Check how get_slip_rate_constraints is called to see if we need to recalculate the full set of partials, or if we can reuse a previous calculation
+        return np.array([], dtype=slip_rate_constraints_all.dtype)
+
+
+def _get_slip_rake_constraints_index(model: Model) -> np.ndarray:
+    """Compute slip rake constraints index from model."""
+    segment = model.segment
+    if "rake_flag" in segment.columns:
+        return np.where(segment.rake_flag == 1)[0]
+    else:
+        return np.array([], dtype=int)
+
+
+def get_slip_rate_constraints(model: Model) -> np.ndarray:
+    """Get slip rate constraint partials."""
+    segment = model.segment
     slip_rate_constraint_partials = get_rotation_to_slip_rate_partials(
         segment, model.block
     )
+
+    # Filter partials to only include constrained segments
+    slip_rate_constraints_idx = _get_slip_rate_constraints_index(model)
+    slip_rate_constraint_partials = slip_rate_constraint_partials[
+        slip_rate_constraints_idx, :
+    ]
+    return slip_rate_constraint_partials
+
+
+def get_slip_rake_constraints(model: Model) -> np.ndarray:
+    """Get slip rake constraint partials."""
+    segment = model.segment
+
+    # Get slip rake constraints index
+    slip_rake_constraints_idx = _get_slip_rake_constraints_index(model)
+
+    if len(slip_rake_constraints_idx) == 0:
+        return np.array([])
+
+    # Calculate the full set of slip rate partials
+    slip_rate_constraint_partials = get_rotation_to_slip_rate_partials(
+        segment, model.block
+    )
+
     # Figure out effective rake. This is a simple correction of the rake data by the calculated strike of the segment
     # The idea is that the source of the rake constraint will include its own strike (and dip), which may differ from the model segment geometry
     # TODO: Full three-dimensional rotation of rake vector, based on strike and dip of constraint source?
@@ -1370,14 +1421,9 @@ def get_slip_rake_constraints(model: Model, assembly: Assembly) -> np.ndarray:
         segment.strike[segment.rake_flag] - segment.rake_strike[segment.rake_flag]
     )
 
-    # Find indices of constrained segments
-    assembly.index.slip_rake_constraints = np.where(segment.rake_flag == 1)[0]
-    assembly.data.n_slip_rake_constraints = len(assembly.index.slip_rake_constraints)
-
     # Get component indices of slip rate partials
-    rake_constraint_component_indices = get_2component_index(
-        assembly.index.slip_rake_constraints
-    )
+    rake_constraint_component_indices = get_2component_index(slip_rake_constraints_idx)
+
     # Rotate slip partials about effective rake. We just want to use the second row (second basis vector) of a full rotation matrix, because we want to set slip in that direction to zero as a constraint
     slip_rake_constraint_partials = (
         np.cos(np.radians(effective_rakes))
@@ -1386,22 +1432,10 @@ def get_slip_rake_constraints(model: Model, assembly: Assembly) -> np.ndarray:
         * slip_rate_constraint_partials[rake_constraint_component_indices[1::2]]
     )
 
-    # Constraint data is all zeros, because we're setting slip perpendicular to the rake direction equal to zero
-    assembly.data.slip_rake_constraints = np.zeros(
-        assembly.data.n_total_slip_rake_contraints
-    )
-
-    # Insert sigmas into assembly dict
-    assembly.sigma.slip_rake_constraints = segment.rake_sig
-
-    # Using the same weighting here as for slip rate constraints.
-    assembly.sigma.slip_rake_constraint_weight = model.config.slip_constraint_weight
     return slip_rake_constraint_partials
 
 
-def _get_data_vector_no_meshes(
-    model: Model, assembly: Assembly, index: Index
-) -> np.ndarray:
+def _get_data_vector_no_meshes(model: Model, index: Index) -> np.ndarray:
     data_vector = np.zeros(
         2 * index.n_stations
         + 3 * index.n_block_constraints
@@ -1410,23 +1444,25 @@ def _get_data_vector_no_meshes(
 
     # Add GPS stations to data vector
     data_vector[index.start_station_row : index.end_station_row] = interleave2(
-        assembly.data.east_vel, assembly.data.north_vel
+        model.station.east_vel.to_numpy(), model.station.north_vel.to_numpy()
     )
 
     # Add block motion constraints to data vector
+    block_constraints = _get_block_constraints_data(model)
     data_vector[index.start_block_constraints_row : index.end_block_constraints_row] = (
-        DEG_PER_MYR_TO_RAD_PER_YR * assembly.data.block_constraints
+        DEG_PER_MYR_TO_RAD_PER_YR * block_constraints
     )
 
     # Add slip rate constraints to data vector
+    slip_rate_constraints = _get_slip_rate_constraints_data(model)
     data_vector[
         index.start_slip_rate_constraints_row : index.end_slip_rate_constraints_row
-    ] = assembly.data.slip_rate_constraints
+    ] = slip_rate_constraints
 
     return data_vector
 
 
-def _get_data_vector(model: Model, assembly: Assembly, index: Index) -> np.ndarray:
+def _get_data_vector(model: Model, index: Index) -> np.ndarray:
     assert index.tde is not None
 
     data_vector = np.zeros(
@@ -1439,24 +1475,24 @@ def _get_data_vector(model: Model, assembly: Assembly, index: Index) -> np.ndarr
 
     # Add GPS stations to data vector
     data_vector[index.start_station_row : index.end_station_row] = interleave2(
-        assembly.data.east_vel, assembly.data.north_vel
+        model.station.east_vel.to_numpy(), model.station.north_vel.to_numpy()
     )
 
     # Add block motion constraints to data vector
+    block_constraints = _get_block_constraints_data(model)
     data_vector[index.start_block_constraints_row : index.end_block_constraints_row] = (
-        DEG_PER_MYR_TO_RAD_PER_YR * assembly.data.block_constraints
+        DEG_PER_MYR_TO_RAD_PER_YR * block_constraints
     )
 
     # Add slip rate constraints to data vector
+    slip_rate_constraints = _get_slip_rate_constraints_data(model)
     data_vector[
         index.start_slip_rate_constraints_row : index.end_slip_rate_constraints_row
-    ] = assembly.data.slip_rate_constraints
+    ] = slip_rate_constraints
     return data_vector
 
 
-def _get_data_vector_eigen(
-    model: Model, assembly: Assembly, index: Index
-) -> np.ndarray:
+def _get_data_vector_eigen(model: Model, index: Index) -> np.ndarray:
     assert index.tde is not None
     assert index.eigen is not None
 
@@ -1469,18 +1505,20 @@ def _get_data_vector_eigen(
 
     # Add GPS stations to data vector
     data_vector[index.start_station_row : index.end_station_row] = interleave2(
-        assembly.data.east_vel, assembly.data.north_vel
+        model.station.east_vel.to_numpy(), model.station.north_vel.to_numpy()
     )
 
     # Add block motion constraints to data vector
+    block_constraints = _get_block_constraints_data(model)
     data_vector[index.start_block_constraints_row : index.end_block_constraints_row] = (
-        DEG_PER_MYR_TO_RAD_PER_YR * assembly.data.block_constraints
+        DEG_PER_MYR_TO_RAD_PER_YR * block_constraints
     )
 
     # Add slip rate constraints to data vector
+    slip_rate_constraints = _get_slip_rate_constraints_data(model)
     data_vector[
         index.start_slip_rate_constraints_row : index.end_slip_rate_constraints_row
-    ] = assembly.data.slip_rate_constraints
+    ] = slip_rate_constraints
     return data_vector
 
 
@@ -2276,11 +2314,11 @@ def rotation_vector_err_to_euler_pole_err(omega_x, omega_y, omega_z, omega_cov):
     return euler_lon_err, euler_lat_err, euler_rate_err
 
 
-def _get_index(model: Model, assembly: Assembly) -> Index:
+def _get_index(model: Model) -> Index:
     # TODO: Adapt this to use the dataclasses as in get_index_eigen
     # TODO: But better integrate it with the other get_index_* functions?
 
-    index = _get_index_no_meshes(model, assembly)
+    index = _get_index_no_meshes(model)
     index.n_meshes = len(model.meshes)
 
     # Add TDE mesh indices
@@ -2333,17 +2371,17 @@ def _get_index(model: Model, assembly: Assembly) -> Index:
 
         # Set top constraint row indices and adjust count based on available data
         tde.start_tde_top_constraint_row[i] = tde.end_tde_smoothing_row[i]
-        count = len(idx) if (idx := model.meshes[i].top_slip_idx) is not None else 0
+        count = len(model.meshes[i].top_slip_idx)
         tde.end_tde_top_constraint_row[i] = tde.start_tde_top_constraint_row[i] + count
 
         # Set bottom constraint row indices
         tde.start_tde_bot_constraint_row[i] = tde.end_tde_top_constraint_row[i]
-        count = len(idx) if (idx := model.meshes[i].bot_slip_idx) is not None else 0
+        count = len(model.meshes[i].bot_slip_idx)
         tde.end_tde_bot_constraint_row[i] = tde.start_tde_bot_constraint_row[i] + count
 
         # Set side constraint row indices
         tde.start_tde_side_constraint_row[i] = tde.end_tde_bot_constraint_row[i]
-        count = len(idx) if (idx := model.meshes[i].side_slip_idx) is not None else 0
+        count = len(model.meshes[i].side_slip_idx)
         tde.end_tde_side_constraint_row[i] = (
             tde.start_tde_side_constraint_row[i] + count
         )
@@ -2389,13 +2427,21 @@ def _get_index(model: Model, assembly: Assembly) -> Index:
     return index
 
 
-def _get_index_no_meshes(model: Model, assembly: Assembly):
+def _get_index_no_meshes(model: Model):
     # NOTE: Merge with above if possible.
     # Make sure empty meshes work
+    segment = model.segment
     n_blocks = len(model.block)
-    n_stations = assembly.data.n_stations
-    n_block_constraints = assembly.data.n_block_constraints
-    n_slip_rate_constraints = assembly.data.slip_rate_constraints.size
+    n_stations = len(model.station)
+    n_block_constraints = len(np.where(model.block.rotation_flag == 1)[0])
+
+    slip_rate_constraint_flag = interleave3(
+        segment.ss_rate_flag, segment.ds_rate_flag, segment.ts_rate_flag
+    )
+
+    slip_rate_constraints = np.where(slip_rate_constraint_flag == 1)[0]
+    n_slip_rate_constraints = len(slip_rate_constraints)
+
     n_mogi = len(model.mogi)
     n_meshes = 0
     n_segments = len(model.segment)
@@ -2440,9 +2486,9 @@ def _get_index_no_meshes(model: Model, assembly: Assembly):
     )
 
 
-def _get_index_eigen(model: Model, assembly: Assembly) -> Index:
+def _get_index_eigen(model: Model) -> Index:
     # Create dictionary to store indices and sizes for operator building
-    index = _get_index(model, assembly)
+    index = _get_index(model)
     tde = index.tde
     assert tde is not None
 

@@ -1,0 +1,148 @@
+# Check Lockfile (recovery)
+# Flags PRs whose `pixi.lock` becomes stale (when `pixi list --locked` fails),
+# then documents how to regenerate the lockfile and resolve any conflicts. It
+# merely turns the PR red—merges are still possible—and complements the
+# preventative `.github/workflows/lockfile-alert.yaml` reminders.
+name: Check Lockfile
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+permissions: {}
+
+concurrency:
+  group: check-lockfile-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  check-lockfile:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6.0.0
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+      - name: Set up pixi
+        uses: prefix-dev/setup-pixi@82d477f15f3a381dbcc8adc1206ce643fe110fb7 # v0.9.3
+        with:
+          run-install: false
+      - name: Check lockfile freshness
+        id: lockfile-status
+        run: |
+          set +e
+          pixi list --locked
+          status=$?
+          set -e
+
+          if [ "$status" -eq 0 ]; then
+            echo "stale=false" >> "$GITHUB_OUTPUT"
+            echo "Lockfile is up to date"
+            exit 0
+          fi
+
+          echo "stale=true" >> "$GITHUB_OUTPUT"
+          echo "pixi list --locked exited with status $status; lockfile is stale"
+          exit 0
+      - name: Relock dependencies
+        if: steps.lockfile-status.outputs.stale == 'true'
+        run: pixi lock
+      - name: Verify lockfile merges with base
+        if: steps.lockfile-status.outputs.stale == 'true'
+        id: merge-check
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          BASE_REPO: ${{ github.event.pull_request.base.repo.full_name }}
+        run: |
+          set -euo pipefail
+
+          BASE_URL="https://github.com/${BASE_REPO}.git"
+          git fetch --no-tags --depth=1 "$BASE_URL" "$BASE_REF"
+
+          # Create a throwaway branch to test the merge
+          git checkout -b lockfile-merge-test
+          if git merge --no-commit --no-ff FETCH_HEAD; then
+            git reset --hard HEAD
+            git checkout -
+            git branch -D lockfile-merge-test
+            echo "clean=true" >> "$GITHUB_OUTPUT"
+          else
+            git merge --abort || true
+            git checkout -
+            git branch -D lockfile-merge-test
+            echo "clean=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Summarize lockfile issue
+        if: steps.lockfile-status.outputs.stale == 'true'
+        env:
+          MERGE_CLEAN: ${{ steps.merge-check.outputs.clean || 'unknown' }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          BASE_REPO: ${{ github.repository }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        run: |
+          if [ "$HEAD_REPO" != "$BASE_REPO" ]; then
+            remote_name="upstream"
+            remote_context="Remote \`upstream\` should point at ${BASE_REPO}; your fork is ${HEAD_REPO}."
+          else
+            remote_name="origin"
+            remote_context="Remote \`origin\` should point at ${BASE_REPO} because this branch lives in ${BASE_REPO}."
+          fi
+
+          {
+            echo "## Lockfile Check"
+            echo
+            echo "The workflow detected stale dependency metadata."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$MERGE_CLEAN" = "false" ]; then
+            {
+              echo
+              echo "There are conflicting changes to \`pixi.lock\` on \`$BASE_REF\`. Merge or rebase those updates before committing a refreshed lockfile."
+              echo
+              echo "$remote_context"
+              echo
+              echo '```bash'
+              echo "git checkout $HEAD_REF"
+              echo "git restore --staged pixi.lock && git restore pixi.lock"
+              echo "git fetch ${remote_name}"
+              echo "git merge ${remote_name}/${BASE_REF}"
+              echo "git checkout --theirs pixi.lock"
+              echo "pixi lock"
+              echo "git add pixi.lock"
+              echo "git merge --continue"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo
+              echo "Run \`pixi lock\` and commit the updated \`pixi.lock\`:"
+              echo
+              echo '```bash'
+              echo "git checkout $HEAD_REF"
+              echo "pixi lock"
+              echo "git add pixi.lock"
+              echo 'git commit -m "Update pixi.lock"'
+              echo '```'
+              if [ "$MERGE_CLEAN" = "true" ]; then
+                echo
+                echo "We regenerated \`pixi.lock\` and verified it merges cleanly with \`$BASE_REF\`."
+              fi
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Fail to block merge
+        if: steps.lockfile-status.outputs.stale == 'true'
+        env:
+          SERVER_URL: ${{ github.server_url }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          echo "Lockfile is stale; failing workflow."
+          echo "For recommendations on how to fix, see ${SERVER_URL}/${REPOSITORY}/actions/runs/${RUN_ID}"
+          exit 1

@@ -2,11 +2,29 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from celeri.mesh import MeshConfig
+
+Sqp2Objective = Literal[
+    "expanded_norm2",
+    "sum_of_squares",
+    "qr_sum_of_squares",
+    "svd_sum_of_squares",
+    "norm2",
+    "norm1",
+    "huber",
+]
+
+McmcStationVelocityMethod = Literal[
+    "direct",
+    "low_rank",
+    "project_to_eigen",
+]
+
+McmcStationWeighting = Literal["voronoi",]
 
 
 class Config(BaseModel):
@@ -52,29 +70,77 @@ class Config(BaseModel):
     elastic_operator_cache_dir: Path | None = None
     """Location of a hdf5 file to cache elastic operators"""
 
+    force_recompute: bool = False
+    """When True, recomputes all operators even if cached versions are present."""
+
     # Weights for various constraints and parameters in penalized linear inversion
     block_constraint_weight: float = 1e24
-    block_constraint_weight_max: float = 1e20
-    block_constraint_weight_min: float = 1e20
-    block_constraint_weight_steps: int = 1
     slip_constraint_weight: float = 100000
-    slip_constraint_weight_max: float = 100000
-    slip_constraint_weight_min: float = 100000
-    slip_constraint_weight_steps: int = 1
-    station_data_weight: int = 1
-    station_data_weight_max: int = 1
-    station_data_weight_min: int = 1
-    station_data_weight_steps: int = 1
 
-    global_elastic_cutoff_distance: int = 2000000
-    global_elastic_cutoff_distance_flag: int = 0
+    segment_slip_rate_regularization: float = 1.0
+    """Weight for regularizing slip rates towards 0.
+    Applied to segments with *s_rate_flag = 2 in the segment file.
 
-    # TODO(Brendan): They were marked as unused, but are still used in the code.
+    A value of zero indicates no regularization.
+    This is used in `solve_sqp2` to help stabilize the inversion.
+
+    We can interpret this as adding pseudo-observations of zero slip rate
+    at all segments. The weight represents the ratio of pseudo-observation variance
+    to observation variance. Higher values indicate we trust the
+    zero slip rate assumption more relative to the actual observations.
+
+    Reasonable values might be in the range of 0.01 to 10.
+    """
+
+    segment_slip_rate_bound_weight: float = 100.0
+    """Weight for enforcing slip rate bounds at segments.
+
+    This is used in `solve_sqp2` to enforce slip rate bounds softly.
+    """
+
+    segment_slip_rate_hard_bounds: bool = False
+    """Enforce hard slip rate bounds at segments.
+
+    This should be disabled when using soft slip rate bounds
+    via `segment_slip_rate_bound_sigma`.
+
+    The mcmc solver does not support hard bounds.
+    """
+
+    segment_slip_rate_regularization_sigma: float | None = 100
+    """Like `segment_slip_rate_regularization`, but for use in `solve_mcmc`.
+
+    The regularization is implemented as a Student's t prior with this
+    standard deviation in mm/yr, and 5 degrees of freedom. This means that 
+    sigma has an inverse relationship with the severity of the regularization.
+    """
+
+    segment_slip_rate_bound_sigma: float = 1.0
+    """Standard deviation for slip rate bounds at segments in mm/yr.
+
+    This is used in `solve_mcmc` to implement soft slip rate bounds.
+
+    Hard slip rate bounds are implemented as a censored normal likelihood
+    with this standard deviation. Small values approach hard bounds,
+    while larger values allow more violation of the bounds.
+
+    We can interpret this as a measurment error of the slip rate bound
+    itself.
+
+    This config value can be overridden on a per-segment basis by including
+    a `slip_rate_bound_sigma` column in the segment file. If present, each
+    segment will use its own sigma value from that column (defaults to 1.0
+    if the column is missing).
+    """
+
+    sqp2_objective: Sqp2Objective = "qr_sum_of_squares"
+    """Objective function to use in `solve_sqp2`."""
+
+    # Default values for segment specified locking depth overrides
     locking_depth_flag2: int = 25
     locking_depth_flag3: int = 15
     locking_depth_flag4: int = 10
     locking_depth_flag5: int = 5
-    locking_depth_overide_value: int = 15
     locking_depth_override_flag: int = 0
 
     # Plotting defaults
@@ -93,7 +159,6 @@ class Config(BaseModel):
 
     snap_segments: int = 0
     solve_type: str = "hmatrix"
-    strain_method: int = 1
     tri_con_weight: int = 1000000
 
     unit_sigmas: bool = False
@@ -103,8 +168,92 @@ class Config(BaseModel):
     iterative_coupling_bounds_max_iter: int | None = None
 
     # Parameters of mcmc
-    mcmc_tune: int | None = None
+    mcmc_tune: int | None = 1000
+    """Number of tuning steps in MCMC before sampling."""
+
     mcmc_draws: int | None = None
+    """Number of MCMC samples to draw after tuning."""
+
+    mcmc_seed: int | None = None
+    """Random seed for MCMC sampling."""
+
+    mcmc_chains: int = 1
+    """Number of parallel MCMC chains to run."""
+
+    mcmc_backend: Literal["numba", "jax"] = "numba"
+    """Backend to use for MCMC computations."""
+
+    mcmc_station_velocity_method: McmcStationVelocityMethod = "project_to_eigen"
+    """Method for computing station velocities from slip rates in MCMC.
+
+    Options:
+    - "direct": Direct multiplication with TDE-to-station operator
+    - "low_rank": Low rank approximation of TDE-to-station operator via SVD
+    - "project_to_eigen": Project slip rates onto eigenbasis before computing velocities (default)
+    """
+
+    mcmc_station_weighting: McmcStationWeighting | None = "voronoi"
+    """Method for weighting station observations in MCMC likelihood.
+
+    Options:
+    - None: All stations weighted equally with weight one.
+    - "voronoi": Weight by Voronoi cell area to reduce over-representation of clusters (default)
+
+    The "voronoi" option is a pragmatic approach to handle spatially clustered stations
+    without the computational cost of full spatial correlation modeling. It down-weights
+    stations in dense clusters proportionally to their spacing. Use None if you want
+    standard unweighted likelihood or if your network has uniform spatial coverage.
+    """
+
+    mcmc_station_effective_area: float = 10_000**2
+    """Effective area (in m²) for station likelihood weighting in MCMC.
+
+    This parameter controls how station observations are weighted in the likelihood
+    based on their spatial density. Stations are weighted by their Voronoi cell area
+    (computed on a sphere), but areas larger than this threshold are clipped to avoid
+    over-weighting isolated stations.
+
+    Interpretation:
+    - Smaller values: Give more uniform weight to all stations, regardless of spacing
+    - Larger values: Weight stations more strongly based on their Voronoi cell area
+    - Default (50000²): Stations separated by ~50 km or more get equal weight
+
+    The default value of 2.5e9 m² corresponds to a square roughly 50 km on a side.
+    This means stations that are more than ~50 km apart will receive equal weighting,
+    while stations in dense clusters will be down-weighted proportionally to avoid
+    over-representing those regions.
+
+    Only used when mcmc_station_weighting is "voronoi".
+    """
+
+    sqp2_annealing_enabled: bool = False
+    """Enable annealing to search for a more optimal solution.
+
+    The SQP2 solver iteratively tightens coupling constraints until convergence
+    (no out-of-bounds values). When annealing is enabled, the solver continues
+    beyond this point: for each value in `sqp2_annealing_schedule`, it loosens
+    the constraints by that amount and runs another SQP pass, potentially
+    converging to a solution with a lower residual.
+
+    Set to False for a standard solve (stops after initial convergence).
+    Set to True to enable annealing (takes longer, but may find a better solution).
+    """
+
+    sqp2_annealing_schedule: list[float] = [0.125, 0.125, 0.125]
+    """Looseness values (mm/yr) for each annealing pass.
+
+    After the solver converges with no out-of-bounds values, each value in this
+    list triggers an additional SQP pass where the coupling constraints are
+    temporarily widened by that amount (added to upper bounds, subtracted from
+    lower bounds). This allows the solver to escape local minima and potentially
+    find a more optimal solution.
+
+    The default [0.125, 0.125, 0.125] performs three annealing passes, each
+    loosening constraints by 0.125 mm/yr. An empty list [] is equivalent to
+    disabling annealing (single-shot solve).
+
+    Only used when `sqp2_annealing_enabled` is True.
+    """
 
     # Only in tsts/global_config.json?
     mesh_file_names: list[Path] | None = None
