@@ -622,6 +622,35 @@ def plot_mesh(
     cmap="seismic",
     center=0,
 ):
+    """
+    Plot a 2D or cross-sectional mesh. Determines if a mesh 
+    is cross-sectional by checking the correlation coefficient 
+    between the longitude and latitude of the centroids. If cross-sectional,
+    the mesh is plotted with the x-axis as the along-strike direction and
+    the y-axis as the depth.
+
+    Parameters
+    ----------
+    mesh : Mesh
+        Mesh object containing vertices, centroids, points, and ordered edge nodes.
+    fill_value : np.ndarray
+        Array of values used to color the mesh polygons.
+    ax : matplotlib Axes
+        Matplotlib axes to draw the mesh on. If None, uses current axes.
+    vmin : float, optional
+        Minimum value for color normalization, defaults to array minimum.
+    vmax : float, optional
+        Maximum value for color normalization, defaults to array maximum.
+    cmap : str, optional
+        Colormap to use for coloring polygons (default 'seismic').
+    center : float, optional
+        Center value for diverging colormap normalization (default 0).
+
+    Returns
+    -------
+    pc : matplotlib.collections.PolyCollection
+        The PolyCollection object representing the mesh polygons.
+    """
     import matplotlib.colors as colors
 
     if not ax:
@@ -634,11 +663,37 @@ def plot_mesh(
 
     norm = colors.TwoSlopeNorm(vmin=vmin, vcenter=center, vmax=vmax)
 
-    x_coords = mesh.points[:, 0]
-    y_coords = mesh.points[:, 1]
+    points = mesh.points
+    cross_section = np.abs(np.corrcoef(mesh.centroids[:, 0], mesh.centroids[:, 1])[0, 1]) > 0.9
+    if cross_section:
+        lons = points[:, 0]
+        lats = points[:, 1]
+        lon_mean = np.mean(lons)
+        lat_mean = np.mean(lats)
+        lons_centered = lons - lon_mean
+        lats_centered = lats - lat_mean
+
+        coords = np.column_stack([lons_centered, lats_centered])
+        cov = np.cov(coords, rowvar=False)
+        eigenvalues, eigenvectors = np.linalg.eigh(cov)
+        pc1 = eigenvectors[:, np.argmax(eigenvalues)]
+
+        along_strike_deg = coords @ pc1
+
+        km_per_deg_lon = 111.32 * np.cos(np.radians(lat_mean))
+        km_per_deg_lat = 110.574
+        scale_factor = np.sqrt(
+            (pc1[0] * km_per_deg_lon) ** 2 + (pc1[1] * km_per_deg_lat) ** 2
+        )
+        dim0_coords = along_strike_deg * scale_factor
+        dim1_coords = points[:, 2]
+    else:
+        dim0_coords = points[:, 0]
+        dim1_coords = points[:, 1]
+        
     vertex_array = np.asarray(mesh.verts)
 
-    xy = np.c_[x_coords, y_coords]
+    xy = np.c_[dim0_coords, dim1_coords]
     verts = xy[vertex_array]
     pc = mc.PolyCollection(
         verts,
@@ -651,19 +706,17 @@ def plot_mesh(
     pc.set_clim(vmin, vmax)
     ax.add_collection(pc)
 
-    x_edge = x_coords[mesh.ordered_edge_nodes[:, 0]]
-    y_edge = y_coords[mesh.ordered_edge_nodes[:, 0]]
-    x_edge = np.append(x_edge, x_coords[mesh.ordered_edge_nodes[0, 0]])
-    y_edge = np.append(y_edge, y_coords[mesh.ordered_edge_nodes[0, 0]])
-    ax.plot(x_edge, y_edge, color="black", linewidth=1)
+    x_edge = dim0_coords[mesh.ordered_edge_nodes[:, 0]]
+    y_edge = dim1_coords[mesh.ordered_edge_nodes[:, 0]]
+    x_edge = np.append(x_edge, dim0_coords[mesh.ordered_edge_nodes[0, 0]])
+    y_edge = np.append(y_edge, dim1_coords[mesh.ordered_edge_nodes[0, 0]])
+    ax.plot(x_edge, y_edge, color="black", linewidth=0.5)
 
-    # Ensure the aspect ratio of lat/lon is correct (no stretch)
     ax.set_aspect("equal", adjustable="box")
 
-    # Optionally, also set proper plot limits to tightly fit the mesh if desired:
-    margin = 0.01 * max(x_coords.max() - x_coords.min(), y_coords.max() - y_coords.min())
-    ax.set_xlim(x_coords.min() - margin, x_coords.max() + margin)
-    ax.set_ylim(y_coords.min() - margin, y_coords.max() + margin)
+    margin = 0.01 * max(dim0_coords.max() - dim0_coords.min(), dim1_coords.max() - dim1_coords.min())
+    ax.set_xlim(dim0_coords.min() - margin, dim0_coords.max() + margin)
+    ax.set_ylim(dim1_coords.min() - margin, dim1_coords.max() + margin)
 
     return pc
 
