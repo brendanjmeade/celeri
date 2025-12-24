@@ -10,7 +10,6 @@ from celeri.celeri_util import (
     get_transverse_projection,
     interleave2,
     interleave3,
-    read_run,
     wrap2360,
 )
 from celeri.cli import parse_args, process_args
@@ -175,7 +174,6 @@ __all__ = [
     "process_segment",
     "process_station",
     "read_data",
-    "read_run",
     "solve_mcmc",
     "solve_sqp",
     "solve_sqp2",
