@@ -148,6 +148,8 @@ class MeshConfig(BaseModel):
     iterative_coupling_smoothing_length_scale: float | None = None
     iterative_coupling_kinematic_slip_regularization_scale: float = 1.0
 
+    gp_kernel: Literal["matern", "distance_weighted"] = "distance_weighted"
+
     @classmethod
     def from_file(cls, filename: str | Path) -> list[MeshConfig]:
         """Read mesh parameters from a JSON file and override defaults.
