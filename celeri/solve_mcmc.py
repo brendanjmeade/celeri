@@ -56,7 +56,7 @@ def _get_eigenmodes(
     operators: Operators,
     out_idx: slice,
 ):
-    """Get the eigenmodes and station velocity operator for a mesh and slip type."""
+    """Get the eigenmodes, eigenvalues and station velocity operator for a mesh and slip type."""
     assert operators.eigen is not None
 
     if kind == "strike_slip":
@@ -72,8 +72,16 @@ def _get_eigenmodes(
     to_velocity = operators.eigen.eigen_to_velocities[mesh_idx][
         :, start_idx : start_idx + n_eigs
     ]
+    eigenvalues = operators.eigen.eigenvalues[mesh_idx][start_idx : start_idx + n_eigs]
 
-    return eigenvectors, to_velocity
+    # Verify that the number of eigenvalues matches the number of eigenvectors
+    if len(eigenvalues) != eigenvectors.shape[1]:
+        raise RuntimeError(
+            f"Eigenvalues and eigenvectors have different numbers of modes. "
+            f"Eigenvalues: {len(eigenvalues)}, eigenvectors: {eigenvectors.shape}"
+        )
+
+    return eigenvectors, to_velocity, eigenvalues
 
 
 def _station_vel_from_elastic_mesh(
@@ -121,7 +129,7 @@ def _station_vel_from_elastic_mesh(
         return elastic_velocity.astype("d")
     elif method == "project_to_eigen":
         assert operators.eigen is not None
-        eigenvectors, to_velocity = _get_eigenmodes(
+        eigenvectors, to_velocity, _ = _get_eigenmodes(
             model,
             mesh_idx,
             kind,
@@ -186,7 +194,7 @@ def _coupling_component(
     kinematic = _operator_mult(operator, rotation)
     pm.Deterministic(f"kinematic_{mesh_idx}_{kind_short}", kinematic)
 
-    eigenvectors, _ = _get_eigenmodes(
+    eigenvectors, _, eigenvalues = _get_eigenmodes(
         model,
         mesh_idx,
         kind,
@@ -194,7 +202,15 @@ def _coupling_component(
         out_idx=idx,
     )
     n_eigs = eigenvectors.shape[1]
-    coefs = pm.Normal(f"coupling_coefs_{mesh_idx}_{kind_short}", mu=0, sigma=10, shape=n_eigs)
+
+    # Use eigenvalue-based variance for Matérn GP prior
+    # Normalize so top eigenmode has std=10
+    eigenvalue_std = np.sqrt(eigenvalues)
+    top_std = eigenvalue_std[0] if len(eigenvalue_std) > 0 else np.nan
+    normalized_std = 10.0 * eigenvalue_std / top_std
+    coefs = pm.Normal(
+        f"coupling_coefs_{mesh_idx}_{kind_short}", mu=0, sigma=normalized_std, shape=n_eigs
+    )
 
     coupling_field = _operator_mult(eigenvectors, coefs)
     coupling_field = _constrain_field(coupling_field, lower, upper)
@@ -243,7 +259,7 @@ def _elastic_component(
     scale = scale / len(operators.eigen.eigen_to_velocities)
     scale = 1 / np.sqrt(scale)
 
-    eigenvectors, to_velocity = _get_eigenmodes(
+    eigenvectors, to_velocity, eigenvalues = _get_eigenmodes(
         model,
         mesh_idx,
         kind,
@@ -252,7 +268,14 @@ def _elastic_component(
     )
     n_eigs = eigenvectors.shape[1]
 
-    raw = pm.Normal(f"elastic_eigen_raw_{mesh_idx}_{kind_short}", shape=n_eigs)
+    # Use eigenvalue-based variance for Matérn GP prior
+    # Normalize so top eigenmode has std=1
+    eigenvalue_std = np.sqrt(eigenvalues)
+    top_std = eigenvalue_std[0] if len(eigenvalue_std) > 0 else np.nan
+    normalized_std = 1.0 * eigenvalue_std / top_std
+    raw = pm.Normal(
+        f"elastic_eigen_raw_{mesh_idx}_{kind_short}", sigma=normalized_std, shape=n_eigs
+    )
     param = pm.Deterministic(f"elastic_eigen_{mesh_idx}_{kind_short}", scale * raw)
     elastic_tde = _constrain_field(_operator_mult(eigenvectors, param), lower, upper)
     pm.Deterministic(f"elastic_{mesh_idx}_{kind_short}", elastic_tde)
@@ -747,13 +770,13 @@ def _state_vector_from_draw(
 
     for mesh_idx in range(len(model.meshes)):
         indices = {
-            "strike_slip": slice(None, None, 2),
-            "dip_slip": slice(1, None, 2),
+            "ss": slice(None, None, 2),
+            "ds": slice(1, None, 2),
         }
-        for name, idx in indices.items():
+        for kind_short, idx in indices.items():
             start = operators_tde.index.tde.start_tde_col[mesh_idx]
             end = operators_tde.index.tde.end_tde_col[mesh_idx]
-            var_name = f"elastic_{mesh_idx}_{name}"
+            var_name = f"elastic_{mesh_idx}_{kind_short}"
 
             if var_name in trace.posterior:
                 vals = trace.posterior[var_name]
