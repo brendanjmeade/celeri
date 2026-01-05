@@ -811,7 +811,6 @@ def _hash_elastic_operator_input(
         "elastic_constraints_ss",
         "elastic_constraints_ds",
         "smoothing_weight",
-        "gp_kernel",
     }
 
     mesh_configs = [mesh.model_dump_json(exclude=constraint_fields) for mesh in meshes]
@@ -2141,37 +2140,35 @@ def get_qp_slip_rate_inequality_operator_and_data_vector(
     return slip_rate_bound_matrix, slip_rate_bound_data_vector
 
 
-def get_eigenvalues_and_eigenvectors(
-    n_eigenvalues, x, y, z, gp_kernel: str, distance_exponent: float = 1.0
-):
+def get_eigenvalues_and_eigenvectors(n_eigenvalues, x, y, z, distance_exponent):
     n_tde = x.size
 
+    # Calculate Cartesian distances between triangle centroids
     centroid_coordinates = np.array([x, y, z]).T
     distance_matrix = scipy.spatial.distance.cdist(
         centroid_coordinates, centroid_coordinates, "euclidean"
     )
 
+    # Rescale distance matrix to the range 0-1
     distance_matrix = (distance_matrix - np.min(distance_matrix)) / np.ptp(
         distance_matrix
     )
 
-    if gp_kernel == "matern":
-        scaled_dist = np.sqrt(5) * distance_matrix
-        correlation_matrix = (1 + scaled_dist + scaled_dist**2 / 3) * np.exp(
-            -scaled_dist
-        )
-    elif gp_kernel == "distance_weighted":
-        correlation_matrix = np.exp(-(distance_matrix**distance_exponent))
-    else:
-        raise ValueError(f"Unknown gp_kernel: {gp_kernel}")
+    # Calculate correlation matrix
+    correlation_matrix = np.exp(-(distance_matrix**distance_exponent))
 
+    # https://stackoverflow.com/questions/12167654/fastest-way-to-compute-k-largest-eigenvalues-and-corresponding-eigenvectors-with
     eigenvalues, eigenvectors = scipy.linalg.eigh(
         correlation_matrix,
         subset_by_index=[n_tde - n_eigenvalues, n_tde - 1],
     )
-
+    eigenvalues = np.real(eigenvalues)
+    eigenvectors = np.real(eigenvectors)
     eigenvectors[np.abs(eigenvectors) < 1e-6] = 0.0
-    return eigenvalues[::-1], eigenvectors[:, ::-1]
+    ordered_index = np.flip(np.argsort(eigenvalues))
+    eigenvalues = eigenvalues[ordered_index]
+    eigenvectors = eigenvectors[:, ordered_index]
+    return eigenvalues, eigenvectors
 
 
 def _store_eigenvectors_to_tde_slip(model: Model, operators: _OperatorBuilder):
@@ -2179,12 +2176,13 @@ def _store_eigenvectors_to_tde_slip(model: Model, operators: _OperatorBuilder):
 
     for i in range(len(meshes)):
         logger.info(f"Start: Eigenvectors to TDE slip for mesh: {meshes[i].file_name}")
+        # Get eigenvalues and eigenvectors for current mesh
         eigenvalues, eigenvectors = get_eigenvalues_and_eigenvectors(
-            meshes[i].n_modes_total,
+            meshes[i].n_modes_total,  # Use total modes (strike-slip + dip-slip)
             meshes[i].x_centroid,
             meshes[i].y_centroid,
             meshes[i].z_centroid,
-            gp_kernel=meshes[i].config.gp_kernel,
+            distance_exponent=1.0,  # Make this something set in mesh_parameters.json
         )
 
         # Store eigenvalues for this mesh
