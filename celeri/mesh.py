@@ -425,7 +425,14 @@ def _compute_mesh_perimeter(mesh: dict):
     )
 
 
-def _get_eigenvalues_and_eigenvectors(n_eigenvalues, x, y, z, distance_exponent = 1.0):
+def _get_eigenvalues_and_eigenvectors(
+    n_eigenvalues: int, 
+    x: np.ndarray, 
+    y: np.ndarray, 
+    z: np.ndarray, 
+    distance_exponent = 1.0
+) -> tuple[np.ndarray, np.ndarray]:
+    """Get the eigenvalues and eigenvectors of the mesh kernel."""
     n_tde = x.size
 
     # Calculate Cartesian distances between triangle centroids
@@ -449,7 +456,7 @@ def _get_eigenvalues_and_eigenvectors(n_eigenvalues, x, y, z, distance_exponent 
     )
     eigenvalues = np.real(eigenvalues)
     eigenvectors = np.real(eigenvectors)
-    eigenvectors[np.abs(eigenvectors) < 1e-6] = 0.0
+    assert np.all(eigenvalues > 0), "Mesh kernel error: Some eigenvalues are negative"
     ordered_index = np.flip(np.argsort(eigenvalues))
     eigenvalues = eigenvalues[ordered_index]
     eigenvectors = eigenvectors[:, ordered_index]
@@ -589,7 +596,7 @@ class Mesh:
     ss_slip_idx: np.ndarray | None = None
     ds_slip_idx: np.ndarray | None = None
     closest_segment_idx: np.ndarray | None = None
-    
+
     @classmethod
     def from_params(cls, config: MeshConfig):
         # Standalone reader for a single .msh file

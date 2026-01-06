@@ -68,7 +68,7 @@ def _get_eigen_to_velocity(
     mesh_idx: int,
     kind: Literal["strike_slip", "dip_slip"],
     operators: Operators,
-):
+) -> np.ndarray:
     """Get the station velocity operator for a mesh and slip type."""
     assert operators.eigen is not None
 
