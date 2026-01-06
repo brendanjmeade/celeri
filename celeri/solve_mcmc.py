@@ -751,13 +751,13 @@ def _state_vector_from_draw(
 
     for mesh_idx in range(len(model.meshes)):
         indices = {
-            "strike_slip": slice(None, None, 2),
-            "dip_slip": slice(1, None, 2),
+            "ss": slice(None, None, 2),
+            "ds": slice(1, None, 2),
         }
-        for name, idx in indices.items():
+        for kind_short, idx in indices.items():
             start = operators_tde.index.tde.start_tde_col[mesh_idx]
             end = operators_tde.index.tde.end_tde_col[mesh_idx]
-            var_name = f"elastic_{mesh_idx}_{name}"
+            var_name = f"elastic_{mesh_idx}_{kind_short}"
 
             if var_name in trace.posterior:
                 vals = trace.posterior[var_name]

@@ -442,14 +442,11 @@ def _get_eigenvalues_and_eigenvectors(
     )
 
     # Rescale distance matrix to the range 0-1
-    distance_matrix = (distance_matrix - np.min(distance_matrix)) / np.ptp(
-        distance_matrix
-    )
+    distance_matrix = distance_matrix / np.ptp(distance_matrix)
 
     # Calculate correlation matrix
     correlation_matrix = np.exp(-(distance_matrix**distance_exponent))
-
-    # https://stackoverflow.com/questions/12167654/fastest-way-to-compute-k-largest-eigenvalues-and-corresponding-eigenvectors-with
+    
     eigenvalues, eigenvectors = scipy.linalg.eigh(
         correlation_matrix,
         subset_by_index=[n_tde - n_eigenvalues, n_tde - 1],
@@ -508,6 +505,8 @@ class Mesh:
                  Bool indicating the presence of dip slip on each triangle.
              n_tde: int
                  The number of triangular elements constituting the mesh.
+             n_modes: int
+                The greater of mesh.config.n_modes_strike_slip and mesh.config.n_modes_dip_slip.
              areas: np.ndarray
                  The surface areas of the triangles.
              ordered_edge_nodes: np.ndarray
@@ -590,8 +589,8 @@ class Mesh:
     bot_slip_idx: np.ndarray
     side_slip_idx: np.ndarray
     n_tde_constraints: int
-    eigenvalues: np.ndarray
-    eigenvectors: np.ndarray
+    eigenvalues: np.ndarray | None = None
+    eigenvectors: np.ndarray | None = None
     coup_idx: np.ndarray | None = None
     ss_slip_idx: np.ndarray | None = None
     ds_slip_idx: np.ndarray | None = None
