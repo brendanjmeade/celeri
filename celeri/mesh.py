@@ -9,6 +9,8 @@ from typing import Any, Literal, TypeVar, cast
 
 import meshio
 import numpy as np
+import scipy.linalg
+import scipy.spatial.distance
 from loguru import logger
 from pydantic import BaseModel, ConfigDict, model_validator
 
@@ -423,6 +425,43 @@ def _compute_mesh_perimeter(mesh: dict):
     )
 
 
+def _get_eigenvalues_and_eigenvectors(
+    n_eigenvalues: int, 
+    x: np.ndarray, 
+    y: np.ndarray, 
+    z: np.ndarray, 
+    distance_exponent = 1.0
+) -> tuple[np.ndarray, np.ndarray]:
+    """Get the eigenvalues and eigenvectors of the mesh kernel."""
+    n_tde = x.size
+
+    # Calculate Cartesian distances between triangle centroids
+    centroid_coordinates = np.array([x, y, z]).T
+    distance_matrix = scipy.spatial.distance.cdist(
+        centroid_coordinates, centroid_coordinates, "euclidean"
+    )
+
+    # Rescale distance matrix to the range 0-1
+    distance_matrix = (distance_matrix - np.min(distance_matrix)) / np.ptp(
+        distance_matrix
+    )
+
+    # Calculate correlation matrix
+    correlation_matrix = np.exp(-(distance_matrix**distance_exponent))
+
+    # https://stackoverflow.com/questions/12167654/fastest-way-to-compute-k-largest-eigenvalues-and-corresponding-eigenvectors-with
+    eigenvalues, eigenvectors = scipy.linalg.eigh(
+        correlation_matrix,
+        subset_by_index=[n_tde - n_eigenvalues, n_tde - 1],
+    )
+    eigenvalues = np.real(eigenvalues)
+    eigenvectors = np.real(eigenvectors)
+    assert np.all(eigenvalues > 0), "Mesh kernel error: Some eigenvalues are negative"
+    ordered_index = np.flip(np.argsort(eigenvalues))
+    eigenvalues = eigenvalues[ordered_index]
+    eigenvectors = eigenvectors[:, ordered_index]
+    return eigenvalues, eigenvectors
+
 @dataclass
 class Mesh:
     """Triangular mesh for fault modeling.
@@ -551,6 +590,8 @@ class Mesh:
     bot_slip_idx: np.ndarray
     side_slip_idx: np.ndarray
     n_tde_constraints: int
+    eigenvalues: np.ndarray
+    eigenvectors: np.ndarray
     coup_idx: np.ndarray | None = None
     ss_slip_idx: np.ndarray | None = None
     ds_slip_idx: np.ndarray | None = None
@@ -700,8 +741,14 @@ class Mesh:
             mesh["side_slip_idx"],
         )
 
+        mesh["eigenvalues"], mesh["eigenvectors"] = _get_eigenvalues_and_eigenvectors(
+            mesh["n_modes"],
+            mesh["x_centroid"],
+            mesh["y_centroid"],
+            mesh["z_centroid"],
+        )
+
         logger.success(f"Read: {filename}")
-        # Convert dict to Mesh dataclass
         return cls(**mesh)
 
     @property
@@ -777,5 +824,13 @@ class Mesh:
             mesh.bot_slip_idx,
             mesh.side_slip_idx,
         )
+
+        if mesh.eigenvalues is None or mesh.eigenvectors is None:
+            mesh.eigenvalues, mesh.eigenvectors = _get_eigenvalues_and_eigenvectors(
+                mesh.n_modes,
+                mesh.x_centroid,
+                mesh.y_centroid,
+                mesh.z_centroid,
+            )
 
         return mesh

@@ -53,10 +53,23 @@ def _get_eigenmodes(
     model: Model,
     mesh_idx: int,
     kind: Literal["strike_slip", "dip_slip"],
+) -> np.ndarray:
+    """Get the kernel eigenmodes for a mesh and slip type."""
+    n_eigs = (
+        model.meshes[mesh_idx].config.n_modes_strike_slip
+        if kind == "strike_slip"
+        else model.meshes[mesh_idx].config.n_modes_dip_slip
+    )
+    return model.meshes[mesh_idx].eigenvectors[:, :n_eigs]
+
+
+def _get_eigen_to_velocity(
+    model: Model,
+    mesh_idx: int,
+    kind: Literal["strike_slip", "dip_slip"],
     operators: Operators,
-    out_idx: slice,
-):
-    """Get the eigenmodes and station velocity operator for a mesh and slip type."""
+) -> np.ndarray:
+    """Get the station velocity operator for a mesh and slip type."""
     assert operators.eigen is not None
 
     if kind == "strike_slip":
@@ -66,14 +79,11 @@ def _get_eigenmodes(
         n_eigs = model.meshes[mesh_idx].config.n_modes_dip_slip
         start_idx = model.meshes[mesh_idx].config.n_modes_strike_slip
 
-    eigenvectors = operators.eigen.eigenvectors_to_tde_slip[mesh_idx][
-        out_idx, start_idx : start_idx + n_eigs
-    ]
     to_velocity = operators.eigen.eigen_to_velocities[mesh_idx][
         :, start_idx : start_idx + n_eigs
     ]
-
-    return eigenvectors, to_velocity
+    
+    return to_velocity
 
 
 def _station_vel_from_elastic_mesh(
@@ -121,13 +131,13 @@ def _station_vel_from_elastic_mesh(
         return elastic_velocity.astype("d")
     elif method == "project_to_eigen":
         assert operators.eigen is not None
-        eigenvectors, to_velocity = _get_eigenmodes(
+        to_velocity = _get_eigen_to_velocity(
             model,
             mesh_idx,
             kind,
             operators,
-            out_idx=idx,
         )
+        eigenvectors = _get_eigenmodes(model, mesh_idx, kind)
         # TODO: This assumes that the eigenvectors are orthogonal
         # with respect to the euclidean inner product. If we change
         # the eigen decomposition to use a different inner product,
@@ -186,13 +196,7 @@ def _coupling_component(
     kinematic = _operator_mult(operator, rotation)
     pm.Deterministic(f"kinematic_{mesh_idx}_{kind_short}", kinematic)
 
-    eigenvectors, _ = _get_eigenmodes(
-        model,
-        mesh_idx,
-        kind,
-        operators,
-        out_idx=idx,
-    )
+    eigenvectors = _get_eigenmodes(model, mesh_idx, kind)
     n_eigs = eigenvectors.shape[1]
     coefs = pm.Normal(f"coupling_coefs_{mesh_idx}_{kind_short}", mu=0, sigma=10, shape=n_eigs)
 
@@ -243,12 +247,12 @@ def _elastic_component(
     scale = scale / len(operators.eigen.eigen_to_velocities)
     scale = 1 / np.sqrt(scale)
 
-    eigenvectors, to_velocity = _get_eigenmodes(
+    eigenvectors = _get_eigenmodes(model, mesh_idx, kind)
+    to_velocity = _get_eigen_to_velocity(
         model,
         mesh_idx,
         kind,
         operators,
-        out_idx=idx,
     )
     n_eigs = eigenvectors.shape[1]
 
