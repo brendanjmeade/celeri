@@ -444,9 +444,11 @@ def _get_eigenvalues_and_eigenvectors(
     # Rescale distance matrix to the range 0-1
     distance_matrix = distance_matrix / np.ptp(distance_matrix)
 
-    # Calculate correlation matrix
-    correlation_matrix = np.exp(-(distance_matrix**distance_exponent))
-    
+    # Calculate correlation matrix using Matérn 5/2 kernel:
+    # K(d) = (1 + sqrt(5)*d + 5*d^2/3) * exp(-sqrt(5)*d)
+    scaled_dist = np.sqrt(5) * distance_matrix
+    correlation_matrix = (1 + scaled_dist + scaled_dist**2 / 3) * np.exp(-scaled_dist)
+
     eigenvalues, eigenvectors = scipy.linalg.eigh(
         correlation_matrix,
         subset_by_index=[n_tde - n_eigenvalues, n_tde - 1],

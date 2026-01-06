@@ -60,7 +60,7 @@ def _get_eigenmodes(
         if kind == "strike_slip"
         else model.meshes[mesh_idx].config.n_modes_dip_slip
     )
-    return model.meshes[mesh_idx].eigenvectors[:, :n_eigs]
+    return model.meshes[mesh_idx].eigenvectors[:, :n_eigs] # type: ignore[attr-defined]
 
 
 def _get_eigen_to_velocity(
