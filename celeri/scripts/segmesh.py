@@ -173,7 +173,7 @@ def main():
                     seg_coords[0::2, 0],
                     seg_coords[0::2, 1],
                     (av_strike + 90) * np.ones_like(seg_coords[0::2, 0]),
-                    1000
+                    KM2M
                     * model.segment.loc[this_seg_mesh_idx, "locking_depth"]
                     / np.tan(np.radians(model.segment.loc[this_seg_mesh_idx, "dip"])),
                 )
@@ -188,7 +188,7 @@ def main():
                     seg_coords[1::2, 0],
                     seg_coords[1::2, 1],
                     (av_strike + 90) * np.ones_like(seg_coords[0::2, 0]),
-                    1000
+                    KM2M
                     * model.segment.loc[this_seg_mesh_idx, "locking_depth"]
                     / np.tan(np.radians(model.segment.loc[this_seg_mesh_idx, "dip"])),
                 )
