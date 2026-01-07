@@ -787,6 +787,9 @@ def _hash_elastic_operator_input(
         "sqp_kinematic_slip_rate_hint_ds",
         "top_slip_rate_constraint",
         "bot_slip_rate_constraint",
+        "top_elastic_constraint_sigma",
+        "bot_elastic_constraint_sigma",
+        "side_elastic_constraint_sigma",
         "side_slip_rate_constraint",
         "top_slip_rate_weight",
         "bot_slip_rate_weight",
@@ -2144,74 +2147,31 @@ def get_qp_slip_rate_inequality_operator_and_data_vector(
     return slip_rate_bound_matrix, slip_rate_bound_data_vector
 
 
-def get_eigenvalues_and_eigenvectors(n_eigenvalues, x, y, z, distance_exponent):
-    n_tde = x.size
-
-    # Calculate Cartesian distances between triangle centroids
-    centroid_coordinates = np.array([x, y, z]).T
-    distance_matrix = scipy.spatial.distance.cdist(
-        centroid_coordinates, centroid_coordinates, "euclidean"
-    )
-
-    # Rescale distance matrix to the range 0-1
-    distance_matrix = (distance_matrix - np.min(distance_matrix)) / np.ptp(
-        distance_matrix
-    )
-
-    # Calculate correlation matrix
-    correlation_matrix = np.exp(-(distance_matrix**distance_exponent))
-
-    # https://stackoverflow.com/questions/12167654/fastest-way-to-compute-k-largest-eigenvalues-and-corresponding-eigenvectors-with
-    eigenvalues, eigenvectors = scipy.linalg.eigh(
-        correlation_matrix,
-        subset_by_index=[n_tde - n_eigenvalues, n_tde - 1],
-    )
-    eigenvalues = np.real(eigenvalues)
-    eigenvectors = np.real(eigenvectors)
-    eigenvectors[np.abs(eigenvectors) < 1e-6] = 0.0
-    ordered_index = np.flip(np.argsort(eigenvalues))
-    eigenvalues = eigenvalues[ordered_index]
-    eigenvectors = eigenvectors[:, ordered_index]
-    return eigenvalues, eigenvectors
-
-
 def _store_eigenvectors_to_tde_slip(model: Model, operators: _OperatorBuilder):
     meshes = model.meshes
 
-    for i in range(len(meshes)):
-        logger.info(f"Start: Eigenvectors to TDE slip for mesh: {meshes[i].file_name}")
-        # Get eigenvectors for curren mesh
-        _, eigenvectors = get_eigenvalues_and_eigenvectors(
-            meshes[i].n_modes,
-            meshes[i].x_centroid,
-            meshes[i].y_centroid,
-            meshes[i].z_centroid,
-            distance_exponent=1.0,  # Make this something set in mesh_parameters.json
-        )
+    for i, mesh in enumerate(meshes):
+        logger.info(f"Start: Eigenvectors to TDE slip for mesh: {mesh.file_name}")
+        assert mesh.eigenvectors is not None
+        eigenvectors = mesh.eigenvectors
 
-        # Create eigenvectors to TDE slip matrix
         operators.eigenvectors_to_tde_slip[i] = np.zeros(
             (
                 2 * eigenvectors.shape[0],
-                meshes[i].config.n_modes_strike_slip
-                + meshes[i].config.n_modes_dip_slip,
+                mesh.config.n_modes_strike_slip + mesh.config.n_modes_dip_slip,
             )
         )
 
-        # Place strike-slip panel
         operators.eigenvectors_to_tde_slip[i][
-            0::2, 0 : meshes[i].config.n_modes_strike_slip
-        ] = eigenvectors[:, 0 : meshes[i].config.n_modes_strike_slip]
+            0::2, 0 : mesh.config.n_modes_strike_slip
+        ] = eigenvectors[:, 0 : mesh.config.n_modes_strike_slip]
 
-        # Place dip-slip panel
         operators.eigenvectors_to_tde_slip[i][
             1::2,
-            meshes[i].config.n_modes_strike_slip : meshes[i].config.n_modes_strike_slip
-            + meshes[i].config.n_modes_dip_slip,
-        ] = eigenvectors[:, 0 : meshes[i].config.n_modes_dip_slip]
-        logger.success(
-            f"Finish: Eigenvectors to TDE slip for mesh: {meshes[i].file_name}"
-        )
+            mesh.config.n_modes_strike_slip : mesh.config.n_modes_strike_slip
+            + mesh.config.n_modes_dip_slip,
+        ] = eigenvectors[:, 0 : mesh.config.n_modes_dip_slip]
+        logger.success(f"Finish: Eigenvectors to TDE slip for mesh: {mesh.file_name}")
 
 
 def rotation_vectors_to_euler_poles(

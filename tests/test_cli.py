@@ -3,8 +3,6 @@ from pathlib import Path
 
 import pytest
 
-from celeri.celeri_util import get_newest_run_folder, read_run
-
 
 @pytest.mark.parametrize(
     ("config_file", "solve_type"),
@@ -35,6 +33,3 @@ def test_celeri_solve(config_file, solve_type):
             "5",
         ],
     )
-
-    run_dir = get_newest_run_folder(base=Path(__file__).parent.parent / "runs")
-    read_run(run_dir)

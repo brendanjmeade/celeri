@@ -10,7 +10,6 @@ from celeri.celeri_util import (
     get_transverse_projection,
     interleave2,
     interleave3,
-    read_run,
     wrap2360,
 )
 from celeri.cli import parse_args, process_args
@@ -30,7 +29,6 @@ from celeri.operators import (
     Operators,
     build_operators,
     get_block_strain_rate_to_velocities_partials,
-    get_eigenvalues_and_eigenvectors,
     get_full_dense_operator,
     get_full_dense_operator_eigen,
     get_global_float_block_rotation_partials,
@@ -121,7 +119,6 @@ __all__ = [
     "get_block_strain_rate_to_velocities_partials",
     "get_config",
     "get_default_plotting_options",
-    "get_eigenvalues_and_eigenvectors",
     "get_full_dense_operator",
     "get_full_dense_operator_eigen",
     "get_global_float_block_rotation_partials",
@@ -175,7 +172,6 @@ __all__ = [
     "process_segment",
     "process_station",
     "read_data",
-    "read_run",
     "solve_mcmc",
     "solve_sqp",
     "solve_sqp2",

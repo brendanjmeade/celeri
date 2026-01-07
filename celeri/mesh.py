@@ -9,6 +9,8 @@ from typing import Any, Literal, TypeVar, cast
 
 import meshio
 import numpy as np
+import scipy.linalg
+import scipy.spatial.distance
 from loguru import logger
 from pydantic import BaseModel, ConfigDict, model_validator
 
@@ -116,6 +118,12 @@ class MeshConfig(BaseModel):
     # `side_slip_rate_weight` if the TDE eigenmodes are used.
     eigenmode_slip_rate_constraint_weight: float = 1.0
 
+    # Sigma for the artificial observed 0s on elastic velocities at the
+    # boundaries, used in MCMC sampling when the corresponding constraint == 1.
+    top_elastic_constraint_sigma: float = 0.5
+    bot_elastic_constraint_sigma: float = 0.5
+    side_elastic_constraint_sigma: float = 0.5
+
     # Filename for fixed slip rates, not currently used
     a_priori_slip_filename: Path | None = None
 
@@ -219,7 +227,24 @@ def _compute_ordered_edge_nodes(mesh: dict):
 
 
 def _compute_mesh_edge_elements(mesh: dict):
-    # Find indices of elements lining top, bottom, and sides of each mesh
+    """
+    Compute mesh boundary elements that are classified as top, bottom, or side.
+
+    Modifies the `mesh` dictionary in-place by adding boolean arrays 
+    indicating which elements are on the top, bottom, or side of the mesh boundary. 
+    The classification is based on the depth of each element's vertices. 
+    Top elements are those that are relatively shallow, bottom elements are deepest, 
+    and sides are edges that are on the boundary but not classified as top or bottom.
+
+    Args:
+        mesh (dict): A mesh dictionary with keys including "points" (vertex coordinates), 
+            "verts" (triangular element vertex indices), and (on exit) "ordered_edge_nodes".
+
+    Modifies:
+        mesh["top_elements"]: np.ndarray of bool, True for elements on the top surface.
+        mesh["bot_elements"]: np.ndarray of bool, True for elements on the bottom surface.
+        mesh["side_elements"]: np.ndarray of bool, True for elements on mesh sides.
+    """
 
     _compute_ordered_edge_nodes(mesh)
 
@@ -295,7 +320,6 @@ def _compute_mesh_edge_elements(mesh: dict):
     depth_count, depth_bins = np.histogram(centroid_depths[tops], bins="doane")
     depth_bin_min = depth_bins[0:-1]
     depth_bin_max = depth_bins[1:]
-    np.std(depth_bins)
     zero_idx = np.where(depth_count == 0)[0]
     if len(zero_idx) > 0:
         if np.abs(depth_bin_max[zero_idx[0]] - depth_bin_min[zero_idx[-1] + 1]) > 10:
@@ -324,7 +348,6 @@ def _compute_mesh_edge_elements(mesh: dict):
     depth_count, depth_bins = np.histogram(centroid_depths[bots], bins="doane")
     depth_bin_min = depth_bins[0:-1]
     depth_bin_max = depth_bins[1:]
-    np.std(depth_bins)
     zero_idx = np.where(depth_count == 0)[0]
     if len(zero_idx) > 0:
         if abs(depth_bin_min[zero_idx[-1]] - depth_bin_max[zero_idx[0] - 1]) > 10:
@@ -402,6 +425,43 @@ def _compute_mesh_perimeter(mesh: dict):
     )
 
 
+def _get_eigenvalues_and_eigenvectors(
+    n_eigenvalues: int, 
+    x: np.ndarray, 
+    y: np.ndarray, 
+    z: np.ndarray, 
+    distance_exponent = 1.0
+) -> tuple[np.ndarray, np.ndarray]:
+    """Get the eigenvalues and eigenvectors of the mesh kernel."""
+    n_tde = x.size
+
+    # Calculate Cartesian distances between triangle centroids
+    centroid_coordinates = np.array([x, y, z]).T
+    distance_matrix = scipy.spatial.distance.cdist(
+        centroid_coordinates, centroid_coordinates, "euclidean"
+    )
+
+    # Rescale distance matrix to the range 0-1
+    distance_matrix = (distance_matrix - np.min(distance_matrix)) / np.ptp(
+        distance_matrix
+    )
+
+    # Calculate correlation matrix
+    correlation_matrix = np.exp(-(distance_matrix**distance_exponent))
+
+    # https://stackoverflow.com/questions/12167654/fastest-way-to-compute-k-largest-eigenvalues-and-corresponding-eigenvectors-with
+    eigenvalues, eigenvectors = scipy.linalg.eigh(
+        correlation_matrix,
+        subset_by_index=[n_tde - n_eigenvalues, n_tde - 1],
+    )
+    eigenvalues = np.real(eigenvalues)
+    eigenvectors = np.real(eigenvectors)
+    assert np.all(eigenvalues > 0), "Mesh kernel error: Some eigenvalues are negative"
+    ordered_index = np.flip(np.argsort(eigenvalues))
+    eigenvalues = eigenvalues[ordered_index]
+    eigenvectors = eigenvectors[:, ordered_index]
+    return eigenvalues, eigenvectors
+
 @dataclass
 class Mesh:
     """Triangular mesh for fault modeling.
@@ -458,8 +518,9 @@ class Mesh:
                  Bool indicating if each triangle is a bottom element. Each triangle along the edge of the mesh will
                  naturally have two vertices which compose the outer edge that actually belongs to the perimeter of the mesh,
                  and a third "interior" vertex. A bottom element is defined as an edge triangle such that the depth
-                 difference between the interior vertex and the midpoint of the outer edge is more negative than the depth
-                 difference between the other two vertices.
+                 difference between the interior vertex and the midpoint of the outer edge is more negative than the negative
+                 of the absolute depth difference between the two edge vertices. Additionally, elements are filtered to ensure
+                 they are really deep using histogram analysis of centroid depths.
              top_elements: np.ndarray
                  Bool indicating top elements, the opposite of bottom elements.
              side_elements: np.ndarray
@@ -529,6 +590,8 @@ class Mesh:
     bot_slip_idx: np.ndarray
     side_slip_idx: np.ndarray
     n_tde_constraints: int
+    eigenvalues: np.ndarray
+    eigenvectors: np.ndarray
     coup_idx: np.ndarray | None = None
     ss_slip_idx: np.ndarray | None = None
     ds_slip_idx: np.ndarray | None = None
@@ -678,8 +741,14 @@ class Mesh:
             mesh["side_slip_idx"],
         )
 
+        mesh["eigenvalues"], mesh["eigenvectors"] = _get_eigenvalues_and_eigenvectors(
+            mesh["n_modes"],
+            mesh["x_centroid"],
+            mesh["y_centroid"],
+            mesh["z_centroid"],
+        )
+
         logger.success(f"Read: {filename}")
-        # Convert dict to Mesh dataclass
         return cls(**mesh)
 
     @property
@@ -755,5 +824,13 @@ class Mesh:
             mesh.bot_slip_idx,
             mesh.side_slip_idx,
         )
+
+        if mesh.eigenvalues is None or mesh.eigenvectors is None:
+            mesh.eigenvalues, mesh.eigenvectors = _get_eigenvalues_and_eigenvectors(
+                mesh.n_modes,
+                mesh.x_centroid,
+                mesh.y_centroid,
+                mesh.z_centroid,
+            )
 
         return mesh
