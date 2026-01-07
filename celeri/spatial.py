@@ -899,6 +899,18 @@ def get_strain_rate_displacements(
     u_up = 0
 
     u_up is zero, since strain is assumed to be strain on the spherical plane.
+
+    Args:
+    lon_obs: Longitude coordinates at the stations
+    lat_obs: Latitude coordinates at the stations
+    centroid_lon: Longitude of the block centroid
+    centroid_lat: Latitude of the block centroid
+    strain_rate_lon_lon: Strain rate component ε_λλ
+    strain_rate_lat_lat: Strain rate component ε_φφ
+    strain_rate_lon_lat: Strain rate component ε_λφ
+
+    Returns: 
+    tuple[np.ndarray, np.ndarray, np.ndarray]: Eastward, northward, and upward velocities
     """
     centroid_lon = np.deg2rad(centroid_lon)
     centroid_lat = latitude_to_colatitude(centroid_lat)

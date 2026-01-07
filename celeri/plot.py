@@ -33,6 +33,7 @@ from celeri.spatial import (
     get_okada_displacements,
     get_rotation_displacements,
     get_strain_rate_displacements,
+    get_block_centroid,
 )
 
 
@@ -780,14 +781,19 @@ def plot_segment_displacements(
     plt.show()
 
 
-def plot_strain_rate_components_for_block(closure, segment, station, block_idx):
+def plot_strain_rate_components_for_block(closure, model, station, block_idx):
     plt.figure(figsize=(10, 3))
     plt.subplot(1, 3, 1)
+
+    block_centroid_lon, block_centroid_lat = get_block_centroid(
+        model.segment, block_idx
+    )
+    
     vel_east, vel_north, _ = get_strain_rate_displacements(
         station.lon,
         station.lat,
-        segment.centroid_lon[block_idx],
-        segment.centroid_lat[block_idx],
+        block_centroid_lon,
+        block_centroid_lat,
         strain_rate_lon_lon=1,
         strain_rate_lat_lat=0,
         strain_rate_lon_lat=0,
@@ -813,8 +819,8 @@ def plot_strain_rate_components_for_block(closure, segment, station, block_idx):
     vel_east, vel_north, _ = get_strain_rate_displacements(
         station.lon,
         station.lat,
-        segment.centroid_lon[block_idx],
-        segment.centroid_lat[block_idx],
+        block_centroid_lon,
+        block_centroid_lat,
         strain_rate_lon_lon=0,
         strain_rate_lat_lat=1,
         strain_rate_lon_lat=0,
@@ -840,8 +846,8 @@ def plot_strain_rate_components_for_block(closure, segment, station, block_idx):
     vel_east, vel_north, _ = get_strain_rate_displacements(
         station.lon,
         station.lat,
-        segment.centroid_lon[block_idx],
-        segment.centroid_lat[block_idx],
+        block_centroid_lon,
+        block_centroid_lat,
         strain_rate_lon_lon=0,
         strain_rate_lat_lat=0,
         strain_rate_lon_lat=1,
