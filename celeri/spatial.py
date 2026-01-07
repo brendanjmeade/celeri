@@ -4,6 +4,7 @@ import warnings
 import cutde.halfspace as cutde_halfspace
 import numpy as np
 import scipy
+import pandas as pd
 from rich.progress import track
 from scipy.sparse import csr_matrix
 
@@ -880,13 +881,13 @@ def mogi_forward(
 
 
 def get_strain_rate_displacements(
-    lon_obs,
-    lat_obs,
-    centroid_lon,
-    centroid_lat,
-    strain_rate_lon_lon,
-    strain_rate_lat_lat,
-    strain_rate_lon_lat,
+    lon_obs: np.ndarray,
+    lat_obs: np.ndarray,
+    centroid_lon: float,
+    centroid_lat: float,
+    strain_rate_lon_lon: int,
+    strain_rate_lat_lat: int,
+    strain_rate_lon_lat: int,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Calculate displacements due to three block strain rate components.
     Equations are from Savage (2001) and expressed concisely in McCaffrey (2005):
@@ -898,9 +899,6 @@ def get_strain_rate_displacements(
     u_up = 0
 
     u_up is zero, since strain is assumed to be strain on the spherical plane.
-
-    Returns a tuple [u_east, u_north, u_up], where each is a np.ndarray of shape
-    (n_obs,), where n_obs is the number of stations on the block.
     """
     centroid_lon = np.deg2rad(centroid_lon)
     centroid_lat = latitude_to_colatitude(centroid_lat)
@@ -1042,7 +1040,7 @@ def get_block_motion_constraint_partials(block) -> np.ndarray:
     return operator
 
 
-def get_block_centroid(segment, block_idx):
+def get_block_centroid(segment: pd.DataFrame, block_idx: int) -> tuple[float, float]:
     """Calculate centroid of a block based on boundary polygon
     We take all block vertices (including duplicates) and estimate
     the centroid by taking the average of longitude and latitude
@@ -1067,7 +1065,7 @@ def get_block_centroid(segment, block_idx):
     )
     block_centroid_lon = np.average(lon0, weights=lengths)
     block_centroid_lat = np.average(lat0, weights=lengths)
-    return block_centroid_lon, block_centroid_lat
+    return float(block_centroid_lon), float(block_centroid_lat)
 
 
 def get_shared_sides(vertices):
