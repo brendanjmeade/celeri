@@ -751,8 +751,8 @@ def _state_vector_from_draw(
 
     for mesh_idx in range(len(model.meshes)):
         indices = {
-            "strike_slip": slice(None, None, 2),
-            "dip_slip": slice(1, None, 2),
+            "ss": slice(None, None, 2),
+            "ds": slice(1, None, 2),
         }
         for name, idx in indices.items():
             start = operators_tde.index.tde.start_tde_col[mesh_idx]
