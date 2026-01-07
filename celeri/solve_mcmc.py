@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import pandas as pd
+import pytensor.tensor as pt
 from loguru import logger
 from scipy import linalg, spatial
 
@@ -263,7 +264,16 @@ def _elastic_component(
     # Compute elastic velocity at stations. The operator already
     # includes a negative sign. eigen_to_velocities now includes all 3 components.
     if lower is None and upper is None:
-        elastic_velocity = _operator_mult(to_velocity, param)
+        station_vels = _operator_mult(to_velocity, param)
+
+        station_vels = pt.concatenate(
+            [
+                station_vels.reshape((len(model.station), 2)),
+                np.zeros((len(model.station), 1)),
+            ],
+            axis=-1,
+        ).ravel()  # type: ignore[attr-defined]
+        
     else:
         station_vels = _station_vel_from_elastic_mesh(
             model,
