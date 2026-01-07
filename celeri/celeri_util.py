@@ -276,21 +276,11 @@ def get_segment_oblique_projection(lon1, lat1, lon2, lat2, skew=True):
     return projection
 
 
-def latitude_to_colatitude(lat):
-    """Convert from latitude to colatitude
-    NOTE: Not sure why I need to treat the scalar case differently but I do.
-    """
-    if lat.size == 1:  # Deal with the scalar case
-        if lat >= 0:
-            colat = 90.0 - lat
-        elif lat < 0:
-            colat = -90.0 - lat
-        else:
-            raise AssertionError()
-    else:  # Deal with the array case
-        colat = np.zeros_like(lat)
-        colat[np.where(lat >= 0)[0]] = 90.0 - lat[np.where(lat >= 0)[0]]
-        colat[np.where(lat < 0)[0]] = -90.0 - lat[np.where(lat < 0)[0]]
+def latitude_to_colatitude(lat: np.ndarray) -> np.ndarray:
+    """Convert from latitude to colatitude."""
+    colat = np.zeros_like(lat)
+    colat[np.where(lat >= 0)[0]] = 90.0 - lat[np.where(lat >= 0)[0]]
+    colat[np.where(lat < 0)[0]] = -90.0 - lat[np.where(lat < 0)[0]]
     return colat
 
 

@@ -883,8 +883,8 @@ def mogi_forward(
 def get_strain_rate_displacements(
     lon_obs: np.ndarray,
     lat_obs: np.ndarray,
-    centroid_lon: float,
-    centroid_lat: float,
+    centroid_lon: np.ndarray,
+    centroid_lat: np.ndarray,
     strain_rate_lon_lon: int,
     strain_rate_lat_lat: int,
     strain_rate_lon_lat: int,
@@ -1040,7 +1040,7 @@ def get_block_motion_constraint_partials(block) -> np.ndarray:
     return operator
 
 
-def get_block_centroid(segment: pd.DataFrame, block_idx: int) -> tuple[float, float]:
+def get_block_centroid(segment: pd.DataFrame, block_idx: int) -> tuple[np.ndarray, np.ndarray]:
     """Calculate centroid of a block based on boundary polygon
     We take all block vertices (including duplicates) and estimate
     the centroid by taking the average of longitude and latitude
@@ -1065,7 +1065,7 @@ def get_block_centroid(segment: pd.DataFrame, block_idx: int) -> tuple[float, fl
     )
     block_centroid_lon = np.average(lon0, weights=lengths)
     block_centroid_lat = np.average(lat0, weights=lengths)
-    return float(block_centroid_lon), float(block_centroid_lat)
+    return np.array([block_centroid_lon]), np.array([block_centroid_lat])
 
 
 def get_shared_sides(vertices):
