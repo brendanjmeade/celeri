@@ -145,7 +145,7 @@ def _station_vel_from_elastic_mesh(
         coefs = _operator_mult(eigenvectors.T, elastic)
         # eigen_to_velocities now includes all 3 velocity components
         elastic_velocity = _operator_mult(to_velocity, coefs)
-        
+
         return elastic_velocity
     elif method == "direct":
         to_station = operators.tde.tde_to_velocities[mesh_idx][:, idx.start : None : 3]
@@ -424,7 +424,11 @@ def _add_station_velocity_likelihood(model: Model, mu):
     import pymc as pm
 
     sigma = pm.HalfNormal("sigma", sigma=2)
-    data = np.array([model.station.east_vel, model.station.north_vel]).T
+
+    if model.config.include_vertical_velocity:
+        data = np.array([model.station.east_vel, model.station.north_vel, model.station.up_vel]).T
+    else:
+        data = np.array([model.station.east_vel, model.station.north_vel]).T
 
     lh_dist = pm.StudentT.dist
 
@@ -473,6 +477,8 @@ def _add_station_velocity_likelihood(model: Model, mu):
             f"{(areas >= effective_area).sum()}"
         )
 
+        dims = ("station", "xyz") if model.config.include_vertical_velocity else ("station", "xy")
+
         pm.CustomDist(
             "station_velocity",
             weight[:, None],
@@ -481,7 +487,7 @@ def _add_station_velocity_likelihood(model: Model, mu):
             logp=lh,
             random=random,
             observed=data,
-            dims=("station", "xy"),
+            dims=dims,
         )
     else:
         raise ValueError(
@@ -641,8 +647,13 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
             + mogi_velocity
             + elastic_velocity
         )
-        mu = mu.reshape((len(model.station), 3))[:, :2]
-        mu_det = pm.Deterministic("mu", mu, dims=("station", "xy"))
+        mu = mu.reshape((len(model.station), 3))
+        
+        if not model.config.include_vertical_velocity:
+            mu = mu[:, :2]
+
+        dims = ("station", "xyz") if model.config.include_vertical_velocity else ("station", "xy")
+        mu_det = pm.Deterministic("mu", mu, dims=dims)
         _add_station_velocity_likelihood(model, mu_det)
         _add_segment_constraints(model, operators, rotation)
 
