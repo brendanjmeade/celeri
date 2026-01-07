@@ -155,6 +155,8 @@ def _station_vel_from_elastic_mesh(
     array
         Elastic velocities at station locations (flattened, all 3 components)
     """
+    import pytensor.tensor as pt
+
     assert operators.tde is not None
     idx = DIRECTION_IDX[kind]
     method = model.config.mcmc_station_velocity_method
