@@ -33,6 +33,7 @@ from celeri.spatial import (
     get_okada_displacements,
     get_rotation_displacements,
     get_strain_rate_displacements,
+    get_block_centroid,
 )
 
 
@@ -584,7 +585,7 @@ def plot_estimation_summary(
     plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index)
     plt.title("Residual Velocity Histogram")
     residual_velocity_vector = np.concatenate(
-        (estimation.east_vel_residual.values, estimation.north_vel_residual.values)
+        (estimation.east_vel_residual, estimation.north_vel_residual)
     )
     mean_average_error = np.mean(np.abs(residual_velocity_vector))
     mean_squared_error = (
@@ -621,6 +622,7 @@ def plot_mesh(
     vmax=None,
     cmap="seismic",
     center=0,
+    set_limits=False,
 ):
     """
     Plot a 2D or cross-sectional mesh. Determines if a mesh 
@@ -645,6 +647,8 @@ def plot_mesh(
         Colormap to use for coloring polygons (default 'seismic').
     center : float, optional
         Center value for diverging colormap normalization (default 0).
+    set_limits : bool, optional
+        Whether to set axis limits and aspect ratio (default False).
 
     Returns
     -------
@@ -712,11 +716,11 @@ def plot_mesh(
     y_edge = np.append(y_edge, dim1_coords[mesh.ordered_edge_nodes[0, 0]])
     ax.plot(x_edge, y_edge, color="black", linewidth=0.5)
 
-    ax.set_aspect("equal", adjustable="box")
-
-    margin = 0.01 * max(dim0_coords.max() - dim0_coords.min(), dim1_coords.max() - dim1_coords.min())
-    ax.set_xlim(dim0_coords.min() - margin, dim0_coords.max() + margin)
-    ax.set_ylim(dim1_coords.min() - margin, dim1_coords.max() + margin)
+    if set_limits:
+        ax.set_aspect("equal", adjustable="box")
+        margin = 0.01 * max(dim0_coords.max() - dim0_coords.min(), dim1_coords.max() - dim1_coords.min())
+        ax.set_xlim(dim0_coords.min() - margin, dim0_coords.max() + margin)
+        ax.set_ylim(dim1_coords.min() - margin, dim1_coords.max() + margin)
 
     return pc
 
@@ -777,14 +781,19 @@ def plot_segment_displacements(
     plt.show()
 
 
-def plot_strain_rate_components_for_block(closure, segment, station, block_idx):
-    # TODO These get_strain_rate_displacements calls don't have the correct arguments?
+def plot_strain_rate_components_for_block(closure, model, station, block_idx):
     plt.figure(figsize=(10, 3))
     plt.subplot(1, 3, 1)
-    vel_east, vel_north, vel_up = get_strain_rate_displacements(
-        station,
-        segment,
-        block_idx=block_idx,
+
+    block_centroid_lon, block_centroid_lat = get_block_centroid(
+        model.segment, block_idx
+    )
+    
+    vel_east, vel_north, _ = get_strain_rate_displacements(
+        station.lon,
+        station.lat,
+        block_centroid_lon,
+        block_centroid_lat,
         strain_rate_lon_lon=1,
         strain_rate_lat_lat=0,
         strain_rate_lon_lat=0,
@@ -807,10 +816,11 @@ def plot_strain_rate_components_for_block(closure, segment, station, block_idx):
     )
 
     plt.subplot(1, 3, 2)
-    vel_east, vel_north, vel_up = get_strain_rate_displacements(
-        station,
-        segment,
-        block_idx=block_idx,
+    vel_east, vel_north, _ = get_strain_rate_displacements(
+        station.lon,
+        station.lat,
+        block_centroid_lon,
+        block_centroid_lat,
         strain_rate_lon_lon=0,
         strain_rate_lat_lat=1,
         strain_rate_lon_lat=0,
@@ -833,10 +843,11 @@ def plot_strain_rate_components_for_block(closure, segment, station, block_idx):
     )
 
     plt.subplot(1, 3, 3)
-    vel_east, vel_north, vel_up = get_strain_rate_displacements(
-        station,
-        segment,
-        block_idx=block_idx,
+    vel_east, vel_north, _ = get_strain_rate_displacements(
+        station.lon,
+        station.lat,
+        block_centroid_lon,
+        block_centroid_lat,
         strain_rate_lon_lon=0,
         strain_rate_lat_lat=0,
         strain_rate_lon_lat=1,
