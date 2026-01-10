@@ -143,16 +143,9 @@ def _station_vel_from_elastic_mesh(
         # the eigen decomposition to use a different inner product,
         # we will need to change this projection.
         coefs = _operator_mult(eigenvectors.T, elastic)
+        # eigen_to_velocities now includes all 3 velocity components
         elastic_velocity = _operator_mult(to_velocity, coefs)
-        # We need to return a station velocity for all three components,
-        # not just north and east.
-        elastic_velocity = pt.concatenate(
-            [
-                elastic_velocity.reshape((len(model.station), 2)),
-                np.zeros((len(model.station), 1)),
-            ],
-            axis=-1,
-        ).ravel()  # type: ignore[attr-defined]
+        
         return elastic_velocity
     elif method == "direct":
         to_station = operators.tde.tde_to_velocities[mesh_idx][:, idx.start : None : 3]
@@ -262,18 +255,9 @@ def _elastic_component(
     pm.Deterministic(f"elastic_{mesh_idx}_{kind_short}", elastic_tde)
 
     # Compute elastic velocity at stations. The operator already
-    # includes a negative sign.
+    # includes a negative sign. eigen_to_velocities now includes all 3 components.
     if lower is None and upper is None:
         station_vels = _operator_mult(to_velocity, param)
-        # We need to return a station velocity for all three components,
-        # not just north and east.
-        station_vels = pt.concatenate(
-            [
-                station_vels.reshape((len(model.station), 2)),
-                np.zeros((len(model.station), 1)),
-            ],
-            axis=-1,
-        ).ravel()  # type: ignore[attr-defined]
     else:
         station_vels = _station_vel_from_elastic_mesh(
             model,
