@@ -136,21 +136,69 @@ def main():
             seg_coords = np.zeros((2 * len(this_seg_mesh_idx), 2))
             seg_coords[0::2, :] = this_coord1.T
             seg_coords[1::2, :] = this_coord2.T
+            # Allocate space for bottom coordinates
             seg_coords_bot = np.zeros((2 * len(this_seg_mesh_idx), 3))
-            seg_coords_bot[0::2, :] = np.array(
-                [
-                    lon1_bot[this_seg_mesh_idx],
-                    lat1_bot[this_seg_mesh_idx],
-                    model.segment.loc[this_seg_mesh_idx, "locking_depth"],
+
+            # Bottom coordinate logic based on mesh generation method
+
+            # Panel approach: Use projected bottom coordinates based on top coordinates, depths, and dips
+            if np.max(model.segment.create_ribbon_mesh[this_seg_mesh_idx]) == 1:
+                # Bottom coordinates are the top lon, lat but placed at the locking depth
+
+                seg_coords_bot[0::2, :] = np.array(
+                    [
+                        lon1_bot[this_seg_mesh_idx],
+                        lat1_bot[this_seg_mesh_idx],
+                        model.segment.loc[this_seg_mesh_idx, "locking_depth"],
+                    ]
+                ).T
+                seg_coords_bot[1::2, :] = np.array(
+                    [
+                        lon2_bot[this_seg_mesh_idx],
+                        lat2_bot[this_seg_mesh_idx],
+                        model.segment.loc[this_seg_mesh_idx, "locking_depth"],
+                    ]
+                ).T
+
+            # True ribbon approach: Bottom coordinates as duplicates of top coordinates, but placed at locking depth and rotated by average dip
+            elif np.max(model.segment.create_ribbon_mesh[this_seg_mesh_idx]) == 2:
+                # Define rotation axis as average strike of these segments
+                av_strike = np.sum(
+                    model.segment.loc[this_seg_mesh_idx, "azimuth"]
+                    * model.segment.loc[this_seg_mesh_idx, "length"]
+                ) / np.sum(model.segment.loc[this_seg_mesh_idx, "length"])
+                # Project coordinates from surface trace, perpendicular to this single averaged cluster strike
+                # av_dip = np.mean(model.segment.loc[this_seg_mesh_idx, "dip"])
+                lon1_bot_proj, lat1_bot_proj, _ = GEOID.fwd(
+                    seg_coords[0::2, 0],
+                    seg_coords[0::2, 1],
+                    (av_strike + 90) * np.ones_like(seg_coords[0::2, 0]),
+                    KM2M
+                    * model.segment.loc[this_seg_mesh_idx, "locking_depth"]
+                    / np.tan(np.radians(model.segment.loc[this_seg_mesh_idx, "dip"])),
+                )
+                # Add projected coordinates to bottom array
+                seg_coords_bot[0::2, 0] = lon1_bot_proj
+                seg_coords_bot[0::2, 1] = lat1_bot_proj
+                # Add locking depth
+                seg_coords_bot[0::2, 2] = model.segment.loc[
+                    this_seg_mesh_idx, "locking_depth"
                 ]
-            ).T
-            seg_coords_bot[1::2, :] = np.array(
-                [
-                    lon2_bot[this_seg_mesh_idx],
-                    lat2_bot[this_seg_mesh_idx],
-                    model.segment.loc[this_seg_mesh_idx, "locking_depth"],
+                lon2_bot_proj, lat2_bot_proj, _ = GEOID.fwd(
+                    seg_coords[1::2, 0],
+                    seg_coords[1::2, 1],
+                    (av_strike + 90) * np.ones_like(seg_coords[0::2, 0]),
+                    KM2M
+                    * model.segment.loc[this_seg_mesh_idx, "locking_depth"]
+                    / np.tan(np.radians(model.segment.loc[this_seg_mesh_idx, "dip"])),
+                )
+                # Add projected coordinates to bottom array
+                seg_coords_bot[1::2, 0] = lon2_bot_proj
+                seg_coords_bot[1::2, 1] = lat2_bot_proj
+                # Add locking depth
+                seg_coords_bot[1::2, 2] = model.segment.loc[
+                    this_seg_mesh_idx, "locking_depth"
                 ]
-            ).T
             # Ordered coordinates from block closure
             block_coords = thisclosure.polygons[sm_block_labels_unique[0, i]].vertices
             # Find the ordered indices into block_coords
@@ -184,6 +232,7 @@ def main():
             bot_coords2 = seg_coords_bot[ordered_seg_idx[bot_idx2.astype(int)], :]
             # Bottom coordinates are averages of "internal" endpoints (hanging ends are also averaged, but they're duplicates)
             bot_coords = (bot_coords1 + bot_coords2) / 2
+
             # Top coordinates are ordered block coordinates with zero depths appended
             top_coords = np.hstack((ordered_coords, np.zeros((len(ordered_coords), 1))))
             # Use top and bottom coordinates to make a mesh

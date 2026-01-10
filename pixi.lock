@@ -6,8 +6,6 @@ environments:
     - url: https://conda.anaconda.org/numba/
     indexes:
     - https://pypi.org/simple
-    options:
-      pypi-prerelease-mode: if-necessary-or-explicit
     packages:
       linux-64:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/_openmp_mutex-4.5-7_kmp_llvm.conda
@@ -4835,7 +4833,7 @@ packages:
   timestamp: 1765941638540
 - pypi: ./
   name: celeri
-  version: 0.0.post1.dev1+gef1d3a0fe
+  version: 0.0.4.post1.dev194+g78b21d428
   sha256: 699f3d9fa16e9fd792cf9c4405acbfe2c49a72c9759802456f443620d3b52280
   requires_dist:
   - cartopy
@@ -4867,6 +4865,7 @@ packages:
   - xarray
   - zarr
   requires_python: '>=3.13'
+  editable: true
 - conda: https://conda.anaconda.org/conda-forge/noarch/certifi-2025.11.12-pyhd8ed1ab_0.conda
   sha256: 083a2bdad892ccf02b352ecab38ee86c3e610ba9a4b11b073ea769d55a115d32
   md5: 96a02a5c1a65470a7e4eedb644c872fd
