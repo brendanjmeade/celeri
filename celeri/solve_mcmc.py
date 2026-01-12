@@ -177,6 +177,7 @@ def _coupling_component(
     operators: Operators,
     lower: float | None,
     upper: float | None,
+    sigma: float,
 ):
     """Model elastic slip rate as coupling * kinematic slip rate.
 
@@ -203,7 +204,7 @@ def _coupling_component(
     eigenvectors = _get_eigenmodes(model, mesh_idx, kind)
     n_eigs = eigenvectors.shape[1]
     eigenvalues = model.meshes[mesh_idx].eigenvalues[:n_eigs]
-    matern_sigma = _matern_gp_prior_sigma_from_eigenvalues(eigenvalues, 1.0)
+    matern_sigma = _matern_gp_prior_sigma_from_eigenvalues(eigenvalues, sigma)
     coefs = pm.Normal(
         f"coupling_coefs_{mesh_idx}_{kind_short}", mu=0, sigma=matern_sigma, shape=n_eigs
     )
@@ -231,6 +232,7 @@ def _elastic_component(
     operators: Operators,
     lower: float | None,
     upper: float | None,
+    sigma: float,
 ):
     """Model elastic slip rate as a linear combination of eigenmodes.
     Creates parameters for raw elastic eigenmode coefficients, then adds 
@@ -264,7 +266,7 @@ def _elastic_component(
     n_eigs = eigenvectors.shape[1]
 
     eigenvalues = model.meshes[mesh_idx].eigenvalues[:n_eigs]
-    matern_sigma = _matern_gp_prior_sigma_from_eigenvalues(eigenvalues, 1.0)
+    matern_sigma = _matern_gp_prior_sigma_from_eigenvalues(eigenvalues, sigma)
     raw = pm.Normal(
         f"elastic_eigen_raw_{mesh_idx}_{kind_short}", sigma=matern_sigma, shape=n_eigs
     )
@@ -334,6 +336,7 @@ def _mesh_component(
                     operators,
                     lower=coupling_limit.lower,
                     upper=coupling_limit.upper,
+                    sigma=model.meshes[mesh_idx].config.coupling_sigma,
                 )
         else:
             elastic_tde, station_vels = _elastic_component(
@@ -343,6 +346,7 @@ def _mesh_component(
                     operators,
                     lower=rate_limit.lower,
                     upper=rate_limit.upper,
+                    sigma=model.meshes[mesh_idx].config.elastic_sigma,
                 )
 
         rates.append(station_vels)
