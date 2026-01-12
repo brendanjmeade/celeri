@@ -27,3 +27,4 @@ Untitled*.ipynb
 *.parquet
 local*.ipynb
 CLAUDE.md
+**/*.zarr/
