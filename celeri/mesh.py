@@ -590,8 +590,8 @@ class Mesh:
     bot_slip_idx: np.ndarray
     side_slip_idx: np.ndarray
     n_tde_constraints: int
-    eigenvalues: np.ndarray
-    eigenvectors: np.ndarray
+    eigenvalues: np.ndarray | None = None
+    eigenvectors: np.ndarray | None = None
     coup_idx: np.ndarray | None = None
     ss_slip_idx: np.ndarray | None = None
     ds_slip_idx: np.ndarray | None = None
