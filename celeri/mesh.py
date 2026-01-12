@@ -151,6 +151,9 @@ class MeshConfig(BaseModel):
     elastic_constraints_ss: ScalarBound = ScalarBound(lower=None, upper=None)
     elastic_constraints_ds: ScalarBound = ScalarBound(lower=None, upper=None)
 
+    coupling_sigma: float = 1.0
+    elastic_sigma: float = 1.0
+
     # Hint for the new sqp solver about the likely range of kinematic slip rates.
     sqp_kinematic_slip_rate_hint_ss: ScalarBound = ScalarBound(
         lower=-100.0, upper=100.0
