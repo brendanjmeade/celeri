@@ -86,6 +86,10 @@ def _get_eigen_to_velocity(
     return to_velocity
 
 
+def _matern_gp_prior_sigma_from_eigenvalues(eigenvalues: np.ndarray, sigma: float) -> np.ndarray:
+    return sigma * np.sqrt(eigenvalues)
+
+
 def _station_vel_from_elastic_mesh(
     model: Model,
     mesh_idx: int,
@@ -199,7 +203,7 @@ def _coupling_component(
     eigenvectors = _get_eigenmodes(model, mesh_idx, kind)
     n_eigs = eigenvectors.shape[1]
     eigenvalues = model.meshes[mesh_idx].eigenvalues[:n_eigs]
-    matern_sigma = 1.0 * np.sqrt(eigenvalues)
+    matern_sigma = _matern_gp_prior_sigma_from_eigenvalues(eigenvalues, 1.0)
     coefs = pm.Normal(
         f"coupling_coefs_{mesh_idx}_{kind_short}", mu=0, sigma=matern_sigma, shape=n_eigs
     )
@@ -260,7 +264,7 @@ def _elastic_component(
     n_eigs = eigenvectors.shape[1]
 
     eigenvalues = model.meshes[mesh_idx].eigenvalues[:n_eigs]
-    matern_sigma = 1.0 * np.sqrt(eigenvalues)
+    matern_sigma = _matern_gp_prior_sigma_from_eigenvalues(eigenvalues, 1.0)
     raw = pm.Normal(
         f"elastic_eigen_raw_{mesh_idx}_{kind_short}", sigma=matern_sigma, shape=n_eigs
     )
