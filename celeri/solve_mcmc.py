@@ -238,7 +238,6 @@ def _elastic_component(
     import pymc as pm
     import pytensor.tensor as pt
     kind_short = {"strike_slip": "ss", "dip_slip": "ds"}[kind]
-    idx = DIRECTION_IDX[kind]
 
     scale = 0.0
     for op in operators.eigen.eigen_to_velocities.values():
