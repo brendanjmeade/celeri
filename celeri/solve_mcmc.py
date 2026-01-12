@@ -198,7 +198,13 @@ def _coupling_component(
 
     eigenvectors = _get_eigenmodes(model, mesh_idx, kind)
     n_eigs = eigenvectors.shape[1]
-    coefs = pm.Normal(f"coupling_coefs_{mesh_idx}_{kind_short}", mu=0, sigma=10, shape=n_eigs)
+    eigenvalues = model.meshes[mesh_idx].eigenvalues[:n_eigs]
+    eigenvalue_std = np.sqrt(eigenvalues)
+    top_std = eigenvalue_std[0] if len(eigenvalue_std) > 0 else 1.0
+    normalized_std = 10.0 * eigenvalue_std / top_std
+    coefs = pm.Normal(
+        f"coupling_coefs_{mesh_idx}_{kind_short}", mu=0, sigma=normalized_std, shape=n_eigs
+    )
 
     coupling_field = _operator_mult(eigenvectors, coefs)
     coupling_field = _constrain_field(coupling_field, lower, upper)
@@ -255,7 +261,13 @@ def _elastic_component(
     )
     n_eigs = eigenvectors.shape[1]
 
-    raw = pm.Normal(f"elastic_eigen_raw_{mesh_idx}_{kind_short}", shape=n_eigs)
+    eigenvalues = model.meshes[mesh_idx].eigenvalues[:n_eigs]
+    eigenvalue_std = np.sqrt(eigenvalues)
+    top_std = eigenvalue_std[0] if len(eigenvalue_std) > 0 else 1.0
+    normalized_std = 1.0 * eigenvalue_std / top_std
+    raw = pm.Normal(
+        f"elastic_eigen_raw_{mesh_idx}_{kind_short}", sigma=normalized_std, shape=n_eigs
+    )
     param = pm.Deterministic(f"elastic_eigen_{mesh_idx}_{kind_short}", scale * raw)
     elastic_tde = _constrain_field(_operator_mult(eigenvectors, param), lower, upper)
     pm.Deterministic(f"elastic_{mesh_idx}_{kind_short}", elastic_tde)
