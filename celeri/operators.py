@@ -829,8 +829,10 @@ def _hash_elastic_operator_input(
         "a_priori_slip_filename",
         "coupling_constraints_ss",
         "coupling_constraints_ds",
+        "coupling_sigma",
         "elastic_constraints_ss",
         "elastic_constraints_ds",
+        "elastic_sigma",
         "smoothing_weight",
         "softplus_lengthscale",
     }
