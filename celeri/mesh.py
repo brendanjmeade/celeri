@@ -760,10 +760,9 @@ class Mesh:
         triangle_vertex_array[:, 0, 2] = mesh["z1"]
         triangle_vertex_array[:, 1, 2] = mesh["z2"]
         triangle_vertex_array[:, 2, 2] = mesh["z3"]
+
         mesh["areas"] = triangle_area(triangle_vertex_array)
 
-        # EIGEN: Calculate derived eigenmode parameters
-        # Set n_modes to the greater of strike-slip or dip slip modes
         mesh["n_modes"] = np.max(
             [
                 config.n_modes_strike_slip,
