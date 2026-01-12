@@ -366,13 +366,11 @@ def _coupling_component(
     eigenvectors = _get_eigenmodes(model, mesh_idx, kind)
     n_eigs = eigenvectors.shape[1]
     eigenvalues = model.meshes[mesh_idx].eigenvalues[:n_eigs]
-    eigenvalue_std = np.sqrt(eigenvalues)
-    top_std = eigenvalue_std[0] if len(eigenvalue_std) > 0 else 1.0
-    normalized_std = 10.0 * eigenvalue_std / top_std
+    matern_sigma = 1.0 * np.sqrt(eigenvalues)
     coefs = pm.Normal(
         f"coupling_coefs_{mesh_idx}_{kind_short}",
         mu=0,
-        sigma=normalized_std,
+        sigma=matern_sigma,
         shape=n_eigs,
     )
 
@@ -448,11 +446,9 @@ def _elastic_component(
     n_eigs = eigenvectors.shape[1]
 
     eigenvalues = model.meshes[mesh_idx].eigenvalues[:n_eigs]
-    eigenvalue_std = np.sqrt(eigenvalues)
-    top_std = eigenvalue_std[0] if len(eigenvalue_std) > 0 else 1.0
-    normalized_std = 1.0 * eigenvalue_std / top_std
+    matern_sigma = 1.0 * np.sqrt(eigenvalues)
     raw = pm.Normal(
-        f"elastic_eigen_raw_{mesh_idx}_{kind_short}", sigma=normalized_std, shape=n_eigs
+        f"elastic_eigen_raw_{mesh_idx}_{kind_short}", sigma=matern_sigma, shape=n_eigs
     )
     param = pm.Deterministic(f"elastic_eigen_{mesh_idx}_{kind_short}", scale * raw)
     softplus_lengthscale = model.meshes[mesh_idx].config.softplus_lengthscale
