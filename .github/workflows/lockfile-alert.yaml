@@ -51,6 +51,8 @@ jobs:
       - name: Update alert comment
         env:
           NEEDS_ALERT: ${{ steps.detect.outputs.needs_alert }}
+          MERGE_BASE: ${{ steps.detect.outputs.merge_base }}
+          LOCKFILE_COMMIT: ${{ steps.detect.outputs.lockfile_commit }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
@@ -118,6 +120,8 @@ jobs:
       - name: Update alert comment
         env:
           NEEDS_ALERT: ${{ steps.detect.outputs.needs_alert }}
+          MERGE_BASE: ${{ steps.detect.outputs.merge_base }}
+          LOCKFILE_COMMIT: ${{ steps.detect.outputs.lockfile_commit }}
           PR_NUMBER: ${{ matrix.pr.number }}
           BASE_REF: ${{ matrix.pr.baseRef }}
           HEAD_REF: ${{ matrix.pr.headRef }}
