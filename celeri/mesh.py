@@ -455,17 +455,14 @@ def _get_eigenvalues_and_eigenvectors(
     correlation_matrix = matern_sigma**2 * kernel(centroid_coordinates)
 
     # https://stackoverflow.com/questions/12167654/fastest-way-to-compute-k-largest-eigenvalues-and-corresponding-eigenvectors-with
-    eigenvalues, eigenvectors = scipy.linalg.eigh(
+    eigenvalues_ascending, eigenvectors_ascending = scipy.linalg.eigh(
         correlation_matrix,
         subset_by_index=[n_tde - n_eigenvalues, n_tde - 1],
     )
-    eigenvalues = np.real(eigenvalues)
-    eigenvectors = np.real(eigenvectors)
-    assert np.all(eigenvalues > 0), "Mesh kernel error: Some eigenvalues are negative"
-    ordered_index = np.flip(np.argsort(eigenvalues))
-    eigenvalues = eigenvalues[ordered_index]
-    eigenvectors = eigenvectors[:, ordered_index]
-    return eigenvalues, eigenvectors
+    assert np.all(eigenvalues_ascending > 0), "Mesh kernel error: Some eigenvalues are negative"
+    eigenvalues_descending = eigenvalues_ascending[::-1]
+    eigenvectors_descending = eigenvectors_ascending[:, ::-1]
+    return eigenvalues_descending, eigenvectors_descending
 
 @dataclass
 class Mesh:
