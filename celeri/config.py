@@ -288,14 +288,6 @@ class Config(BaseModel):
     Setting this to True will include the vertical (up) component in forward predictions.
     """
 
-    vertical_velocity_logp: bool = False
-    """When True, include vertical velocity component in station velocity data fitting.
-    
-    By default, only horizontal (east and north) velocity components are included in the model.
-    Setting this to True will include the vertical (up) component, requiring stations to have
-    up_vel and up_sig columns in the station data file.
-    """
-
     # Only in tsts/global_config.json?
     mesh_file_names: list[Path] | None = None
 
@@ -328,10 +320,6 @@ class Config(BaseModel):
                 value = getattr(self, name)
                 if isinstance(value, Path):
                     setattr(self, name, (base_dir / value).resolve())
-
-        assert not (
-            self.vertical_velocity_logp and not self.include_vertical_velocity
-        ), "vertical_velocity_logp cannot be True while include_vertical_velocity is False"
 
         return self
 

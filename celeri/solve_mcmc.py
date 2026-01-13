@@ -507,7 +507,7 @@ def _add_station_velocity_likelihood(model: Model, mu):
 
     sigma = pm.HalfNormal("sigma", sigma=2)
 
-    if model.config.vertical_velocity_logp:
+    if model.config.include_vertical_velocity:
         data = np.array([model.station.east_vel, model.station.north_vel, model.station.up_vel]).T
     else:
         data = np.array([model.station.east_vel, model.station.north_vel]).T
@@ -521,7 +521,7 @@ def _add_station_velocity_likelihood(model: Model, mu):
     def random(weight, mu, sigma, rng=None, size=None):
         return lh_dist(nu=6, mu=mu, sigma=sigma, rng=rng, size=size)
 
-    dims = ("station", "xyz") if model.config.vertical_velocity_logp else ("station", "xy")
+    dims = ("station", "xyz") if model.config.include_vertical_velocity else ("station", "xy")
 
     if model.config.mcmc_station_weighting is None:
         logger.info(f"Using unweighted station likelihood ({len(data)} stations)")
@@ -732,7 +732,7 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
         mu = mu.reshape((len(model.station), 3))
 
         mu_det = pm.Deterministic("mu", mu, dims=("station", "xyz"))
-        mu_logp = mu_det if model.config.vertical_velocity_logp else mu_det[:, :2]
+        mu_logp = mu_det if model.config.include_vertical_velocity else mu_det[:, :2]
 
         _add_station_velocity_likelihood(model, mu_logp)
         _add_segment_constraints(model, operators, rotation)

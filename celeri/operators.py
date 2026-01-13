@@ -1518,31 +1518,38 @@ def get_slip_rake_constraints(model: Model) -> np.ndarray:
 
 
 def _get_data_vector_no_meshes(model: Model, index: Index) -> np.ndarray:
+    """
+    Constructs the data vector for an inversion run that does not use mesh-based constraints.
+
+    The data vector is composed of:
+    - GPS station velocities, interleaving east, north, and up components for all stations.
+    - Block motion constraints, converted from degrees/Myr to radians/yr.
+    - Slip rate constraints.
+
+    Args:
+        model (Model): The model object containing station and constraint data.
+        index (Index): Index object with details about row regions in the data vector.
+
+    Returns:
+        np.ndarray: The assembled data vector.
+    """
     data_vector = np.zeros(
         index.end_station_row
         + 3 * index.n_block_constraints
         + index.n_slip_rate_constraints
     )
 
-    # Add GPS stations to data vector
-    if model.config.include_vertical_velocity:
-        data_vector[index.start_station_row : index.end_station_row] = interleave3(
-            model.station.east_vel.to_numpy(),
-            model.station.north_vel.to_numpy(),
-            model.station.up_vel.to_numpy()
-        )
-    else:
-        data_vector[index.start_station_row : index.end_station_row] = interleave2(
-            model.station.east_vel.to_numpy(), model.station.north_vel.to_numpy()
-        )
+    data_vector[index.start_station_row : index.end_station_row] = interleave3(
+        model.station.east_vel.to_numpy(),
+        model.station.north_vel.to_numpy(),
+        model.station.up_vel.to_numpy()
+    )
 
-    # Add block motion constraints to data vector
     block_constraints = _get_block_constraints_data(model)
     data_vector[index.start_block_constraints_row : index.end_block_constraints_row] = (
         DEG_PER_MYR_TO_RAD_PER_YR * block_constraints
     )
 
-    # Add slip rate constraints to data vector
     slip_rate_constraints = _get_slip_rate_constraints_data(model)
     data_vector[
         index.start_slip_rate_constraints_row : index.end_slip_rate_constraints_row
@@ -1552,6 +1559,22 @@ def _get_data_vector_no_meshes(model: Model, index: Index) -> np.ndarray:
 
 
 def _get_data_vector(model: Model, index: Index) -> np.ndarray:
+    """
+    Constructs the data vector for an inversion run that uses mesh-based constraints.
+
+    The data vector is composed of:
+    - GPS station velocities, interleaving east, north, and up components for all stations.
+    - Block motion constraints, converted from degrees/Myr to radians/yr.
+    - Slip rate constraints.
+    - TDE constraints.
+
+    Args:
+        model (Model): The model object containing station and constraint data.
+        index (Index): Index object with details about row regions in the data vector.
+
+    Returns:
+        np.ndarray: The assembled data vector.
+    """
     assert index.tde is not None
 
     data_vector = np.zeros(
@@ -1562,25 +1585,17 @@ def _get_data_vector(model: Model, index: Index) -> np.ndarray:
         + index.n_tde_constraints_total
     )
 
-    # Add GPS stations to data vector
-    if model.config.include_vertical_velocity:
-        data_vector[index.start_station_row : index.end_station_row] = interleave3(
-            model.station.east_vel.to_numpy(),
-            model.station.north_vel.to_numpy(),
-            model.station.up_vel.to_numpy()
-        )
-    else:
-        data_vector[index.start_station_row : index.end_station_row] = interleave2(
-            model.station.east_vel.to_numpy(), model.station.north_vel.to_numpy()
-        )
+    data_vector[index.start_station_row : index.end_station_row] = interleave3(
+        model.station.east_vel.to_numpy(),
+        model.station.north_vel.to_numpy(),
+        model.station.up_vel.to_numpy()
+    )
 
-    # Add block motion constraints to data vector
     block_constraints = _get_block_constraints_data(model)
     data_vector[index.start_block_constraints_row : index.end_block_constraints_row] = (
         DEG_PER_MYR_TO_RAD_PER_YR * block_constraints
     )
 
-    # Add slip rate constraints to data vector
     slip_rate_constraints = _get_slip_rate_constraints_data(model)
     data_vector[
         index.start_slip_rate_constraints_row : index.end_slip_rate_constraints_row
@@ -1589,6 +1604,15 @@ def _get_data_vector(model: Model, index: Index) -> np.ndarray:
 
 
 def _get_data_vector_eigen(model: Model, index: Index) -> np.ndarray:
+    """
+    Constructs the data vector for an inversion with eigen operators.
+
+    The data vector is composed of:
+    - GPS station velocities, interleaving east, north, and up components for all stations.
+    - Block motion constraints, converted from degrees/Myr to radians/yr.
+    - Slip rate constraints.
+    - TDE constraints.
+    """
     assert index.tde is not None
     assert index.eigen is not None
 
@@ -1599,25 +1623,17 @@ def _get_data_vector_eigen(model: Model, index: Index) -> np.ndarray:
         + index.n_tde_constraints_total
     )
 
-    # Add GPS stations to data vector
-    if model.config.include_vertical_velocity:
-        data_vector[index.start_station_row : index.end_station_row] = interleave3(
-            model.station.east_vel.to_numpy(),
-            model.station.north_vel.to_numpy(),
-            model.station.up_vel.to_numpy()
-        )
-    else:
-        data_vector[index.start_station_row : index.end_station_row] = interleave2(
-            model.station.east_vel.to_numpy(), model.station.north_vel.to_numpy()
-        )
+    data_vector[index.start_station_row : index.end_station_row] = interleave3(
+        model.station.east_vel.to_numpy(),
+        model.station.north_vel.to_numpy(),
+        model.station.up_vel.to_numpy()
+    )
 
-    # Add block motion constraints to data vector
     block_constraints = _get_block_constraints_data(model)
     data_vector[index.start_block_constraints_row : index.end_block_constraints_row] = (
         DEG_PER_MYR_TO_RAD_PER_YR * block_constraints
     )
 
-    # Add slip rate constraints to data vector
     slip_rate_constraints = _get_slip_rate_constraints_data(model)
     data_vector[
         index.start_slip_rate_constraints_row : index.end_slip_rate_constraints_row
@@ -1636,16 +1652,16 @@ def _get_weighting_vector(model: Model, index: Index):
         + 2 * index.n_tde_total
         + index.n_tde_constraints_total
     )
+
     if model.config.include_vertical_velocity:
-        weighting_vector[index.start_station_row : index.end_station_row] = interleave3(
-            1 / (model.station.east_sig**2),
-            1 / (model.station.north_sig**2),
-            1 / (model.station.up_sig**2)
-        )
+        up_weight = 1 / (model.station.up_sig**2)
     else:
-        weighting_vector[index.start_station_row : index.end_station_row] = interleave2(
-            1 / (model.station.east_sig**2), 1 / (model.station.north_sig**2)
-        )
+        up_weight = np.zeros(len(model.station))
+    weighting_vector[index.start_station_row : index.end_station_row] = interleave3(
+        1 / (model.station.east_sig**2),
+        1 / (model.station.north_sig**2),
+        up_weight
+    )
     weighting_vector[
         index.start_block_constraints_row : index.end_block_constraints_row
     ] = model.config.block_constraint_weight
@@ -1673,16 +1689,16 @@ def _get_weighting_vector_no_meshes(model: Model, index: Index) -> np.ndarray:
         + 3 * index.n_block_constraints
         + index.n_slip_rate_constraints
     )
+
     if model.config.include_vertical_velocity:
-        weighting_vector[index.start_station_row : index.end_station_row] = interleave3(
-            1 / (station.east_sig**2),
-            1 / (station.north_sig**2),
-            1 / (station.up_sig**2)
-        )
+        up_weight = 1 / (station.up_sig**2)
     else:
-        weighting_vector[index.start_station_row : index.end_station_row] = interleave2(
-            1 / (station.east_sig**2), 1 / (station.north_sig**2)
-        )
+        up_weight = np.zeros(len(station))
+    weighting_vector[index.start_station_row : index.end_station_row] = interleave3(
+        1 / (station.east_sig**2),
+        1 / (station.north_sig**2),
+        up_weight
+    )
     weighting_vector[
         index.start_block_constraints_row : index.end_block_constraints_row
     ] = 1.0
@@ -1710,15 +1726,14 @@ def get_weighting_vector_single_mesh_for_col_norms(
     )
 
     if model.config.include_vertical_velocity:
-        weighting_vector[0 : index.end_station_row] = interleave3(
-            1 / (station.east_sig**2),
-            1 / (station.north_sig**2),
-            1 / (station.up_sig**2)
-        )
+        up_weight = 1 / (station.up_sig**2)
     else:
-        weighting_vector[0 : index.end_station_row] = interleave2(
-            1 / (station.east_sig**2), 1 / (station.north_sig**2)
-        )
+        up_weight = np.zeros(len(station))
+    weighting_vector[0 : index.end_station_row] = interleave3(
+        1 / (station.east_sig**2),
+        1 / (station.north_sig**2),
+        up_weight
+    )
 
     weighting_vector[
         index.end_station_row : index.end_station_row + 2 * index.tde.n_tde[mesh_index]
@@ -1744,15 +1759,14 @@ def _get_weighting_vector_eigen(model: Model, index: Index) -> np.ndarray:
     )
 
     if model.config.include_vertical_velocity:
-        weighting_vector[index.start_station_row : index.end_station_row] = interleave3(
-            1 / (model.station.east_sig**2),
-            1 / (model.station.north_sig**2),
-            1 / (model.station.up_sig**2)
-        )
+        up_weight = 1 / (model.station.up_sig**2)
     else:
-        weighting_vector[index.start_station_row : index.end_station_row] = interleave2(
-            1 / (model.station.east_sig**2), 1 / (model.station.north_sig**2)
-        )
+        up_weight = np.zeros(len(model.station))
+    weighting_vector[index.start_station_row : index.end_station_row] = interleave3(
+        1 / (model.station.east_sig**2),
+        1 / (model.station.north_sig**2),
+        up_weight
+    )
 
     weighting_vector[
         index.start_block_constraints_row : index.end_block_constraints_row
@@ -2438,23 +2452,6 @@ def rotation_vector_err_to_euler_pole_err(omega_x, omega_y, omega_z, omega_cov):
     return euler_lon_err, euler_lat_err, euler_rate_err
 
 
-def _get_station_row_keep_index(n_stations: int, include_vertical: bool) -> np.ndarray:
-    """Get indices for station rows based on whether vertical component is included.
-    
-    Args:
-        n_stations: Number of stations
-        include_vertical: If True, include all 3 components (east, north, up).
-                         If False, include only horizontal components (east, north).
-    
-    Returns:
-        Array of indices to keep for station rows.
-    """
-    if include_vertical:
-        return np.arange(3 * n_stations)  # All components: [0, 1, 2, 3, 4, 5, ...]
-    else:
-        return get_keep_index_12(3 * n_stations)  # Horizontal only: [0, 1, 3, 4, 6, 7, ...]
-
-
 def _get_index(model: Model) -> Index:
     # TODO: Adapt this to use the dataclasses as in get_index_eigen
     # TODO: But better integrate it with the other get_index_* functions?
@@ -2588,10 +2585,9 @@ def _get_index_no_meshes(model: Model):
     n_segments = len(model.segment)
     n_strain_blocks = model.block.strain_rate_flag.sum()
 
-    # Determine number of components per station based on config
-    include_vertical = model.config.include_vertical_velocity
-    n_station_components = 3 if include_vertical else 2
-    n_station_rows = n_station_components * n_stations
+    # Always use 3 components per station (east, north, up)
+    # Horizontal-only solves are achieved via zero weights for vertical components
+    n_station_rows = 3 * n_stations
 
     return Index(
         n_blocks=n_blocks,
@@ -2601,7 +2597,7 @@ def _get_index_no_meshes(model: Model):
         n_mogis=n_mogi,
         vertical_velocities=np.arange(2, 3 * n_stations, 3),
         n_block_constraints=n_block_constraints,
-        station_row_keep_index=_get_station_row_keep_index(n_stations, include_vertical),
+        station_row_keep_index=np.arange(3 * n_stations),
         start_station_row=0,
         end_station_row=n_station_rows,
         start_block_col=0,

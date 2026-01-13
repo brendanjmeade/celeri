@@ -264,8 +264,9 @@ def test_eigen_to_velocities_shape(config_name):
 def test_end_row_eigen_consistency(config_name, include_vertical):
     """Test that index.eigen.end_row_eigen equals index.end_station_row.
 
-    Verifies that eigen indexing is consistent with the station row end index,
-    which respects the include_vertical_velocity setting.
+    Verifies that eigen indexing is consistent with the station row end index.
+    The operator is always built with 3 components per station; include_vertical_velocity
+    only affects the weighting (zero weight for vertical when False).
     """
     config_file = f"./tests/configs/{config_name}.json"
     config = celeri.get_config(config_file)
@@ -277,8 +278,8 @@ def test_end_row_eigen_consistency(config_name, include_vertical):
 
     assert estimation.index.eigen is not None
 
-    # Verify end_station_row is computed correctly based on include_vertical_velocity
-    expected_end_row = 3 * n_stations if include_vertical else 2 * n_stations
+    # Verify end_station_row is always 3 * n_stations (all 3 velocity components)
+    expected_end_row = 3 * n_stations
     assert estimation.index.end_station_row == expected_end_row
 
     for i in range(len(estimation.index.eigen.end_row_eigen)):
