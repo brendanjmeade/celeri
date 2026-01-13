@@ -12,6 +12,7 @@ import numpy as np
 import scipy.linalg
 import scipy.spatial.distance
 from loguru import logger
+from sklearn.gaussian_process.kernels import Matern
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from celeri import constants
@@ -426,28 +427,32 @@ def _compute_mesh_perimeter(mesh: dict):
 
 
 def _get_eigenvalues_and_eigenvectors(
-    n_eigenvalues: int, 
-    x: np.ndarray, 
-    y: np.ndarray, 
-    z: np.ndarray, 
-    distance_exponent = 1.0
+    n_eigenvalues: int,
+    x: np.ndarray,
+    y: np.ndarray,
+    z: np.ndarray,
+    matern_nu: float = 0.5,  # Smoothness parameter
+    matern_sigma: float = 1.0,  # Amplitude parameter
+    matern_length_scale: float = 1.0,
+    matern_length_units: Literal["absolute", "diameters"] = "diameters",
 ) -> tuple[np.ndarray, np.ndarray]:
     """Get the eigenvalues and eigenvectors of the mesh kernel."""
     n_tde = x.size
 
-    # Calculate Cartesian distances between triangle centroids
+    # Triangle centroid coordinates (n_tde, 3)
     centroid_coordinates = np.array([x, y, z]).T
-    distance_matrix = scipy.spatial.distance.cdist(
-        centroid_coordinates, centroid_coordinates, "euclidean"
-    )
 
-    # Rescale distance matrix to the range 0-1
-    distance_matrix = (distance_matrix - np.min(distance_matrix)) / np.ptp(
-        distance_matrix
-    )
+    if matern_length_units == "diameters":
+        # Scale length_scale by mesh diameter (max pairwise distance)
+        diameter = np.max(scipy.spatial.distance.pdist(centroid_coordinates))
+        matern_length_scale *= diameter
+    else:
+        assert matern_length_units == "absolute"
 
-    # Calculate correlation matrix
-    correlation_matrix = np.exp(-(distance_matrix**distance_exponent))
+    # Use sklearn's Matern kernel which handles all special cases (nu=0.5, 1.5, 2.5)
+    # and the general case with proper numerical stability
+    kernel = Matern(nu=matern_nu, length_scale=matern_length_scale)
+    correlation_matrix = matern_sigma**2 * kernel(centroid_coordinates)
 
     # https://stackoverflow.com/questions/12167654/fastest-way-to-compute-k-largest-eigenvalues-and-corresponding-eigenvectors-with
     eigenvalues, eigenvectors = scipy.linalg.eigh(
