@@ -143,8 +143,8 @@ class Estimation:
             return None
         meshes = self.model.meshes
         mesh_outputs_list = []
-        # Use smoothed versions if eigen operators are available, otherwise use non-smoothed
         use_smooth = self.operators.eigen is not None
+        use_mcmc_coupling = self.mcmc_trace is not None
         for i in range(len(meshes)):
             if use_smooth:
                 strike_slip_rate_kinematic = (
@@ -160,24 +160,30 @@ class Estimation:
                 dip_slip_rate_kinematic = self.tde_dip_slip_rates_kinematic.get(i, None)
 
             strike_slip_coupling = None
-            if use_smooth:
+            dip_slip_coupling = None
+
+            if use_mcmc_coupling:
+                trace_mean = self.mcmc_trace.posterior.mean(["chain", "draw"]) # type: ignore
+                ss_var = f"coupling_{i}_ss"
+                ds_var = f"coupling_{i}_ds"
+                if ss_var in trace_mean:
+                    strike_slip_coupling = trace_mean[ss_var].values
+                if ds_var in trace_mean:
+                    dip_slip_coupling = trace_mean[ds_var].values
+            elif use_smooth:
                 if self.tde_strike_slip_rates_coupling_smooth is not None:
                     strike_slip_coupling = (
                         self.tde_strike_slip_rates_coupling_smooth.get(i, None)
+                    )
+                if self.tde_dip_slip_rates_coupling_smooth is not None:
+                    dip_slip_coupling = self.tde_dip_slip_rates_coupling_smooth.get(
+                        i, None
                     )
             else:
                 if self.tde_strike_slip_rates_coupling is not None:
                     strike_slip_coupling = self.tde_strike_slip_rates_coupling.get(
                         i, None
                     )
-
-            dip_slip_coupling = None
-            if use_smooth:
-                if self.tde_dip_slip_rates_coupling_smooth is not None:
-                    dip_slip_coupling = self.tde_dip_slip_rates_coupling_smooth.get(
-                        i, None
-                    )
-            else:
                 if self.tde_dip_slip_rates_coupling is not None:
                     dip_slip_coupling = self.tde_dip_slip_rates_coupling.get(i, None)
 
