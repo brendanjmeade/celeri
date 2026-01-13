@@ -10,6 +10,7 @@ from typing import Any, Literal, TypeVar, cast
 import meshio
 import numpy as np
 import scipy.linalg
+import scipy.sparse.linalg
 import scipy.spatial.distance
 from loguru import logger
 from sklearn.gaussian_process.kernels import Matern
@@ -455,11 +456,12 @@ def _get_eigenvalues_and_eigenvectors(
     correlation_matrix = matern_sigma**2 * kernel(centroid_coordinates)
 
     # https://stackoverflow.com/questions/12167654/fastest-way-to-compute-k-largest-eigenvalues-and-corresponding-eigenvectors-with
-    eigenvalues_ascending, eigenvectors_ascending = scipy.linalg.eigh(
-        correlation_matrix,
-        subset_by_index=[n_tde - n_eigenvalues, n_tde - 1],
+    # Use ARPACK (eigsh) for faster computation of top k eigenvalues
+    eigenvalues_ascending, eigenvectors_ascending = scipy.sparse.linalg.eigsh(
+        correlation_matrix, k=n_eigenvalues, which="LM"
     )
     assert np.all(eigenvalues_ascending > 0), "Mesh kernel error: Some eigenvalues are negative"
+    # eigsh with which='LM' returns eigenvalues sorted ascending; reverse for descending
     eigenvalues_descending = eigenvalues_ascending[::-1]
     eigenvectors_descending = eigenvectors_ascending[:, ::-1]
     return eigenvalues_descending, eigenvectors_descending
