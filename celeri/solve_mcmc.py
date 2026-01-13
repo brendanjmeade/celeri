@@ -507,7 +507,7 @@ def _add_station_velocity_likelihood(model: Model, mu):
 
     sigma = pm.HalfNormal("sigma", sigma=2)
 
-    if model.config.include_vertical_velocity:
+    if model.config.vertical_velocity_logp:
         data = np.array([model.station.east_vel, model.station.north_vel, model.station.up_vel]).T
     else:
         data = np.array([model.station.east_vel, model.station.north_vel]).T
@@ -521,6 +521,8 @@ def _add_station_velocity_likelihood(model: Model, mu):
     def random(weight, mu, sigma, rng=None, size=None):
         return lh_dist(nu=6, mu=mu, sigma=sigma, rng=rng, size=size)
 
+    dims = ("station", "xyz") if model.config.vertical_velocity_logp else ("station", "xy")
+
     if model.config.mcmc_station_weighting is None:
         logger.info(f"Using unweighted station likelihood ({len(data)} stations)")
         pm.StudentT(
@@ -528,7 +530,7 @@ def _add_station_velocity_likelihood(model: Model, mu):
             mu=mu,
             sigma=sigma,
             observed=data,
-            dims=("station", "xy"),
+            dims=dims,
             nu=6,
         )
     elif model.config.mcmc_station_weighting == "voronoi":
@@ -558,8 +560,6 @@ def _add_station_velocity_likelihood(model: Model, mu):
             "  Stations at full weight (area >= threshold): "
             f"{(areas >= effective_area).sum()}"
         )
-
-        dims = ("station", "xyz") if model.config.include_vertical_velocity else ("station", "xy")
 
         pm.CustomDist(
             "station_velocity",
@@ -730,13 +730,11 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
             + elastic_velocity
         )
         mu = mu.reshape((len(model.station), 3))
-        
-        if not model.config.include_vertical_velocity:
-            mu = mu[:, :2]
 
-        dims = ("station", "xyz") if model.config.include_vertical_velocity else ("station", "xy")
-        mu_det = pm.Deterministic("mu", mu, dims=dims)
-        _add_station_velocity_likelihood(model, mu_det)
+        mu_det = pm.Deterministic("mu", mu, dims=("station", "xyz"))
+        mu_logp = mu_det if model.config.vertical_velocity_logp else mu_det[:, :2]
+
+        _add_station_velocity_likelihood(model, mu_logp)
         _add_segment_constraints(model, operators, rotation)
 
     return pymc_model  # type: ignore[return-value]
