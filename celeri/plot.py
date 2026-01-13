@@ -372,7 +372,6 @@ def plot_input_summary(
 
 
 def plot_estimation_summary(
-    model: Model,
     estimation: Estimation,
     lon_range: tuple | None = None,
     lat_range: tuple | None = None,
@@ -383,13 +382,15 @@ def plot_estimation_summary(
     as velocity decomposition and estimates slip rates.
 
     Args:
-        model: Model object containing all the data
         estimation (Dict): All estimated values
         lon_range (Tuple): Latitude range (min, max)
         lat_range (Tuple): Latitude range (min, max)
         quiver_scale (float): Scaling for velocity arrows
         save (bool): Whether to save the figure to disk
     """
+    
+    model = estimation.model
+
     if lon_range is None:
         lon_range = model.config.lon_range
     if lat_range is None:
@@ -427,11 +428,11 @@ def plot_estimation_summary(
         plt.ylim([lat_range[0], lat_range[1]])
         plt.gca().set_aspect("equal", adjustable="box")
 
-    n_subplot_rows = 3
+    n_subplot_rows = 4
     n_subplot_cols = 3
     subplot_index = 1
 
-    plt.figure(figsize=(18, 18))
+    plt.figure(figsize=(18, 24))
     ax1 = plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index)
     plt.title("Observed Velocities")
     common_plot_elements(segment, lon_range, lat_range)
@@ -580,6 +581,82 @@ def plot_estimation_summary(
             n_ticks = 7
             ticks = np.linspace(vmin, vmax, n_ticks)
             cbar.set_ticks(ticks)
+
+    # Plot strike-slip and dip-slip coupling
+    if model.config.solve_type != "dense_no_meshes":
+        if len(meshes) > 0 and estimation.mesh_estimate is not None:
+            mesh_estimate = estimation.mesh_estimate
+
+            # Strike-slip coupling
+            subplot_index += 1
+            plt.subplot(
+                n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1
+            )
+            plt.title("Strike-Slip Coupling")
+            common_plot_elements(segment, lon_range, lat_range)
+
+            # Collect all coupling values to determine color limits
+            all_ss_coupling = np.asarray(mesh_estimate["strike_slip_coupling"])
+            vmin = np.min(all_ss_coupling)
+            vmax = np.max(all_ss_coupling)
+
+            ax = plt.gca()
+            pc = None
+            for i in range(len(meshes)):
+                mesh_data = mesh_estimate[mesh_estimate["mesh_idx"] == i]
+                coupling_values = np.asarray(mesh_data["strike_slip_coupling"])
+                pc = plot_mesh(
+                    meshes[i],
+                    fill_value=coupling_values,
+                    ax=ax,
+                    vmin=vmin,
+                    vmax=vmax,
+                )
+            if pc is not None:
+                plt.colorbar(pc, ax=ax, shrink=0.7)
+
+            # Dip-slip coupling
+            subplot_index += 1
+            plt.subplot(
+                n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1
+            )
+            plt.title("Dip-Slip Coupling")
+            common_plot_elements(segment, lon_range, lat_range)
+
+            # Collect all coupling values to determine color limits
+            all_ds_coupling = np.asarray(mesh_estimate["dip_slip_coupling"])
+            vmin = np.min(all_ds_coupling)
+            vmax = np.max(all_ds_coupling)
+
+            ax = plt.gca()
+            pc = None
+            for i in range(len(meshes)):
+                mesh_data = mesh_estimate[mesh_estimate["mesh_idx"] == i]
+                coupling_values = np.asarray(mesh_data["dip_slip_coupling"])
+                pc = plot_mesh(
+                    meshes[i],
+                    fill_value=coupling_values,
+                    ax=ax,
+                    vmin=vmin,
+                    vmax=vmax,
+                )
+            if pc is not None:
+                plt.colorbar(pc, ax=ax, shrink=0.7)
+
+    # Plot segment strike-slip rates
+    subplot_index += 1
+    ax = plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
+    plt.title("Segment Strike-Slip Rates")
+    plot_segment_strike_slip_rates(
+        segment,
+        estimation.strike_slip_rates,
+        ax,
+        lon_range=lon_range,
+        lat_range=lat_range,
+        slip_rate_width_scale=0.25,
+        show_legend=True,
+        fontsize=8,
+    )
 
     subplot_index += 1
     plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index)
@@ -1615,6 +1692,86 @@ def plot_coastlines(lon_min, lat_min, lon_max, lat_max):
 
     line_collection = mc.LineCollection(coastlines, colors="black", linewidths=0.5)
     plt.gca().add_collection(line_collection)
+
+
+def plot_segment_strike_slip_rates(
+    segment: pd.DataFrame,
+    strike_slip_rates: np.ndarray,
+    ax,
+    *,
+    lon_range: tuple | None = None,
+    lat_range: tuple | None = None,
+    slip_rate_width_scale: float = 0.25,
+    show_legend: bool = True,
+    fontsize: int = 10,
+):
+    """Plot estimated strike-slip rates on fault segments.
+
+    Segments are color-coded and scaled by slip rate:
+    - Orange: right-lateral (negative rates)
+    - Blue: left-lateral (positive rates)
+
+    Parameters
+    ----------
+    segment : pd.DataFrame
+        DataFrame containing segment data with columns 'lon1', 'lon2', 'lat1', 'lat2'.
+    strike_slip_rates : np.ndarray
+        Array of strike-slip rates for each segment.
+    ax : matplotlib Axes
+        Matplotlib axes to draw on.
+    lon_range : tuple, optional
+        Longitude range (min, max). If None, auto-scales to data.
+    lat_range : tuple, optional
+        Latitude range (min, max). If None, auto-scales to data.
+    slip_rate_width_scale : float, optional
+        Scale factor for line width based on slip rate (default 0.25).
+    show_legend : bool, optional
+        Whether to show the legend (default True).
+    fontsize : int, optional
+        Font size for legend text (default 10).
+    """
+    for i in range(len(segment)):
+        rate = strike_slip_rates[i]
+        ax.plot(
+            [segment.lon1.iloc[i], segment.lon2.iloc[i]],
+            [segment.lat1.iloc[i], segment.lat2.iloc[i]],
+            "-",
+            color="tab:orange" if rate < 0 else "tab:blue",
+            linewidth=slip_rate_width_scale * abs(rate),
+        )
+
+    if lon_range is not None:
+        ax.set_xlim([lon_range[0], lon_range[1]])
+    if lat_range is not None:
+        ax.set_ylim([lat_range[0], lat_range[1]])
+    ax.set_aspect("equal", adjustable="box")
+
+    if show_legend:
+        orange_segments = mlines.Line2D(
+            [],
+            [],
+            color="tab:orange",
+            marker="s",
+            linestyle="None",
+            markersize=8,
+            label="right-lateral",
+        )
+        blue_segments = mlines.Line2D(
+            [],
+            [],
+            color="tab:blue",
+            marker="s",
+            linestyle="None",
+            markersize=8,
+            label="left-lateral",
+        )
+        ax.legend(
+            handles=[orange_segments, blue_segments],
+            loc="lower right",
+            fontsize=fontsize,
+            framealpha=1.0,
+            edgecolor="k",
+        ).get_frame()
 
 
 def plot_coupling(estimation: Estimation, *, mesh_idx: int):

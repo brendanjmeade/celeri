@@ -220,9 +220,6 @@ class Estimation:
         else:
             mesh_outputs = pd.DataFrame()
 
-        # Append slip rates
-        # mesh_outputs["strike_slip_rate"] = self.tde_strike_slip_rates
-        # mesh_outputs["dip_slip_rate"] = self.tde_dip_slip_rates
         return mesh_outputs
 
     @cached_property
@@ -971,7 +968,7 @@ def _build_and_solve(name: str, model: Model, *, tde: bool, eigen: bool):
     if model.config.plot_estimation_summary:
         import celeri
 
-        celeri.plot_estimation_summary(model, estimation)
+        celeri.plot_estimation_summary(estimation)
 
     return estimation
 
