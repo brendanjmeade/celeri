@@ -5,6 +5,8 @@
  *
  * Environment variables:
  *   NEEDS_ALERT - "true" if alert should be posted/updated, "false" to minimize
+ *   MERGE_BASE - Merge base commit SHA
+ *   LOCKFILE_COMMIT - Most recent commit that modified pixi.lock on base branch
  *   PR_NUMBER - Pull request number
  *   BASE_REF - Base branch reference (e.g., "main")
  *   AUTHOR - PR author's GitHub username
@@ -17,6 +19,8 @@ const https = require('https');
 const MARKER = '<!-- lockfile-alert -->';
 
 const needsAlert = (process.env.NEEDS_ALERT || '').toLowerCase() === 'true';
+const mergeBase = process.env.MERGE_BASE || '';
+const lockfileCommit = process.env.LOCKFILE_COMMIT || '';
 const prNumber = Number(process.env.PR_NUMBER);
 const baseRef = process.env.BASE_REF;
 const headRef = process.env.HEAD_REF;
@@ -47,7 +51,7 @@ if (headRepo && baseRepo && headRepo !== baseRepo) {
 const alertBody = `${MARKER}
 Hi @${author},
 
-\`${baseRef}\` has updated \`pixi.lock\` since this branch was last synced. Merge or rebase the latest \`${baseRef}\` so dependency metadata stays current.${remoteContext}
+\`${baseRef}\` has updated \`pixi.lock\` since this branch was last synced (merge-base: ${mergeBase}, latest lockfile change: ${lockfileCommit}). Merge or rebase the latest \`${baseRef}\` so dependency metadata stays current.${remoteContext}
 
 \`\`\`bash
 git checkout ${headRef}
