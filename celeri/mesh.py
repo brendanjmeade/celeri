@@ -10,8 +10,10 @@ from typing import Any, Literal, TypeVar, cast
 import meshio
 import numpy as np
 import scipy.linalg
+import scipy.sparse.linalg
 import scipy.spatial.distance
 from loguru import logger
+from sklearn.gaussian_process.kernels import Matern
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from celeri import constants
@@ -82,6 +84,18 @@ class MeshConfig(BaseModel):
         Tuple containing the constrained upper and lower bounds for the elastic rates on the mesh for strike-slip.
     elastic_constraints_ds : ScalarBound
         Tuple containing the constrained upper and lower bounds for the elastic rates on the mesh for dip-slip.
+    matern_nu : float
+        Matérn kernel smoothness parameter (default 1/2). Common values: 1/2 (exponential),
+        3/2 (once-differentiable), 5/2 (twice-differentiable).
+    matern_length_scale : float
+        Matérn kernel length scale (default 1.0). Interpretation depends on matern_length_units.
+    matern_length_units : Literal["absolute", "diameters"]
+        Units for matern_length_scale: 'diameters' scales by mesh diameter (default),
+        'absolute' uses the value directly in the same units as mesh coordinates.
+    eigenvector_algorithm : Literal["eigh", "eigsh"]
+        Algorithm for eigendecomposition (default "eigh"). 'eigh' (dense LAPACK) is faster for
+        many modes, 'eigsh' (sparse ARPACK) is faster for few modes. Both have equivalent accuracy,
+        but eigenvector signs may differ between algorithms.
     """
 
     # Forbid extra fields when reading from JSON
@@ -149,6 +163,12 @@ class MeshConfig(BaseModel):
     iterative_coupling_linear_slip_rate_reduction_factor: float = 0.025
     iterative_coupling_smoothing_length_scale: float | None = None
     iterative_coupling_kinematic_slip_regularization_scale: float = 1.0
+
+    # GP kernel hyperparameters for eigenmode computation
+    matern_nu: float = 0.5
+    matern_length_scale: float = 1.0
+    matern_length_units: Literal["absolute", "diameters"] = "diameters"
+    eigenvector_algorithm: Literal["eigh", "eigsh"] = "eigh"
 
     @classmethod
     def from_file(cls, filename: str | Path) -> list[MeshConfig]:
@@ -426,41 +446,57 @@ def _compute_mesh_perimeter(mesh: dict):
 
 
 def _get_eigenvalues_and_eigenvectors(
-    n_eigenvalues: int, 
-    x: np.ndarray, 
-    y: np.ndarray, 
-    z: np.ndarray, 
-    distance_exponent = 1.0
+    n_eigenvalues: int,
+    x: np.ndarray,
+    y: np.ndarray,
+    z: np.ndarray,
+    matern_nu: float = 0.5,  # Smoothness parameter
+    matern_length_scale: float = 1.0,
+    matern_length_units: Literal["absolute", "diameters"] = "diameters",
+    eigenvector_algorithm: Literal["eigh", "eigsh"] = "eigh",
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Get the eigenvalues and eigenvectors of the mesh kernel."""
+    """Get the eigenvalues and eigenvectors of the mesh Matérn kernel.
+
+    The kernel is computed with unit amplitude scale parameter (sigma=1).
+    Eigenvalues scale as sigma**2, so the amplitude can be reintroduced later
+    by multiplying eigenvalues by sigma**2 (eigenvectors are unchanged).
+    """
     n_tde = x.size
 
-    # Calculate Cartesian distances between triangle centroids
+    # Triangle centroid coordinates (n_tde, 3)
     centroid_coordinates = np.array([x, y, z]).T
-    distance_matrix = scipy.spatial.distance.cdist(
-        centroid_coordinates, centroid_coordinates, "euclidean"
-    )
 
-    # Rescale distance matrix to the range 0-1
-    distance_matrix = (distance_matrix - np.min(distance_matrix)) / np.ptp(
-        distance_matrix
-    )
+    if matern_length_units == "diameters":
+        # Scale length_scale by mesh diameter (max pairwise distance)
+        diameter = np.max(scipy.spatial.distance.pdist(centroid_coordinates))
+        matern_length_scale *= diameter
+    else:
+        assert matern_length_units == "absolute"
 
-    # Calculate correlation matrix
-    correlation_matrix = np.exp(-(distance_matrix**distance_exponent))
+    # Use sklearn's Matern kernel which handles all special cases (nu=0.5, 1.5, 2.5)
+    # and the general case with proper numerical stability
+    kernel = Matern(nu=matern_nu, length_scale=matern_length_scale)
+    covariance_matrix = kernel(centroid_coordinates)
 
-    # https://stackoverflow.com/questions/12167654/fastest-way-to-compute-k-largest-eigenvalues-and-corresponding-eigenvectors-with
-    eigenvalues, eigenvectors = scipy.linalg.eigh(
-        correlation_matrix,
-        subset_by_index=[n_tde - n_eigenvalues, n_tde - 1],
-    )
-    eigenvalues = np.real(eigenvalues)
-    eigenvectors = np.real(eigenvectors)
-    assert np.all(eigenvalues > 0), "Mesh kernel error: Some eigenvalues are negative"
-    ordered_index = np.flip(np.argsort(eigenvalues))
-    eigenvalues = eigenvalues[ordered_index]
-    eigenvectors = eigenvectors[:, ordered_index]
-    return eigenvalues, eigenvectors
+    # Algorithm choice: see https://github.com/brendanjmeade/celeri/pull/367#issuecomment-2690519498
+    # and https://stackoverflow.com/questions/12167654/fastest-way-to-compute-k-largest-eigenvalues-and-corresponding-eigenvectors-with
+    if eigenvector_algorithm == "eigh":
+        eigenvalues_ascending, eigenvectors_ascending = scipy.linalg.eigh(
+            covariance_matrix,
+            subset_by_index=[n_tde - n_eigenvalues, n_tde - 1],
+        )
+    elif eigenvector_algorithm == "eigsh":
+        # ARPACK is faster for small k; eigenvector signs may differ from eigh
+        eigenvalues_ascending, eigenvectors_ascending = scipy.sparse.linalg.eigsh(
+            covariance_matrix, k=n_eigenvalues, which="LM"
+        )
+    else:
+        raise ValueError(f"Unknown eigenvector_algorithm: {eigenvector_algorithm}")
+
+    assert np.all(eigenvalues_ascending > 0), "Mesh kernel error: Some eigenvalues are negative"
+    eigenvalues_descending = eigenvalues_ascending[::-1]
+    eigenvectors_descending = eigenvectors_ascending[:, ::-1]
+    return eigenvalues_descending, eigenvectors_descending
 
 @dataclass
 class Mesh:
@@ -746,6 +782,10 @@ class Mesh:
             mesh["x_centroid"],
             mesh["y_centroid"],
             mesh["z_centroid"],
+            matern_nu=config.matern_nu,
+            matern_length_scale=config.matern_length_scale,
+            matern_length_units=config.matern_length_units,
+            eigenvector_algorithm=config.eigenvector_algorithm,
         )
 
         logger.success(f"Read: {filename}")
@@ -831,6 +871,10 @@ class Mesh:
                 mesh.x_centroid,
                 mesh.y_centroid,
                 mesh.z_centroid,
+                matern_nu=config.matern_nu,
+                matern_length_scale=config.matern_length_scale,
+                matern_length_units=config.matern_length_units,
+                eigenvector_algorithm=config.eigenvector_algorithm,
             )
 
         return mesh
