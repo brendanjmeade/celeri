@@ -458,19 +458,19 @@ def _get_eigenvalues_and_eigenvectors(
     # Use sklearn's Matern kernel which handles all special cases (nu=0.5, 1.5, 2.5)
     # and the general case with proper numerical stability
     kernel = Matern(nu=matern_nu, length_scale=matern_length_scale)
-    correlation_matrix = kernel(centroid_coordinates)
+    covariance_matrix = kernel(centroid_coordinates)
 
     # Algorithm choice: see https://github.com/brendanjmeade/celeri/pull/367#issuecomment-2690519498
     # and https://stackoverflow.com/questions/12167654/fastest-way-to-compute-k-largest-eigenvalues-and-corresponding-eigenvectors-with
     if eigenvector_algorithm == "eigh":
         eigenvalues_ascending, eigenvectors_ascending = scipy.linalg.eigh(
-            correlation_matrix,
+            covariance_matrix,
             subset_by_index=[n_tde - n_eigenvalues, n_tde - 1],
         )
     elif eigenvector_algorithm == "eigsh":
         # ARPACK is faster for small k, but eigenvector signs may differ
         eigenvalues_ascending, eigenvectors_ascending = scipy.sparse.linalg.eigsh(
-            correlation_matrix, k=n_eigenvalues, which="LM"
+            covariance_matrix, k=n_eigenvalues, which="LM"
         )
     else:
         raise ValueError(f"Unknown eigenvector_algorithm: {eigenvector_algorithm}")
