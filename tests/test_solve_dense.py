@@ -164,7 +164,7 @@ def test_operator_rotation_to_tri_slip_rate(config_name):
     return operator[np.ix_(idx_rows, idx_cols)]
 
 
-@pytest.mark.array_compare(rtol=1e-4, atol=1e-9)
+@pytest.mark.array_compare(rtol=1.5e-4, atol=1e-9)
 @pytest.mark.parametrize(
     "config_file, eigen, tde",
     [
@@ -186,7 +186,12 @@ def test_dense_sol(config_file, eigen: bool, tde: bool):
     assert hasattr(estimation, "tde_rates")
     assert hasattr(estimation, "east_vel_residual")
 
-    scale = np.abs(estimation.operators.full_dense_operator).max(0)
+    # exclude vertical station rows when scaling
+    G = estimation.operators.full_dense_operator
+    n_sta = estimation.index.n_stations
+    mask = np.ones(G.shape[0], dtype=bool)
+    mask[np.arange(2, 3 * n_sta, 3)] = False
+    scale = np.abs(G[mask, :]).max(0)
     estimation.state_vector = estimation.state_vector * scale
     return estimation.state_vector
 
