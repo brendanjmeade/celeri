@@ -433,12 +433,16 @@ def _get_eigenvalues_and_eigenvectors(
     y: np.ndarray,
     z: np.ndarray,
     matern_nu: float = 0.5,  # Smoothness parameter
-    matern_sigma: float = 1.0,  # Amplitude parameter
     matern_length_scale: float = 1.0,
     matern_length_units: Literal["absolute", "diameters"] = "diameters",
     eigenvector_algorithm: Literal["eigh", "eigsh"] = "eigh",
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Get the eigenvalues and eigenvectors of the mesh kernel."""
+    """Get the eigenvalues and eigenvectors of the mesh Matérn kernel.
+
+    The kernel is computed with unit amplitude scale parameter (sigma=1).
+    Eigenvalues scale as sigma**2, so the amplitude can be reintroduced later
+    by multiplying eigenvalues by sigma**2 (eigenvectors are unchanged).
+    """
     n_tde = x.size
 
     # Triangle centroid coordinates (n_tde, 3)
@@ -454,7 +458,7 @@ def _get_eigenvalues_and_eigenvectors(
     # Use sklearn's Matern kernel which handles all special cases (nu=0.5, 1.5, 2.5)
     # and the general case with proper numerical stability
     kernel = Matern(nu=matern_nu, length_scale=matern_length_scale)
-    correlation_matrix = matern_sigma**2 * kernel(centroid_coordinates)
+    correlation_matrix = kernel(centroid_coordinates)
 
     # Algorithm choice: see https://github.com/brendanjmeade/celeri/pull/367#issuecomment-2690519498
     # and https://stackoverflow.com/questions/12167654/fastest-way-to-compute-k-largest-eigenvalues-and-corresponding-eigenvectors-with
