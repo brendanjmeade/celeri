@@ -6,6 +6,7 @@ import pandas as pd
 from loguru import logger
 from scipy import linalg, spatial
 
+from celeri.celeri_util import get_keep_index_12
 from celeri.constants import RADIUS_EARTH
 from celeri.model import Model
 from celeri.operators import Operators, build_operators
@@ -68,8 +69,17 @@ def _get_eigen_to_velocity(
     mesh_idx: int,
     kind: Literal["strike_slip", "dip_slip"],
     operators: Operators,
+    vel_idx: np.ndarray,
 ) -> np.ndarray:
-    """Get the station velocity operator for a mesh and slip type."""
+    """Get the station velocity operator for a mesh and slip type.
+    
+    Args:
+        model: The model instance
+        mesh_idx: Index of the mesh
+        kind: Type of slip ("strike_slip" or "dip_slip")
+        operators: Operators containing eigen information
+        vel_idx: Row indices to select velocity components (horizontal only or all 3)
+    """
     assert operators.eigen is not None
 
     if kind == "strike_slip":
@@ -79,7 +89,7 @@ def _get_eigen_to_velocity(
         n_eigs = model.meshes[mesh_idx].config.n_modes_dip_slip
         start_idx = model.meshes[mesh_idx].config.n_modes_strike_slip
 
-    to_velocity = operators.eigen.eigen_to_velocities[mesh_idx][
+    to_velocity = operators.eigen.eigen_to_velocities[mesh_idx][vel_idx, :][
         :, start_idx : start_idx + n_eigs
     ]
     
@@ -92,6 +102,7 @@ def _station_vel_from_elastic_mesh(
     kind: Literal["strike_slip", "dip_slip"],
     elastic,
     operators: Operators,
+    vel_idx: np.ndarray,
 ):
     """Compute elastic velocity at stations from slip rates on a mesh.
 
@@ -107,11 +118,13 @@ def _station_vel_from_elastic_mesh(
         Elastic slip rates on the mesh
     operators : Operators
         Operators containing TDE and eigen information
+    vel_idx : np.ndarray
+        Row indices to select velocity components (horizontal only or all 3)
 
     Returns
     -------
     array
-        Elastic velocities at station locations (flattened, all 3 components)
+        Elastic velocities at station locations (flattened, selected components)
     """
     import pytensor.tensor as pt
 
@@ -120,7 +133,7 @@ def _station_vel_from_elastic_mesh(
     method = model.config.mcmc_station_velocity_method
 
     if method == "low_rank":
-        to_station = operators.tde.tde_to_velocities[mesh_idx][:, idx.start : None : 3]
+        to_station = operators.tde.tde_to_velocities[mesh_idx][vel_idx, :][:, idx.start : None : 3]
         u, s, vh = linalg.svd(to_station, full_matrices=False)
         threshold = 1e-5
         mask = s > threshold
@@ -136,6 +149,7 @@ def _station_vel_from_elastic_mesh(
             mesh_idx,
             kind,
             operators,
+            vel_idx,
         )
         eigenvectors = _get_eigenmodes(model, mesh_idx, kind)
         # TODO: This assumes that the eigenvectors are orthogonal
@@ -143,12 +157,12 @@ def _station_vel_from_elastic_mesh(
         # the eigen decomposition to use a different inner product,
         # we will need to change this projection.
         coefs = _operator_mult(eigenvectors.T, elastic)
-        # eigen_to_velocities now includes all 3 velocity components
+        # eigen_to_velocities now includes selected velocity components
         elastic_velocity = _operator_mult(to_velocity, coefs)
 
         return elastic_velocity
     elif method == "direct":
-        to_station = operators.tde.tde_to_velocities[mesh_idx][:, idx.start : None : 3]
+        to_station = operators.tde.tde_to_velocities[mesh_idx][vel_idx, :][:, idx.start : None : 3]
         elastic_velocity = _operator_mult(-to_station, elastic)
         return elastic_velocity
     else:
@@ -164,6 +178,7 @@ def _coupling_component(
     kind: Literal["strike_slip", "dip_slip"],
     rotation,
     operators: Operators,
+    vel_idx: np.ndarray,
     lower: float | None,
     upper: float | None,
 ):
@@ -171,6 +186,16 @@ def _coupling_component(
 
     Returns the estimated elastic slip rates on the TDEs and the 
     velocities at the stations due to them.
+    
+    Args:
+        model: The model instance
+        mesh_idx: Index of the mesh
+        kind: Type of slip ("strike_slip" or "dip_slip")
+        rotation: Rotation parameters
+        operators: Operators containing TDE and eigen information
+        vel_idx: Row indices to select velocity components (horizontal only or all 3)
+        lower: Lower bound for coupling constraint
+        upper: Upper bound for coupling constraint
     """
     assert operators.eigen is not None
     assert operators.tde is not None
@@ -205,6 +230,7 @@ def _coupling_component(
         kind,
         elastic_tde,
         operators,
+        vel_idx,
     )
     return elastic_tde, station_vels.astype("d")
 
@@ -214,6 +240,7 @@ def _elastic_component(
     mesh_idx: int,
     kind: Literal["strike_slip", "dip_slip"],
     operators: Operators,
+    vel_idx: np.ndarray,
     lower: float | None,
     upper: float | None,
 ):
@@ -224,6 +251,15 @@ def _elastic_component(
 
     Returns the estimated elastic slip rates on the TDEs and the 
     velocities at the stations due to them.
+    
+    Args:
+        model: The model instance
+        mesh_idx: Index of the mesh
+        kind: Type of slip ("strike_slip" or "dip_slip")
+        operators: Operators containing TDE and eigen information
+        vel_idx: Row indices to select velocity components (horizontal only or all 3)
+        lower: Lower bound for elastic constraint
+        upper: Upper bound for elastic constraint
     """
     assert operators.eigen is not None
     assert operators.tde is not None
@@ -235,7 +271,8 @@ def _elastic_component(
 
     scale = 0.0
     for op in operators.eigen.eigen_to_velocities.values():
-        scale += (op**2).mean()
+        # Use sliced operator for scale computation
+        scale += (op[vel_idx, :]**2).mean()
 
     scale = scale / len(operators.eigen.eigen_to_velocities)
     scale = 1 / np.sqrt(scale)
@@ -246,6 +283,7 @@ def _elastic_component(
         mesh_idx,
         kind,
         operators,
+        vel_idx,
     )
     n_eigs = eigenvectors.shape[1]
 
@@ -255,7 +293,7 @@ def _elastic_component(
     pm.Deterministic(f"elastic_{mesh_idx}_{kind_short}", elastic_tde)
 
     # Compute elastic velocity at stations. The operator already
-    # includes a negative sign. eigen_to_velocities now includes all 3 components.
+    # includes a negative sign. eigen_to_velocities uses selected velocity components.
     if lower is None and upper is None:
         station_vels = _operator_mult(to_velocity, param)
     else:
@@ -265,6 +303,7 @@ def _elastic_component(
             kind,
             elastic_tde,
             operators,
+            vel_idx,
         )
 
     return elastic_tde, station_vels
@@ -275,7 +314,17 @@ def _mesh_component(
     mesh_idx: int,
     rotation,
     operators: Operators,
+    vel_idx: np.ndarray,
 ):
+    """Compute velocity contributions from a mesh.
+    
+    Args:
+        model: The model instance
+        mesh_idx: Index of the mesh
+        rotation: Rotation parameters
+        operators: Operators containing TDE and eigen information
+        vel_idx: Row indices to select velocity components (horizontal only or all 3)
+    """
     rates = []
 
     kinds: tuple[Literal["strike_slip"], Literal["dip_slip"]] = ("strike_slip", "dip_slip")
@@ -305,6 +354,7 @@ def _mesh_component(
                     kind,
                     rotation,
                     operators,
+                    vel_idx,
                     lower=coupling_limit.lower,
                     upper=coupling_limit.upper,
                 )
@@ -314,6 +364,7 @@ def _mesh_component(
                     mesh_idx,
                     kind,
                     operators,
+                    vel_idx,
                     lower=rate_limit.lower,
                     upper=rate_limit.upper,
                 )
@@ -352,36 +403,45 @@ def _add_tde_elastic_constraints(
             )
 
 
-def _add_block_strain_rate_component(operators: Operators):
+def _add_block_strain_rate_component(operators: Operators, vel_idx: np.ndarray):
     """Add block strain rate component to the PyMC model.
 
     Returns the velocity contribution from block strain rates.
+    
+    Args:
+        operators: The operators object
+        vel_idx: Row indices to select velocity components (horizontal only or all 3)
     """
     import pymc as pm
 
     raw = pm.Normal("block_strain_rate_raw", sigma=100, dims="block_strain_rate_param")
-    if operators.block_strain_rate_to_velocities.size == 0:
+    op = operators.block_strain_rate_to_velocities[vel_idx, :]
+    if op.size == 0:
         scale = 1.0
     else:
-        scale = 1 / np.sqrt((operators.block_strain_rate_to_velocities**2).mean())
+        scale = 1 / np.sqrt((op**2).mean())
     block_strain_rate = pm.Deterministic(
         "block_strain_rate", scale * raw, dims="block_strain_rate_param"
     )
 
-    return _operator_mult(operators.block_strain_rate_to_velocities, block_strain_rate)
+    return _operator_mult(op, block_strain_rate)
 
 
-def _add_rotation_component(operators: Operators):
+def _add_rotation_component(operators: Operators, vel_idx: np.ndarray):
     """Add block rotation component to the PyMC model.
 
     Returns rotation parameters and velocity contributions.
+    
+    Args:
+        operators: The operators object
+        vel_idx: Row indices to select velocity components (horizontal only or all 3)
     """
     import pymc as pm
 
-    A = (
-        operators.rotation_to_velocities
-        - operators.rotation_to_slip_rate_to_okada_to_velocities
-    )
+    rotation_to_vel = operators.rotation_to_velocities[vel_idx, :]
+    rotation_to_okada_vel = operators.rotation_to_slip_rate_to_okada_to_velocities[vel_idx, :]
+    
+    A = rotation_to_vel - rotation_to_okada_vel
     scale = 1e6
     B = A / scale
     u, s, vh = linalg.svd(B, full_matrices=False)
@@ -391,29 +451,32 @@ def _add_rotation_component(operators: Operators):
         "rotation", _operator_mult(vh.T, raw / scale), dims="rotation_param"
     )
 
-    rotation_velocity = _operator_mult(operators.rotation_to_velocities, rotation)
-    rotation_okada_velocity = _operator_mult(
-        -operators.rotation_to_slip_rate_to_okada_to_velocities, rotation
-    )
+    rotation_velocity = _operator_mult(rotation_to_vel, rotation)
+    rotation_okada_velocity = _operator_mult(-rotation_to_okada_vel, rotation)
 
     return rotation, rotation_velocity, rotation_okada_velocity
 
 
-def _add_mogi_component(operators: Operators):
+def _add_mogi_component(operators: Operators, vel_idx: np.ndarray):
     """Add Mogi source component to the PyMC model.
 
     Returns the velocity contribution from Mogi sources.
+    
+    Args:
+        operators: The operators object
+        vel_idx: Row indices to select velocity components (horizontal only or all 3)
     """
     import pymc as pm
 
     raw = pm.Normal("mogi_raw", dims="mogi_param")
-    if operators.mogi_to_velocities.size == 0:
+    op = operators.mogi_to_velocities[vel_idx, :]
+    if op.size == 0:
         scale = 1.0
     else:
-        scale = 1 / np.sqrt((operators.mogi_to_velocities**2).mean())
+        scale = 1 / np.sqrt((op**2).mean())
     mogi = pm.Deterministic("mogi", scale * raw, dims="mogi_param")
 
-    return _operator_mult(operators.mogi_to_velocities, mogi)
+    return _operator_mult(op, mogi)
 
 
 def _add_station_velocity_likelihood(model: Model, mu):
@@ -609,6 +672,20 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
 
     import pymc as pm
 
+    # Check if vertical velocities should be included
+    # If not, we can exclude vertical components from operators for efficiency
+    include_vertical = model.config.include_vertical_velocity
+    n_stations = len(model.station)
+    
+    if include_vertical:
+        # Keep all 3 velocity components per station (east, north, up)
+        vel_idx = np.arange(3 * n_stations)
+        n_vel_components = 3
+    else:
+        # Keep only horizontal components (east, north), excluding vertical (up)
+        vel_idx = get_keep_index_12(3 * n_stations)
+        n_vel_components = 2
+
     coords = {
         "block_strain_rate_param": pd.RangeIndex(
             operators.block_strain_rate_to_velocities.shape[1]
@@ -626,18 +703,18 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
     }
 
     with pm.Model(coords=coords) as pymc_model:
-        block_strain_rate_velocity = _add_block_strain_rate_component(operators)
+        block_strain_rate_velocity = _add_block_strain_rate_component(operators, vel_idx)
 
         rotation, rotation_velocity, rotation_okada_velocity = _add_rotation_component(
-            operators
+            operators, vel_idx
         )
 
-        mogi_velocity = _add_mogi_component(operators)
+        mogi_velocity = _add_mogi_component(operators, vel_idx)
 
         # Add elastic velocity from meshes
         elastic_velocities = []
         for key, _ in enumerate(model.meshes):
-            elastic_velocities.append(_mesh_component(model, key, rotation, operators))
+            elastic_velocities.append(_mesh_component(model, key, rotation, operators, vel_idx))
         elastic_velocity = sum(elastic_velocities)
 
         mu = (
@@ -647,12 +724,12 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
             + mogi_velocity
             + elastic_velocity
         )
-        mu = mu.reshape((len(model.station), 3))
+        mu = mu.reshape((n_stations, n_vel_components))
 
-        mu_det = pm.Deterministic("mu", mu, dims=("station", "xyz"))
-        mu_logp = mu_det if model.config.include_vertical_velocity else mu_det[:, :2]
+        dims = ("station", "xyz") if include_vertical else ("station", "xy")
+        mu_det = pm.Deterministic("mu", mu, dims=dims)
 
-        _add_station_velocity_likelihood(model, mu_logp)
+        _add_station_velocity_likelihood(model, mu_det)
         _add_segment_constraints(model, operators, rotation)
 
     return pymc_model  # type: ignore[return-value]
