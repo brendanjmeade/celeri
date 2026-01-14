@@ -84,6 +84,18 @@ class MeshConfig(BaseModel):
         Tuple containing the constrained upper and lower bounds for the elastic rates on the mesh for strike-slip.
     elastic_constraints_ds : ScalarBound
         Tuple containing the constrained upper and lower bounds for the elastic rates on the mesh for dip-slip.
+    matern_nu : float
+        Matérn kernel smoothness parameter (default 1/2). Common values: 1/2 (exponential),
+        3/2 (once-differentiable), 5/2 (twice-differentiable).
+    matern_length_scale : float
+        Matérn kernel length scale (default 1.0). Interpretation depends on matern_length_units.
+    matern_length_units : Literal["absolute", "diameters"]
+        Units for matern_length_scale: 'diameters' scales by mesh diameter (default),
+        'absolute' uses the value directly in the same units as mesh coordinates.
+    eigenvector_algorithm : Literal["eigh", "eigsh"]
+        Algorithm for eigendecomposition (default "eigh"). 'eigh' (dense LAPACK) is faster for
+        many modes, 'eigsh' (sparse ARPACK) is faster for few modes. Both have equivalent accuracy,
+        but eigenvector signs may differ between algorithms.
     """
 
     # Forbid extra fields when reading from JSON
@@ -151,6 +163,12 @@ class MeshConfig(BaseModel):
     iterative_coupling_linear_slip_rate_reduction_factor: float = 0.025
     iterative_coupling_smoothing_length_scale: float | None = None
     iterative_coupling_kinematic_slip_regularization_scale: float = 1.0
+
+    # GP kernel hyperparameters for eigenmode computation
+    matern_nu: float = 0.5
+    matern_length_scale: float = 1.0
+    matern_length_units: Literal["absolute", "diameters"] = "diameters"
+    eigenvector_algorithm: Literal["eigh", "eigsh"] = "eigh"
 
     @classmethod
     def from_file(cls, filename: str | Path) -> list[MeshConfig]:
@@ -468,7 +486,7 @@ def _get_eigenvalues_and_eigenvectors(
             subset_by_index=[n_tde - n_eigenvalues, n_tde - 1],
         )
     elif eigenvector_algorithm == "eigsh":
-        # ARPACK is faster for small k, but eigenvector signs may differ
+        # ARPACK is faster for small k; eigenvector signs may differ from eigh
         eigenvalues_ascending, eigenvectors_ascending = scipy.sparse.linalg.eigsh(
             covariance_matrix, k=n_eigenvalues, which="LM"
         )
@@ -764,6 +782,10 @@ class Mesh:
             mesh["x_centroid"],
             mesh["y_centroid"],
             mesh["z_centroid"],
+            matern_nu=config.matern_nu,
+            matern_length_scale=config.matern_length_scale,
+            matern_length_units=config.matern_length_units,
+            eigenvector_algorithm=config.eigenvector_algorithm,
         )
 
         logger.success(f"Read: {filename}")
@@ -849,6 +871,10 @@ class Mesh:
                 mesh.x_centroid,
                 mesh.y_centroid,
                 mesh.z_centroid,
+                matern_nu=config.matern_nu,
+                matern_length_scale=config.matern_length_scale,
+                matern_length_units=config.matern_length_units,
+                eigenvector_algorithm=config.eigenvector_algorithm,
             )
 
         return mesh
