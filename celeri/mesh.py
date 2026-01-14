@@ -436,6 +436,7 @@ def _get_eigenvalues_and_eigenvectors(
     matern_sigma: float = 1.0,  # Amplitude parameter
     matern_length_scale: float = 1.0,
     matern_length_units: Literal["absolute", "diameters"] = "diameters",
+    eigenvector_algorithm: Literal["eigh", "eigsh"] = "eigh",
 ) -> tuple[np.ndarray, np.ndarray]:
     """Get the eigenvalues and eigenvectors of the mesh kernel."""
     n_tde = x.size
@@ -455,13 +456,22 @@ def _get_eigenvalues_and_eigenvectors(
     kernel = Matern(nu=matern_nu, length_scale=matern_length_scale)
     correlation_matrix = matern_sigma**2 * kernel(centroid_coordinates)
 
-    # https://stackoverflow.com/questions/12167654/fastest-way-to-compute-k-largest-eigenvalues-and-corresponding-eigenvectors-with
-    # Use ARPACK (eigsh) for faster computation of top k eigenvalues
-    eigenvalues_ascending, eigenvectors_ascending = scipy.sparse.linalg.eigsh(
-        correlation_matrix, k=n_eigenvalues, which="LM"
-    )
+    # Algorithm choice: see https://github.com/brendanjmeade/celeri/pull/367#issuecomment-2690519498
+    # and https://stackoverflow.com/questions/12167654/fastest-way-to-compute-k-largest-eigenvalues-and-corresponding-eigenvectors-with
+    if eigenvector_algorithm == "eigh":
+        eigenvalues_ascending, eigenvectors_ascending = scipy.linalg.eigh(
+            correlation_matrix,
+            subset_by_index=[n_tde - n_eigenvalues, n_tde - 1],
+        )
+    elif eigenvector_algorithm == "eigsh":
+        # ARPACK is faster for small k, but eigenvector signs may differ
+        eigenvalues_ascending, eigenvectors_ascending = scipy.sparse.linalg.eigsh(
+            correlation_matrix, k=n_eigenvalues, which="LM"
+        )
+    else:
+        raise ValueError(f"Unknown eigenvector_algorithm: {eigenvector_algorithm}")
+
     assert np.all(eigenvalues_ascending > 0), "Mesh kernel error: Some eigenvalues are negative"
-    # eigsh with which='LM' returns eigenvalues sorted ascending; reverse for descending
     eigenvalues_descending = eigenvalues_ascending[::-1]
     eigenvectors_descending = eigenvectors_ascending[:, ::-1]
     return eigenvalues_descending, eigenvectors_descending
