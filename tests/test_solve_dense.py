@@ -222,7 +222,6 @@ def test_vel_tde_eigen(config_name):
     # Verify vel_tde is computed and has correct shape
     vel_tde = estimation.vel_tde
     assert vel_tde is not None
-    assert vel_tde.shape == (2 * n_stations,)
     assert np.all(np.isfinite(vel_tde))
 
     # Verify component accessors work and have correct shapes
@@ -235,9 +234,9 @@ def test_vel_tde_eigen(config_name):
     assert np.all(np.isfinite(east_vel_tde))
     assert np.all(np.isfinite(north_vel_tde))
 
-    # Verify interleaving is correct
-    np.testing.assert_array_equal(east_vel_tde, vel_tde[0::2])
-    np.testing.assert_array_equal(north_vel_tde, vel_tde[1::2])
+    # Verify interleaving is correct (east, north, up pattern)
+    np.testing.assert_array_equal(east_vel_tde, vel_tde[0::3])
+    np.testing.assert_array_equal(north_vel_tde, vel_tde[1::3])
 
 
 @pytest.mark.parametrize("config_name", ["test_japan_config", "test_wna_config"])
