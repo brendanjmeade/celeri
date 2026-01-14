@@ -234,10 +234,29 @@ def _get_eigen_to_velocity(
     return to_velocity
 
 
-def _matern_gp_prior_sigma_from_eigenvalues(
-    eigenvalues: np.ndarray, sigma: float
-) -> np.ndarray:
-    return sigma * np.sqrt(eigenvalues)
+def _get_eigenmode_prior_variances(
+    model: Model,
+    mesh_idx: int,
+    kind: Literal["strike_slip", "dip_slip"],
+    sigma: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return eigenmodes and variances for the normal priors of the GP coefficients.
+
+    The variances are the eigenvalues of the covariance matrix: when we diagonalize,
+    the "co-" goes away, so we are left with the "variance" of each eigenmode.
+
+    The mesh kernel eigen-decomposition (in `mesh.py`) is pre-computed with a
+    unit amplitude scale parameter (`sigma=1`). We reintroduce the amplitude
+    scale parameter here by multiplying the eigenvalues by `sigma**2`.
+    """
+    eigenvectors = _get_eigenmodes(model, mesh_idx, kind)
+    n_eigs = eigenvectors.shape[1]
+    mesh = model.meshes[mesh_idx]
+    assert mesh.eigenvalues is not None
+    unit_amplitude_variances = mesh.eigenvalues[:n_eigs]
+
+    variances = sigma**2 * unit_amplitude_variances
+    return eigenvectors, variances
 
 
 def _station_vel_from_elastic_mesh(
@@ -335,7 +354,7 @@ def _coupling_component(
     vel_idx: np.ndarray,
     lower: float | None,
     upper: float | None,
-    sigma: float,
+    sigma: float,  # Amplitude scale parameter
 ):
     """Model elastic slip rate as coupling * kinematic slip rate.
 
@@ -370,14 +389,14 @@ def _coupling_component(
     kinematic = _operator_mult(operator, rotation)
     pm.Deterministic(f"kinematic_{mesh_idx}_{kind_short}", kinematic)
 
-    eigenvectors = _get_eigenmodes(model, mesh_idx, kind)
-    n_eigs = eigenvectors.shape[1]
-    eigenvalues = model.meshes[mesh_idx].eigenvalues[:n_eigs]
-    matern_sigma = _matern_gp_prior_sigma_from_eigenvalues(eigenvalues, sigma)
+    eigenvectors, variances = _get_eigenmode_prior_variances(
+        model, mesh_idx, kind, sigma
+    )
+    n_eigs = variances.size
     coefs = pm.Normal(
         f"coupling_coefs_{mesh_idx}_{kind_short}",
         mu=0,
-        sigma=matern_sigma,
+        sigma=np.sqrt(variances),
         shape=n_eigs,
     )
 
@@ -443,7 +462,6 @@ def _elastic_component(
     scale = scale / len(operators.eigen.eigen_to_velocities)
     scale = 1 / np.sqrt(scale)
 
-    eigenvectors = _get_eigenmodes(model, mesh_idx, kind)
     to_velocity = _get_eigen_to_velocity(
         model,
         mesh_idx,
@@ -451,12 +469,14 @@ def _elastic_component(
         operators,
         vel_idx,
     )
-    n_eigs = eigenvectors.shape[1]
-
-    eigenvalues = model.meshes[mesh_idx].eigenvalues[:n_eigs]
-    matern_sigma = _matern_gp_prior_sigma_from_eigenvalues(eigenvalues, sigma)
+    eigenvectors, variances = _get_eigenmode_prior_variances(
+        model, mesh_idx, kind, sigma
+    )
+    n_eigs = variances.size
     raw = pm.Normal(
-        f"elastic_eigen_raw_{mesh_idx}_{kind_short}", sigma=matern_sigma, shape=n_eigs
+        f"elastic_eigen_raw_{mesh_idx}_{kind_short}",
+        sigma=np.sqrt(variances),
+        shape=n_eigs,
     )
     param = pm.Deterministic(f"elastic_eigen_{mesh_idx}_{kind_short}", scale * raw)
     softplus_lengthscale = model.meshes[mesh_idx].config.softplus_lengthscale
