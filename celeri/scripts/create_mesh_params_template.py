@@ -20,8 +20,11 @@ def main():
 
     args = dict(vars(parser.parse_args()))
 
-    # Get default mesh_params from MeshConfig in mesh.py
-    template = celeri.MeshConfig(file_name=args["template_file_name"])
+    template = celeri.MeshConfig(
+        file_name=args["template_file_name"],
+        # Migrate to eigsh (faster for few modes) rather than the legacy eigh default
+        eigenvector_algorithm="eigsh",
+    )
 
     # Write template file
 

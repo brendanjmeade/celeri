@@ -53,19 +53,21 @@ classifiers = [
 ]
 
 [project.scripts]
-celeri-solve = "celeri.scripts.celeri_solve:main"
-celeri-snap-segments = "celeri.scripts.snap_segments:main"
-celeri-segmesh = "celeri.scripts.segmesh:main"
-celeri-msh2stl = "celeri.scripts.msh2stl:main"
-celeri-stl2msh = "celeri.scripts.stl2msh:main"
-celeri-forward = "celeri.scripts.celeri_forward:main"
-celeri-create-grid-station = "celeri.scripts.create_grid_station:main"
-celeri-create-bel-mesh = "celeri.scripts.create_bel_mesh:main"
+celeri-apply-mesh-params = "celeri.scripts.apply_mesh_params:main"
 celeri-check-fix-segments = "celeri.scripts.celeri_check_fix_segments:main"
+celeri-check-segment-block-integrity = "celeri.scripts.celeri_check_segment_block_integrity:main"
+celeri-create-bel-mesh = "celeri.scripts.create_bel_mesh:main"
+celeri-create-grid-station = "celeri.scripts.create_grid_station:main"
+celeri-create-mesh-params-template = "celeri.scripts.create_mesh_params_template:main"
+celeri-forward = "celeri.scripts.celeri_forward:main"
+celeri-msh2stl = "celeri.scripts.msh2stl:main"
 celeri-remove-vels-segment-collocated = "celeri.scripts.celeri_remove_vels_segment_collocated:main"
 celeri-report-segment-priors = "celeri.scripts.celeri_report_segment_priors:main"
 celeri-reweight-stations = "celeri.scripts.celeri-reweight-stations:main"
-celeri-check-segment-block-integrity = "celeri.scripts.celeri_check_segment_block_integrity:main"
+celeri-segmesh = "celeri.scripts.segmesh:main"
+celeri-snap-segments = "celeri.scripts.snap_segments:main"
+celeri-solve = "celeri.scripts.celeri_solve:main"
+celeri-stl2msh = "celeri.scripts.stl2msh:main"
 
 [project.urls]
 Homepage = "https://github.com/brendanjmeade/celeri"

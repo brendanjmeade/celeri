@@ -637,7 +637,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/46/0c/c75bbfb967457a0b7670b8ad267bfc4fffdf341c074e0a80db06c24ccfd4/nvidia_nvjitlink_cu12-12.9.86-py3-none-manylinux2010_x86_64.manylinux_2_12_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/64/b9/6ab941001c23cfb43499b5b0b7417b0bb4dfba3a29ffa2b06985422dad50/nvidia_nvshmem_cu12-3.5.19-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/9a/c9/010fa37a6b83e6fd6afb9434d9b71d454ad3d420d35205aeb333f0227e65/okada_wrapper-24.6.15.tar.gz
-      - pypi: https://files.pythonhosted.org/packages/6a/6c/b6ea5de8b7dfdbff43c7eee146ea11ad01ea83377618b21ff3474fec6789/tfp_nightly-0.26.0.dev20260114-py2.py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/35/0d/b403cf9e00be7a26a7b141786d7c990ec59ab4185897c1737d5fc7ce4139/tfp_nightly-0.26.0.dev20260115-py2.py3-none-any.whl
       - pypi: ./
       osx-64:
       - conda: https://conda.anaconda.org/conda-forge/osx-64/_openmp_mutex-4.5-7_kmp_llvm.conda
@@ -4864,8 +4864,8 @@ packages:
   timestamp: 1765941638540
 - pypi: ./
   name: celeri
-  version: 0.0.4.post1.dev298+g73e6f081b.d20260115
-  sha256: 504740fb6e427cbca508aee48a5f678ba012176f0dfd5ab21f2d8f1b84e74e8a
+  version: 0.0.4.post1.dev305+gcc4364fa2
+  sha256: 8b5e5dd94560093912ffdf179b670db7716c1707833690d8732b5e61ca298332
   requires_dist:
   - cartopy
   - colorcet
@@ -24635,10 +24635,10 @@ packages:
   - pkg:pypi/terminado?source=hash-mapping
   size: 22883
   timestamp: 1710262943966
-- pypi: https://files.pythonhosted.org/packages/6a/6c/b6ea5de8b7dfdbff43c7eee146ea11ad01ea83377618b21ff3474fec6789/tfp_nightly-0.26.0.dev20260114-py2.py3-none-any.whl
+- pypi: https://files.pythonhosted.org/packages/35/0d/b403cf9e00be7a26a7b141786d7c990ec59ab4185897c1737d5fc7ce4139/tfp_nightly-0.26.0.dev20260115-py2.py3-none-any.whl
   name: tfp-nightly
-  version: 0.26.0.dev20260114
-  sha256: 4eb1523bc387f304880b1ef4b4a4c274aab263bef580888c36b2072a7b9b81a2
+  version: 0.26.0.dev20260115
+  sha256: 89a77329ddc61953f697bf53796150b992b39acbd1297a14e9cd0414cda0077d
   requires_dist:
   - absl-py
   - six>=1.10.0
