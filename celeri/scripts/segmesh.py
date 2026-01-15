@@ -12,6 +12,8 @@ import pyproj
 import celeri
 from celeri.celeri_util import cart2sph, sph2cart
 
+import matplotlib.pyplot as plt
+
 # Global constants
 GEOID = pyproj.Geod(ellps="WGS84")
 KM2M = 1.0e3
@@ -226,6 +228,37 @@ def main():
             bot_idx1[-1] = len(ordered_seg_idx) - 1
             # Bottom indices 2 are first, evens, and last
             bot_idx2 = np.zeros((len(ordered_coords),))
+
+            # BJM
+
+            print(f"\n{ordered_seg_idx = }\n")
+            if i == 27:
+                plt.figure()
+                plt.plot(
+                    [
+                        model.segment.loc[:, "lon1"],
+                        model.segment.loc[:, "lon2"],
+                    ],
+                    [
+                        model.segment.loc[:, "lat1"],
+                        model.segment.loc[:, "lat2"],
+                    ],
+                    ".k",
+                )
+
+                plt.plot(
+                    [
+                        model.segment.loc[this_seg_mesh_idx, "lon1"],
+                        model.segment.loc[this_seg_mesh_idx, "lon2"],
+                    ],
+                    [
+                        model.segment.loc[this_seg_mesh_idx, "lat1"],
+                        model.segment.loc[this_seg_mesh_idx, "lat2"],
+                    ],
+                    "+r",
+                )
+                plt.show()
+
             bot_idx2[1:-1] = np.arange(2, len(ordered_seg_idx) - 1, 2)
             bot_idx2[-1] = len(ordered_seg_idx) - 1
             bot_coords1 = seg_coords_bot[ordered_seg_idx[bot_idx1.astype(int)], :]
