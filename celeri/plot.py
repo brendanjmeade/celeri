@@ -595,11 +595,6 @@ def plot_estimation_summary(
             plt.title("Strike-Slip Coupling")
             common_plot_elements(segment, lon_range, lat_range)
 
-            # Collect all coupling values to determine color limits
-            all_ss_coupling = np.asarray(mesh_estimate["strike_slip_coupling"])
-            vmin = np.min(all_ss_coupling)
-            vmax = np.max(all_ss_coupling)
-
             ax = plt.gca()
             pc = None
             for i in range(len(meshes)):
@@ -609,8 +604,6 @@ def plot_estimation_summary(
                     meshes[i],
                     fill_value=coupling_values,
                     ax=ax,
-                    vmin=vmin,
-                    vmax=vmax,
                 )
             if pc is not None:
                 plt.colorbar(pc, ax=ax, shrink=0.7)
@@ -623,11 +616,6 @@ def plot_estimation_summary(
             plt.title("Dip-Slip Coupling")
             common_plot_elements(segment, lon_range, lat_range)
 
-            # Collect all coupling values to determine color limits
-            all_ds_coupling = np.asarray(mesh_estimate["dip_slip_coupling"])
-            vmin = np.min(all_ds_coupling)
-            vmax = np.max(all_ds_coupling)
-
             ax = plt.gca()
             pc = None
             for i in range(len(meshes)):
@@ -637,8 +625,6 @@ def plot_estimation_summary(
                     meshes[i],
                     fill_value=coupling_values,
                     ax=ax,
-                    vmin=vmin,
-                    vmax=vmax,
                 )
             if pc is not None:
                 plt.colorbar(pc, ax=ax, shrink=0.7)
