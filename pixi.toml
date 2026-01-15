@@ -67,6 +67,8 @@ libblas = { version = "*", build = "*_newaccelerate" }
 [feature.dev.dependencies]
 pre-commit = "*"
 ruff = "*"
+hatch-vcs = "*"
+hatch-fancy-pypi-readme = "*"
 
 [pypi-dependencies]
 okada-wrapper = ">=24.6.15"
