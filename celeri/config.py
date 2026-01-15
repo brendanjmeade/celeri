@@ -18,6 +18,8 @@ Sqp2Objective = Literal[
     "huber",
 ]
 
+EigenvectorAlgorithm = Literal["eigh", "eigsh"]
+
 McmcStationVelocityMethod = Literal[
     "direct",
     "low_rank",
@@ -182,6 +184,19 @@ class Config(BaseModel):
 
     mcmc_backend: Literal["numba", "jax"] = "numba"
     """Backend to use for MCMC computations."""
+
+    mesh_default_eigenvector_algorithm: EigenvectorAlgorithm = "eigh"
+    """Default algorithm for computing eigenvectors in mesh processing.
+
+    This value is used as a fallback when a mesh configuration does not
+    specify its own `eigenvector_algorithm`.
+
+    Options:
+    - "eigh": Dense eigenvalue decomposition (scipy.linalg.eigh). Faster for many modes.
+    - "eigsh": Sparse eigenvalue decomposition (scipy.sparse.linalg.eigsh). Faster for few modes.
+
+    Both have equivalent accuracy, but eigenvector signs may differ between algorithms.
+    """
 
     mcmc_station_velocity_method: McmcStationVelocityMethod = "project_to_eigen"
     """Method for computing station velocities from slip rates in MCMC.
@@ -348,6 +363,17 @@ def get_config(file_name: Path | str) -> Config:
         mesh_params = []
     else:
         mesh_params = MeshConfig.from_file(file_path.parent / mesh_parameters_file_name)
+
+    # Apply the top-level default eigenvector algorithm to mesh configs
+    # that don't explicitly set their own
+    mesh_default_eigenvector_algorithm = config_data.get(
+        "mesh_default_eigenvector_algorithm", None
+    )
+    if mesh_default_eigenvector_algorithm is not None:
+        for mesh_param in mesh_params:
+            if "eigenvector_algorithm" not in mesh_param.model_fields_set:
+                mesh_param.eigenvector_algorithm = mesh_default_eigenvector_algorithm
+
     config_data["mesh_params"] = mesh_params
     config_data["file_name"] = file_path.resolve()
 
