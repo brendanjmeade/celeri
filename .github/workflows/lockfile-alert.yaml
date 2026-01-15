@@ -50,7 +50,7 @@ jobs:
 
       - name: Update alert comment
         env:
-          NEEDS_ALERT: ${{ steps.detect.outputs.needs_alert }}
+          ALERT_LEVEL: ${{ steps.detect.outputs.alert_level }}
           MERGE_BASE: ${{ steps.detect.outputs.merge_base }}
           LOCKFILE_COMMIT: ${{ steps.detect.outputs.lockfile_commit }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -119,7 +119,7 @@ jobs:
 
       - name: Update alert comment
         env:
-          NEEDS_ALERT: ${{ steps.detect.outputs.needs_alert }}
+          ALERT_LEVEL: ${{ steps.detect.outputs.alert_level }}
           MERGE_BASE: ${{ steps.detect.outputs.merge_base }}
           LOCKFILE_COMMIT: ${{ steps.detect.outputs.lockfile_commit }}
           PR_NUMBER: ${{ matrix.pr.number }}

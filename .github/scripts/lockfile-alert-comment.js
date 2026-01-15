@@ -4,7 +4,10 @@
  * Manage lockfile alert comments on a pull request.
  *
  * Environment variables:
- *   NEEDS_ALERT - "true" if alert should be posted/updated, "false" to minimize
+ *   ALERT_LEVEL - "none", "warning", or "error"
+ *     - none: No alert needed (base has no lockfile changes)
+ *     - warning: Base has lockfile changes, but PR doesn't modify pixi.lock
+ *     - error: Both base and PR modify pixi.lock (conflict must be resolved)
  *   MERGE_BASE - Merge base commit SHA
  *   LOCKFILE_COMMIT - Most recent commit that modified pixi.lock on base branch
  *   PR_NUMBER - Pull request number
@@ -18,7 +21,7 @@ const https = require('https');
 
 const MARKER = '<!-- lockfile-alert -->';
 
-const needsAlert = (process.env.NEEDS_ALERT || '').toLowerCase() === 'true';
+const alertLevel = (process.env.ALERT_LEVEL || 'none').toLowerCase();
 const mergeBase = process.env.MERGE_BASE || '';
 const lockfileCommit = process.env.LOCKFILE_COMMIT || '';
 const prNumber = Number(process.env.PR_NUMBER);
@@ -48,10 +51,13 @@ if (headRepo && baseRepo && headRepo !== baseRepo) {
   remoteContext = `\n\nRemote \`origin\` should point at ${baseRepo} because this branch lives in ${baseRepo}.`;
 }
 
-const alertBody = `${MARKER}
-Hi @${author},
+// Warning message: base has lockfile changes, but PR doesn't touch pixi.lock
+// This is informational - no immediate action required
+const warningBody = `${MARKER}
+> [!NOTE]
+> **Heads up, @${author}!** \`${baseRef}\` has updated \`pixi.lock\` since this branch diverged.
 
-\`${baseRef}\` has updated \`pixi.lock\` since this branch was last synced (merge-base: ${mergeBase}, latest lockfile change: ${lockfileCommit}). Merge or rebase the latest \`${baseRef}\` so dependency metadata stays current.${remoteContext}
+This PR doesn't modify \`pixi.lock\`, so no conflict exists yet. However, **if you need to make any changes to \`pixi.lock\`**, be sure to merge or rebase \`${baseRef}\` first to avoid conflicts:${remoteContext}
 
 \`\`\`bash
 git checkout ${headRef}
@@ -59,20 +65,47 @@ git fetch ${remoteName}
 git merge ${remoteName}/${baseRef}
 \`\`\`
 
-If merge conflicts occur in \`pixi.lock\`, accept the incoming changes from \`${baseRef}\`, regenerate the lockfile, then continue the merge once everything is staged:
+Merge-base: \`${mergeBase}\`, latest lockfile change on \`${baseRef}\`: \`${lockfileCommit}\`.
+
+This notice will be minimized automatically once \`pixi.lock\` on \`${baseRef}\` matches the merge-base.
+
+---
+_Generated automatically by [\`.github/workflows/lockfile-alert.yaml\`](${workflowUrl})._
+`;
+
+// Error message: both base and PR modify pixi.lock - conflict must be resolved
+const errorBody = `${MARKER}
+> [!WARNING]
+> **Action required, @${author}!** Both this PR and \`${baseRef}\` have modified \`pixi.lock\`.
+
+You must merge or rebase \`${baseRef}\` to resolve the conflict before this PR can be merged.${remoteContext}
+
+\`\`\`bash
+git checkout ${headRef}
+git fetch ${remoteName}
+git merge ${remoteName}/${baseRef}
+\`\`\`
+
+To resolve the \`pixi.lock\` conflict, accept the incoming changes from \`${baseRef}\` and regenerate the lockfile:
 
 \`\`\`bash
 git checkout --theirs pixi.lock
 pixi lock
 git add pixi.lock
+# resolve any other conflicts
 git merge --continue
 \`\`\`
 
-This reminder will be minimized automatically once \`pixi.lock\` matches \`${baseRef}\`.
+Merge-base: \`${mergeBase}\`, latest lockfile change on \`${baseRef}\`: \`${lockfileCommit}\`.
+
+This alert will be minimized automatically once \`pixi.lock\` conflicts are resolved.
 
 ---
 _Generated automatically by [\`.github/workflows/lockfile-alert.yaml\`](${workflowUrl})._
 `;
+
+// Select the appropriate message body based on alert level
+const alertBody = alertLevel === 'error' ? errorBody : warningBody;
 
 /**
  * Make a GitHub API request
@@ -233,9 +266,10 @@ async function updateComment(commentId, body) {
  */
 async function main() {
   const existing = await findAlertComment();
+  const needsAlert = alertLevel === 'warning' || alertLevel === 'error';
 
   if (needsAlert) {
-    console.log('Lockfile drift detected, posting/updating alert...');
+    console.log(`Lockfile drift detected (level: ${alertLevel}), posting/updating alert...`);
 
     if (existing) {
       const isMinimized = await getMinimizedState(existing.node_id);
@@ -250,7 +284,7 @@ async function main() {
       await createComment(alertBody);
     }
   } else {
-    console.log('Lockfile is in sync.');
+    console.log('Lockfile is in sync (no alert needed).');
 
     if (existing) {
       const isMinimized = await getMinimizedState(existing.node_id);
