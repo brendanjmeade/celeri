@@ -5,9 +5,12 @@
 #
 # Outputs an alert_level:
 #   - "none": No action needed (base has no lockfile changes since merge-base)
-#   - "warning": Base has lockfile changes, but PR doesn't touch pixi.lock
+#   - "warning": Base has lockfile changes, and either:
+#                - PR doesn't touch pixi.lock, or
+#                - Both modified pixi.lock but resulting contents are identical
 #                (informational - merge before making lockfile changes)
-#   - "error": Both base and PR modify pixi.lock (conflict must be resolved now)
+#   - "error": Both base and PR modify pixi.lock with differing contents
+#              (conflict must be resolved now)
 #
 # Arguments:
 #   1: PR number
@@ -67,6 +70,10 @@ if [[ "${base_modified_lockfile}" == "true" && "${pr_modified_lockfile}" == "tru
   git diff --quiet "pr-${PR_NUMBER}" "${REMOTE_BASE}" -- pixi.lock
   identical_status=$?
   set -e
+  if [[ ${identical_status} -gt 1 ]]; then
+    echo "Error: git diff (identical check) failed with status ${identical_status}" >&2
+    exit 1
+  fi
   if [[ ${identical_status} -eq 0 ]]; then
     lockfiles_identical="true"
   fi

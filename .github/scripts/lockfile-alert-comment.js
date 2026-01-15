@@ -6,8 +6,9 @@
  * Environment variables:
  *   ALERT_LEVEL - "none", "warning", or "error"
  *     - none: No alert needed (base has no lockfile changes)
- *     - warning: Base has lockfile changes, but PR doesn't modify pixi.lock
- *     - error: Both base and PR modify pixi.lock (conflict must be resolved)
+ *     - warning: Base has lockfile changes, and either PR doesn't modify
+ *                pixi.lock, or both modified but resulting contents are identical
+ *     - error: Both base and PR modify pixi.lock with differing contents
  *   MERGE_BASE - Merge base commit SHA
  *   LOCKFILE_COMMIT - Most recent commit that modified pixi.lock on base branch
  *   PR_NUMBER - Pull request number
