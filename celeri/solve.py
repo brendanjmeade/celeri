@@ -32,6 +32,7 @@ from celeri.operators import (
     rotation_vectors_to_euler_poles,
 )
 from celeri.output import dataclass_from_disk, dataclass_to_disk, write_output
+from celeri.version import __version__ as celeri_version
 
 
 @dataclass(kw_only=True)
@@ -57,6 +58,8 @@ class Estimation:
     trace: Any | None = None
     # MCMC trace from Bayesian inference.
     mcmc_trace: Any | None = None
+    # Version of celeri used to create this estimation.
+    celeri_version: str | None = None
 
     @property
     def model(self) -> Model:
@@ -696,7 +699,9 @@ class Estimation:
             import arviz
             import xarray as xr
 
-            mcmc_trace = xr.open_datatree(output_dir / "mcmc_trace.zarr", consolidated=False)
+            mcmc_trace = xr.open_datatree(
+                output_dir / "mcmc_trace.zarr", consolidated=False
+            )
             mcmc_trace = arviz.from_datatree(mcmc_trace)
         else:
             mcmc_trace = None
@@ -740,6 +745,7 @@ def build_estimation(
         state_vector=state_vector,
         operators=operators,
         state_covariance_matrix=state_covariance_matrix,
+        celeri_version=celeri_version,
     )
 
 
