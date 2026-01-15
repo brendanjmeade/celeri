@@ -14,6 +14,7 @@ repos:
 
   # Prevent giant files from being committed.
   - id: check-added-large-files
+    exclude: ^pixi\.lock$
 
   # Check for files that contain merge conflict strings.
   - id: check-merge-conflict

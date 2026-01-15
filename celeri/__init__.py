@@ -88,13 +88,7 @@ from celeri.spatial import (
     get_tde_to_velocities,
     get_tri_displacements,
 )
-
-try:
-    from importlib.metadata import version
-
-    __version__ = version("celeri")
-except Exception:
-    __version__ = "unknown"
+from celeri.version import __version__
 
 __all__ = [
     "Config",
