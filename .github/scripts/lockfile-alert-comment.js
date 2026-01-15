@@ -66,7 +66,7 @@ git fetch ${remoteName}
 git merge ${remoteName}/${baseRef}
 \`\`\`
 
-Merge-base: \`${mergeBase}\`, latest lockfile change on \`${baseRef}\`: \`${lockfileCommit}\`.
+Merge-base: ${mergeBase}, latest lockfile change on \`${baseRef}\`: ${lockfileCommit}.
 
 This notice will be minimized automatically once \`pixi.lock\` on \`${baseRef}\` matches the merge-base.
 
@@ -97,7 +97,7 @@ git add pixi.lock
 git merge --continue
 \`\`\`
 
-Merge-base: \`${mergeBase}\`, latest lockfile change on \`${baseRef}\`: \`${lockfileCommit}\`.
+Merge-base: ${mergeBase}, latest lockfile change on \`${baseRef}\`: ${lockfileCommit}.
 
 This alert will be minimized automatically once \`pixi.lock\` conflicts are resolved.
 
