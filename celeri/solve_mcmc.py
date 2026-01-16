@@ -86,6 +86,31 @@ def _get_eigen_to_velocity(
     return to_velocity
 
 
+def _get_eigenmode_prior_variances(
+    model: Model,
+    mesh_idx: int,
+    kind: Literal["strike_slip", "dip_slip"],
+    sigma: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return eigenmodes and variances for the normal priors of the GP coefficients.
+
+    The variances are the eigenvalues of the covariance matrix: when we diagonalize,
+    the "co-" goes away, so we are left with the "variance" of each eigenmode.
+
+    The mesh kernel eigen-decomposition (in `mesh.py`) is pre-computed with a
+    unit amplitude scale parameter (`sigma=1`). We reintroduce the amplitude
+    scale parameter here by multiplying the eigenvalues by `sigma**2`.
+    """
+    eigenvectors = _get_eigenmodes(model, mesh_idx, kind)
+    n_eigs = eigenvectors.shape[1]
+    mesh = model.meshes[mesh_idx]
+    assert mesh.eigenvalues is not None
+    unit_amplitude_variances = mesh.eigenvalues[:n_eigs]
+
+    variances = sigma**2 * unit_amplitude_variances
+    return eigenvectors, variances
+
+
 def _station_vel_from_elastic_mesh(
     model: Model,
     mesh_idx: int,
@@ -173,6 +198,7 @@ def _coupling_component(
     operators: Operators,
     lower: float | None,
     upper: float | None,
+    sigma: float,  # Amplitude scale parameter
 ):
     """Model elastic slip rate as coupling * kinematic slip rate.
 
@@ -196,9 +222,14 @@ def _coupling_component(
     kinematic = _operator_mult(operator, rotation)
     pm.Deterministic(f"kinematic_{mesh_idx}_{kind_short}", kinematic)
 
-    eigenvectors = _get_eigenmodes(model, mesh_idx, kind)
-    n_eigs = eigenvectors.shape[1]
-    coefs = pm.Normal(f"coupling_coefs_{mesh_idx}_{kind_short}", mu=0, sigma=10, shape=n_eigs)
+    eigenvectors, variances = _get_eigenmode_prior_variances(model, mesh_idx, kind, sigma)
+    n_eigs = variances.size
+    coefs = pm.Normal(
+        f"coupling_coefs_{mesh_idx}_{kind_short}",
+        mu=0,
+        sigma=np.sqrt(variances),
+        shape=n_eigs,
+    )
 
     coupling_field = _operator_mult(eigenvectors, coefs)
     coupling_field = _constrain_field(coupling_field, lower, upper)
@@ -223,6 +254,7 @@ def _elastic_component(
     operators: Operators,
     lower: float | None,
     upper: float | None,
+    sigma: float,
 ):
     """Model elastic slip rate as a linear combination of eigenmodes.
     Creates parameters for raw elastic eigenmode coefficients, then adds 
@@ -238,26 +270,20 @@ def _elastic_component(
     import pymc as pm
     import pytensor.tensor as pt
     kind_short = {"strike_slip": "ss", "dip_slip": "ds"}[kind]
-    idx = DIRECTION_IDX[kind]
 
-    scale = 0.0
-    for op in operators.eigen.eigen_to_velocities.values():
-        scale += (op**2).mean()
-
-    scale = scale / len(operators.eigen.eigen_to_velocities)
-    scale = 1 / np.sqrt(scale)
-
-    eigenvectors = _get_eigenmodes(model, mesh_idx, kind)
     to_velocity = _get_eigen_to_velocity(
         model,
         mesh_idx,
         kind,
         operators,
     )
-    n_eigs = eigenvectors.shape[1]
-
-    raw = pm.Normal(f"elastic_eigen_raw_{mesh_idx}_{kind_short}", shape=n_eigs)
-    param = pm.Deterministic(f"elastic_eigen_{mesh_idx}_{kind_short}", scale * raw)
+    eigenvectors, variances = _get_eigenmode_prior_variances(model, mesh_idx, kind, sigma)
+    n_eigs = variances.size
+    param = pm.Normal(
+        f"elastic_eigen_{mesh_idx}_{kind_short}",
+        sigma=np.sqrt(variances),
+        shape=n_eigs,
+    )
     elastic_tde = _constrain_field(_operator_mult(eigenvectors, param), lower, upper)
     pm.Deterministic(f"elastic_{mesh_idx}_{kind_short}", elastic_tde)
 
@@ -323,6 +349,7 @@ def _mesh_component(
                     operators,
                     lower=coupling_limit.lower,
                     upper=coupling_limit.upper,
+                    sigma=model.meshes[mesh_idx].config.coupling_sigma,
                 )
         else:
             elastic_tde, station_vels = _elastic_component(
@@ -332,6 +359,7 @@ def _mesh_component(
                     operators,
                     lower=rate_limit.lower,
                     upper=rate_limit.upper,
+                    sigma=model.meshes[mesh_idx].config.elastic_sigma,
                 )
 
         rates.append(station_vels)
@@ -754,10 +782,10 @@ def _state_vector_from_draw(
             "ss": slice(None, None, 2),
             "ds": slice(1, None, 2),
         }
-        for name, idx in indices.items():
+        for kind_short, idx in indices.items():
             start = operators_tde.index.tde.start_tde_col[mesh_idx]
             end = operators_tde.index.tde.end_tde_col[mesh_idx]
-            var_name = f"elastic_{mesh_idx}_{name}"
+            var_name = f"elastic_{mesh_idx}_{kind_short}"
 
             if var_name in trace.posterior:
                 vals = trace.posterior[var_name]
