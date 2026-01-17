@@ -493,17 +493,43 @@ class Operators:
             return _get_weighting_vector_eigen(self.model, self.index)
         return _get_weighting_vector(self.model, self.index)
 
-    def to_disk(self, output_dir: str | Path):
-        """Save TDE operators to disk."""
+    def to_disk(self, output_dir: str | Path, *, save_arrays: bool = True):
+        """Save operators to disk.
+
+        Args:
+            output_dir: Directory to save operators to.
+            save_arrays: If True (default), save all operator arrays to disk.
+                If False, only save model and index. On load, operators will be
+                regenerated using the elastic operator cache, saving ~6.8GB per run.
+                Requires that the model's elastic_operator_cache_dir is set and
+                contains the cached elastic operators.
+        """
         path = Path(output_dir)
+
+        # Always save model and index (needed for regeneration)
+        self.index.to_disk(path / "index")
+        self.model.to_disk(path / "model")
+
+        if not save_arrays:
+            # Validate that cache is configured for regeneration to work
+            if self.model.config.elastic_operator_cache_dir is None:
+                raise ValueError(
+                    "Cannot save with save_arrays=False: elastic_operator_cache_dir "
+                    "is not set in the model config. Either set it or use "
+                    "save_arrays=True."
+                )
+            # Write a marker file so from_disk knows to regenerate
+            (path / ".regenerate_operators").touch()
+            logger.info(
+                f"Saved minimal operators to {path}. "
+                "Full operators will be regenerated from cache on load."
+            )
+            return
 
         if self.tde is not None:
             self.tde.to_disk(path / "tde")
         if self.eigen is not None:
             self.eigen.to_disk(path / "eigen")
-
-        self.index.to_disk(path / "index")
-        self.model.to_disk(path / "model")
 
         # Save the smoothing matrix using scipy sparse format
         for mesh_idx, smoothing_matrix in self.smoothing_matrix.items():
