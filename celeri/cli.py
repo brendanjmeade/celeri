@@ -82,6 +82,14 @@ def parse_args() -> argparse.Namespace:
         help="Flag for saving major data structures in pickle file (0 | 1)",
     )
     parser.add_argument(
+        "--save_operators",
+        type=str2bool,
+        default=None,
+        required=False,
+        help="Flag for saving full operator arrays (0 | 1). If 0, operators are "
+        "regenerated from cache on load, saving ~6.8GB per run.",
+    )
+    parser.add_argument(
         "--plot_input_summary",
         type=str2bool,
         default=None,

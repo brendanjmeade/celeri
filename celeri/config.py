@@ -159,6 +159,14 @@ class Config(BaseModel):
     pickle_save: bool = True
     repl: bool = False
 
+    save_operators: bool = True
+    """Whether to save full operator arrays when writing output.
+
+    If False, only saves model and index. Operators will be regenerated
+    from the elastic operator cache on load, saving ~6.8GB per run.
+    Requires elastic_operator_cache_dir to be set.
+    """
+
     snap_segments: int = 0
     solve_type: str = "hmatrix"
     tri_con_weight: int = 1000000
