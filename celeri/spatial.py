@@ -1,4 +1,3 @@
-import copy
 import warnings
 
 import cutde.halfspace as cutde_halfspace
@@ -770,52 +769,47 @@ def get_tri_smoothing_matrix(share, tri_shared_sides_distances) -> csr_matrix:
     share: n x 3 array of indices of the up to 3 elements sharing a side
         with each of the n elements
     tri_shared_sides_distances: n x 3 array of distances between each of the
-        n elements and its up to 3 neighbors
+        n elements and its up to 3 neighbors (NaN where no neighbor)
 
     Outputs:
     smoothing matrix: 3n x 3n smoothing matrix
     """
-    # Allocate sparse matrix for contructing smoothing matrix
-    n_shared_tris = share.shape[0]
-    smoothing_matrix = scipy.sparse.lil_matrix((3 * n_shared_tris, 3 * n_shared_tris))
+    n = share.shape[0]  # number of triangles
 
-    # Create a design matrix for Laplacian construction
-    share_copy = copy.deepcopy(share)
-    share_copy[np.where(share == -1)] = 0
-    share_copy[np.where(share != -1)] = 1
+    # Sum distances and compute 1/d (NaN propagates harmlessly for missing neighbors)
+    leading_coefficient = 2.0 / np.nansum(tri_shared_sides_distances, axis=1)  # (n,)
+    # (n, 3) 1/d per neighbor slot, NaN if missing
+    inverse_distances = 1.0 / tri_shared_sides_distances
 
-    # Sum the distances between each element and its neighbors
-    share_distances = np.sum(tri_shared_sides_distances, axis=1)
-    leading_coefficient = 2.0 / share_distances
+    # (n,) Diagonal terms: -(2/Σd_k) * Σ(1/d_j) over neighbors j
+    diagonal_terms = -leading_coefficient * np.nansum(inverse_distances, axis=1)
 
-    # Replace zero distances with 1 to avoid divide by zero
-    tri_shared_sides_distances[np.where(tri_shared_sides_distances == 0)] = 1
+    # (n, 3) Off-diagonal terms: (2/Σd_k) * (1/d_j) for each neighbor j
+    off_diagonal_terms = leading_coefficient[:, np.newaxis] * inverse_distances
 
-    # Take the reciprocal of the distances
-    inverse_tri_shared_sides_distances = 1.0 / tri_shared_sides_distances
+    # Build the n x n Laplacian for one slip component.
+    has_neighbor = share != -1  # (n, 3) bool mask
+    n_shares = int(np.sum(has_neighbor))  # number of shared neighbor slots
+    neighbor_rows = np.nonzero(has_neighbor)[0]  # (n_shares,)
+    neighbor_cols = share[has_neighbor]  # (n_shares,)
+    neighbor_values = off_diagonal_terms[has_neighbor]  # (n_shares,)
 
-    # Diagonal terms # TODO: Defnitely not sure about his line!!!
-    diagonal_terms = -leading_coefficient * np.sum(
-        inverse_tri_shared_sides_distances * share_copy,
-        axis=1,
-    )
+    # Build COO indices/values by concatenating diagonals first, then off-diagonals.
+    row_idx = np.empty(n + n_shares, dtype=int)  # (n + n_shares,)
+    col_idx = np.empty(n + n_shares, dtype=int)  # (n + n_shares,)
+    values = np.empty(n + n_shares, dtype=diagonal_terms.dtype)  # (n + n_shares,)
+    row_idx[:n] = np.arange(n)
+    col_idx[:n] = np.arange(n)
+    values[:n] = diagonal_terms
+    row_idx[n:] = neighbor_rows
+    col_idx[n:] = neighbor_cols
+    values[n:] = neighbor_values
+    laplacian = scipy.sparse.coo_matrix(
+        (values, (row_idx, col_idx)), shape=(n, n)
+    ).tocsr()  # (n, n)
 
-    # Off-diagonal terms
-    off_diagonal_terms = (
-        np.vstack((leading_coefficient, leading_coefficient, leading_coefficient)).T
-        * inverse_tri_shared_sides_distances
-        * share_copy
-    )
-
-    # Place the weights into the smoothing operator
-    for j in range(3):
-        for i in range(n_shared_tris):
-            smoothing_matrix[3 * i + j, 3 * i + j] = diagonal_terms[i]
-            if share[i, j] != -1:
-                k = 3 * i + np.array([0, 1, 2])
-                m = 3 * share[i, j] + np.array([0, 1, 2])
-                smoothing_matrix[k, m] = off_diagonal_terms[i, j]
-    return smoothing_matrix.tocsr()
+    # Expand to 3 components: kron(L, I_3) -> (3n, 3n)
+    return scipy.sparse.kron(laplacian, scipy.sparse.eye(3), format="csr")
 
 
 def get_mogi_to_velocities_partials(mogi, station, config) -> np.ndarray:
@@ -1128,29 +1122,42 @@ def get_shared_sides(vertices):
     return share
 
 
-def get_tri_shared_sides_distances(share, x_centroid, y_centroid, z_centroid):
+def get_tri_shared_sides_distances(
+    share: np.ndarray,
+    x_centroid: np.ndarray,
+    y_centroid: np.ndarray,
+    z_centroid: np.ndarray,
+) -> np.ndarray:
     """Calculates the distances between the centroids of adjacent triangular
     elements, for use in smoothing algorithms.
 
-    Inputs:
-    share: n x 3 array output from ShareSides, containing the indices
-        of up to 3 elements that share a side with each of the n elements.
-    x_centroid: x coordinates of element centroids
-    y_centroid: y coordinates of element centroids
-    z_centroid: z coordinates of element centroids
+    Args:
+        share: (n, 3) array from get_shared_sides, containing neighbor indices
+            or -1 for missing neighbors. Dimensions: [triangle, neighbor_slot].
+        x_centroid: (n,) x coordinates of element centroids
+        y_centroid: (n,) y coordinates of element centroids
+        z_centroid: (n,) z coordinates of element centroids
 
-    Outputs:
-    dists: n x 3 array containing distance between each of the n elements
-        and its 3 or fewer neighbors.  A distance of 0 does not imply
-        collocated elements, but rather implies that there are fewer
-        than 3 elements that share a side with the element in that row.
+    Returns:
+        (n, 3) array of distances to each neighbor. Dimensions: [triangle, neighbor_slot].
+        NaN where share == -1 (no neighbor).
     """
-    tri_shared_sides_distances = np.zeros(share.shape)
-    for i in range(share.shape[0]):
-        tri_shared_sides_distances[i, :] = np.sqrt(
-            (x_centroid[i] - x_centroid[share[i, :]]) ** 2.0
-            + (y_centroid[i] - y_centroid[share[i, :]]) ** 2.0
-            + (z_centroid[i] - z_centroid[share[i, :]]) ** 2.0
-        )
-    tri_shared_sides_distances[np.where(share == -1)] = 0
-    return tri_shared_sides_distances
+    has_neighbor = share != -1  # (n, 3) bool mask
+    # n_shares = int(np.sum(has_neighbor))  # number of shared neighbor slots
+
+    # Extract valid (triangle_idx, neighbor_idx) pairs only
+    tri_idx = np.nonzero(has_neighbor)[0]  # (n_shares,) indices with neighbors
+    neighbor_idx = share[has_neighbor]  # (n_shares,) indices of neighbors
+
+    centroids = np.column_stack([x_centroid, y_centroid, z_centroid])  # (n, 3)
+
+    # Compute distances only for valid pairs
+    valid_distances = np.linalg.norm(
+        centroids[tri_idx] - centroids[neighbor_idx], axis=1
+    )  # (n_shares,)
+
+    # Scatter into output array (NaN elsewhere = no neighbor)
+    distances = np.full(share.shape, np.nan)  # (n, 3)
+    distances[has_neighbor] = valid_distances
+
+    return distances
