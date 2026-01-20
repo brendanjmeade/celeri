@@ -319,11 +319,15 @@ class Index:
 class TdeOperators:
     tde_to_velocities: ByMesh[np.ndarray]
     tde_slip_rate_constraints: ByMesh[np.ndarray]
+    tde_to_velocities: ByMesh[np.ndarray] | None = None
 
     def to_disk(self, output_dir: str | Path):
         """Save TDE operators to disk."""
         path = Path(output_dir)
-        dataclass_to_disk(self, path)
+        skip = set()
+        if self.tde_to_velocities is None:
+            skip.add("tde_to_velocities")
+        dataclass_to_disk(self, path, skip=skip)
 
     @classmethod
     def from_disk(cls, input_dir: str | Path) -> "TdeOperators":
