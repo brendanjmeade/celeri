@@ -159,6 +159,14 @@ class Config(BaseModel):
     pickle_save: bool = True
     repl: bool = False
 
+    save_operators: bool = True
+    """Whether to save full operator arrays when writing output.
+
+    If False, only saves model and index. Operators will be loaded
+    from the elastic operator cache when the run is opened, saving several GBs per run.
+    Requires elastic_operator_cache_dir to be set.
+    """
+
     snap_segments: int = 0
     solve_type: str = "hmatrix"
     tri_con_weight: int = 1000000
@@ -303,6 +311,16 @@ class Config(BaseModel):
                 if isinstance(value, Path):
                     setattr(self, name, (base_dir / value).resolve())
 
+        return self
+
+    @model_validator(mode="after")
+    def validate_save_operators(self) -> Self:
+        """Validate that elastic_operator_cache_dir is set when save_operators is False."""
+        if not self.save_operators and self.elastic_operator_cache_dir is None:
+            raise ValueError(
+                "elastic_operator_cache_dir must be set when save_operators is False. "
+                "Either set elastic_operator_cache_dir or set save_operators to True."
+            )
         return self
 
 
