@@ -22,7 +22,7 @@ def write_output(
 ):
     config = estimation.model.config
     output_path = Path(config.output_path)
-    estimation.to_disk(output_path)
+    estimation.to_disk(output_path, save_operators=config.save_operators)
     station = estimation.model.station
     segment = estimation.model.segment
     meshes = estimation.model.meshes
