@@ -650,7 +650,7 @@ def build_operators(model: Model, *, eigen: bool = True, tde: bool = True) -> Op
     operators = _OperatorBuilder(model)
 
     # Get all elastic operators for segments and TDEs
-    _store_elastic_operators(model, operators)
+    _store_elastic_operators(model, operators, tde=tde)
 
     # Get TDE smoothing operators
     _store_all_mesh_smoothing_matrices(model, operators)
@@ -697,8 +697,11 @@ def build_operators(model: Model, *, eigen: bool = True, tde: bool = True) -> Op
 
         # Get KL modes for each mesh
         _store_eigenvectors_to_tde_slip(model, operators)
-    else:
+    elif tde:
         index = _get_index(model)
+        operators.index = index
+    else:
+        index = _get_index_no_meshes(model)
         operators.index = index
 
     # Get rotation to TDE kinematic slip rate operator for all meshes tied to segments

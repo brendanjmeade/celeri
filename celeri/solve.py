@@ -24,6 +24,7 @@ from celeri.operators import (
     Operators,
     _get_data_vector,
     _get_data_vector_eigen,
+    _get_data_vector_no_meshes,
     _get_weighting_vector,
     _get_weighting_vector_eigen,
     _get_weighting_vector_no_meshes,
@@ -737,8 +738,7 @@ def build_estimation(
         data_vector = _get_data_vector(model, operators.index)
         weighting_vector = _get_weighting_vector(model, operators.index)
     else:
-        # TODO is get_data_vector correct here?
-        data_vector = _get_data_vector(model, operators.index)
+        data_vector = _get_data_vector_no_meshes(model, operators.index)
         weighting_vector = _get_weighting_vector_no_meshes(model, operators.index)
 
     return Estimation(
