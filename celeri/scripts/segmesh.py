@@ -13,10 +13,98 @@ import celeri
 from celeri.celeri_util import cart2sph, sph2cart
 
 # Global constants
+COORD_TOL = 1e-5  # Tolerance for coordinate matching (degrees)
 GEOID = pyproj.Geod(ellps="WGS84")
 KM2M = 1.0e3
 M2MM = 1.0e3
 RADIUS_EARTH = np.float64((GEOID.a + GEOID.b) / 2)
+
+
+def find_connected_segment_clusters(segment_indices, segment_df):
+    """
+    Find connected clusters of segments based on shared endpoints.
+
+    Two segments are considered connected if they share an endpoint
+    (within COORD_TOL tolerance).
+
+    Parameters
+    ----------
+    segment_indices : array-like
+        Indices of segments to cluster (indices into segment_df)
+    segment_df : DataFrame
+        Segment DataFrame with lon1, lat1, lon2, lat2 columns
+
+    Returns
+    -------
+    list of arrays
+        Each array contains segment indices for one connected cluster
+    """
+    if len(segment_indices) == 0:
+        return []
+
+    segment_indices = np.array(segment_indices)
+    n_segs = len(segment_indices)
+
+    if n_segs == 1:
+        return [segment_indices]
+
+    # Get endpoints for all segments
+    coords1 = np.array(
+        [
+            segment_df.loc[segment_indices, "lon1"].values,
+            segment_df.loc[segment_indices, "lat1"].values,
+        ]
+    ).T
+    coords2 = np.array(
+        [
+            segment_df.loc[segment_indices, "lon2"].values,
+            segment_df.loc[segment_indices, "lat2"].values,
+        ]
+    ).T
+
+    # Build adjacency: two segments are connected if they share an endpoint
+    # Use Union-Find for efficiency
+    parent = list(range(n_segs))
+
+    def find(x):
+        if parent[x] != x:
+            parent[x] = find(parent[x])
+        return parent[x]
+
+    def union(x, y):
+        px, py = find(x), find(y)
+        if px != py:
+            parent[px] = py
+
+    # Check all pairs of segments for shared endpoints
+    for i in range(n_segs):
+        for j in range(i + 1, n_segs):
+            # Check if segment i and segment j share any endpoint
+            # Endpoints of segment i: coords1[i], coords2[i]
+            # Endpoints of segment j: coords1[j], coords2[j]
+            shared = False
+            for pi in [coords1[i], coords2[i]]:
+                for pj in [coords1[j], coords2[j]]:
+                    if (
+                        np.abs(pi[0] - pj[0]) < COORD_TOL
+                        and np.abs(pi[1] - pj[1]) < COORD_TOL
+                    ):
+                        shared = True
+                        break
+                if shared:
+                    break
+            if shared:
+                union(i, j)
+
+    # Group segments by their root parent
+    clusters = {}
+    for i in range(n_segs):
+        root = find(i)
+        if root not in clusters:
+            clusters[root] = []
+        clusters[root].append(segment_indices[i])
+
+    return [np.array(indices) for indices in clusters.values()]
 
 
 def main():
@@ -102,24 +190,33 @@ def main():
             sm_block_labels, axis=1, return_inverse=True
         )
 
-        # Number of unique block pairs corresponds to number of meshes to be generated
-        # This forces meshes to be split at triple+ junctions
-        # This results in a more straightforward assignment of block labels to mesh elements
-        unique_mesh_idx = np.arange(np.shape(sm_block_labels_unique)[1])
-        # Allocate space to hold indices of segmeshes
-        segmesh_file_index: list[int | None] = [None] * len(unique_mesh_idx)
+        # Build list of all connected clusters across all block label pairs
+        # Each cluster is (segment_indices, block_label_for_ordering)
+        all_clusters = []
+        n_block_pairs = np.shape(sm_block_labels_unique)[1]
 
-        # Loop through unique meshes and find indices of ordered coordinates
-        for i in range(len(unique_mesh_idx)):
-            # Find the segments associated with this mesh
-            # This is done by finding the segments that have this block label pair
-            this_seg_mesh_idx = seg_mesh_idx[
+        for i in range(n_block_pairs):
+            # Find the segments associated with this block label pair
+            block_pair_seg_idx = seg_mesh_idx[
                 np.isin(sm_block_labels[0, :], sm_block_labels_unique[0, i])
                 & np.isin(sm_block_labels[1, :], sm_block_labels_unique[1, i])
             ]
-            # print(model.segment.name[this_seg_mesh_idx])
-            # Get the ordered coordinates from the closure array, using the first block label
 
+            # Find connected clusters within this block label pair
+            clusters = find_connected_segment_clusters(
+                block_pair_seg_idx, model.segment
+            )
+
+            # Add each cluster with its block label for coordinate ordering
+            for cluster_seg_idx in clusters:
+                all_clusters.append((cluster_seg_idx, sm_block_labels_unique[0, i]))
+
+        # Now we know the total number of meshes to create
+        n_new_meshes = len(all_clusters)
+        segmesh_file_index: list[int] = []
+
+        # Loop through all clusters and create meshes
+        for mesh_idx, (this_seg_mesh_idx, block_label) in enumerate(all_clusters):
             # Concatenated endpoint arrays
             this_coord1 = np.array(
                 [
@@ -168,14 +265,15 @@ def main():
                     * model.segment.loc[this_seg_mesh_idx, "length"]
                 ) / np.sum(model.segment.loc[this_seg_mesh_idx, "length"])
                 # Project coordinates from surface trace, perpendicular to this single averaged cluster strike
-                # av_dip = np.mean(model.segment.loc[this_seg_mesh_idx, "dip"])
                 lon1_bot_proj, lat1_bot_proj, _ = GEOID.fwd(
                     seg_coords[0::2, 0],
                     seg_coords[0::2, 1],
                     (av_strike + 90) * np.ones_like(seg_coords[0::2, 0]),
                     KM2M
-                    * model.segment.loc[this_seg_mesh_idx, "locking_depth"]
-                    / np.tan(np.radians(model.segment.loc[this_seg_mesh_idx, "dip"])),
+                    * model.segment.loc[this_seg_mesh_idx, "locking_depth"].values
+                    / np.tan(
+                        np.radians(model.segment.loc[this_seg_mesh_idx, "dip"].values)
+                    ),
                 )
                 # Add projected coordinates to bottom array
                 seg_coords_bot[0::2, 0] = lon1_bot_proj
@@ -189,8 +287,10 @@ def main():
                     seg_coords[1::2, 1],
                     (av_strike + 90) * np.ones_like(seg_coords[0::2, 0]),
                     KM2M
-                    * model.segment.loc[this_seg_mesh_idx, "locking_depth"]
-                    / np.tan(np.radians(model.segment.loc[this_seg_mesh_idx, "dip"])),
+                    * model.segment.loc[this_seg_mesh_idx, "locking_depth"].values
+                    / np.tan(
+                        np.radians(model.segment.loc[this_seg_mesh_idx, "dip"].values)
+                    ),
                 )
                 # Add projected coordinates to bottom array
                 seg_coords_bot[1::2, 0] = lon2_bot_proj
@@ -199,8 +299,9 @@ def main():
                 seg_coords_bot[1::2, 2] = model.segment.loc[
                     this_seg_mesh_idx, "locking_depth"
                 ]
+
             # Ordered coordinates from block closure
-            block_coords = thisclosure.polygons[sm_block_labels_unique[0, i]].vertices
+            block_coords = thisclosure.polygons[block_label].vertices
             # Find the ordered indices into block_coords
             seg_in_block_idx = np.unique(
                 np.nonzero(np.all(block_coords == seg_coords[:, np.newaxis], axis=2))[1]
@@ -220,6 +321,7 @@ def main():
             ordered_seg_idx = np.nonzero(
                 np.all(seg_coords == ordered_coords[:, np.newaxis], axis=2)
             )[1]
+
             # Bottom indices 1 are first, odds, and last
             bot_idx1 = np.zeros((len(ordered_coords),))
             bot_idx1[1:-1] = np.arange(1, len(ordered_seg_idx) - 1, 2)
@@ -236,14 +338,14 @@ def main():
             # Top coordinates are ordered block coordinates with zero depths appended
             top_coords = np.hstack((ordered_coords, np.zeros((len(ordered_coords), 1))))
             # Use top and bottom coordinates to make a mesh
-            filename = mesh_dir / f"{seg_file_stem}_segmesh{unique_mesh_idx[i]}.msh"
+            filename = mesh_dir / f"{seg_file_stem}_segmesh{mesh_idx}.msh"
 
             # Combined coordinates making a continuous perimeter loop
             all_coords = np.vstack((top_coords, np.flipud(bot_coords)))
             # Number of geometric objects
             n_coords = np.shape(all_coords)[0]
             n_surf = int((n_coords - 2) / 2)
-            el_length = [float(i) for i in args["el_length"]]
+            el_length = [float(el) for el in args["el_length"]]
             if len(el_length) == 2:
                 el_length_bot = el_length[1] * np.ones(int(n_coords / 2))
                 el_length_top = el_length[0] * np.ones(int(n_coords / 2))
@@ -310,18 +412,17 @@ def main():
                 gmsh.model.mesh.setNode(nodetags[j], nodecoords[3 * j : 3 * j + 3], [])
             # Write the mesh for later reading in celeri
             gmsh.write(str(filename))
-            # gmsh.write(filename + ".geo_unrolled")
             gmsh.finalize()
 
             # Update segment DataFrame
             # mesh_file_index may differ from the _segmesh number
             # mesh_file_index is an index into the list of meshes in the mesh_param
             model.segment.loc[this_seg_mesh_idx, "mesh_file_index"] = (
-                n_segment_meshes + i
+                n_segment_meshes + mesh_idx
             )  # 0-based indexing means we start at n_segment_meshes
             # Define index of this segmesh
             # This is different from the above index, because we use it for reordering mesh_param
-            segmesh_file_index[i] = n_meshes + i
+            segmesh_file_index.append(n_meshes + mesh_idx)
             model.segment.loc[this_seg_mesh_idx, "mesh_flag"] = 1
             model.segment.loc[this_seg_mesh_idx, "create_ribbon_mesh"] = 0
 
@@ -333,15 +434,25 @@ def main():
     # Updating mesh parameters and config
 
     # Assign default parameters to newly created meshes
-    for j in range(len(unique_mesh_idx)):
-        filename = mesh_dir / f"{seg_file_stem}_segmesh{unique_mesh_idx[j]}.msh"
-        new_entry = celeri.MeshConfig(file_name=model.config.mesh_parameters_file_name)
-        new_entry.mesh_filename = filename
-        model.config.mesh_params.append(new_entry)
+    # n_new_meshes and segmesh_file_index are set in the meshing loop above
+    if len(seg_mesh_idx) > 0:
+        for j in range(n_new_meshes):
+            filename = mesh_dir / f"{seg_file_stem}_segmesh{j}.msh"
+            new_entry = celeri.MeshConfig(
+                file_name=model.config.mesh_parameters_file_name
+            )
+            new_entry.mesh_filename = filename
+            model.config.mesh_params.append(new_entry)
+    else:
+        segmesh_file_index = []
 
     # Reorder mesh_param list so that standalone meshes are placed last
     mesh_reorder_index = np.concatenate(
-        (segment_mesh_file_index, segmesh_file_index, standalone_mesh_file_index)
+        (
+            segment_mesh_file_index,
+            np.array(segmesh_file_index),
+            standalone_mesh_file_index,
+        )
     )
 
     model.config.mesh_params = [model.config.mesh_params[i] for i in mesh_reorder_index]
