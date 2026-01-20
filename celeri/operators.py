@@ -493,17 +493,42 @@ class Operators:
             return _get_weighting_vector_eigen(self.model, self.index)
         return _get_weighting_vector(self.model, self.index)
 
-    def to_disk(self, output_dir: str | Path):
-        """Save TDE operators to disk."""
+    def to_disk(self, output_dir: str | Path, *, save_arrays: bool = True):
+        """Save operators to disk.
+
+        Args:
+            output_dir: Directory to save operators to.
+            save_arrays: If True (default), save all operator arrays to disk.
+                If False, only save model and index. Operators will be loaded from
+                the elastic operator cache when opened, saving several GBs per run.
+                Requires that the model's elastic_operator_cache_dir is set.
+        """
         path = Path(output_dir)
+
+        # Always save model and index (needed for cache loading)
+        self.index.to_disk(path / "index")
+        self.model.to_disk(path / "model")
+
+        if not save_arrays:
+            # Validate that cache is configured
+            if self.model.config.elastic_operator_cache_dir is None:
+                raise ValueError(
+                    "Cannot save with save_arrays=False: elastic_operator_cache_dir "
+                    "is not set in the model config. Either set it or use "
+                    "save_arrays=True."
+                )
+            # Write a marker file so from_disk knows to load from cache
+            (path / ".load_from_cache").touch()
+            logger.info(
+                f"Saved minimal operators to {path}. "
+                "Full operators will be loaded from cache when opened."
+            )
+            return
 
         if self.tde is not None:
             self.tde.to_disk(path / "tde")
         if self.eigen is not None:
             self.eigen.to_disk(path / "eigen")
-
-        self.index.to_disk(path / "index")
-        self.model.to_disk(path / "model")
 
         # Save the smoothing matrix using scipy sparse format
         for mesh_idx, smoothing_matrix in self.smoothing_matrix.items():
