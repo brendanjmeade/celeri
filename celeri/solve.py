@@ -24,6 +24,7 @@ from celeri.operators import (
     Operators,
     _get_data_vector,
     _get_data_vector_eigen,
+    _get_data_vector_no_meshes,
     _get_weighting_vector,
     _get_weighting_vector_eigen,
     _get_weighting_vector_no_meshes,
@@ -673,11 +674,18 @@ class Estimation:
         state_vector = _state_vector_from_draw(self.model, self.operators, draw)
         return replace(self, state_vector=state_vector)
 
-    def to_disk(self, output_dir: str | Path) -> None:
-        """Save the estimation to disk."""
+    def to_disk(self, output_dir: str | Path, *, save_operators: bool = True) -> None:
+        """Save the estimation to disk.
+
+        Args:
+            output_dir: Directory to save the estimation to.
+            save_operators: If True (default), save all operator arrays to disk.
+                If False, only save model and index. Operators will be loaded from
+                the elastic operator cache when opened.
+        """
         output_dir = Path(output_dir)
 
-        self.operators.to_disk(output_dir / "operators")
+        self.operators.to_disk(output_dir / "operators", save_arrays=save_operators)
 
         if self.mcmc_trace is not None:
             self.mcmc_trace.to_datatree().to_zarr(
@@ -737,8 +745,7 @@ def build_estimation(
         data_vector = _get_data_vector(model, operators.index)
         weighting_vector = _get_weighting_vector(model, operators.index)
     else:
-        # TODO is get_data_vector correct here?
-        data_vector = _get_data_vector(model, operators.index)
+        data_vector = _get_data_vector_no_meshes(model, operators.index)
         weighting_vector = _get_weighting_vector_no_meshes(model, operators.index)
 
     return Estimation(

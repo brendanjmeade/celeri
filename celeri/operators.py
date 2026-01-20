@@ -493,17 +493,42 @@ class Operators:
             return _get_weighting_vector_eigen(self.model, self.index)
         return _get_weighting_vector(self.model, self.index)
 
-    def to_disk(self, output_dir: str | Path):
-        """Save TDE operators to disk."""
+    def to_disk(self, output_dir: str | Path, *, save_arrays: bool = True):
+        """Save operators to disk.
+
+        Args:
+            output_dir: Directory to save operators to.
+            save_arrays: If True (default), save all operator arrays to disk.
+                If False, only save model and index. Operators will be loaded from
+                the elastic operator cache when opened, saving several GBs per run.
+                Requires that the model's elastic_operator_cache_dir is set.
+        """
         path = Path(output_dir)
+
+        # Always save model and index (needed for cache loading)
+        self.index.to_disk(path / "index")
+        self.model.to_disk(path / "model")
+
+        if not save_arrays:
+            # Validate that cache is configured
+            if self.model.config.elastic_operator_cache_dir is None:
+                raise ValueError(
+                    "Cannot save with save_arrays=False: elastic_operator_cache_dir "
+                    "is not set in the model config. Either set it or use "
+                    "save_arrays=True."
+                )
+            # Write a marker file so from_disk knows to load from cache
+            (path / ".load_from_cache").touch()
+            logger.info(
+                f"Saved minimal operators to {path}. "
+                "Full operators will be loaded from cache when opened."
+            )
+            return
 
         if self.tde is not None:
             self.tde.to_disk(path / "tde")
         if self.eigen is not None:
             self.eigen.to_disk(path / "eigen")
-
-        self.index.to_disk(path / "index")
-        self.model.to_disk(path / "model")
 
         # Save the smoothing matrix using scipy sparse format
         for mesh_idx, smoothing_matrix in self.smoothing_matrix.items():
@@ -516,8 +541,35 @@ class Operators:
 
     @classmethod
     def from_disk(cls, input_dir: str | Path) -> "Operators":
-        """Load TDE operators from disk."""
+        """Load operators from disk.
+
+        If the operators were saved with save_arrays=False, they will be
+        loaded from the elastic operator cache. This requires that
+        the model's elastic_operator_cache_dir is set. If the cache is empty,
+        operators are computed on first access.
+        """
         path = Path(input_dir)
+
+        # Check if we should rebuild from cache instead of loading arrays
+        if (path / ".load_from_cache").exists():
+            model = Model.from_disk(path / "model")
+            index = Index.from_disk(path / "index")
+
+            # Determine eigen/tde mode from saved index
+            use_eigen = index.eigen is not None
+            use_tde = index.tde is not None
+
+            if model.config.elastic_operator_cache_dir is None:
+                raise ValueError(
+                    "Cannot load operators from cache: elastic_operator_cache_dir is not "
+                    "set in the model config. Either set it or save operators with "
+                    "save_arrays=True."
+                )
+
+            logger.info(
+                f"Loading operators from cache at {model.config.elastic_operator_cache_dir}..."
+            )
+            return build_operators(model, eigen=use_eigen, tde=use_tde)
 
         tde_path = path / "tde"
         if tde_path.exists():
@@ -650,7 +702,7 @@ def build_operators(model: Model, *, eigen: bool = True, tde: bool = True) -> Op
     operators = _OperatorBuilder(model)
 
     # Get all elastic operators for segments and TDEs
-    _store_elastic_operators(model, operators)
+    _store_elastic_operators(model, operators, tde=tde)
 
     # Get TDE smoothing operators
     _store_all_mesh_smoothing_matrices(model, operators)
@@ -697,8 +749,11 @@ def build_operators(model: Model, *, eigen: bool = True, tde: bool = True) -> Op
 
         # Get KL modes for each mesh
         _store_eigenvectors_to_tde_slip(model, operators)
-    else:
+    elif tde:
         index = _get_index(model)
+        operators.index = index
+    else:
+        index = _get_index_no_meshes(model)
         operators.index = index
 
     # Get rotation to TDE kinematic slip rate operator for all meshes tied to segments

@@ -271,3 +271,122 @@ def test_estimation_serialization(config_file, temp_dir):
                 original_estimation.tde_rates[mesh_idx],
                 deserialized_estimation.tde_rates[mesh_idx],
             )
+
+
+@pytest.mark.parametrize(
+    "config_file",
+    [
+        "./tests/configs/test_japan_config.json",
+    ],
+)
+def test_operators_serialization_minimal(config_file, temp_dir):
+    """Test serializing operators with save_arrays=False and loading from cache.
+    
+    Uses tde=False to skip expensive TDE computation - we're testing serialization,
+    not operator correctness.
+    """
+    # Load model from config
+    config = celeri.get_config(config_file)
+
+    # Use isolated temp directory for cache to ensure test doesn't depend on
+    # pre-existing cache state and doesn't pollute shared cache
+    cache_dir = Path(temp_dir) / "operator_cache"
+    cache_dir.mkdir(exist_ok=True)
+    config.elastic_operator_cache_dir = cache_dir
+
+    model = celeri.build_model(config)
+
+    # Build operators without TDE/eigen - much faster, still tests serialization
+    original_operators = celeri.build_operators(model, eigen=False, tde=False)
+
+    # Verify cache was populated (segment operators only, no TDE)
+    cache_files = list(cache_dir.glob("*.hdf5"))
+    assert len(cache_files) == 1, f"Expected 1 cache file, found {len(cache_files)}"
+
+    # Test to_disk method with save_arrays=False
+    output_dir = Path(temp_dir) / "operators_minimal"
+    output_dir.mkdir(exist_ok=True)
+    original_operators.to_disk(output_dir, save_arrays=False)
+
+    # Verify only model and index were saved, plus the marker file
+    assert (output_dir / "index").exists(), "Index directory not created"
+    assert (output_dir / "model").exists(), "Model directory not created"
+    assert (output_dir / ".load_from_cache").exists(), "Marker file not created"
+
+    # Verify bulk arrays were NOT saved
+    assert not (output_dir / "arrays.zarr").exists(), (
+        "Arrays should not be saved with save_arrays=False"
+    )
+
+    # Deserialize the operators - this should load from cache
+    deserialized_operators = celeri.Operators.from_disk(output_dir)
+
+    # Verify basic properties match
+    assert (
+        original_operators.index.n_operator_cols
+        == deserialized_operators.index.n_operator_cols
+    )
+    assert (
+        original_operators.index.n_operator_rows
+        == deserialized_operators.index.n_operator_rows
+    )
+
+    # Compare the full dense operator (most comprehensive check)
+    # Operators should be exactly equal since they're loaded from the same cache
+    G_original = original_operators.full_dense_operator
+    G_deserialized = deserialized_operators.full_dense_operator
+    np.testing.assert_array_equal(G_original, G_deserialized)
+
+
+@pytest.mark.parametrize(
+    "config_file",
+    [
+        "./tests/configs/test_japan_config.json",
+    ],
+)
+def test_estimation_serialization_minimal(config_file, temp_dir):
+    """Test serializing estimation with save_operators=False and loading from cache.
+    
+    Uses tde=False to skip expensive TDE computation - we're testing serialization,
+    not operator correctness.
+    """
+    # Load model from config
+    config = celeri.get_config(config_file)
+
+    # Use isolated temp directory for cache to ensure test doesn't depend on
+    # pre-existing cache state and doesn't pollute shared cache
+    cache_dir = Path(temp_dir) / "operator_cache"
+    cache_dir.mkdir(exist_ok=True)
+    config.elastic_operator_cache_dir = cache_dir
+
+    model = celeri.build_model(config)
+
+    # Generate an estimation object by solving the model without TDE/eigen
+    # Much faster, still tests the serialization logic
+    original_estimation = celeri.assemble_and_solve_dense(model, eigen=False, tde=False)
+
+    # Test to_disk method with save_operators=False
+    output_dir = Path(temp_dir) / "estimation_minimal"
+    output_dir.mkdir(exist_ok=True)
+    original_estimation.to_disk(output_dir, save_operators=False)
+
+    # Verify the marker file exists
+    assert (output_dir / "operators" / ".load_from_cache").exists(), (
+        "Marker file not created"
+    )
+
+    # Deserialize the estimation - operators should load from cache
+    deserialized_estimation = Estimation.from_disk(output_dir)
+
+    # Verify results match exactly - operators loaded from same cache
+    np.testing.assert_array_equal(original_estimation.vel, deserialized_estimation.vel)
+
+    np.testing.assert_array_equal(
+        original_estimation.rotation_vector,
+        deserialized_estimation.rotation_vector,
+    )
+
+    np.testing.assert_array_equal(
+        original_estimation.slip_rates,
+        deserialized_estimation.slip_rates,
+    )
