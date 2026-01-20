@@ -541,8 +541,35 @@ class Operators:
 
     @classmethod
     def from_disk(cls, input_dir: str | Path) -> "Operators":
-        """Load TDE operators from disk."""
+        """Load operators from disk.
+
+        If the operators were saved with save_arrays=False, they will be
+        loaded from the elastic operator cache. This requires that
+        the model's elastic_operator_cache_dir is set. If the cache is empty,
+        operators are computed on first access.
+        """
         path = Path(input_dir)
+
+        # Check if we should rebuild from cache instead of loading arrays
+        if (path / ".load_from_cache").exists():
+            model = Model.from_disk(path / "model")
+            index = Index.from_disk(path / "index")
+
+            # Determine eigen/tde mode from saved index
+            use_eigen = index.eigen is not None
+            use_tde = index.tde is not None
+
+            if model.config.elastic_operator_cache_dir is None:
+                raise ValueError(
+                    "Cannot load operators from cache: elastic_operator_cache_dir is not "
+                    "set in the model config. Either set it or save operators with "
+                    "save_arrays=True."
+                )
+
+            logger.info(
+                f"Loading operators from cache at {model.config.elastic_operator_cache_dir}..."
+            )
+            return build_operators(model, eigen=use_eigen, tde=use_tde)
 
         tde_path = path / "tde"
         if tde_path.exists():
