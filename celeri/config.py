@@ -209,10 +209,13 @@ class Config(BaseModel):
     mcmc_station_velocity_method: McmcStationVelocityMethod = "project_to_eigen"
     """Method for computing station velocities from slip rates in MCMC.
 
-    Options:
-    - "direct": Direct multiplication with TDE-to-station operator
-    - "low_rank": Low rank approximation of TDE-to-station operator via SVD
-    - "project_to_eigen": Project slip rates onto eigenbasis before computing velocities (default)
+    - "direct": Direct matrix-vector multiplication
+    - "low_rank": Truncated SVD approximation
+    - "project_to_eigen": Eigenmode projection (default)
+
+    Currently, only "project_to_eigen" supports streaming mode, which loads
+    and processes each mesh's G matrix individually rather than holding all
+    in memory at once.
     """
 
     mcmc_station_weighting: McmcStationWeighting | None = "voronoi"
