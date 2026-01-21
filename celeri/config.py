@@ -326,6 +326,22 @@ class Config(BaseModel):
             )
         return self
 
+    @model_validator(mode="after")
+    def validate_no_mixed_constraints(self) -> Self:
+        """Validate that meshes don't have both elastic and coupling constraints.
+
+        This check only applies when solve_type is 'mcmc', as the MCMC solver
+        does not support mixed constraint types.
+        """
+        if self.solve_type != "mcmc":
+            return self
+
+        for mesh_config in self.mesh_params:
+            error = mesh_config.has_mixed_constraints()
+            if error:
+                raise ValueError(error)
+        return self
+
 
 def _get_output_path(base: Path) -> Path:
     """Generate a unique numbered output path within the base directory.

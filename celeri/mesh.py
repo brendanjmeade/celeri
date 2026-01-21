@@ -218,6 +218,25 @@ class MeshConfig(BaseModel):
 
         return self
 
+    def has_mixed_constraints(self) -> str | None:
+        """Check if mesh has both elastic and coupling constraints.
+
+        Returns:
+            Error message if mixed constraints found, None otherwise.
+        """
+        for kind in ("ss", "ds"):
+            elastic = getattr(self, f"elastic_constraints_{kind}")
+            coupling = getattr(self, f"coupling_constraints_{kind}")
+            has_elastic = elastic.lower is not None or elastic.upper is not None
+            has_coupling = coupling.lower is not None or coupling.upper is not None
+            if has_elastic and has_coupling:
+                kind_name = "strike-slip" if kind == "ss" else "dip-slip"
+                return (
+                    f"Mesh '{self.mesh_filename}' cannot have both elastic and coupling "
+                    f"constraints for {kind_name}."
+                )
+        return None
+
 
 def _compute_ordered_edge_nodes(mesh: dict):
     """Find exterior edges of each mesh and return them in the dictionary
