@@ -119,6 +119,15 @@ def _station_vel_from_elastic_mesh(
     idx = DIRECTION_IDX[kind]
     method = model.config.mcmc_station_velocity_method
 
+    # Validate that tde_to_velocities is available for methods that need it
+    if method in ("direct", "low_rank") and operators.tde.tde_to_velocities is None:
+        raise NotImplementedError(
+            f"mcmc_station_velocity_method={method!r} requires tde_to_velocities, "
+            "but operators were built with discard_tde_to_velocities=True. "
+            "Either use mcmc_station_velocity_method='project_to_eigen' (the default), "
+            "or rebuild operators with discard_tde_to_velocities=False."
+        )
+
     if method == "low_rank":
         to_station = operators.tde.tde_to_velocities[mesh_idx][:, idx.start : None : 3]
         u, s, vh = linalg.svd(to_station, full_matrices=False)
@@ -691,8 +700,17 @@ def solve_mcmc(
         )
 
     if operators is None:
-        logger.info("Building operators with streaming mode")
-        operators = build_operators(model, tde=True, eigen=True, discard_tde_to_velocities=True)
+        # Only use streaming mode (discard_tde_to_velocities=True) when using project_to_eigen.
+        # The direct and low_rank methods require the full tde_to_velocities matrices.
+        use_streaming = model.config.mcmc_station_velocity_method == "project_to_eigen"
+        if use_streaming:
+            logger.info("Building operators with streaming mode (discard_tde_to_velocities=True)")
+        else:
+            logger.info(
+                f"Building operators with discard_tde_to_velocities=False "
+                f"(required for mcmc_station_velocity_method={model.config.mcmc_station_velocity_method!r})"
+            )
+        operators = build_operators(model, tde=True, eigen=True, discard_tde_to_velocities=use_streaming)
     if operators.tde is None or operators.eigen is None:
         raise ValueError(
             "Operators must have both TDE and eigen components for MCMC solve."
