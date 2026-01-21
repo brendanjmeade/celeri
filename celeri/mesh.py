@@ -97,8 +97,11 @@ class MeshConfig(BaseModel):
         many modes, 'eigsh' (sparse ARPACK) is faster for few modes. Both have equivalent accuracy,
         but eigenvector signs may differ between algorithms.
     softplus_lengthscale : float | None
-        Length scale for softplus operations when only one bound is present.
-        Automatically set to 1.0 if None and any constraint has only an upper or lower bound.
+        Length scale for the softplus operations for sign constraints when only one bound (upper or lower) is present.
+        Automatically set to 1.0 mm/yr if None and one bound is present. 
+            Softplus must operate on a unitless quantity; without a length scale divisor,
+        the model would change with the units of the input values. As length scale approaches 0, the
+        softplus approaches ReLU. Large length scales smooth out the softplus elbow.
     """
 
     # Forbid extra fields when reading from JSON
@@ -217,7 +220,7 @@ class MeshConfig(BaseModel):
 
     @model_validator(mode="after")
     def set_softplus_lengthscale_default(self) -> MeshConfig:
-        """Set softplus_lengthscale to 1.0 if it's undefined and a 
+        """Set softplus_lengthscale to 1.0 mm/yr if it's undefined and a 
         constraint has only one bound."""
         if self.softplus_lengthscale is not None:
             return self
