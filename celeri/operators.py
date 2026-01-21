@@ -794,9 +794,22 @@ def build_operators(
     )
 
     if eigen:
-        _compute_eigen_to_velocities(
-            model, operators, index, streaming=discard_tde_to_velocities
-        )
+        if discard_tde_to_velocities:
+            _compute_eigen_to_velocities_streaming(model, operators, index)
+        else:
+            for i in range(index.n_meshes):
+                tde_keep_row_index = get_keep_index_12(
+                    operators.tde_to_velocities[i].shape[0]
+                )
+                tde_keep_col_index = get_keep_index_12(
+                    operators.tde_to_velocities[i].shape[1]
+                )
+                operators.eigen_to_velocities[i] = (
+                    -operators.tde_to_velocities[i][tde_keep_row_index, :][
+                        :, tde_keep_col_index
+                    ]
+                    @ operators.eigenvectors_to_tde_slip[i]
+                )
 
     # Get smoothing operators for post-hoc smoothing of slip
     _store_gaussian_smoothing_operator(model.meshes, operators, index)
@@ -2248,24 +2261,24 @@ def _store_eigenvectors_to_tde_slip(model: Model, operators: _OperatorBuilder):
         logger.success(f"Finish: Eigenvectors to TDE slip for mesh: {mesh.file_name}")
 
 
-def _compute_eigen_to_velocities(
-    model: Model, operators: _OperatorBuilder, index: Index, streaming: bool
+def _compute_eigen_to_velocities_streaming(
+    model: Model, operators: _OperatorBuilder, index: Index
 ):
-    """Compute eigen_to_velocities for all meshes.
+    """Compute eigen_to_velocities in streaming mode to save memory.
 
-    Args:
-        streaming: If True, processes one mesh at a time by loading/computing
-            tde_to_velocities on demand, then discarding it before moving to
-            the next mesh. This reduces peak memory usage from
-            O(n_meshes * tde_matrix_size) to O(tde_matrix_size).
-            If False, uses the pre-computed operators.tde_to_velocities.
+    Instead of loading all tde_to_velocities matrices at once, this function
+    processes one mesh at a time: loads/computes tde_to_velocities, uses it
+    to build eigen_to_velocities, then discards it before moving to the next mesh.
+
+    This reduces peak memory usage from O(n_meshes * tde_matrix_size) to
+    O(tde_matrix_size).
     """
     config = model.config
     meshes = model.meshes
     station = model.station
 
     cache = None
-    if streaming and config.elastic_operator_cache_dir is not None:
+    if config.elastic_operator_cache_dir is not None:
         input_hash = _hash_elastic_operator_input(
             [mesh.config for mesh in meshes],
             station,
@@ -2274,25 +2287,22 @@ def _compute_eigen_to_velocities(
         cache = config.elastic_operator_cache_dir / f"{input_hash}.hdf5"
 
     for i in range(index.n_meshes):
-        if streaming:
-            logger.info(
-                f"Start: Streaming eigen_to_velocities for mesh: {meshes[i].file_name}"
+        logger.info(
+            f"Start: Streaming eigen_to_velocities for mesh: {meshes[i].file_name}"
+        )
+
+        tde_to_velocities = None
+        if cache is not None and cache.exists():
+            hdf5_file = h5py.File(cache, "r")
+            cached_data = hdf5_file.get("tde_to_velocities_" + str(i))
+            if cached_data is not None:
+                tde_to_velocities = np.array(cached_data)
+            hdf5_file.close()
+
+        if tde_to_velocities is None:
+            tde_to_velocities = get_tde_to_velocities_single_mesh(
+                meshes, station, config, mesh_idx=i
             )
-
-            tde_to_velocities = None
-            if cache is not None and cache.exists():
-                hdf5_file = h5py.File(cache, "r")
-                cached_data = hdf5_file.get("tde_to_velocities_" + str(i))
-                if cached_data is not None:
-                    tde_to_velocities = np.array(cached_data)
-                hdf5_file.close()
-
-            if tde_to_velocities is None:
-                tde_to_velocities = get_tde_to_velocities_single_mesh(
-                    meshes, station, config, mesh_idx=i
-                )
-        else:
-            tde_to_velocities = operators.tde_to_velocities[i]
 
         tde_keep_row_index = get_keep_index_12(tde_to_velocities.shape[0])
         tde_keep_col_index = get_keep_index_12(tde_to_velocities.shape[1])
@@ -2302,8 +2312,11 @@ def _compute_eigen_to_velocities(
             @ operators.eigenvectors_to_tde_slip[i]
         )
 
-        if streaming:
-            del tde_to_velocities
+        del tde_to_velocities
+
+        logger.success(
+            f"Finish: Streaming eigen_to_velocities for mesh: {meshes[i].file_name}"
+        )
 
 
 def rotation_vectors_to_euler_poles(

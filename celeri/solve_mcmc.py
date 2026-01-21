@@ -754,21 +754,8 @@ def solve_mcmc(
         )
 
     if operators is None:
-        # Only use streaming mode (discard_tde_to_velocities=True) when using project_to_eigen.
-        # The direct and low_rank methods require the full tde_to_velocities matrices.
-        use_streaming = model.config.mcmc_station_velocity_method == "project_to_eigen"
-        if use_streaming:
-            logger.info(
-                "Building operators with streaming mode (discard_tde_to_velocities=True)"
-            )
-        else:
-            logger.info(
-                f"Building operators with discard_tde_to_velocities=False "
-                f"(required for mcmc_station_velocity_method={model.config.mcmc_station_velocity_method!r})"
-            )
-        operators = build_operators(
-            model, tde=True, eigen=True, discard_tde_to_velocities=use_streaming
-        )
+        logger.info("Building operators with streaming mode (discard_tde_to_velocities=True)")
+        operators = build_operators(model, tde=True, eigen=True, discard_tde_to_velocities=True)
     if operators.tde is None or operators.eigen is None:
         raise ValueError(
             "Operators must have both TDE and eigen components for MCMC solve."
