@@ -31,17 +31,35 @@ DIRECTION_IDX = {
 }
 
 
-def _constrain_field(values, lower: float | None, upper: float | None):
-    """Use a sigmoid or softplus to constrain values to a range."""
+def _constrain_field(values, lower: float | None, upper: float | None, softplus_lengthscale: float | None = None):
+    """Use a sigmoid or softplus to constrain values to a range.
+    
+    Parameters
+    ----------
+    values : array-like
+        The unconstrained values to transform.
+    lower : float | None
+        Lower bound for the constraint.
+    upper : float | None
+        Upper bound for the constraint.
+    softplus_lengthscale : float | None
+        Length scale for softplus operations when only one bound is present.
+        Normally set by MeshConfig validator; falls back to 1.0 if None.
+    """
     import pymc as pm
 
     if lower is not None and upper is not None:
         scale = upper - lower
         return pm.math.sigmoid(values) * scale + lower # type: ignore[attr-defined]
+    
+    if softplus_lengthscale is None:
+        softplus_lengthscale = 1.0
+    
     if lower is not None:
-        return pm.math.softplus(values) + lower # type: ignore[attr-defined]
+        return lower + pm.math.softplus(values / softplus_lengthscale) # type: ignore[attr-defined]
     if upper is not None:
-        return upper - pm.math.softplus(-values) # type: ignore[attr-defined]
+        return upper - pm.math.softplus(-values / softplus_lengthscale) # type: ignore[attr-defined]
+
     return values
 
 
@@ -210,7 +228,8 @@ def _coupling_component(
     coefs = pm.Normal(f"coupling_coefs_{mesh_idx}_{kind_short}", mu=0, sigma=10, shape=n_eigs)
 
     coupling_field = _operator_mult(eigenvectors, coefs)
-    coupling_field = _constrain_field(coupling_field, lower, upper)
+    softplus_lengthscale = model.meshes[mesh_idx].config.softplus_lengthscale
+    coupling_field = _constrain_field(coupling_field, lower, upper, softplus_lengthscale)
     pm.Deterministic(f"coupling_{mesh_idx}_{kind_short}", coupling_field)
     elastic_tde = kinematic * coupling_field
     pm.Deterministic(f"elastic_{mesh_idx}_{kind_short}", elastic_tde)
@@ -267,7 +286,8 @@ def _elastic_component(
 
     raw = pm.Normal(f"elastic_eigen_raw_{mesh_idx}_{kind_short}", shape=n_eigs)
     param = pm.Deterministic(f"elastic_eigen_{mesh_idx}_{kind_short}", scale * raw)
-    elastic_tde = _constrain_field(_operator_mult(eigenvectors, param), lower, upper)
+    softplus_lengthscale = model.meshes[mesh_idx].config.softplus_lengthscale
+    elastic_tde = _constrain_field(_operator_mult(eigenvectors, param), lower, upper, softplus_lengthscale)
     pm.Deterministic(f"elastic_{mesh_idx}_{kind_short}", elastic_tde)
 
     # Compute elastic velocity at stations. The operator already

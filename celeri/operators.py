@@ -882,6 +882,7 @@ def _hash_elastic_operator_input(
         "elastic_constraints_ss",
         "elastic_constraints_ds",
         "smoothing_weight",
+        "softplus_lengthscale",
     }
 
     mesh_configs = [mesh.model_dump_json(exclude=constraint_fields) for mesh in meshes]

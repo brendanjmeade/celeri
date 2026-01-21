@@ -96,6 +96,9 @@ class MeshConfig(BaseModel):
         Algorithm for eigendecomposition (default "eigh"). 'eigh' (dense LAPACK) is faster for
         many modes, 'eigsh' (sparse ARPACK) is faster for few modes. Both have equivalent accuracy,
         but eigenvector signs may differ between algorithms.
+    softplus_lengthscale : float | None
+        Length scale for softplus operations when only one bound is present.
+        Automatically set to 1.0 if None and any constraint has only an upper or lower bound.
     """
 
     # Forbid extra fields when reading from JSON
@@ -151,6 +154,11 @@ class MeshConfig(BaseModel):
     elastic_constraints_ss: ScalarBound = ScalarBound(lower=None, upper=None)
     elastic_constraints_ds: ScalarBound = ScalarBound(lower=None, upper=None)
 
+    coupling_sigma: float = 1.0
+    elastic_sigma: float = 1.0
+
+    softplus_lengthscale: float | None = None
+    
     # Hint for the new sqp solver about the likely range of kinematic slip rates.
     sqp_kinematic_slip_rate_hint_ss: ScalarBound = ScalarBound(
         lower=-100.0, upper=100.0
@@ -204,6 +212,30 @@ class MeshConfig(BaseModel):
             value = getattr(self, name)
             if isinstance(value, Path) and not value.is_absolute():
                 setattr(self, name, (base_dir / value).resolve())
+
+        return self
+
+    @model_validator(mode="after")
+    def set_softplus_lengthscale_default(self) -> MeshConfig:
+        """Set softplus_lengthscale to 1.0 if it's undefined and a 
+        constraint has only one bound."""
+        if self.softplus_lengthscale is not None:
+            return self
+
+        constraints = [
+            self.coupling_constraints_ss,
+            self.coupling_constraints_ds,
+            self.elastic_constraints_ss,
+            self.elastic_constraints_ds,
+        ]
+
+        for constraint in constraints:
+            has_lower = constraint.lower is not None
+            has_upper = constraint.upper is not None
+
+            if has_lower != has_upper:
+                self.softplus_lengthscale = 1.0
+                return self
 
         return self
 
