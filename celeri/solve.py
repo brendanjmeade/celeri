@@ -549,7 +549,7 @@ class Estimation:
             return vel_tde
 
         assert self.operators.eigen is not None
-        for i in range(len(self.operators.tde.tde_to_velocities)):
+        for i in range(self.index.n_meshes):
             vel_tde += (
                 -self.operators.eigen.eigen_to_velocities[i]
                 @ self.state_vector[
