@@ -754,7 +754,7 @@ def solve_mcmc(
         )
 
     if operators is None:
-        logger.info("Building operators with streaming mode (discard_tde_to_velocities=True)")
+        logger.info("Building operators with streaming mode")
         operators = build_operators(model, tde=True, eigen=True, discard_tde_to_velocities=True)
     if operators.tde is None or operators.eigen is None:
         raise ValueError(

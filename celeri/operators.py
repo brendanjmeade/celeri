@@ -2305,10 +2305,6 @@ def _compute_eigen_to_velocities(
         if streaming:
             del tde_to_velocities
 
-            logger.success(
-                f"Finish: Streaming eigen_to_velocities for mesh: {meshes[i].file_name}"
-            )
-
 
 def rotation_vectors_to_euler_poles(
     rotation_vector_x, rotation_vector_y, rotation_vector_z
