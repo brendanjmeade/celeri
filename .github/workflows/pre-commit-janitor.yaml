@@ -1,0 +1,65 @@
+name: Pre-commit Janitor
+
+permissions:
+  contents: write
+  pull-requests: write
+
+on:
+  workflow_dispatch:
+  schedule:
+  # At 06:38 UTC on Sundays
+  - cron: 38 6 * * 0
+
+jobs:
+  pre-commit-janitor:
+    runs-on: ubuntu-latest
+    environment: create-pr
+    steps:
+    - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      with:
+        fetch-depth: 0
+    - name: Set up pixi
+      uses: prefix-dev/setup-pixi@82d477f15f3a381dbcc8adc1206ce643fe110fb7 # v0.9.3
+      with:
+        cache: true
+    - name: Run pre-commit autofixes
+      run: |
+        # Run pre-commit on all files; ignore exit code since we only want the autofixes
+        pixi run pre-commit run --all-files || true
+    - name: Create autofix commit and update blame-ignore
+      id: commit
+      run: bash "${GITHUB_WORKSPACE}/.github/scripts/pre-commit-janitor-commit.sh"
+    - name: Open a pull request
+      if: steps.commit.outputs.has_changes == 'true'
+      uses: peter-evans/create-pull-request@98357b18bf14b5342f975ff684046ec3b2a07725 # v8.0.0
+      id: create-pr
+      with:
+        token: ${{ secrets.GH_PAT_FOR_PR }}
+        commit-message: Add pre-commit autofix commit to .git-blame-ignore-revs
+        title: pre-commit autofix
+        body: |
+          This pull request applies pre-commit autofixes to the codebase.
+
+          It is triggered by [pre-commit-janitor](https://github.com/brendanjmeade/celeri/blob/main/.github/workflows/pre-commit-janitor.yaml).
+        branch: pre-commit-janitor
+        delete-branch: true
+        assignees: ${{ github.event_name == 'schedule' && 'brendanjmeade' || '' }}
+        committer: pre-commit-janitor.yaml <nobody@example.com>
+        author: pre-commit-janitor.yaml <nobody@example.com>
+        add-paths: .git-blame-ignore-revs
+    - name: Ping @brendanjmeade
+      # The above PAT runs under the context of a personal access token, and thus
+      # doesn't generate notifications for the token's owner. We get around this by
+      # instead using the default token to write a comment in the PR.
+      # Ref: <https://stackoverflow.com/a/78238780>
+      if: github.event_name == 'schedule' && contains('created,updated', steps.create-pr.outputs.pull-request-operation)
+      uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        script: |
+          github.rest.issues.createComment({
+            issue_number: ${{ steps.create-pr.outputs.pull-request-number }},
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: 'ping @brendanjmeade'
+          })
