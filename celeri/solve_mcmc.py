@@ -52,9 +52,6 @@ def _constrain_field(values, lower: float | None, upper: float | None, softplus_
         scale = upper - lower
         return pm.math.sigmoid(values) * scale + lower # type: ignore[attr-defined]
     
-    if softplus_lengthscale is None:
-        softplus_lengthscale = 1.0
-    
     if lower is not None:
         return lower + softplus_lengthscale * pm.math.softplus(values / softplus_lengthscale) # type: ignore[attr-defined]
     if upper is not None:

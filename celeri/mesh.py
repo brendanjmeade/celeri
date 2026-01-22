@@ -96,9 +96,9 @@ class MeshConfig(BaseModel):
         Algorithm for eigendecomposition (default "eigh"). 'eigh' (dense LAPACK) is faster for
         many modes, 'eigsh' (sparse ARPACK) is faster for few modes. Both have equivalent accuracy,
         but eigenvector signs may differ between algorithms.
-    softplus_lengthscale : float | None
+    softplus_lengthscale : float
         Length scale for the softplus operations for sign constraints when only one bound (upper or lower) is present.
-        Automatically set to 1.0 mm/yr if None and one bound is present. 
+        Automatically set to 1.0 mm/yr if one bound is present. 
             Softplus must operate on a unitless quantity; without a length scale divisor,
         the model would change with the units of the input values. As length scale approaches 0, the
         softplus approaches ReLU. Large length scales smooth out the softplus elbow.
@@ -160,7 +160,7 @@ class MeshConfig(BaseModel):
     coupling_sigma: float = 1.0
     elastic_sigma: float = 1.0
 
-    softplus_lengthscale: float | None = None
+    softplus_lengthscale: float = 1.0
     
     # Hint for the new sqp solver about the likely range of kinematic slip rates.
     sqp_kinematic_slip_rate_hint_ss: ScalarBound = ScalarBound(
@@ -215,30 +215,6 @@ class MeshConfig(BaseModel):
             value = getattr(self, name)
             if isinstance(value, Path) and not value.is_absolute():
                 setattr(self, name, (base_dir / value).resolve())
-
-        return self
-
-    @model_validator(mode="after")
-    def set_softplus_lengthscale_default(self) -> MeshConfig:
-        """Set softplus_lengthscale to 1.0 mm/yr if it's undefined and a 
-        constraint has only one bound."""
-        if self.softplus_lengthscale is not None:
-            return self
-
-        constraints = [
-            self.coupling_constraints_ss,
-            self.coupling_constraints_ds,
-            self.elastic_constraints_ss,
-            self.elastic_constraints_ds,
-        ]
-
-        for constraint in constraints:
-            has_lower = constraint.lower is not None
-            has_upper = constraint.upper is not None
-
-            if has_lower != has_upper:
-                self.softplus_lengthscale = 1.0
-                return self
 
         return self
 
