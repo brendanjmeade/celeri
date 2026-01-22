@@ -87,11 +87,12 @@ def main():
         with args["destination_file_name"].open("w") as destination_file:
             json.dump(data, destination_file, indent=4)
     else:
-        # If so, need to read in the mesh and check its geometry
-        # For each set of mesh_params to be changed
+        # If so, load the alternate template
         alt_template = celeri.MeshConfig.from_file(args["alt_template"])
+        # Need to read in the meshes and check their geometry
         meshes = []
         meshes = [celeri.Mesh.from_params(mesh_param) for mesh_param in destination]
+        # For each set of mesh_params to be changed
         for i in range(start_idx, range_end):
             this_mesh = meshes[i]
             # Check the dip threshold
