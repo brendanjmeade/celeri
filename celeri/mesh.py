@@ -96,6 +96,12 @@ class MeshConfig(BaseModel):
         Algorithm for eigendecomposition (default "eigh"). 'eigh' (dense LAPACK) is faster for
         many modes, 'eigsh' (sparse ARPACK) is faster for few modes. Both have equivalent accuracy,
         but eigenvector signs may differ between algorithms.
+    softplus_lengthscale : float
+        Length scale for the softplus operations for sign constraints when only one bound (upper or lower) is present.
+        Automatically set to 1.0 mm/yr if one bound is present. 
+            Softplus must operate on a unitless quantity; without a length scale divisor,
+        the model would change with the units of the input values. As length scale approaches 0, the
+        softplus approaches ReLU. Large length scales smooth out the softplus elbow.
     """
 
     # Forbid extra fields when reading from JSON
@@ -151,6 +157,11 @@ class MeshConfig(BaseModel):
     elastic_constraints_ss: ScalarBound = ScalarBound(lower=None, upper=None)
     elastic_constraints_ds: ScalarBound = ScalarBound(lower=None, upper=None)
 
+    coupling_sigma: float = 1.0
+    elastic_sigma: float = 1.0
+
+    softplus_lengthscale: float = 1.0
+    
     # Hint for the new sqp solver about the likely range of kinematic slip rates.
     sqp_kinematic_slip_rate_hint_ss: ScalarBound = ScalarBound(
         lower=-100.0, upper=100.0
