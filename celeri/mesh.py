@@ -739,7 +739,7 @@ class Mesh:
             ]
         )
         mesh["nv"] = np.cross(tri_leg1, tri_leg2)
-        azimuth, elevation, r = cart2sph(
+        azimuth, elevation, _r = cart2sph(
             mesh["nv"][:, 0],
             mesh["nv"][:, 1],
             mesh["nv"][:, 2],

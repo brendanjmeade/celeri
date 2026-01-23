@@ -468,7 +468,7 @@ def _add_rotation_component(operators: Operators):
     )
     scale = 1e6
     B = A / scale
-    u, s, vh = linalg.svd(B, full_matrices=False)
+    _u, _s, vh = linalg.svd(B, full_matrices=False)
     raw = pm.StudentT("rotation_raw", sigma=20, nu=4, dims="rotation_param")
 
     rotation = pm.Deterministic(

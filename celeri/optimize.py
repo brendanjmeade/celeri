@@ -591,7 +591,9 @@ class Minimizer:
 
     def plot_coupling(self):
         n_plots = len(self.model.segment_mesh_indices)
-        fig, axes = plt.subplots(n_plots, 4, figsize=(20, 12), sharex=True, sharey=True)
+        _fig, axes = plt.subplots(
+            n_plots, 4, figsize=(20, 12), sharex=True, sharey=True
+        )
 
         for idx in self.model.segment_mesh_indices:
             if idx == 0:

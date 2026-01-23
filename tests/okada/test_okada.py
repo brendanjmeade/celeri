@@ -966,7 +966,7 @@ class TestPreprocessObsPts:
             _,
             _,
             originally_1d,
-            n_obs,
+            _n_obs,
         ) = _preprocess_obs_pts(**params)
         assert isinstance(originally_1d, bool)
         assert isinstance(xo_b, np.ndarray)

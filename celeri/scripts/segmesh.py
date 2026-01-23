@@ -185,7 +185,7 @@ def main():
         sm_block_labels = np.sort(np.array([sm_east_label, sm_west_label]), axis=0)
 
         # Unique block pairs
-        sm_block_labels_unique, sm_block_labels_unique_idx = np.unique(
+        sm_block_labels_unique, _sm_block_labels_unique_idx = np.unique(
             sm_block_labels, axis=1, return_inverse=True
         )
 

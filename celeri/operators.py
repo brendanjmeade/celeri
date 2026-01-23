@@ -759,7 +759,7 @@ def build_operators(
     # Internal block strain rate operator
     (
         operators.block_strain_rate_to_velocities,
-        strain_rate_block_index,
+        _strain_rate_block_index,
     ) = get_block_strain_rate_to_velocities_partials(
         model.block, model.station, model.segment
     )
