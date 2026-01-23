@@ -30,10 +30,10 @@ from celeri.model import Model
 from celeri.optimize_sqp import _get_coupling
 from celeri.solve import Estimation
 from celeri.spatial import (
+    get_block_centroid,
     get_okada_displacements,
     get_rotation_displacements,
     get_strain_rate_displacements,
-    get_block_centroid,
 )
 
 
@@ -152,7 +152,7 @@ def plot_input_summary(
     lon_range: tuple | None = None,
     lat_range: tuple | None = None,
     quiver_scale: float = 1e2,
-    save: bool = True
+    save: bool = True,
 ):
     """Plot overview figures showing observed and modeled velocities as well
     as velocity decomposition and estimates slip rates.
@@ -388,7 +388,6 @@ def plot_estimation_summary(
         quiver_scale (float): Scaling for velocity arrows
         save (bool): Whether to save the figure to disk
     """
-    
     model = estimation.model
 
     if lon_range is None:
@@ -631,7 +630,9 @@ def plot_estimation_summary(
 
     # Plot segment strike-slip rates
     subplot_index += 1
-    ax = plt.subplot(n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1)
+    ax = plt.subplot(
+        n_subplot_rows, n_subplot_cols, subplot_index, sharex=ax1, sharey=ax1
+    )
     plt.title("Segment Strike-Slip Rates")
     plot_segment_strike_slip_rates(
         segment,
@@ -666,8 +667,11 @@ def plot_estimation_summary(
     if save and model.config.output_path.exists():
         plt.savefig(model.config.output_path / "plot_estimation_summary.png", dpi=500)
         plt.savefig(model.config.output_path / "plot_estimation_summary.pdf")
-        logger.success(f"Wrote figures {model.config.output_path}/plot_estimation_summary.(pdf, png)")
+        logger.success(
+            f"Wrote figures {model.config.output_path}/plot_estimation_summary.(pdf, png)"
+        )
     plt.show(block=False)
+
 
 def plot_matrix_abs_log(matrix):
     plt.figure(figsize=(10, 10))
@@ -687,9 +691,8 @@ def plot_mesh(
     center=0,
     set_limits=False,
 ):
-    """
-    Plot a 2D or cross-sectional mesh. Determines if a mesh 
-    is cross-sectional by checking the correlation coefficient 
+    """Plot a 2D or cross-sectional mesh. Determines if a mesh
+    is cross-sectional by checking the correlation coefficient
     between the longitude and latitude of the centroids. If cross-sectional,
     the mesh is plotted with the x-axis as the along-strike direction and
     the y-axis as the depth.
@@ -731,7 +734,9 @@ def plot_mesh(
     norm = colors.TwoSlopeNorm(vmin=vmin, vcenter=center, vmax=vmax)
 
     points = mesh.points
-    cross_section = np.abs(np.corrcoef(mesh.centroids[:, 0], mesh.centroids[:, 1])[0, 1]) > 0.9
+    cross_section = (
+        np.abs(np.corrcoef(mesh.centroids[:, 0], mesh.centroids[:, 1])[0, 1]) > 0.9
+    )
     if cross_section:
         lons = points[:, 0]
         lats = points[:, 1]
@@ -757,7 +762,7 @@ def plot_mesh(
     else:
         dim0_coords = points[:, 0]
         dim1_coords = points[:, 1]
-        
+
     vertex_array = np.asarray(mesh.verts)
 
     xy = np.c_[dim0_coords, dim1_coords]
@@ -781,7 +786,9 @@ def plot_mesh(
 
     if set_limits:
         ax.set_aspect("equal", adjustable="box")
-        margin = 0.01 * max(dim0_coords.max() - dim0_coords.min(), dim1_coords.max() - dim1_coords.min())
+        margin = 0.01 * max(
+            dim0_coords.max() - dim0_coords.min(), dim1_coords.max() - dim1_coords.min()
+        )
         ax.set_xlim(dim0_coords.min() - margin, dim0_coords.max() + margin)
         ax.set_ylim(dim1_coords.min() - margin, dim1_coords.max() + margin)
 
@@ -851,7 +858,7 @@ def plot_strain_rate_components_for_block(closure, model, station, block_idx):
     block_centroid_lon, block_centroid_lat = get_block_centroid(
         model.segment, block_idx
     )
-    
+
     vel_east, vel_north, _ = get_strain_rate_displacements(
         station.lon,
         station.lat,

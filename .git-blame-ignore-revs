@@ -18,3 +18,6 @@ e5993b798dbcca5c8d3c27cadc04b65ef6cfee78
 
 # Autofix ruff formatting
 2ce2b8c362926c6249dfca73953c4164496ec4d4
+
+# pre-commit autofix
+7ced17adf280b312860aa16c312bc7d1db135bce

@@ -2,7 +2,7 @@ import hashlib
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
-from typing import Any, overload
+from typing import overload
 
 import h5py
 import numpy as np
@@ -16,7 +16,6 @@ from scipy.sparse import csr_matrix
 
 from celeri.celeri_util import (
     cartesian_vector_to_spherical_vector,
-    euler_pole_covariance_to_rotation_vector_covariance,
     get_2component_index,
     get_cross_partials,
     get_keep_index_12,
@@ -27,7 +26,6 @@ from celeri.celeri_util import (
 from celeri.config import Config
 from celeri.constants import (
     DEG_PER_MYR_TO_RAD_PER_YR,
-    N_MESH_DIM,
 )
 from celeri.mesh import ByMesh, Mesh, MeshConfig
 from celeri.model import (
@@ -45,7 +43,6 @@ from celeri.spatial import (
     get_segment_station_operator_okada,
     get_tde_to_velocities_single_mesh,
     get_tri_smoothing_matrix,
-    get_tri_smoothing_matrix_simple,
 )
 
 

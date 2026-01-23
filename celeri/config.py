@@ -113,7 +113,7 @@ class Config(BaseModel):
     """Like `segment_slip_rate_regularization`, but for use in `solve_mcmc`.
 
     The regularization is implemented as a Student's t prior with this
-    standard deviation in mm/yr, and 5 degrees of freedom. This means that 
+    standard deviation in mm/yr, and 5 degrees of freedom. This means that
     sigma has an inverse relationship with the severity of the regularization.
     """
 

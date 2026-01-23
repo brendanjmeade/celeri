@@ -16,7 +16,6 @@ from scipy.spatial.distance import cdist
 
 if TYPE_CHECKING:
     from celeri.config import Config
-    from celeri.solve import Estimation
 
 
 def sph2cart(lon, lat, radius):
@@ -506,7 +505,7 @@ def get_newest_run_folder(*, base: Path | None = None, rewind=0) -> Path:
     newest_folder_name = base / f"{newest_folder_number:010d}"
 
     return newest_folder_name
-    
+
 
 def diagnose_matrix(mat):
     """Visualizes and diagnoses a matrix for rank deficiency.

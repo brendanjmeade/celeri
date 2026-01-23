@@ -21,8 +21,7 @@ RADIUS_EARTH = np.float64((GEOID.a + GEOID.b) / 2)
 
 
 def find_connected_segment_clusters(segment_indices, segment_df):
-    """
-    Find connected clusters of segments based on shared endpoints.
+    """Find connected clusters of segments based on shared endpoints.
 
     Two segments are considered connected if they share an endpoint
     (within COORD_TOL tolerance).

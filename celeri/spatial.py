@@ -2,8 +2,8 @@ import warnings
 
 import cutde.halfspace as cutde_halfspace
 import numpy as np
-import scipy
 import pandas as pd
+import scipy
 from rich.progress import track
 from scipy.sparse import csr_matrix
 
@@ -903,7 +903,7 @@ def get_strain_rate_displacements(
     strain_rate_lat_lat: Strain rate component ε_φφ
     strain_rate_lon_lat: Strain rate component ε_λφ
 
-    Returns: 
+    Returns:
     tuple[np.ndarray, np.ndarray, np.ndarray]: Eastward, northward, and upward velocities
     """
     centroid_lon = np.deg2rad(centroid_lon)
@@ -1046,7 +1046,9 @@ def get_block_motion_constraint_partials(block) -> np.ndarray:
     return operator
 
 
-def get_block_centroid(segment: pd.DataFrame, block_idx: int) -> tuple[np.ndarray, np.ndarray]:
+def get_block_centroid(
+    segment: pd.DataFrame, block_idx: int
+) -> tuple[np.ndarray, np.ndarray]:
     """Calculate centroid of a block based on boundary polygon
     We take all block vertices (including duplicates) and estimate
     the centroid by taking the average of longitude and latitude

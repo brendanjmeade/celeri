@@ -281,7 +281,7 @@ def test_estimation_serialization(config_file, temp_dir):
 )
 def test_operators_serialization_minimal(config_file, temp_dir):
     """Test serializing operators with save_arrays=False and loading from cache.
-    
+
     Uses tde=False to skip expensive TDE computation - we're testing serialization,
     not operator correctness.
     """
@@ -346,7 +346,7 @@ def test_operators_serialization_minimal(config_file, temp_dir):
 )
 def test_estimation_serialization_minimal(config_file, temp_dir):
     """Test serializing estimation with save_operators=False and loading from cache.
-    
+
     Uses tde=False to skip expensive TDE computation - we're testing serialization,
     not operator correctness.
     """

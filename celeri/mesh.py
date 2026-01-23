@@ -13,8 +13,8 @@ import scipy.linalg
 import scipy.sparse.linalg
 import scipy.spatial.distance
 from loguru import logger
-from sklearn.gaussian_process.kernels import Matern
 from pydantic import BaseModel, ConfigDict, model_validator
+from sklearn.gaussian_process.kernels import Matern
 
 from celeri import constants
 from celeri.celeri_util import cart2sph, sph2cart, triangle_area, wrap2360
@@ -98,7 +98,7 @@ class MeshConfig(BaseModel):
         but eigenvector signs may differ between algorithms.
     softplus_lengthscale : float
         Length scale for the softplus operations for sign constraints when only one bound (upper or lower) is present.
-        Automatically set to 1.0 mm/yr if one bound is present. 
+        Automatically set to 1.0 mm/yr if one bound is present.
             Softplus must operate on a unitless quantity; without a length scale divisor,
         the model would change with the units of the input values. As length scale approaches 0, the
         softplus approaches ReLU. Large length scales smooth out the softplus elbow.
@@ -161,7 +161,7 @@ class MeshConfig(BaseModel):
     elastic_sigma: float = 1.0
 
     softplus_lengthscale: float = 1.0
-    
+
     # Hint for the new sqp solver about the likely range of kinematic slip rates.
     sqp_kinematic_slip_rate_hint_ss: ScalarBound = ScalarBound(
         lower=-100.0, upper=100.0
@@ -258,17 +258,16 @@ def _compute_ordered_edge_nodes(mesh: dict):
 
 
 def _compute_mesh_edge_elements(mesh: dict):
-    """
-    Compute mesh boundary elements that are classified as top, bottom, or side.
+    """Compute mesh boundary elements that are classified as top, bottom, or side.
 
-    Modifies the `mesh` dictionary in-place by adding boolean arrays 
-    indicating which elements are on the top, bottom, or side of the mesh boundary. 
-    The classification is based on the depth of each element's vertices. 
-    Top elements are those that are relatively shallow, bottom elements are deepest, 
+    Modifies the `mesh` dictionary in-place by adding boolean arrays
+    indicating which elements are on the top, bottom, or side of the mesh boundary.
+    The classification is based on the depth of each element's vertices.
+    Top elements are those that are relatively shallow, bottom elements are deepest,
     and sides are edges that are on the boundary but not classified as top or bottom.
 
     Args:
-        mesh (dict): A mesh dictionary with keys including "points" (vertex coordinates), 
+        mesh (dict): A mesh dictionary with keys including "points" (vertex coordinates),
             "verts" (triangular element vertex indices), and (on exit) "ordered_edge_nodes".
 
     Modifies:
@@ -276,7 +275,6 @@ def _compute_mesh_edge_elements(mesh: dict):
         mesh["bot_elements"]: np.ndarray of bool, True for elements on the bottom surface.
         mesh["side_elements"]: np.ndarray of bool, True for elements on mesh sides.
     """
-
     _compute_ordered_edge_nodes(mesh)
 
     coords = mesh["points"]
@@ -504,10 +502,13 @@ def _get_eigenvalues_and_eigenvectors(
     else:
         raise ValueError(f"Unknown eigenvector_algorithm: {eigenvector_algorithm}")
 
-    assert np.all(eigenvalues_ascending > 0), "Mesh kernel error: Some eigenvalues are negative"
+    assert np.all(eigenvalues_ascending > 0), (
+        "Mesh kernel error: Some eigenvalues are negative"
+    )
     eigenvalues_descending = eigenvalues_ascending[::-1]
     eigenvectors_descending = eigenvectors_ascending[:, ::-1]
     return eigenvalues_descending, eigenvectors_descending
+
 
 @dataclass
 class Mesh:
