@@ -1390,7 +1390,7 @@ def _custom_cvxopt_solve(problem: cp.Problem, **kwargs):
     )
 
     Solution = namedtuple(
-        "DefaultSolution",
+        "Solution",
         [
             "x",
             "s",
