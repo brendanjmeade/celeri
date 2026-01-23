@@ -1,24 +1,16 @@
 import importlib.util
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 import numpy as np
 import pandas as pd
 from loguru import logger
+from pymc import Model as PymcModel
 from scipy import linalg, spatial
 
 from celeri.constants import RADIUS_EARTH
 from celeri.model import Model
 from celeri.operators import Operators, build_operators
 from celeri.solve import Estimation, build_estimation
-
-if TYPE_CHECKING or importlib.util.find_spec("pymc") is None:
-    # Fallback for PyMC if not installed
-    # This is a minimal stub for PyMC to allow type checking
-    class PymcModel:
-        pass
-else:
-    from pymc import Model as PymcModel
-
 
 DIRECTION_IDX = {
     "strike_slip": slice(None, None, 2),
