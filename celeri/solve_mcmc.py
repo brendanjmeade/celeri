@@ -37,7 +37,7 @@ def _constrain_field(
         Upper bound for the constraint.
     softplus_lengthscale : float | None
         Length scale for softplus operations when only one bound is present.
-        Normally set by MeshConfig validator; falls back to 1.0 if None.
+        Required when exactly one of lower/upper is set.
     """
     import pymc as pm
 
@@ -46,9 +46,19 @@ def _constrain_field(
         return pm.math.sigmoid(values) * scale + lower  # type: ignore[attr-defined]
 
     if lower is not None:
-        return lower + softplus_lengthscale * pt.softplus(values / softplus_lengthscale)
+        if softplus_lengthscale is None:
+            raise ValueError(
+                "softplus_lengthscale is required when only lower bound is set"
+            )
+        return lower + softplus_lengthscale * pt.softplus(  # type: ignore[operator]
+            values / softplus_lengthscale
+        )
     if upper is not None:
-        return upper - softplus_lengthscale * pt.softplus(
+        if softplus_lengthscale is None:
+            raise ValueError(
+                "softplus_lengthscale is required when only upper bound is set"
+            )
+        return upper - softplus_lengthscale * pt.softplus(  # type: ignore[operator]
             -values / softplus_lengthscale
         )
 
