@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import typing
 from dataclasses import fields
 from pathlib import Path
@@ -81,7 +80,9 @@ def write_output(
         mesh_end_idx = 0
         for i in range(len(meshes)):
             grp = hdf.create_group(f"meshes/mesh_{i:05}")
-            mesh_name = os.path.splitext(os.path.basename(meshes[i].file_name))[0]
+            file_name = meshes[i].file_name
+            assert file_name is not None
+            mesh_name = Path(file_name).stem
             grp.create_dataset(
                 "mesh_name",
                 data=mesh_name.encode("utf-8"),
@@ -200,7 +201,7 @@ def write_output(
         )
 
     args_config_output_file_name = config.output_path / "config.json"
-    with open(args_config_output_file_name, "w") as f:
+    with args_config_output_file_name.open("w") as f:
         f.write(config.model_dump_json(indent=4))
 
     # Write model estimates to CSV files for easy access

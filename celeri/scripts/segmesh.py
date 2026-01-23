@@ -207,8 +207,10 @@ def main():
             )
 
             # Add each cluster with its block label for coordinate ordering
-            for cluster_seg_idx in clusters:
-                all_clusters.append((cluster_seg_idx, sm_block_labels_unique[0, i]))
+            all_clusters.extend(
+                (cluster_seg_idx, sm_block_labels_unique[0, i])
+                for cluster_seg_idx in clusters
+            )
 
         # Now we know the total number of meshes to create
         n_new_meshes = len(all_clusters)
