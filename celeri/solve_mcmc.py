@@ -3,6 +3,7 @@ from typing import Literal
 
 import numpy as np
 import pandas as pd
+import pytensor.tensor as pt
 from loguru import logger
 from pymc import Model as PymcModel
 from scipy import linalg, spatial
@@ -45,13 +46,11 @@ def _constrain_field(
         return pm.math.sigmoid(values) * scale + lower  # type: ignore[attr-defined]
 
     if lower is not None:
-        return lower + softplus_lengthscale * pm.math.softplus(
-            values / softplus_lengthscale
-        )  # type: ignore[attr-defined]
+        return lower + softplus_lengthscale * pt.softplus(values / softplus_lengthscale)
     if upper is not None:
-        return upper - softplus_lengthscale * pm.math.softplus(
+        return upper - softplus_lengthscale * pt.softplus(
             -values / softplus_lengthscale
-        )  # type: ignore[attr-defined]
+        )
 
     return values
 
