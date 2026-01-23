@@ -31,9 +31,14 @@ DIRECTION_IDX = {
 }
 
 
-def _constrain_field(values, lower: float | None, upper: float | None, softplus_lengthscale: float | None = None):
+def _constrain_field(
+    values,
+    lower: float | None,
+    upper: float | None,
+    softplus_lengthscale: float | None = None,
+):
     """Use a sigmoid or softplus to constrain values to a range.
-    
+
     Parameters
     ----------
     values : array-like
@@ -50,12 +55,16 @@ def _constrain_field(values, lower: float | None, upper: float | None, softplus_
 
     if lower is not None and upper is not None:
         scale = upper - lower
-        return pm.math.sigmoid(values) * scale + lower # type: ignore[attr-defined]
-    
+        return pm.math.sigmoid(values) * scale + lower  # type: ignore[attr-defined]
+
     if lower is not None:
-        return lower + softplus_lengthscale * pm.math.softplus(values / softplus_lengthscale) # type: ignore[attr-defined]
+        return lower + softplus_lengthscale * pm.math.softplus(
+            values / softplus_lengthscale
+        )  # type: ignore[attr-defined]
     if upper is not None:
-        return upper - softplus_lengthscale * pm.math.softplus(-values / softplus_lengthscale) # type: ignore[attr-defined]
+        return upper - softplus_lengthscale * pm.math.softplus(
+            -values / softplus_lengthscale
+        )  # type: ignore[attr-defined]
 
     return values
 
@@ -97,7 +106,7 @@ def _get_eigen_to_velocity(
     to_velocity = operators.eigen.eigen_to_velocities[mesh_idx][
         :, start_idx : start_idx + n_eigs
     ]
-    
+
     return to_velocity
 
 
@@ -200,13 +209,14 @@ def _coupling_component(
 ):
     """Model elastic slip rate as coupling * kinematic slip rate.
 
-    Returns the estimated elastic slip rates on the TDEs and the 
+    Returns the estimated elastic slip rates on the TDEs and the
     velocities at the stations due to them.
     """
     assert operators.eigen is not None
     assert operators.tde is not None
 
     import pymc as pm
+
     kind_short = {"strike_slip": "ss", "dip_slip": "ds"}[kind]
     idx = DIRECTION_IDX[kind]
 
@@ -222,11 +232,15 @@ def _coupling_component(
 
     eigenvectors = _get_eigenmodes(model, mesh_idx, kind)
     n_eigs = eigenvectors.shape[1]
-    coefs = pm.Normal(f"coupling_coefs_{mesh_idx}_{kind_short}", mu=0, sigma=10, shape=n_eigs)
+    coefs = pm.Normal(
+        f"coupling_coefs_{mesh_idx}_{kind_short}", mu=0, sigma=10, shape=n_eigs
+    )
 
     coupling_field = _operator_mult(eigenvectors, coefs)
     softplus_lengthscale = model.meshes[mesh_idx].config.softplus_lengthscale
-    coupling_field = _constrain_field(coupling_field, lower, upper, softplus_lengthscale)
+    coupling_field = _constrain_field(
+        coupling_field, lower, upper, softplus_lengthscale
+    )
     pm.Deterministic(f"coupling_{mesh_idx}_{kind_short}", coupling_field)
     elastic_tde = kinematic * coupling_field
     pm.Deterministic(f"elastic_{mesh_idx}_{kind_short}", elastic_tde)
@@ -250,11 +264,11 @@ def _elastic_component(
     upper: float | None,
 ):
     """Model elastic slip rate as a linear combination of eigenmodes.
-    Creates parameters for raw elastic eigenmode coefficients, then adds 
-    scaled elastic eigenmodes as deterministic variables. Also adds a 
+    Creates parameters for raw elastic eigenmode coefficients, then adds
+    scaled elastic eigenmodes as deterministic variables. Also adds a
     deterministic variable for the elastic slip rate field.
 
-    Returns the estimated elastic slip rates on the TDEs and the 
+    Returns the estimated elastic slip rates on the TDEs and the
     velocities at the stations due to them.
     """
     assert operators.eigen is not None
@@ -262,8 +276,9 @@ def _elastic_component(
 
     import pymc as pm
     import pytensor.tensor as pt
+
     kind_short = {"strike_slip": "ss", "dip_slip": "ds"}[kind]
-    idx = DIRECTION_IDX[kind]
+    DIRECTION_IDX[kind]
 
     scale = 0.0
     for op in operators.eigen.eigen_to_velocities.values():
@@ -284,7 +299,9 @@ def _elastic_component(
     raw = pm.Normal(f"elastic_eigen_raw_{mesh_idx}_{kind_short}", shape=n_eigs)
     param = pm.Deterministic(f"elastic_eigen_{mesh_idx}_{kind_short}", scale * raw)
     softplus_lengthscale = model.meshes[mesh_idx].config.softplus_lengthscale
-    elastic_tde = _constrain_field(_operator_mult(eigenvectors, param), lower, upper, softplus_lengthscale)
+    elastic_tde = _constrain_field(
+        _operator_mult(eigenvectors, param), lower, upper, softplus_lengthscale
+    )
     pm.Deterministic(f"elastic_{mesh_idx}_{kind_short}", elastic_tde)
 
     # Compute elastic velocity at stations. The operator already
@@ -320,7 +337,10 @@ def _mesh_component(
 ):
     rates = []
 
-    kinds: tuple[Literal["strike_slip"], Literal["dip_slip"]] = ("strike_slip", "dip_slip")
+    kinds: tuple[Literal["strike_slip"], Literal["dip_slip"]] = (
+        "strike_slip",
+        "dip_slip",
+    )
     for kind in kinds:
         if kind == "strike_slip":
             coupling_limit = model.meshes[mesh_idx].config.coupling_constraints_ss
@@ -342,46 +362,63 @@ def _mesh_component(
 
         if has_coupling_limit:
             elastic_tde, station_vels = _coupling_component(
-                    model,
-                    mesh_idx,
-                    kind,
-                    rotation,
-                    operators,
-                    lower=coupling_limit.lower,
-                    upper=coupling_limit.upper,
-                )
+                model,
+                mesh_idx,
+                kind,
+                rotation,
+                operators,
+                lower=coupling_limit.lower,
+                upper=coupling_limit.upper,
+            )
         else:
             elastic_tde, station_vels = _elastic_component(
-                    model,
-                    mesh_idx,
-                    kind,
-                    operators,
-                    lower=rate_limit.lower,
-                    upper=rate_limit.upper,
-                )
+                model,
+                mesh_idx,
+                kind,
+                operators,
+                lower=rate_limit.lower,
+                upper=rate_limit.upper,
+            )
 
         rates.append(station_vels)
         _add_tde_elastic_constraints(model, mesh_idx, elastic_tde, kind)
     return sum(rates)
 
+
 def _add_tde_elastic_constraints(
-    model: Model, 
-    mesh_idx: int, 
-    elastic_tde: np.ndarray, 
-    kind: Literal["strike_slip", "dip_slip"]
-    ):
+    model: Model,
+    mesh_idx: int,
+    elastic_tde: np.ndarray,
+    kind: Literal["strike_slip", "dip_slip"],
+):
     """Add TDE elastic constraints to the PyMC model.
 
     Adds penalty to nonzero elements on top, bottom, and side boundaries of mesh
     with artificial observed 0s.
     """
     import pymc as pm
+
     mesh = model.meshes[mesh_idx]
     for name, elements, constraint_flag, sigma in [
-    ("top", mesh.top_elements, mesh.config.top_slip_rate_constraint, mesh.config.top_elastic_constraint_sigma),
-    ("bot", mesh.bot_elements, mesh.config.bot_slip_rate_constraint, mesh.config.bot_elastic_constraint_sigma),
-    ("side", mesh.side_elements, mesh.config.side_slip_rate_constraint, mesh.config.side_elastic_constraint_sigma),
-        ]:
+        (
+            "top",
+            mesh.top_elements,
+            mesh.config.top_slip_rate_constraint,
+            mesh.config.top_elastic_constraint_sigma,
+        ),
+        (
+            "bot",
+            mesh.bot_elements,
+            mesh.config.bot_slip_rate_constraint,
+            mesh.config.bot_elastic_constraint_sigma,
+        ),
+        (
+            "side",
+            mesh.side_elements,
+            mesh.config.side_slip_rate_constraint,
+            mesh.config.side_elastic_constraint_sigma,
+        ),
+    ]:
         if constraint_flag == 1:
             idx = np.where(elements)[0]
             constrained_tde = elastic_tde[idx]
@@ -721,13 +758,17 @@ def solve_mcmc(
         # The direct and low_rank methods require the full tde_to_velocities matrices.
         use_streaming = model.config.mcmc_station_velocity_method == "project_to_eigen"
         if use_streaming:
-            logger.info("Building operators with streaming mode (discard_tde_to_velocities=True)")
+            logger.info(
+                "Building operators with streaming mode (discard_tde_to_velocities=True)"
+            )
         else:
             logger.info(
                 f"Building operators with discard_tde_to_velocities=False "
                 f"(required for mcmc_station_velocity_method={model.config.mcmc_station_velocity_method!r})"
             )
-        operators = build_operators(model, tde=True, eigen=True, discard_tde_to_velocities=use_streaming)
+        operators = build_operators(
+            model, tde=True, eigen=True, discard_tde_to_velocities=use_streaming
+        )
     if operators.tde is None or operators.eigen is None:
         raise ValueError(
             "Operators must have both TDE and eigen components for MCMC solve."

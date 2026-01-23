@@ -1,6 +1,7 @@
-import pytest
-import celeri
 import numpy as np
+import pytest
+
+import celeri
 
 
 @pytest.mark.array_compare(rtol=1e-4, atol=1e-9)

@@ -167,7 +167,7 @@ class Estimation:
             dip_slip_coupling = None
 
             if use_mcmc_coupling:
-                trace_mean = self.mcmc_trace.posterior.mean(["chain", "draw"]) # type: ignore
+                trace_mean = self.mcmc_trace.posterior.mean(["chain", "draw"])  # type: ignore
                 ss_var = f"coupling_{i}_ss"
                 ds_var = f"coupling_{i}_ds"
                 if ss_var in trace_mean:

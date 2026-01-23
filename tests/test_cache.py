@@ -10,8 +10,8 @@ from loguru import logger
 import celeri
 from celeri.config import get_config
 from celeri.operators import (
-    _OperatorBuilder,
     _hash_elastic_operator_input,
+    _OperatorBuilder,
     _store_elastic_operators,
 )
 
@@ -66,7 +66,9 @@ def test_smart_segment_recompute(config_file):
         operators2 = _OperatorBuilder(model)
         _store_elastic_operators(model, operators2)
 
-        assert cache_file.exists(), "Cache file should still exist after selective recompute"
+        assert cache_file.exists(), (
+            "Cache file should still exist after selective recompute"
+        )
 
         recomputed_file = cache_dir / "recomputed.hdf5"
         cache_file.rename(recomputed_file)
@@ -79,10 +81,17 @@ def test_smart_segment_recompute(config_file):
         new_cache_file = cache_dir / f"{input_hash}.hdf5"
         assert new_cache_file.exists(), "New cache file should be created"
 
-        with h5py.File(new_cache_file, "r") as f_new, h5py.File(recomputed_file, "r") as f_old:
+        with (
+            h5py.File(new_cache_file, "r") as f_new,
+            h5py.File(recomputed_file, "r") as f_old,
+        ):
             name = "slip_rate_to_okada_to_velocities"
-            assert name in f_new, f"[{name}] not found in hdf5 file computed from scratch"
-            assert name in f_old, f"[{name}] not found in hdf5 file recomputed from cache"
+            assert name in f_new, (
+                f"[{name}] not found in hdf5 file computed from scratch"
+            )
+            assert name in f_old, (
+                f"[{name}] not found in hdf5 file recomputed from cache"
+            )
             dataset_new = f_new[name]
             dataset_old = f_old[name]
             arr_new = np.array(dataset_new)
