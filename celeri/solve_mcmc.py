@@ -25,7 +25,23 @@ def _constrain_field(
     upper: float | None,
     softplus_lengthscale: float | None = None,
 ):
-    """Use a sigmoid or softplus to constrain values to a range.
+    """Optionally transform values to satisfy bounds, using sigmoid or softplus.
+
+    The transformation applied depends on which bounds are present.
+
+    No bounds: Values are returned unchanged.
+
+    Single bound: A softplus with a given length scale is used.
+    For lower bound: large negative values exponentially approach the lower bound,
+    while large positive values are approximately lower + x.
+    For upper bound: large positive values exponentially approach the upper bound,
+    while large negative values are approximately upper + x.
+
+    Two bounds: A sigmoid scaled to the range [lower, upper] is used, and
+    input values are interpreted as logits.
+
+    (Possible softplus TODO: adjust so large positive/negative values asymptote to x
+    rather than lower + x or upper + x.)
 
     Parameters
     ----------
