@@ -579,7 +579,7 @@ def plot_estimation_summary(
             cbar = plt.colorbar(pc, ax=ax, shrink=0.7)
             n_ticks = 7
             ticks = np.linspace(vmin, vmax, n_ticks)
-            cbar.set_ticks(ticks)
+            cbar.set_ticks(ticks.tolist())
 
     # Plot strike-slip and dip-slip coupling
     if model.config.solve_type != "dense_no_meshes":
