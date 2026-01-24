@@ -271,9 +271,8 @@ def _compute_ordered_edge_nodes(mesh: dict):
         else:
             next_col_ord = [0, 1]
         mesh["ordered_edge_nodes"][j, :] = edge_nodes[next_row, next_col_ord]
-        last_row = (
-            next_row  # Update last_row so that it's excluded in the next iteration
-        )
+        # Update last_row so that it's excluded in the next iteration
+        last_row = int(next_row)
 
 
 def _compute_mesh_edge_elements(mesh: dict):
@@ -496,7 +495,7 @@ def _get_eigenvalues_and_eigenvectors(
 
     if matern_length_units == "diameters":
         # Scale length_scale by mesh diameter (max pairwise distance)
-        diameter = np.max(scipy.spatial.distance.pdist(centroid_coordinates))
+        diameter = float(np.max(scipy.spatial.distance.pdist(centroid_coordinates)))
         matern_length_scale *= diameter
     else:
         assert matern_length_units == "absolute"
@@ -667,7 +666,7 @@ class Mesh:
     @classmethod
     def from_params(cls, config: MeshConfig):
         # Standalone reader for a single .msh file
-        mesh = {}
+        mesh: dict[str, Any] = {}
         filename = config.mesh_filename
 
         # Suppress meshio's stdout output (it prints a newline)
