@@ -27,13 +27,13 @@ def write_output(
     meshes = estimation.model.meshes
 
     hdf_output_file_name = config.output_path / f"model_{config.run_name}.hdf5"
-    with h5py.File(hdf_output_file_name, "w") as hdf:
+    with h5py.File(str(hdf_output_file_name), "w") as hdf:
         hdf.create_dataset(
             "run_name",
             data=config.run_name.encode("utf-8"),
             dtype=h5py.string_dtype(encoding="utf-8"),
         )
-        hdf.create_dataset("earth_radius", data=6371.0)
+        hdf.create_dataset("earth_radius", data=6371.0)  # type: ignore[arg-type]
 
         # Write config dictionary
         grp = hdf.create_group("config")
@@ -75,7 +75,7 @@ def write_output(
                         dtype=h5py.string_dtype(encoding="utf-8"),
                     )
                 elif isinstance(value, int | float | np.integer | np.floating):
-                    mesh_grp.create_dataset(key, data=value)
+                    mesh_grp.create_dataset(key, data=value)  # type: ignore[arg-type]
 
         mesh_end_idx = 0
         for i in range(len(meshes)):
@@ -103,7 +103,7 @@ def write_output(
             # Write that there is a single timestep for parsli visualization compatability
             grp.create_dataset(
                 f"/meshes/mesh_{i:05}/n_time_steps",
-                data=1,
+                data=1,  # type: ignore[arg-type]
             )
 
             if estimation.tde_rates is not None:
@@ -205,11 +205,18 @@ def write_output(
         f.write(config.model_dump_json(indent=4))
 
     # Write model estimates to CSV files for easy access
-    kwargs = {"index": False, "float_format": "%0.4f"}
-    estimation.station.to_csv(output_path / "model_station.csv", **kwargs)
-    estimation.segment.to_csv(output_path / "model_segment.csv", **kwargs)
-    estimation.block.to_csv(output_path / "model_block.csv", **kwargs)
-    estimation.mogi.to_csv(output_path / "model_mogi.csv", **kwargs)
+    estimation.station.to_csv(
+        output_path / "model_station.csv", index=False, float_format="%0.4f"
+    )
+    estimation.segment.to_csv(
+        output_path / "model_segment.csv", index=False, float_format="%0.4f"
+    )
+    estimation.block.to_csv(
+        output_path / "model_block.csv", index=False, float_format="%0.4f"
+    )
+    estimation.mogi.to_csv(
+        output_path / "model_mogi.csv", index=False, float_format="%0.4f"
+    )
     # Construct mesh geometry dataframe
     mesh_estimates = estimation.mesh_estimate
     if mesh_estimates is not None:
@@ -296,7 +303,7 @@ def dataclass_from_disk(
     if not data_file.exists():
         raise FileNotFoundError(f"Data file {data_file} not found.")
     store = zarr.open_group(str(data_file), mode="r")
-    data = {}
+    data: dict[str, Any] = {}
     for name in store.array_keys():
         if name in extra:
             raise ValueError(f"Duplicate key '{name}' found in extra data.")
