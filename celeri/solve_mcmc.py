@@ -96,7 +96,13 @@ def _get_eigenmodes(
         if kind == "strike_slip"
         else model.meshes[mesh_idx].config.n_modes_dip_slip
     )
-    return model.meshes[mesh_idx].eigenvectors[:, :n_eigs]
+    eigenvectors = model.meshes[mesh_idx].eigenvectors
+    if eigenvectors is None:
+        raise ValueError(
+            f"Eigenvectors not computed for mesh {mesh_idx}. "
+            "Ensure mesh config includes eigenmode parameters."
+        )
+    return eigenvectors[:, :n_eigs]
 
 
 def _get_eigen_to_velocity(
@@ -165,6 +171,11 @@ def _station_vel_from_elastic_mesh(
         )
 
     if method == "low_rank":
+        if operators.tde.tde_to_velocities is None:
+            raise ValueError(
+                "tde_to_velocities not available. "
+                "Rebuild operators with discard_tde_to_velocities=False."
+            )
         to_station = operators.tde.tde_to_velocities[mesh_idx][:, idx.start : None : 3]
         u, s, vh = linalg.svd(to_station, full_matrices=False)
         threshold = 1e-5
@@ -200,6 +211,11 @@ def _station_vel_from_elastic_mesh(
         ).ravel()  # type: ignore[attr-defined]
         return elastic_velocity
     elif method == "direct":
+        if operators.tde.tde_to_velocities is None:
+            raise ValueError(
+                "tde_to_velocities not available. "
+                "Rebuild operators with discard_tde_to_velocities=False."
+            )
         to_station = operators.tde.tde_to_velocities[mesh_idx][:, idx.start : None : 3]
         elastic_velocity = _operator_mult(-to_station, elastic)
         return elastic_velocity

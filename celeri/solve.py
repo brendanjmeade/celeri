@@ -146,7 +146,7 @@ class Estimation:
         if self.tde_strike_slip_rates is None or self.tde_dip_slip_rates is None:
             return None
         meshes = self.model.meshes
-        mesh_outputs_list = []
+        mesh_outputs_list: list[pd.DataFrame] = []
         use_smooth = self.operators.eigen is not None
         use_mcmc_coupling = self.mcmc_trace is not None
         for i in range(len(meshes)):
@@ -202,7 +202,7 @@ class Estimation:
             if dip_slip_coupling is None:
                 dip_slip_coupling = np.zeros(n_elements)
 
-            this_mesh_output = {
+            this_mesh_data = {
                 "lon1": meshes[i].lon1,
                 "lat1": meshes[i].lat1,
                 "dep1": meshes[i].dep1,
@@ -221,8 +221,7 @@ class Estimation:
                 "dip_slip_coupling": dip_slip_coupling,
             }
 
-            this_mesh_output = pd.DataFrame(this_mesh_output)
-            mesh_outputs_list.append(this_mesh_output)
+            mesh_outputs_list.append(pd.DataFrame(this_mesh_data))
 
         # Concatenate all DataFrames at once, or return empty DataFrame if no meshes
         if mesh_outputs_list:
@@ -537,6 +536,11 @@ class Estimation:
         vel_tde = np.zeros(2 * self.index.n_stations)
 
         if index.eigen is None:
+            if self.operators.tde.tde_to_velocities is None:
+                raise ValueError(
+                    "tde_to_velocities not available. "
+                    "Rebuild operators with discard_tde_to_velocities=False."
+                )
             for i, item in self.operators.tde.tde_to_velocities.items():
                 tde_keep_row_index = get_keep_index_12(item.shape[0])
                 tde_keep_col_index = get_keep_index_12(item.shape[1])
