@@ -2276,7 +2276,7 @@ def _compute_eigen_to_velocities(
     for i in range(index.n_meshes):
         if streaming:
             logger.info(
-                f"Start: Streaming eigen_to_velocities for mesh: {meshes[i].file_name}"
+                f"Loading eigen_to_velocities for mesh: {meshes[i].file_name}"
             )
 
             tde_to_velocities = None

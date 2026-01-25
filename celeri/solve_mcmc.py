@@ -259,30 +259,27 @@ def _coupling_component(
     return elastic_tde, station_vels.astype("d")
 
 
-def _batched_mesh_components_project_to_eigen(
+def _collect_mesh_component_specs(
     model: Model,
-    rotation,
     operators: Operators,
 ):
-    """Batched mesh components that minimize graph nodes for many meshes.
+    """Collect metadata about mesh components for vectorized processing.
 
-    Instead of creating separate pm.Normal/Deterministic for each mesh,
-    this creates batched variables and uses block operations.
+    Separates meshes into coupling vs elastic components based on their
+    constraint configuration.
 
-    Returns (to_velocity_blocks, coef_blocks, elastic_tde_dict) where:
-    - to_velocity_blocks: list of numpy arrays for eigen_to_velocity operators
-    - coef_blocks: list of pytensor tensors for station eigen coefficients
-    - elastic_tde_dict: dict mapping (mesh_idx, kind) -> elastic_tde tensor
+    Returns
+    -------
+    coupling_specs : list
+        List of tuples (mesh_idx, kind, n_eigs, eigenvectors, kinematic_op, lower, upper)
+        for meshes with coupling constraints.
+    elastic_specs : list
+        List of tuples (mesh_idx, kind, n_eigs, eigenvectors, lower, upper)
+        for meshes with elastic rate constraints (or no constraints).
     """
     assert operators.eigen is not None
     assert operators.tde is not None
 
-    import pymc as pm
-    import pytensor.tensor as pt
-
-    logger.info("Building batched mesh components")
-
-    # First pass: collect metadata about all mesh components
     coupling_specs = []  # (mesh_idx, kind, n_eigs, eigenvectors, kinematic_op, lower, upper)
     elastic_specs = []   # (mesh_idx, kind, n_eigs, eigenvectors, lower, upper)
 
@@ -329,6 +326,35 @@ def _batched_mesh_components_project_to_eigen(
                     rate_limit.lower, rate_limit.upper
                 ))
 
+    return coupling_specs, elastic_specs
+
+
+def _vectorized_mesh_components_project_to_eigen(
+    model: Model,
+    rotation,
+    operators: Operators,
+):
+    """Vectorized mesh components that minimize graph nodes for many meshes.
+
+    Instead of creating separate pm.Normal/Deterministic for each mesh,
+    this creates vectorized variables and uses block operations.
+
+    Returns (to_velocity_blocks, coef_blocks, elastic_tde_dict) where:
+    - to_velocity_blocks: list of numpy arrays for eigen_to_velocity operators
+    - coef_blocks: list of pytensor tensors for station eigen coefficients
+    - elastic_tde_dict: dict mapping (mesh_idx, kind) -> elastic_tde tensor
+    """
+    assert operators.eigen is not None
+    assert operators.tde is not None
+
+    import pymc as pm
+    import pytensor.tensor as pt
+
+    logger.info("Building vectorized mesh components")
+
+    # Collect metadata about all mesh components
+    coupling_specs, elastic_specs = _collect_mesh_component_specs(model, operators)
+
     # Compute scale for elastic components (same logic as before)
     scale = 0.0
     for op in operators.eigen.eigen_to_velocities.values():
@@ -346,7 +372,7 @@ def _batched_mesh_components_project_to_eigen(
     if coupling_specs:
         total_coupling_coefs = sum(spec[2] for spec in coupling_specs)
 
-        # Single batched Normal for all coupling coefficients
+        # Single vectorized Normal for all coupling coefficients
         all_coupling_coefs = pm.Normal(
             "coupling_coefs_all", mu=0, sigma=10, shape=total_coupling_coefs
         )
@@ -355,7 +381,7 @@ def _batched_mesh_components_project_to_eigen(
         coupling_eigenvectors = [spec[3] for spec in coupling_specs]
         coupling_block_diag = linalg.block_diag(*coupling_eigenvectors).astype("f", order="F")
 
-        # Stack kinematic operators for batched computation
+        # Stack kinematic operators for vectorized computation
         kinematic_ops = np.vstack([spec[4] for spec in coupling_specs]).astype("f", order="F")
         all_kinematic = _operator_mult(kinematic_ops, rotation)
 
@@ -365,21 +391,14 @@ def _batched_mesh_components_project_to_eigen(
         # Check if all coupling specs have the same bounds - if so, apply constraint once
         bounds_set = {(spec[5], spec[6]) for spec in coupling_specs}  # (lower, upper)
         if len(bounds_set) == 1:
-            # All same bounds - apply constraint to entire array at once
             lower, upper = bounds_set.pop()
             all_coupling_fields = _constrain_field(all_coupling_fields_raw, lower, upper)
-            
-            # Compute all elastic_tde at once: element-wise kinematic * coupling
             all_coupling_elastic_tde = all_kinematic * all_coupling_fields
-            
-            # Build eigenvectors_T block diagonal for projection
             coupling_eigenvectors_T = [spec[3].T for spec in coupling_specs]
             coupling_block_diag_T = linalg.block_diag(*coupling_eigenvectors_T).astype("f", order="F")
-            
-            # Batch projection: all station eigen coefs at once
             all_coupling_station_coefs = _operator_mult(coupling_block_diag_T, all_coupling_elastic_tde)
             
-            # Build to_velocity by concatenating numpy arrays (not traced)
+            # Build to_velocity by concatenating numpy arrays
             coupling_to_velocity = np.concatenate([
                 _get_eigen_to_velocity(model, spec[0], spec[1], operators)
                 for spec in coupling_specs
@@ -399,10 +418,8 @@ def _batched_mesh_components_project_to_eigen(
                     elastic_tde_dict[(mesh_idx, kind)] = all_coupling_elastic_tde[field_offset:field_offset + n_tde]
                 field_offset += n_tde
             
-            # Store for deterministic
-            pm.Deterministic("elastic_tde_coupling_all", all_coupling_elastic_tde)
+            pm.Deterministic("coupling_constrained_elastic_tde_all_meshes", all_coupling_elastic_tde)
         else:
-            # Different bounds - need per-component constraint application
             logger.warning(
                 f"Coupling components have {len(bounds_set)} different bound configurations. "
                 "This will create more graph nodes."
@@ -422,29 +439,24 @@ def _batched_mesh_components_project_to_eigen(
             for i, (mesh_idx, kind, n_eigs, eigenvectors, kinematic_op, lower, upper) in enumerate(coupling_specs):
                 n_tde = eigenvectors.shape[0]
 
-                # Extract this component's coupling field
                 coupling_field_raw = all_coupling_fields_raw[field_offsets[i]:field_offsets[i] + n_tde]
                 coupling_field = _constrain_field(coupling_field_raw, lower, upper)
 
-                # Extract kinematic from batched result
                 kinematic = all_kinematic[field_offsets[i]:field_offsets[i] + n_tde]
 
-                # Elastic = kinematic * coupling
                 elastic_tde = kinematic * coupling_field
-
-                # Store for later batched deterministic
                 elastic_tde_dict[(mesh_idx, kind)] = elastic_tde
 
                 coupling_elastic_tdes.append(elastic_tde)
                 coupling_eigenvectors_T.append(eigenvectors.T)
 
-            # Batch the E.T @ elastic_tde projections using block diagonal
+            # Vectorize the E.T @ elastic_tde projections using block diagonal
             coupling_block_diag_T = linalg.block_diag(*coupling_eigenvectors_T).astype("f", order="F")
             all_coupling_tde = pt.concatenate(coupling_elastic_tdes, axis=0)
             all_coupling_station_coefs = _operator_mult(coupling_block_diag_T, all_coupling_tde)
 
             # Create deterministic for trace output
-            pm.Deterministic("elastic_tde_coupling_all", all_coupling_tde)
+            pm.Deterministic("coupling_constrained_elastic_tde_all_meshes", all_coupling_tde)
 
             # Build to_velocity by concatenating numpy arrays (not traced)
             coupling_to_velocity = np.concatenate([
@@ -456,17 +468,14 @@ def _batched_mesh_components_project_to_eigen(
             coef_blocks.append(all_coupling_station_coefs.astype("d"))
 
     # --- Process ELASTIC components in batch ---
-    # Track where elastic data lives for deterministic creation
-    elastic_tde_tensor = None
     
     if elastic_specs:
         total_elastic_coefs = sum(spec[2] for spec in elastic_specs)
 
-        # Single batched Normal for all elastic coefficients
-        all_elastic_raw = pm.Normal("elastic_eigen_raw_all", shape=total_elastic_coefs)
-        all_elastic_param = scale * all_elastic_raw
+        # Single vectorized Normal for all elastic coefficients
+        all_elastic_raw = pm.Normal("elastic_eigen_raw_all_meshes", shape=total_elastic_coefs)
+        elastic_constrained_eigen_coefs_all = scale * all_elastic_raw
 
-        # Check if all elastic specs are unconstrained
         all_unconstrained = all(
             spec[4] is None and spec[5] is None for spec in elastic_specs
         )
@@ -475,18 +484,11 @@ def _batched_mesh_components_project_to_eigen(
         elastic_eigenvectors = [spec[3] for spec in elastic_specs]
         elastic_block_diag = linalg.block_diag(*elastic_eigenvectors).astype("f", order="F")
 
-        # All elastic fields at once
-        all_elastic_fields = _operator_mult(elastic_block_diag, all_elastic_param)
+        elastic_slip_fields_all_meshes = _operator_mult(elastic_block_diag, elastic_constrained_eigen_coefs_all)
 
         if all_unconstrained:
-            # Fast path: no constraints, station_coefs = param directly
-            elastic_tde_tensor = all_elastic_fields
+            elastic_station_coefs = elastic_constrained_eigen_coefs_all
             
-            # Station velocity coefs: for unconstrained, E.T @ E @ param = param
-            # So we just use all_elastic_param directly
-            elastic_station_coefs = all_elastic_param
-            
-            # Build to_velocity operator by concatenating (numpy, not traced)
             elastic_to_velocity = np.concatenate([
                 _get_eigen_to_velocity(model, spec[0], spec[1], operators)
                 for spec in elastic_specs
@@ -511,23 +513,20 @@ def _batched_mesh_components_project_to_eigen(
                 field_offset = 0
                 for mesh_idx, kind, n_eigs, eigenvectors, lower, upper in elastic_specs:
                     n_tde = eigenvectors.shape[0]
-                    elastic_tde_dict[(mesh_idx, kind)] = all_elastic_fields[field_offset:field_offset + n_tde]
+                    elastic_tde_dict[(mesh_idx, kind)] = elastic_slip_fields_all_meshes[field_offset:field_offset + n_tde]
                     field_offset += n_tde
         else:
-            # Some have constraints - need per-component handling
-            # Check if all constrained specs have the same bounds
+            # Constraints present, requires per-component handling
             constrained_bounds = {(spec[4], spec[5]) for spec in elastic_specs if spec[4] is not None or spec[5] is not None}
             
             if len(constrained_bounds) == 1:
                 # All same bounds - apply constraint to entire array
                 lower, upper = constrained_bounds.pop()
-                all_elastic_fields = _constrain_field(all_elastic_fields, lower, upper)
-                elastic_tde_tensor = all_elastic_fields
+                elastic_slip_fields_all_meshes = _constrain_field(elastic_slip_fields_all_meshes, lower, upper)
                 
-                # Need to project back: E.T @ elastic_fields
                 elastic_eigenvectors_T = [spec[3].T for spec in elastic_specs]
                 elastic_block_diag_T = linalg.block_diag(*elastic_eigenvectors_T).astype("f", order="F")
-                elastic_station_coefs = _operator_mult(elastic_block_diag_T, all_elastic_fields)
+                elastic_station_coefs = _operator_mult(elastic_block_diag_T, elastic_slip_fields_all_meshes)
                 
                 elastic_to_velocity = np.concatenate([
                     _get_eigen_to_velocity(model, spec[0], spec[1], operators)
@@ -545,7 +544,7 @@ def _batched_mesh_components_project_to_eigen(
                     if (mesh.config.top_slip_rate_constraint == 1 or
                         mesh.config.bot_slip_rate_constraint == 1 or
                         mesh.config.side_slip_rate_constraint == 1):
-                        elastic_tde_dict[(mesh_idx, kind)] = all_elastic_fields[field_offset:field_offset + n_tde]
+                        elastic_tde_dict[(mesh_idx, kind)] = elastic_slip_fields_all_meshes[field_offset:field_offset + n_tde]
                     field_offset += n_tde
             else:
                 # Different bounds - fall back to per-component (rare case)
@@ -558,11 +557,11 @@ def _batched_mesh_components_project_to_eigen(
                 
                 for mesh_idx, kind, n_eigs, eigenvectors, lower, upper in elastic_specs:
                     n_tde = eigenvectors.shape[0]
-                    elastic_field_raw = all_elastic_fields[field_offset:field_offset + n_tde]
+                    elastic_field_raw = elastic_slip_fields_all_meshes[field_offset:field_offset + n_tde]
                     
                     if lower is None and upper is None:
                         elastic_tde = elastic_field_raw
-                        station_coefs = all_elastic_param[param_offset:param_offset + n_eigs]
+                        station_coefs = elastic_constrained_eigen_coefs_all[param_offset:param_offset + n_eigs]
                     else:
                         elastic_tde = _constrain_field(elastic_field_raw, lower, upper)
                         station_coefs = _operator_mult(eigenvectors.T, elastic_tde)
@@ -575,12 +574,6 @@ def _batched_mesh_components_project_to_eigen(
                     
                     field_offset += n_tde
                     param_offset += n_eigs
-                
-                elastic_tde_tensor = pt.concatenate(elastic_tdes_list, axis=0)
-
-    # Create deterministic for elastic components (coupling deterministic already created above)
-    if elastic_tde_tensor is not None:
-        pm.Deterministic("elastic_tde_elastic_all", elastic_tde_tensor)
     
     return to_velocity_blocks, coef_blocks, elastic_tde_dict
 
@@ -1037,13 +1030,11 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
 
         mogi_velocity = _add_mogi_component(operators)
 
-        # Add elastic velocity from meshes
         if model.config.mcmc_station_velocity_method == "project_to_eigen":
-            # Use batched implementation for efficiency with many meshes
             import pytensor.tensor as pt
 
             to_velocity_blocks, coef_blocks, elastic_tde_dict = (
-                _batched_mesh_components_project_to_eigen(model, rotation, operators)
+                _vectorized_mesh_components_project_to_eigen(model, rotation, operators)
             )
 
             # Add TDE elastic constraints for all meshes
@@ -1152,136 +1143,174 @@ def solve_mcmc(
     kwargs.update(sample_kwargs or {})
     trace = nutpie.sample(compiled, **kwargs)
 
-    operators_tde = build_operators(model, tde=True, eigen=False)
-    state_vector = _state_vector_from_draw(
-        model, operators_tde, trace.mean(["chain", "draw"])
+    operators_eigen = build_operators(model, tde=True, eigen=True, discard_tde_to_velocities=True)
+    state_vector = _state_vector_from_draw_eigen(
+        model, operators_eigen, trace.mean(["chain", "draw"]),
     )
-    estimation = build_estimation(model, operators_tde, state_vector)
+    estimation = build_estimation(model, operators_eigen, state_vector)
     estimation.mcmc_trace = trace
     return estimation
 
 
-def _state_vector_from_draw(
+def _state_vector_from_draw_eigen(
     model: Model,
-    operators_tde: Operators,
+    operators: Operators,
     trace,
 ):
-    assert operators_tde.tde is not None
-    assert operators_tde.index.tde is not None
-    n_params = operators_tde.full_dense_operator.shape[1]
+    """Build an eigen-based state vector from MCMC trace posterior means.
+
+    This function extracts eigenmode coefficients from the trace and places them
+    in a state vector compatible with eigen-based operators. For coupling components,
+    the elastic TDE slip rates are projected back to eigenmode space.
+
+    Parameters
+    ----------
+    model : Model
+        The model instance.
+    operators : Operators
+        Operators object built with eigen=True.
+    trace : xarray.Dataset
+        The MCMC trace posterior (typically trace.mean(["chain", "draw"])).
+
+    Returns
+    -------
+    np.ndarray
+        State vector with eigenmode coefficients.
+    """
+    assert operators.eigen is not None
+    assert operators.index.eigen is not None
+
+    index = operators.index
+    eigen_index = operators.index.eigen
+    n_params = index.n_operator_cols_eigen
     state_vector = np.zeros(n_params)
 
-    start = operators_tde.index.start_block_strain_col
-    end = operators_tde.index.end_block_strain_col
+    # Non-mesh components (same as TDE-based state vector)
+    start = index.start_block_strain_col
+    end = index.end_block_strain_col
     state_vector[start:end] = trace.posterior.block_strain_rate.values
 
-    start = operators_tde.index.start_mogi_col
-    end = operators_tde.index.end_mogi_col
+    start = index.start_mogi_col
+    end = index.end_mogi_col
     state_vector[start:end] = trace.posterior.mogi.values
 
-    start = operators_tde.index.start_block_col
-    end = operators_tde.index.end_block_col
+    start = index.start_block_col
+    end = index.end_block_col
     state_vector[start:end] = trace.posterior.rotation.values
 
-    kinds_map = {
-        "strike_slip": ("ss", slice(None, None, 2)),
-        "dip_slip": ("ds", slice(1, None, 2)),
-    }
+    # Determine which mesh/kind combos are coupling vs elastic
+    coupling_specs = []  # (mesh_idx, kind, n_eigs)
+    elastic_specs = []   # (mesh_idx, kind, n_eigs)
 
-    # Check for batched deterministics (new structure)
-    has_coupling = "elastic_tde_coupling_all" in trace.posterior
-    has_elastic = "elastic_tde_elastic_all" in trace.posterior
+    for mesh_idx, mesh in enumerate(model.meshes):
+        for kind in ["strike_slip", "dip_slip"]:
+            if kind == "strike_slip":
+                coupling_limit = mesh.config.coupling_constraints_ss
+                n_eigs = mesh.config.n_modes_strike_slip
+            else:
+                coupling_limit = mesh.config.coupling_constraints_ds
+                n_eigs = mesh.config.n_modes_dip_slip
 
-    if has_coupling or has_elastic:
-        # Batched mode: separate arrays for coupling and elastic components
-        # First, determine which mesh/kind combos are coupling vs elastic
-        coupling_specs = []
-        elastic_specs = []
+            has_coupling_limit = (
+                coupling_limit.lower is not None or coupling_limit.upper is not None
+            )
 
-        for mesh_idx, mesh in enumerate(model.meshes):
-            for kind in ["strike_slip", "dip_slip"]:
-                if kind == "strike_slip":
-                    coupling_limit = mesh.config.coupling_constraints_ss
-                else:
-                    coupling_limit = mesh.config.coupling_constraints_ds
+            if mesh.eigenvectors is None:
+                continue
 
-                has_coupling_limit = (
-                    coupling_limit.lower is not None or coupling_limit.upper is not None
-                )
+            if has_coupling_limit:
+                coupling_specs.append((mesh_idx, kind, n_eigs))
+            else:
+                elastic_specs.append((mesh_idx, kind, n_eigs))
 
-                evecs = mesh.eigenvectors
-                if evecs is None:
-                    continue
-                n_tde = evecs.shape[0]
+    # Check for batched variables in trace
+    has_coupling_tde = "coupling_constrained_elastic_tde_all_meshes" in trace.posterior
+    has_elastic_raw = "elastic_eigen_raw_all" in trace.posterior
 
-                if has_coupling_limit:
-                    coupling_specs.append((mesh_idx, kind, n_tde))
-                else:
-                    elastic_specs.append((mesh_idx, kind, n_tde))
-
-        # Extract from coupling array
-        if has_coupling and coupling_specs:
-            coupling_all = trace.posterior.elastic_tde_coupling_all.values
-            offset = 0
-            for mesh_idx, kind, n_tde in coupling_specs:
-                _, state_idx = kinds_map[kind]
-                vals = coupling_all[offset:offset + n_tde]
-                offset += n_tde
-
-                start = operators_tde.index.tde.start_tde_col[mesh_idx]
-                end = operators_tde.index.tde.end_tde_col[mesh_idx]
-                state_vector[start:end][state_idx] = vals
-
-        # Extract from elastic array
-        if has_elastic and elastic_specs:
-            elastic_all = trace.posterior.elastic_tde_elastic_all.values
-            offset = 0
-            for mesh_idx, kind, n_tde in elastic_specs:
-                _, state_idx = kinds_map[kind]
-                vals = elastic_all[offset:offset + n_tde]
-                offset += n_tde
-
-                start = operators_tde.index.tde.start_tde_col[mesh_idx]
-                end = operators_tde.index.tde.end_tde_col[mesh_idx]
-                state_vector[start:end][state_idx] = vals
-
-    elif "elastic_tde_all" in trace.posterior:
-        # Old batched mode (single concatenated array)
-        elastic_tde_all = trace.posterior.elastic_tde_all.values
-
+    # --- Process COUPLING components ---
+    # For coupling, we need to project elastic_tde back to eigen space
+    if has_coupling_tde and coupling_specs:
+        coupling_tde_all = trace.posterior.coupling_constrained_elastic_tde_all_meshes.values
         tde_offset = 0
-        for mesh_idx in range(len(model.meshes)):
+        for mesh_idx, kind, n_eigs in coupling_specs:
             mesh = model.meshes[mesh_idx]
-            for kind in ["strike_slip", "dip_slip"]:
-                _, state_idx = kinds_map[kind]
+            eigenvectors = _get_eigenmodes(model, mesh_idx, kind)
+            n_tde = eigenvectors.shape[0]
 
-                evecs = mesh.eigenvectors
-                if evecs is None:
-                    continue
-                n_tde = evecs.shape[0]
+            # Extract TDE slip rates for this mesh/kind
+            elastic_tde = coupling_tde_all[tde_offset:tde_offset + n_tde]
+            tde_offset += n_tde
 
-                vals = elastic_tde_all[tde_offset:tde_offset + n_tde]
-                tde_offset += n_tde
+            # Project to eigenmode space: E.T @ elastic_tde
+            eigen_coefs = eigenvectors.T @ elastic_tde
 
-                start = operators_tde.index.tde.start_tde_col[mesh_idx]
-                end = operators_tde.index.tde.end_tde_col[mesh_idx]
-                state_vector[start:end][state_idx] = vals
-    else:
-        # Legacy per-mesh mode
-        for mesh_idx in range(len(model.meshes)):
-            indices = {
-                "ss": slice(None, None, 2),
-                "ds": slice(1, None, 2),
-            }
-            for name, idx in indices.items():
-                start = operators_tde.index.tde.start_tde_col[mesh_idx]
-                end = operators_tde.index.tde.end_tde_col[mesh_idx]
-                var_name = f"elastic_{mesh_idx}_{name}"
+            # Place in state vector at correct eigen column position
+            start_col = eigen_index.start_col_eigen[mesh_idx]
+            if kind == "strike_slip":
+                state_vector[start_col:start_col + n_eigs] = eigen_coefs
+            else:
+                # Dip-slip modes come after strike-slip modes
+                n_ss = mesh.config.n_modes_strike_slip
+                state_vector[start_col + n_ss:start_col + n_ss + n_eigs] = eigen_coefs
 
+    # --- Process ELASTIC components ---
+    # For elastic, use the raw coefficients (scaled)
+    if has_elastic_raw and elastic_specs:
+        scale = 0.0
+        for op in operators.eigen.eigen_to_velocities.values():
+            scale += (op**2).mean()
+        scale = scale / len(operators.eigen.eigen_to_velocities)
+        scale = 1 / np.sqrt(scale)
+
+        elastic_raw_all = trace.posterior.elastic_eigen_raw_all.values
+        coef_offset = 0
+        for mesh_idx, kind, n_eigs in elastic_specs:
+            mesh = model.meshes[mesh_idx]
+
+            # Extract raw coefficients and scale
+            raw_coefs = elastic_raw_all[coef_offset:coef_offset + n_eigs]
+            eigen_coefs = scale * raw_coefs
+            coef_offset += n_eigs
+
+            # Place in state vector at correct eigen column position
+            start_col = eigen_index.start_col_eigen[mesh_idx]
+            if kind == "strike_slip":
+                state_vector[start_col:start_col + n_eigs] = eigen_coefs
+            else:
+                # Dip-slip modes come after strike-slip modes
+                n_ss = mesh.config.n_modes_strike_slip
+                state_vector[start_col + n_ss:start_col + n_ss + n_eigs] = eigen_coefs
+
+    # --- Fallback: Legacy per-mesh mode ---
+    if not has_coupling_tde and not has_elastic_raw:
+        for mesh_idx, mesh in enumerate(model.meshes):
+            if mesh.eigenvectors is None:
+                continue
+
+            start_col = eigen_index.start_col_eigen[mesh_idx]
+            n_ss = mesh.config.n_modes_strike_slip
+            n_ds = mesh.config.n_modes_dip_slip
+
+            # Try to get coefficients from trace
+            for kind, n_eigs, col_offset in [
+                ("ss", n_ss, 0),
+                ("ds", n_ds, n_ss),
+            ]:
+                # Check for elastic eigen coefficients
+                var_name = f"elastic_eigen_{mesh_idx}_{kind}"
                 if var_name in trace.posterior:
-                    vals = trace.posterior[var_name]
-                    if vals.shape == state_vector[start:end].shape:
-                        state_vector[start:end] = vals
-                    else:
-                        state_vector[start:end][idx] = trace.posterior[var_name].values
+                    state_vector[start_col + col_offset:start_col + col_offset + n_eigs] = (
+                        trace.posterior[var_name].values
+                    )
+                    continue
+
+                # Check for coupling coefficients - need to project elastic_tde
+                tde_var = f"elastic_{mesh_idx}_{kind}"
+                if tde_var in trace.posterior:
+                    elastic_tde = trace.posterior[tde_var].values
+                    kind_full = "strike_slip" if kind == "ss" else "dip_slip"
+                    eigenvectors = _get_eigenmodes(model, mesh_idx, kind_full)
+                    eigen_coefs = eigenvectors.T @ elastic_tde
+                    state_vector[start_col + col_offset:start_col + col_offset + n_eigs] = eigen_coefs
+
     return state_vector
