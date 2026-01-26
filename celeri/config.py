@@ -300,6 +300,26 @@ class Config(BaseModel):
         """
         return get_config(file_name)
 
+    @model_validator(mode="before")
+    @classmethod
+    def warn_deprecated_fields(cls, data: dict) -> dict:
+        """Warn about deprecated config fields and reject removed features."""
+        import warnings
+
+        if isinstance(data, dict) and "snap_segments" in data:
+            if data["snap_segments"]:
+                raise ValueError(
+                    "The 'snap_segments' config option has been removed. "
+                    "Use the standalone script celeri/scripts/snap_segments.py instead."
+                )
+            warnings.warn(
+                "The 'snap_segments' config option is deprecated and will be removed "
+                "in a future version. Please remove 'snap_segments' from your config file.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        return data
+
     @model_validator(mode="after")
     def relative_paths(self) -> Self:
         """Convert relative paths to absolute paths based on the config file location."""
