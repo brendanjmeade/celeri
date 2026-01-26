@@ -810,7 +810,7 @@ def _state_vector_from_draw(
 ):
     assert operators_tde.tde is not None
     assert operators_tde.index.tde is not None
-    n_params = operators_tde.full_dense_operator.shape[1]
+    n_params = operators_tde.index.n_operator_cols
     state_vector = np.zeros(n_params)
 
     start = operators_tde.index.start_block_strain_col
