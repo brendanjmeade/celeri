@@ -151,7 +151,99 @@ project_name/
 
 ## The flow of information through celeri
 
-![alt text](https://github.com/user-attachments/assets/d9762dce-eb82-4236-87be-d2b76e2516a4)
+```mermaid
+%%{init: {
+  'theme': 'forest',
+  'themeVariables': { 'primaryColor': '#90EE90', 'lineColor': '#333' },
+  'flowchart': { 'padding': 5, 'nodeSpacing': 15, 'rankSpacing': 55 }
+}}%%
+
+flowchart TB
+    command["config.json"]
+    celeri_ui["celeri_ui"]:::tool
+    
+    station["station.csv"]
+    los["los.csv"]
+    mogi["mogi.csv"]
+    block["block.csv"]
+    segmesh["segmesh.py"]:::tool
+    segment["segment.csv"]
+    mesh_json["mesh_params.json"]
+    mesh_1["mesh_1.msh"]
+    mesh_2["mesh_2.msh"]
+    mesh_3["mesh_3.msh"]
+
+    mesh_n["mesh_n.msh"]
+            
+    %% Solid lines from command.json
+    command --> station
+    command --> los
+    command --> mogi
+    command --> block
+    command --> segment
+    command --> mesh_json
+    
+    %% Solid lines from celeri_ui
+    celeri_ui -.-> block
+    celeri_ui -.-> segment
+            
+    %% Solid line segment to mesh.json
+    segment --> mesh_json
+    
+    %% Solid lines from mesh.json to mesh files
+    mesh_json --> mesh_1
+    mesh_json -.-> mesh_2
+    mesh_json -.-> mesh_3
+    mesh_json -.-> mesh_n
+
+    mesh_1 ~~~ mesh_2
+    mesh_2 ~~~ mesh_3
+    mesh_3 ~~~ mesh_n
+        
+    %% DASHED: segmesh to mesh files
+    segmesh -.-> mesh_json
+    segmesh -.-> mesh_1
+    segmesh -.-> mesh_n
+    segmesh -.-> mesh_2
+    segmesh -.-> mesh_3
+    segmesh -.-> segment
+        
+    celeri_solve["celeri-solve.py"]:::tool
+    
+    %% command.json to celeri-solve.py
+    command --> celeri_solve
+    
+    station_out["model_station.csv"]
+    segment_out["model_segment.csv"]
+    output_zarr["*.zarr"]
+    model_hdf["model.hdf"]
+    meshes_csv["model_meshes.csv"]
+
+    celeri_solve --> station_out
+    celeri_solve --> segment_out
+    celeri_solve --> meshes_csv
+    celeri_solve --> model_hdf
+    celeri_solve --> output_zarr
+    
+    fennil["fennil"]:::tool
+    parsli["parsli"]:::tool
+    vis_ipynb["vis.ipynb"]:::tool
+    
+    station_out --> fennil
+    segment_out --> fennil
+    meshes_csv --> fennil
+    model_hdf --> parsli
+    output_zarr --> vis_ipynb
+
+    %% Vertical ordering trick    
+    mesh_n ~~~ celeri_solve
+    celeri_solve ~~~ station_out
+
+    classDef tool fill:#e8d0e8,stroke:#333,stroke-width:1px
+    classDef dashedtool fill:#e8d0e8,stroke:#333,stroke-width:1px,stroke-dasharray: 5 5
+    classDef dashed fill:#90EE90,stroke:#333,stroke-width:1px,stroke-dasharray: 5 5
+    classDef gradient fill:#90EE90,stroke:#333,stroke-width:1px
+```
 
 ### Contributing to `celeri`
 
