@@ -2309,7 +2309,7 @@ def _compute_eigen_to_velocities(
             if tde_computed and cache is not None:
                 logger.info(f"Saving tde_to_velocities to cache: {cache}")
                 cache.parent.mkdir(parents=True, exist_ok=True)
-                hdf5_file = h5py.File(cache, "a")
+                hdf5_file = h5py.File(str(cache), "a")
                 key = "tde_to_velocities_" + str(i)
                 if hdf5_file.get(key) is None:
                     hdf5_file.create_dataset(key, data=tde_to_velocities)

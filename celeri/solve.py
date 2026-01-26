@@ -989,9 +989,9 @@ def _build_and_solve(name: str, model: Model, *, tde: bool, eigen: bool):
     write_output(estimation)
 
     if model.config.plot_estimation_summary:
-        import celeri
+        from celeri.plot import plot_estimation_summary
 
-        celeri.plot_estimation_summary(estimation)
+        plot_estimation_summary(estimation)
 
     return estimation
 
