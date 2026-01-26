@@ -911,11 +911,10 @@ def solve_mcmc(
     mcmc_end_time = datetime.now(UTC)
     mcmc_duration = (mcmc_end_time - mcmc_start_time).total_seconds()
 
-    operators_tde = build_operators(model, tde=True, eigen=False)
     state_vector = _state_vector_from_draw(
-        model, operators_tde, trace.mean(["chain", "draw"])
+        model, operators, trace.mean(["chain", "draw"])
     )
-    estimation = build_estimation(model, operators_tde, state_vector)
+    estimation = build_estimation(model, operators, state_vector)
     estimation.mcmc_trace = trace
     estimation.mcmc_start_time = mcmc_start_time.isoformat()
     estimation.mcmc_end_time = mcmc_end_time.isoformat()
@@ -926,41 +925,62 @@ def solve_mcmc(
 
 def _state_vector_from_draw(
     model: Model,
-    operators_tde: Operators,
+    operators: Operators,
     trace,
 ):
-    assert operators_tde.tde is not None
-    assert operators_tde.index.tde is not None
-    n_params = operators_tde.index.n_operator_cols
+    """Build a state vector from MCMC trace using eigen coefficients.
+
+    The state vector uses eigen coefficients (not TDE values) so that
+    Estimation.predictions uses eigen_to_velocities for forward predictions.
+
+    For elastic mode, we use the elastic_eigen_* coefficients directly.
+    For coupling mode, we project the elastic TDE values onto eigenvectors
+    to get equivalent elastic eigen coefficients, since coupling coefficients
+    parameterize the coupling field rather than elastic slip directly.
+    """
+    assert operators.eigen is not None
+    assert operators.index.eigen is not None
+    n_params = operators.index.n_operator_cols_eigen
     state_vector = np.zeros(n_params)
 
-    start = operators_tde.index.start_block_strain_col
-    end = operators_tde.index.end_block_strain_col
+    start = operators.index.start_block_strain_col
+    end = operators.index.end_block_strain_col
     state_vector[start:end] = trace.posterior.block_strain_rate.values
 
-    start = operators_tde.index.start_mogi_col
-    end = operators_tde.index.end_mogi_col
+    start = operators.index.start_mogi_col
+    end = operators.index.end_mogi_col
     state_vector[start:end] = trace.posterior.mogi.values
 
-    start = operators_tde.index.start_block_col
-    end = operators_tde.index.end_block_col
+    start = operators.index.start_block_col
+    end = operators.index.end_block_col
     state_vector[start:end] = trace.posterior.rotation.values
 
+    # Extract eigen coefficients for each mesh
     for mesh_idx in range(len(model.meshes)):
-        indices = {
-            "ss": slice(None, None, 2),
-            "ds": slice(1, None, 2),
-        }
-        for name, idx in indices.items():
-            start = operators_tde.index.tde.start_tde_col[mesh_idx]
-            end = operators_tde.index.tde.end_tde_col[mesh_idx]
-            var_name = f"elastic_{mesh_idx}_{name}"
+        start = operators.index.eigen.start_col_eigen[mesh_idx]
+        end = operators.index.eigen.end_col_eigen[mesh_idx]
+        n_modes_ss = model.meshes[mesh_idx].config.n_modes_strike_slip
+        n_modes_ds = model.meshes[mesh_idx].config.n_modes_dip_slip
 
-            if var_name in trace.posterior:
-                vals = trace.posterior[var_name]
-                # if there is only one of strike/dip slip
-                if vals.shape == state_vector[start:end].shape:
-                    state_vector[start:end] = vals
-                else:
-                    state_vector[start:end][idx] = trace.posterior[var_name].values
+        coefs = np.zeros(n_modes_ss + n_modes_ds)
+
+        kinds: list[tuple[Literal["strike_slip", "dip_slip"], str, int, int]] = [
+            ("strike_slip", "ss", n_modes_ss, 0),
+            ("dip_slip", "ds", n_modes_ds, n_modes_ss),
+        ]
+        for kind, kind_short, n_modes, coef_start in kinds:
+            elastic_eigen_var = f"elastic_eigen_{mesh_idx}_{kind_short}"
+            elastic_tde_var = f"elastic_{mesh_idx}_{kind_short}"
+
+            if elastic_eigen_var in trace.posterior:
+                coefs[coef_start : coef_start + n_modes] = trace.posterior[
+                    elastic_eigen_var
+                ].values
+            elif elastic_tde_var in trace.posterior:
+                elastic_tde = trace.posterior[elastic_tde_var].values
+                eigenvectors = _get_eigenmodes(model, mesh_idx, kind)
+                coefs[coef_start : coef_start + n_modes] = eigenvectors.T @ elastic_tde
+
+        state_vector[start:end] = coefs
+
     return state_vector
