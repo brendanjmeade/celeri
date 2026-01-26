@@ -1040,7 +1040,7 @@ def _store_elastic_operators(
             input_hash = _hash_elastic_operator_input([], station, config)
 
         cache = config.elastic_operator_cache_dir / f"{input_hash}.hdf5"
-
+        logger.info(f"Cache: {cache}")
         if cache.exists() and config.force_recompute:
             logger.info(
                 f"Force recompute enabled. Ignoring cached elastic operators at {cache}"
@@ -2255,9 +2255,9 @@ def _compute_eigen_to_velocities(
 
     Args:
         streaming: If True, processes one mesh at a time by loading/computing
-            tde_to_velocities on demand, then discarding it before moving to
-            the next mesh. This reduces peak memory usage from
-            O(n_meshes * tde_matrix_size) to O(tde_matrix_size).
+            tde_to_velocities on demand, adding the result to the cache file, then 
+            discarding it before moving to the next mesh. This reduces peak memory 
+            usage from O(n_meshes * tde_matrix_size) to O(tde_matrix_size).
             If False, uses the pre-computed operators.tde_to_velocities.
     """
     config = model.config
@@ -2274,9 +2274,10 @@ def _compute_eigen_to_velocities(
         cache = config.elastic_operator_cache_dir / f"{input_hash}.hdf5"
 
     for i in range(index.n_meshes):
+        tde_computed = False
         if streaming:
             logger.info(
-                f"Start: Streaming eigen_to_velocities for mesh: {meshes[i].file_name}"
+                f"Loading tde_to_velocities for mesh: {meshes[i].file_name}"
             )
 
             tde_to_velocities = None
@@ -2291,11 +2292,12 @@ def _compute_eigen_to_velocities(
                 tde_to_velocities = get_tde_to_velocities_single_mesh(
                     meshes, station, config, mesh_idx=i
                 )
+                tde_computed = True
         else:
             tde_to_velocities = operators.tde_to_velocities[i]
 
         tde_keep_row_index = get_keep_index_12(tde_to_velocities.shape[0])
-        tde_keep_col_index = get_keep_index_12(tde_to_velocities.shape[1])
+        tde_keep_col_index = get_keep_index_12(tde_to_velocities.shape[-1])
 
         operators.eigen_to_velocities[i] = (
             -tde_to_velocities[tde_keep_row_index, :][:, tde_keep_col_index]
@@ -2303,6 +2305,14 @@ def _compute_eigen_to_velocities(
         )
 
         if streaming:
+            if tde_computed and cache is not None:
+                logger.info(f"Saving tde_to_velocities to cache: {cache}")
+                cache.parent.mkdir(parents=True, exist_ok=True)
+                hdf5_file = h5py.File(cache, "a")
+                key = "tde_to_velocities_" + str(i)
+                if hdf5_file.get(key) is None:
+                    hdf5_file.create_dataset(key, data=tde_to_velocities)
+                hdf5_file.close()
             del tde_to_velocities
 
 
