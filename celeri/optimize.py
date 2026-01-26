@@ -640,7 +640,6 @@ class Minimizer:
     def plot_estimation_summary(self):
         estimation = self.to_estimation()
         plot_estimation_summary(
-            self.model,
             estimation,
             quiver_scale=self.model.config.quiver_scale,
         )
