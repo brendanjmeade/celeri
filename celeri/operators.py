@@ -796,7 +796,7 @@ def build_operators(
     )
 
     if eigen:
-        _compute_eigen_to_velocities(
+        operators.eigen_to_velocities = _compute_eigen_to_velocities(
             model, operators, index, streaming=discard_tde_to_velocities
         )
 
@@ -2280,7 +2280,7 @@ def _store_eigenvectors_to_tde_slip(model: Model, operators: _OperatorBuilder):
 
 def _compute_eigen_to_velocities(
     model: Model, operators: _OperatorBuilder, index: Index, streaming: bool
-):
+) -> dict[int, np.ndarray]:
     """Compute eigen_to_velocities for all meshes.
 
     Args:
@@ -2289,6 +2289,10 @@ def _compute_eigen_to_velocities(
             discarding it before moving to the next mesh. This reduces peak memory
             usage from O(n_meshes * tde_matrix_size) to O(tde_matrix_size).
             If False, uses the pre-computed operators.tde_to_velocities.
+
+    Returns:
+        Dictionary mapping mesh index to eigen_to_velocities operator.
+        Each operator has shape (2 * n_stations, n_modes_ss + n_modes_ds).
     """
     config = model.config
     meshes = model.meshes
@@ -2302,6 +2306,8 @@ def _compute_eigen_to_velocities(
             config,
         )
         cache = config.elastic_operator_cache_dir / f"{input_hash}.hdf5"
+
+    eigen_to_velocities: dict[int, np.ndarray] = {}
 
     for i in range(index.n_meshes):
         tde_computed = False
@@ -2331,7 +2337,7 @@ def _compute_eigen_to_velocities(
         # Create eigenvector to velocities operator
         # Keep all 3 velocity components; use station_row_keep_index when
         # inserting into the full operator to handle vertical flag
-        operators.eigen_to_velocities[i] = (
+        eigen_to_velocities[i] = (
             -tde_to_velocities[:, tde_keep_col_index]
             @ operators.eigenvectors_to_tde_slip[i]
         )
@@ -2346,6 +2352,8 @@ def _compute_eigen_to_velocities(
                     hdf5_file.create_dataset(key, data=tde_to_velocities)
                 hdf5_file.close()
             del tde_to_velocities
+
+    return eigen_to_velocities
 
 
 def rotation_vectors_to_euler_poles(
