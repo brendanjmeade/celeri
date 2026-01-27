@@ -162,6 +162,16 @@ class MeshConfig(BaseModel):
 
     softplus_lengthscale: float = 1.0
 
+    gp_parameterization: Literal["centered", "non_centered"] = "non_centered"
+    """Parameterization for GP coefficients in MCMC.
+
+    Both parameterizations are mathematically equivalent but change the
+    geometry of the sampling space, which can affect HMC performance.
+
+    - "non_centered": Sample white noise and mollify via eigenvalue scaling.
+    - "centered": Sample directly with heterogeneous variances.
+    """
+
     # Hint for the new sqp solver about the likely range of kinematic slip rates.
     sqp_kinematic_slip_rate_hint_ss: ScalarBound = ScalarBound(
         lower=-100.0, upper=100.0
@@ -761,10 +771,9 @@ class Mesh:
         triangle_vertex_array[:, 0, 2] = mesh["z1"]
         triangle_vertex_array[:, 1, 2] = mesh["z2"]
         triangle_vertex_array[:, 2, 2] = mesh["z3"]
+
         mesh["areas"] = triangle_area(triangle_vertex_array)
 
-        # EIGEN: Calculate derived eigenmode parameters
-        # Set n_modes to the greater of strike-slip or dip slip modes
         mesh["n_modes"] = np.max(
             [
                 config.n_modes_strike_slip,
