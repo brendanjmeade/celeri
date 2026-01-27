@@ -44,8 +44,6 @@ class Estimation:
     data_vector: np.ndarray
     # The weighting vector, containing the weights for the data and constraints.
     weighting_vector: np.ndarray
-    # The full operator, containing the linear operator for the forward model.
-    operator: np.ndarray
     # The state vector, containing the model parameters.
     state_vector: np.ndarray
     # The operators object, containing the operators for the forward model.
@@ -77,6 +75,11 @@ class Estimation:
     def index(self) -> Index:
         """The index object for the operators."""
         return self.operators.index
+
+    @property
+    def operator(self) -> np.ndarray:
+        """The full operator, containing the linear operator for the forward model."""
+        return self.operators.full_dense_operator
 
     @cached_property
     def station(self) -> pd.DataFrame:
@@ -811,7 +814,6 @@ def build_estimation(
     return Estimation(
         data_vector=data_vector,
         weighting_vector=weighting_vector,
-        operator=operators.full_dense_operator,
         state_vector=state_vector,
         operators=operators,
         state_covariance_matrix=state_covariance_matrix,
