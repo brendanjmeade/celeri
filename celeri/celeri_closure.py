@@ -594,16 +594,16 @@ class Polygon:
 @dataclass()
 class BlockClosureResult:
     # The vertices of the block geometry
-    vertices: np.ndarray = None
+    vertices: np.ndarray | None = None
 
     # An array mapping from edges to the vertices that compose the edge.
-    edge_idx_to_vertex_idx: np.ndarray = None
+    edge_idx_to_vertex_idx: np.ndarray | None = None
 
     # An array mapping from vertices to edges. The reverse of edge_idx_to_vertex_idx
-    vertex_idx_to_edge_idx: np.ndarray = None
+    vertex_idx_to_edge_idx: np.ndarray | None = None
 
     # The polygon blocks!
-    polygons: list[Polygon] = None
+    polygons: list[Polygon] | None = None
 
     def n_edges(self):
         return self.edge_idx_to_vertex_idx.shape[0]

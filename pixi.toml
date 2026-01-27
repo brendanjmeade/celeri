@@ -56,8 +56,13 @@ pydantic = ">=2.11.6"
 pyarrow = ">=20.0.0"
 cartopy = ">=0.25.0"
 shapely = ">=2.1.1"
-opt_einsum = ">=3.4.0,<4"
-pytest-arraydiff = ">=0.6.1,<0.7"
+opt_einsum = ">=3.4.0"
+pytest-arraydiff = ">=0.6.1"
+pandas-stubs = ">=2.3.3.260113"
+mypy = ">=1.19.1"
+scipy-stubs = ">=1.17.0.2"
+pyarrow-stubs = ">=20.0.0.20251215"
+types-tqdm = ">=4.67.0.20250809"
 
 [target.linux-64.dependencies]
 libblas = { version = "*", build = "*_mkl" }
@@ -78,6 +83,9 @@ hatch-fancy-pypi-readme = "*"
 [pypi-dependencies]
 okada-wrapper = ">=24.6.15"
 celeri = { path = ".", editable = true }
+types-shapely = ">=2.1.0.20250917"
+h5py-stubs = ">=0.1.2"
+scikit-learn-stubs = ">=0.0.3"
 
 [environments]
 default = ["dev"]

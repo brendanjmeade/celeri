@@ -1,24 +1,17 @@
 import importlib.util
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 import numpy as np
 import pandas as pd
+import pytensor.tensor as pt
 from loguru import logger
+from pymc import Model as PymcModel
 from scipy import linalg, spatial
 
 from celeri.constants import RADIUS_EARTH
 from celeri.model import Model
 from celeri.operators import Operators, build_operators
 from celeri.solve import Estimation, build_estimation
-
-if TYPE_CHECKING or importlib.util.find_spec("pymc") is None:
-    # Fallback for PyMC if not installed
-    # This is a minimal stub for PyMC to allow type checking
-    class PymcModel:
-        pass
-else:
-    from pymc import Model as PymcModel
-
 
 DIRECTION_IDX = {
     "strike_slip": slice(None, None, 2),
@@ -32,7 +25,23 @@ def _constrain_field(
     upper: float | None,
     softplus_lengthscale: float | None = None,
 ):
-    """Use a sigmoid or softplus to constrain values to a range.
+    """Optionally transform values to satisfy bounds, using sigmoid or softplus.
+
+    The transformation applied depends on which bounds are present.
+
+    No bounds: Values are returned unchanged.
+
+    Single bound: A softplus with a given length scale is used.
+    For lower bound: large negative values exponentially approach the lower bound,
+    while large positive values are approximately lower + x.
+    For upper bound: large positive values exponentially approach the upper bound,
+    while large negative values are approximately upper + x.
+
+    Two bounds: A sigmoid scaled to the range [lower, upper] is used, and
+    input values are interpreted as logits.
+
+    (Possible softplus TODO: adjust so large positive/negative values asymptote to x
+    rather than lower + x or upper + x.)
 
     Parameters
     ----------
@@ -44,7 +53,7 @@ def _constrain_field(
         Upper bound for the constraint.
     softplus_lengthscale : float | None
         Length scale for softplus operations when only one bound is present.
-        Normally set by MeshConfig validator; falls back to 1.0 if None.
+        Required when exactly one of lower/upper is set.
     """
     import pymc as pm
 
@@ -53,13 +62,21 @@ def _constrain_field(
         return pm.math.sigmoid(values) * scale + lower  # type: ignore[attr-defined]
 
     if lower is not None:
-        return lower + softplus_lengthscale * pm.math.softplus(
+        if softplus_lengthscale is None:
+            raise ValueError(
+                "softplus_lengthscale is required when only lower bound is set"
+            )
+        return lower + softplus_lengthscale * pt.softplus(  # type: ignore[operator]
             values / softplus_lengthscale
-        )  # type: ignore[attr-defined]
+        )
     if upper is not None:
-        return upper - softplus_lengthscale * pm.math.softplus(
+        if softplus_lengthscale is None:
+            raise ValueError(
+                "softplus_lengthscale is required when only upper bound is set"
+            )
+        return upper - softplus_lengthscale * pt.softplus(  # type: ignore[operator]
             -values / softplus_lengthscale
-        )  # type: ignore[attr-defined]
+        )
 
     return values
 
@@ -79,7 +96,13 @@ def _get_eigenmodes(
         if kind == "strike_slip"
         else model.meshes[mesh_idx].config.n_modes_dip_slip
     )
-    return model.meshes[mesh_idx].eigenvectors[:, :n_eigs]
+    eigenvectors = model.meshes[mesh_idx].eigenvectors
+    if eigenvectors is None:
+        raise ValueError(
+            f"Eigenvectors not computed for mesh {mesh_idx}. "
+            "Ensure mesh config includes eigenmode parameters."
+        )
+    return eigenvectors[:, :n_eigs]
 
 
 def _get_eigen_to_velocity(
@@ -148,6 +171,11 @@ def _station_vel_from_elastic_mesh(
         )
 
     if method == "low_rank":
+        if operators.tde.tde_to_velocities is None:
+            raise ValueError(
+                "tde_to_velocities not available. "
+                "Rebuild operators with discard_tde_to_velocities=False."
+            )
         to_station = operators.tde.tde_to_velocities[mesh_idx][:, idx.start : None : 3]
         u, s, vh = linalg.svd(to_station, full_matrices=False)
         threshold = 1e-5
@@ -183,6 +211,11 @@ def _station_vel_from_elastic_mesh(
         ).ravel()  # type: ignore[attr-defined]
         return elastic_velocity
     elif method == "direct":
+        if operators.tde.tde_to_velocities is None:
+            raise ValueError(
+                "tde_to_velocities not available. "
+                "Rebuild operators with discard_tde_to_velocities=False."
+            )
         to_station = operators.tde.tde_to_velocities[mesh_idx][:, idx.start : None : 3]
         elastic_velocity = _operator_mult(-to_station, elastic)
         return elastic_velocity
@@ -451,7 +484,7 @@ def _add_rotation_component(operators: Operators):
     )
     scale = 1e6
     B = A / scale
-    u, s, vh = linalg.svd(B, full_matrices=False)
+    _u, _s, vh = linalg.svd(B, full_matrices=False)
     raw = pm.StudentT("rotation_raw", sigma=20, nu=4, dims="rotation_param")
 
     rotation = pm.Deterministic(

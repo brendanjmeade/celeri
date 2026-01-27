@@ -579,7 +579,7 @@ def plot_estimation_summary(
             cbar = plt.colorbar(pc, ax=ax, shrink=0.7)
             n_ticks = 7
             ticks = np.linspace(vmin, vmax, n_ticks)
-            cbar.set_ticks(ticks)
+            cbar.set_ticks(ticks.tolist())
 
     # Plot strike-slip and dip-slip coupling
     if model.config.solve_type != "dense_no_meshes":
@@ -944,7 +944,7 @@ def plot_strain_rate_components_for_block(closure, model, station, block_idx):
 def plot_rotation_components(closure, station):
     plt.figure(figsize=(10, 3))
     plt.subplot(1, 3, 1)
-    vel_east, vel_north, vel_up = get_rotation_displacements(
+    vel_east, vel_north, _vel_up = get_rotation_displacements(
         station.lon.values,
         station.lat.values,
         omega_x=1,
@@ -969,7 +969,7 @@ def plot_rotation_components(closure, station):
     )
 
     plt.subplot(1, 3, 2)
-    vel_east, vel_north, vel_up = get_rotation_displacements(
+    vel_east, vel_north, _vel_up = get_rotation_displacements(
         station.lon.values,
         station.lat.values,
         omega_x=0,
@@ -994,7 +994,7 @@ def plot_rotation_components(closure, station):
     )
 
     plt.subplot(1, 3, 3)
-    vel_east, vel_north, vel_up = get_rotation_displacements(
+    vel_east, vel_north, _vel_up = get_rotation_displacements(
         station.lon.values,
         station.lat.values,
         omega_x=0,

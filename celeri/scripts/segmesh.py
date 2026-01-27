@@ -185,7 +185,7 @@ def main():
         sm_block_labels = np.sort(np.array([sm_east_label, sm_west_label]), axis=0)
 
         # Unique block pairs
-        sm_block_labels_unique, sm_block_labels_unique_idx = np.unique(
+        sm_block_labels_unique, _sm_block_labels_unique_idx = np.unique(
             sm_block_labels, axis=1, return_inverse=True
         )
 
@@ -207,8 +207,10 @@ def main():
             )
 
             # Add each cluster with its block label for coordinate ordering
-            for cluster_seg_idx in clusters:
-                all_clusters.append((cluster_seg_idx, sm_block_labels_unique[0, i]))
+            all_clusters.extend(
+                (cluster_seg_idx, sm_block_labels_unique[0, i])
+                for cluster_seg_idx in clusters
+            )
 
         # Now we know the total number of meshes to create
         n_new_meshes = len(all_clusters)

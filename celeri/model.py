@@ -448,14 +448,14 @@ def snap_segments(segment, meshes):
         # Concatenate edges with vertex pairs
         edges1 = np.vstack((edges, top_verts[:, 0:2]))
         # Find unique edges
-        unique_edges1, unique_indices1, unique_counts1 = np.unique(
+        _unique_edges1, unique_indices1, unique_counts1 = np.unique(
             edges1, axis=0, return_index=True, return_counts=True
         )
         # But keep those edges that appear twice
         top_edge_indices1 = unique_indices1[np.where(unique_counts1 == 2)]
         # Same process with 2nd and 3rd columns of the mesh vertex array
         edges2 = np.vstack((edges, top_verts[:, 1:3]))
-        unique_edges2, unique_indices2, unique_counts2 = np.unique(
+        _unique_edges2, unique_indices2, unique_counts2 = np.unique(
             edges2, axis=0, return_index=True, return_counts=True
         )
         top_edge_indices2 = unique_indices2[np.where(unique_counts2 == 2)]
@@ -490,7 +490,7 @@ def snap_segments(segment, meshes):
     lons = np.hstack((keep_segment.lon1, keep_segment.lon2))
     lats = np.hstack((keep_segment.lat1, keep_segment.lat2))
     coords = np.array([lons, lats])
-    unique_coords, indices, counts = np.unique(
+    _unique_coords, indices, counts = np.unique(
         coords, axis=1, return_index=True, return_counts=True
     )
     hanging_idx = indices[np.where(counts == 1)]

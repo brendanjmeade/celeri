@@ -2,7 +2,7 @@ import hashlib
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
-from typing import overload
+from typing import Any, overload
 
 import h5py
 import numpy as np
@@ -759,7 +759,7 @@ def build_operators(
     # Internal block strain rate operator
     (
         operators.block_strain_rate_to_velocities,
-        strain_rate_block_index,
+        _strain_rate_block_index,
     ) = get_block_strain_rate_to_velocities_partials(
         model.block, model.station, model.segment
     )
@@ -789,6 +789,7 @@ def build_operators(
     _store_tde_coupling_constraints(model, operators)
 
     # Insert block rotations and elastic velocities from fully locked segments
+    assert operators.slip_rate_to_okada_to_velocities is not None
     operators.rotation_to_slip_rate_to_okada_to_velocities = (
         operators.slip_rate_to_okada_to_velocities @ operators.rotation_to_slip_rate
     )
@@ -932,7 +933,8 @@ def _load_segments_from_hdf5(hdf5_file: h5py.File) -> DataFrame | None:
         if columns_attr is None:
             return None
         columns_list = [
-            col.decode() if isinstance(col, bytes) else str(col) for col in columns_attr
+            col.decode() if isinstance(col, bytes) else str(col)
+            for col in np.asarray(columns_attr)
         ]
         index_attr = hdf5_file.attrs.get("segments_index")
         if index_attr is None:
@@ -990,8 +992,8 @@ def _compare_segments(
         cached_row = cached_geom.iloc[i]
         current_row = current_geom.iloc[i]
         if not np.allclose(
-            cached_row.values,
-            current_row.values,
+            cached_row.to_numpy(),
+            current_row.to_numpy(),
             rtol=0,
             atol=tolerance,
             equal_nan=True,
@@ -1048,8 +1050,8 @@ def _store_elastic_operators(
 
         if cache.exists() and not config.force_recompute:
             logger.info(f"Found cached elastic operators at {cache}")
-            hdf5_file = h5py.File(cache, "r")
-            cached_operator = np.array(
+            hdf5_file = h5py.File(str(cache), "r")
+            cached_operator: np.ndarray[Any, Any] | None = np.array(
                 hdf5_file.get("slip_rate_to_okada_to_velocities")
             )
             cached_segments = _load_segments_from_hdf5(hdf5_file)
@@ -1078,7 +1080,7 @@ def _store_elastic_operators(
                         operators.slip_rate_to_okada_to_velocities = cached_operator
 
                         if tde and not skip_tde_to_velocities:
-                            hdf5_file = h5py.File(cache, "r")
+                            hdf5_file = h5py.File(str(cache), "r")
                             tde_data = hdf5_file.get("tde_to_velocities_0")
                             if tde_data is not None:
                                 for i in range(len(meshes)):
@@ -1117,7 +1119,7 @@ def _store_elastic_operators(
 
                     tde_loaded_from_cache = False
                     if tde and not skip_tde_to_velocities:
-                        hdf5_file = h5py.File(cache, "r")
+                        hdf5_file = h5py.File(str(cache), "r")
                         if hdf5_file.get("tde_to_velocities_0") is not None:
                             for i in range(len(meshes)):
                                 operators.tde_to_velocities[i] = np.array(
@@ -1128,7 +1130,7 @@ def _store_elastic_operators(
 
                     logger.info("Caching updated elastic operators")
                     cache.parent.mkdir(parents=True, exist_ok=True)
-                    hdf5_file = h5py.File(cache, "w")
+                    hdf5_file = h5py.File(str(cache), "w")
                     hdf5_file.create_dataset(
                         "slip_rate_to_okada_to_velocities",
                         data=operators.slip_rate_to_okada_to_velocities,
@@ -1176,7 +1178,7 @@ def _store_elastic_operators(
         return
     logger.info("Saving elastic operators in cache")
     cache.parent.mkdir(parents=True, exist_ok=True)
-    hdf5_file = h5py.File(cache, "w")
+    hdf5_file = h5py.File(str(cache), "w")
 
     hdf5_file.create_dataset(
         "slip_rate_to_okada_to_velocities",
@@ -2280,7 +2282,7 @@ def _compute_eigen_to_velocities(
 
             tde_to_velocities = None
             if cache is not None and cache.exists():
-                hdf5_file = h5py.File(cache, "r")
+                hdf5_file = h5py.File(str(cache), "r")
                 cached_data = hdf5_file.get("tde_to_velocities_" + str(i))
                 if cached_data is not None:
                     tde_to_velocities = np.array(cached_data)
@@ -2294,8 +2296,9 @@ def _compute_eigen_to_velocities(
         else:
             tde_to_velocities = operators.tde_to_velocities[i]
 
+        assert tde_to_velocities is not None and tde_to_velocities.ndim == 2
         tde_keep_row_index = get_keep_index_12(tde_to_velocities.shape[0])
-        tde_keep_col_index = get_keep_index_12(tde_to_velocities.shape[-1])
+        tde_keep_col_index = get_keep_index_12(tde_to_velocities.shape[1])  # type: ignore[index]
 
         operators.eigen_to_velocities[i] = (
             -tde_to_velocities[tde_keep_row_index, :][:, tde_keep_col_index]
@@ -2306,7 +2309,7 @@ def _compute_eigen_to_velocities(
             if tde_computed and cache is not None:
                 logger.info(f"Saving tde_to_velocities to cache: {cache}")
                 cache.parent.mkdir(parents=True, exist_ok=True)
-                hdf5_file = h5py.File(cache, "a")
+                hdf5_file = h5py.File(str(cache), "a")
                 key = "tde_to_velocities_" + str(i)
                 if hdf5_file.get(key) is None:
                     hdf5_file.create_dataset(key, data=tde_to_velocities)

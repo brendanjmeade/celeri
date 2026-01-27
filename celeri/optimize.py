@@ -591,7 +591,9 @@ class Minimizer:
 
     def plot_coupling(self):
         n_plots = len(self.model.segment_mesh_indices)
-        fig, axes = plt.subplots(n_plots, 4, figsize=(20, 12), sharex=True, sharey=True)
+        _fig, axes = plt.subplots(
+            n_plots, 4, figsize=(20, 12), sharex=True, sharey=True
+        )
 
         for idx in self.model.segment_mesh_indices:
             if idx == 0:
@@ -638,7 +640,6 @@ class Minimizer:
     def plot_estimation_summary(self):
         estimation = self.to_estimation()
         plot_estimation_summary(
-            self.model,
             estimation,
             quiver_scale=self.model.config.quiver_scale,
         )
@@ -1388,7 +1389,7 @@ def _custom_cvxopt_solve(problem: cp.Problem, **kwargs):
     )
 
     Solution = namedtuple(
-        "DefaultSolution",
+        "Solution",
         [
             "x",
             "s",

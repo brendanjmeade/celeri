@@ -206,3 +206,23 @@ ban-relative-imports = "all"
 [tool.pyright]
 venvPath = ".pixi/envs"
 venv = "default"
+
+[tool.mypy]
+python_version = "3.13"
+
+[[tool.mypy.overrides]]
+module = [
+    "cartopy.*",
+    "colorcet",
+    "cutde.*",
+    "cvxopt.*",
+    "gmsh",
+    "meshio",
+    "mpl_toolkits.*",
+    "nutpie",
+    "okada_wrapper",
+    "papermill",
+    "pymc.*",
+    "spherical_geometry.*",
+]
+ignore_missing_imports = true

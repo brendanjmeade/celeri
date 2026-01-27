@@ -88,7 +88,7 @@ def get_rotation_displacements(lon_obs, lat_obs, omega_x, omega_y, omega_z):
         (
             vel_north_from_omega_x,
             vel_east_from_omega_x,
-            vel_up_from_omega_x,
+            _vel_up_from_omega_x,
         ) = cartesian_vector_to_spherical_vector(
             cross_product_operator[0, 0],
             cross_product_operator[1, 0],
@@ -99,7 +99,7 @@ def get_rotation_displacements(lon_obs, lat_obs, omega_x, omega_y, omega_z):
         (
             vel_north_from_omega_y,
             vel_east_from_omega_y,
-            vel_up_from_omega_y,
+            _vel_up_from_omega_y,
         ) = cartesian_vector_to_spherical_vector(
             cross_product_operator[0, 1],
             cross_product_operator[1, 1],
@@ -110,7 +110,7 @@ def get_rotation_displacements(lon_obs, lat_obs, omega_x, omega_y, omega_z):
         (
             vel_north_from_omega_z,
             vel_east_from_omega_z,
-            vel_up_from_omega_z,
+            _vel_up_from_omega_z,
         ) = cartesian_vector_to_spherical_vector(
             cross_product_operator[0, 2],
             cross_product_operator[1, 2],
