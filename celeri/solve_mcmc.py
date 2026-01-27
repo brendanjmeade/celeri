@@ -344,16 +344,9 @@ def _mesh_component(
             coupling_limit = model.meshes[mesh_idx].config.coupling_constraints_ds
             rate_limit = model.meshes[mesh_idx].config.elastic_constraints_ds
 
-        has_rate_limit = rate_limit.lower is not None or rate_limit.upper is not None
         has_coupling_limit = (
             coupling_limit.lower is not None or coupling_limit.upper is not None
         )
-
-        if has_rate_limit and has_coupling_limit:
-            raise ValueError(
-                f"Mesh {mesh_idx} cannot have both rate and coupling constraints "
-                f"for {kind}."
-            )
 
         if has_coupling_limit:
             elastic_tde, station_vels = _coupling_component(
@@ -747,6 +740,24 @@ def solve_mcmc(
             "Hard bounds on segment slip rates are not supported in MCMC solve. "
             "Please use soft bounds with `segment_slip_rate_bound_sigma` instead."
         )
+
+    segment_mesh_indices = set(
+        model.segment.mesh_file_index[model.segment.mesh_flag == 1].unique()
+    )
+    for mesh_idx, mesh in enumerate(model.meshes):
+        has_coupling_constraints = (
+            mesh.config.coupling_constraints_ss.lower is not None
+            or mesh.config.coupling_constraints_ss.upper is not None
+            or mesh.config.coupling_constraints_ds.lower is not None
+            or mesh.config.coupling_constraints_ds.upper is not None
+        )
+        if has_coupling_constraints and mesh_idx not in segment_mesh_indices:
+            raise ValueError(
+                f"Mesh {mesh_idx} ({mesh.file_name}) has coupling constraints but is not "
+                f"tied to any segment in the model. "
+                "Either remove coupling constraints or ensure the mesh is referenced by "
+                "a segment with mesh_flag=1 in the segment file."
+            )
 
     if operators is None:
         # Only use streaming mode (discard_tde_to_velocities=True) when using project_to_eigen.
