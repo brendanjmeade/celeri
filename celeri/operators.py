@@ -2255,8 +2255,8 @@ def _compute_eigen_to_velocities(
 
     Args:
         streaming: If True, processes one mesh at a time by loading/computing
-            tde_to_velocities on demand, adding the result to the cache file, then 
-            discarding it before moving to the next mesh. This reduces peak memory 
+            tde_to_velocities on demand, adding the result to the cache file, then
+            discarding it before moving to the next mesh. This reduces peak memory
             usage from O(n_meshes * tde_matrix_size) to O(tde_matrix_size).
             If False, uses the pre-computed operators.tde_to_velocities.
     """
@@ -2276,9 +2276,7 @@ def _compute_eigen_to_velocities(
     for i in range(index.n_meshes):
         tde_computed = False
         if streaming:
-            logger.info(
-                f"Loading tde_to_velocities for mesh: {meshes[i].file_name}"
-            )
+            logger.info(f"Loading tde_to_velocities for mesh: {meshes[i].file_name}")
 
             tde_to_velocities = None
             if cache is not None and cache.exists():
