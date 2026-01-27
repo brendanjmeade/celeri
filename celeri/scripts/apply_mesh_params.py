@@ -94,7 +94,6 @@ def main():
         meshes = [celeri.Mesh.from_params(mesh_param) for mesh_param in destination]
         # For each set of mesh_params to be changed
         for i in range(start_idx, range_end):
-            meshes[i]
             # Check the dip threshold
             # If the mesh's mean element dip is greater than the threshold
             # Taking the mean as the magnitudes of the deviation from 90, so that dips expressed > 90 don't bias mean
