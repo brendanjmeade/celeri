@@ -781,7 +781,9 @@ class Estimation:
             mcmc_trace = None
 
         extra = {"operators": operators, "mcmc_trace": mcmc_trace}
-        return dataclass_from_disk(cls, output_dir, extra=extra)
+        # Skip "operator" for backwards compatibility - it was removed as a field
+        # and is now a property that delegates to operators.full_dense_operator
+        return dataclass_from_disk(cls, output_dir, extra=extra, skip={"operator"})
 
 
 def build_estimation(
