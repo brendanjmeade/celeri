@@ -94,10 +94,10 @@ def main():
         meshes = [celeri.Mesh.from_params(mesh_param) for mesh_param in destination]
         # For each set of mesh_params to be changed
         for i in range(start_idx, range_end):
-            this_mesh = meshes[i]
             # Check the dip threshold
             # If the mesh's mean element dip is greater than the threshold
-            if np.abs(90 - np.mean(this_mesh.dip)) < np.abs(90 - args["dip_threshold"]):
+            # Taking the mean as the magnitudes of the deviation from 90, so that dips expressed > 90 don't bias mean
+            if 90 - np.mean(np.abs(90 - meshes[i].dip)) > args["dip_threshold"]:
                 # Use the alternate template
 
                 # For each mesh_param in the template list (except filenames)
