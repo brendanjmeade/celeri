@@ -161,7 +161,7 @@ project_name/
 flowchart TB
     command["config.json"]
     celeri_ui["celeri_ui"]:::tool
-    
+
     station["station.csv"]
     los["los.csv"]
     mogi["mogi.csv"]
@@ -174,7 +174,7 @@ flowchart TB
     mesh_3["mesh_3.msh"]
 
     mesh_n["mesh_n.msh"]
-            
+
     %% Solid lines from command.json
     command --> station
     command --> los
@@ -182,14 +182,14 @@ flowchart TB
     command --> block
     command --> segment
     command --> mesh_json
-    
+
     %% Solid lines from celeri_ui
     celeri_ui -.-> block
     celeri_ui -.-> segment
-            
+
     %% Solid line segment to mesh.json
     segment --> mesh_json
-    
+
     %% Solid lines from mesh.json to mesh files
     mesh_json --> mesh_1
     mesh_json -.-> mesh_2
@@ -199,7 +199,7 @@ flowchart TB
     mesh_1 ~~~ mesh_2
     mesh_2 ~~~ mesh_3
     mesh_3 ~~~ mesh_n
-        
+
     %% DASHED: segmesh to mesh files
     segmesh -.-> mesh_json
     segmesh -.-> mesh_1
@@ -207,12 +207,12 @@ flowchart TB
     segmesh -.-> mesh_2
     segmesh -.-> mesh_3
     segmesh -.-> segment
-        
+
     celeri_solve["celeri-solve.py"]:::tool
-    
+
     %% command.json to celeri-solve.py
     command --> celeri_solve
-    
+
     station_out["model_station.csv"]
     segment_out["model_segment.csv"]
     output_zarr["*.zarr"]
@@ -224,18 +224,18 @@ flowchart TB
     celeri_solve --> meshes_csv
     celeri_solve --> model_hdf
     celeri_solve --> output_zarr
-    
+
     fennil["fennil"]:::tool
     parsli["parsli"]:::tool
     vis_ipynb["vis.ipynb"]:::tool
-    
+
     station_out --> fennil
     segment_out --> fennil
     meshes_csv --> fennil
     model_hdf --> parsli
     output_zarr --> vis_ipynb
 
-    %% Vertical ordering trick    
+    %% Vertical ordering trick
     mesh_n ~~~ celeri_solve
     celeri_solve ~~~ station_out
 
