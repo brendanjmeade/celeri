@@ -147,8 +147,9 @@ class Index:
         n_block_constraints : int
             The number of block constraints in the model.
         station_row_keep_index : np.ndarray
-            The indices comprising the horizontal (spherical plane) vector components acting on the stations, for assigning
-            horizontal-only forces in the full operator, e.g. block strain. Length is (2 * n_stations). Created using `celeri.utils.get_keep_index_12`.
+            Indices for station velocity rows in the full operator. When `include_vertical_velocity=False`,
+            contains only horizontal components (east, north); when `True`, contains all 3 components
+            (east, north, up). Length equals `end_station_row`, which is (2 or 3) * n_stations.
         start_station_row : int
             The starting index of the station rows in the full operator.
         end_station_row : int
@@ -223,7 +224,7 @@ class Index:
     @property
     def n_operator_rows(self) -> int:
         base = (
-            2 * self.n_stations
+            self.end_station_row
             + 3 * self.n_block_constraints
             + self.n_slip_rate_constraints
         )
@@ -246,7 +247,7 @@ class Index:
     def n_operator_rows_eigen(self) -> int:
         assert self.eigen is not None
         base = (
-            2 * self.n_stations
+            self.end_station_row
             + 3 * self.n_block_constraints
             + self.n_slip_rate_constraints
         )
@@ -471,10 +472,6 @@ class Operators:
     # that the index is then correct for those use cases.
     @cached_property
     def full_dense_operator(self) -> np.ndarray:
-        if self.tde is None:
-            return _get_full_dense_operator_block_only(self)
-        if self.eigen is not None:
-            return get_full_dense_operator_eigen(self)
         return get_full_dense_operator(self)
 
     @property
@@ -1521,24 +1518,38 @@ def get_slip_rake_constraints(model: Model) -> np.ndarray:
 
 
 def _get_data_vector_no_meshes(model: Model, index: Index) -> np.ndarray:
+    """
+    Constructs the data vector for an inversion run that does not use mesh-based constraints.
+
+    The data vector is composed of:
+    - GPS station velocities, interleaving east, north, and up components for all stations.
+    - Block motion constraints, converted from degrees/Myr to radians/yr.
+    - Slip rate constraints.
+
+    Args:
+        model (Model): The model object containing station and constraint data.
+        index (Index): Index object with details about row regions in the data vector.
+
+    Returns:
+        np.ndarray: The assembled data vector.
+    """
     data_vector = np.zeros(
-        2 * index.n_stations
+        index.end_station_row
         + 3 * index.n_block_constraints
         + index.n_slip_rate_constraints
     )
 
-    # Add GPS stations to data vector
-    data_vector[index.start_station_row : index.end_station_row] = interleave2(
-        model.station.east_vel.to_numpy(), model.station.north_vel.to_numpy()
+    data_vector[index.start_station_row : index.end_station_row] = interleave3(
+        model.station.east_vel.to_numpy(),
+        model.station.north_vel.to_numpy(),
+        model.station.up_vel.to_numpy()
     )
 
-    # Add block motion constraints to data vector
     block_constraints = _get_block_constraints_data(model)
     data_vector[index.start_block_constraints_row : index.end_block_constraints_row] = (
         DEG_PER_MYR_TO_RAD_PER_YR * block_constraints
     )
 
-    # Add slip rate constraints to data vector
     slip_rate_constraints = _get_slip_rate_constraints_data(model)
     data_vector[
         index.start_slip_rate_constraints_row : index.end_slip_rate_constraints_row
@@ -1548,28 +1559,43 @@ def _get_data_vector_no_meshes(model: Model, index: Index) -> np.ndarray:
 
 
 def _get_data_vector(model: Model, index: Index) -> np.ndarray:
+    """
+    Constructs the data vector for an inversion run that uses mesh-based constraints.
+
+    The data vector is composed of:
+    - GPS station velocities, interleaving east, north, and up components for all stations.
+    - Block motion constraints, converted from degrees/Myr to radians/yr.
+    - Slip rate constraints.
+    - TDE constraints.
+
+    Args:
+        model (Model): The model object containing station and constraint data.
+        index (Index): Index object with details about row regions in the data vector.
+
+    Returns:
+        np.ndarray: The assembled data vector.
+    """
     assert index.tde is not None
 
     data_vector = np.zeros(
-        2 * index.n_stations
+        index.end_station_row
         + 3 * index.n_block_constraints
         + index.n_slip_rate_constraints
         + 2 * index.n_tde_total
         + index.n_tde_constraints_total
     )
 
-    # Add GPS stations to data vector
-    data_vector[index.start_station_row : index.end_station_row] = interleave2(
-        model.station.east_vel.to_numpy(), model.station.north_vel.to_numpy()
+    data_vector[index.start_station_row : index.end_station_row] = interleave3(
+        model.station.east_vel.to_numpy(),
+        model.station.north_vel.to_numpy(),
+        model.station.up_vel.to_numpy()
     )
 
-    # Add block motion constraints to data vector
     block_constraints = _get_block_constraints_data(model)
     data_vector[index.start_block_constraints_row : index.end_block_constraints_row] = (
         DEG_PER_MYR_TO_RAD_PER_YR * block_constraints
     )
 
-    # Add slip rate constraints to data vector
     slip_rate_constraints = _get_slip_rate_constraints_data(model)
     data_vector[
         index.start_slip_rate_constraints_row : index.end_slip_rate_constraints_row
@@ -1578,28 +1604,36 @@ def _get_data_vector(model: Model, index: Index) -> np.ndarray:
 
 
 def _get_data_vector_eigen(model: Model, index: Index) -> np.ndarray:
+    """
+    Constructs the data vector for an inversion with eigen operators.
+
+    The data vector is composed of:
+    - GPS station velocities, interleaving east, north, and up components for all stations.
+    - Block motion constraints, converted from degrees/Myr to radians/yr.
+    - Slip rate constraints.
+    - TDE constraints.
+    """
     assert index.tde is not None
     assert index.eigen is not None
 
     data_vector = np.zeros(
-        2 * index.n_stations
+        index.end_station_row
         + 3 * index.n_block_constraints
         + index.n_slip_rate_constraints
         + index.n_tde_constraints_total
     )
 
-    # Add GPS stations to data vector
-    data_vector[index.start_station_row : index.end_station_row] = interleave2(
-        model.station.east_vel.to_numpy(), model.station.north_vel.to_numpy()
+    data_vector[index.start_station_row : index.end_station_row] = interleave3(
+        model.station.east_vel.to_numpy(),
+        model.station.north_vel.to_numpy(),
+        model.station.up_vel.to_numpy()
     )
 
-    # Add block motion constraints to data vector
     block_constraints = _get_block_constraints_data(model)
     data_vector[index.start_block_constraints_row : index.end_block_constraints_row] = (
         DEG_PER_MYR_TO_RAD_PER_YR * block_constraints
     )
 
-    # Add slip rate constraints to data vector
     slip_rate_constraints = _get_slip_rate_constraints_data(model)
     data_vector[
         index.start_slip_rate_constraints_row : index.end_slip_rate_constraints_row
@@ -1612,14 +1646,21 @@ def _get_weighting_vector(model: Model, index: Index):
 
     # Initialize and build weighting matrix
     weighting_vector = np.ones(
-        2 * index.n_stations
+        index.end_station_row
         + 3 * index.n_block_constraints
         + index.n_slip_rate_constraints
         + 2 * index.n_tde_total
         + index.n_tde_constraints_total
     )
-    weighting_vector[index.start_station_row : index.end_station_row] = interleave2(
-        1 / (model.station.east_sig**2), 1 / (model.station.north_sig**2)
+
+    if model.config.include_vertical_velocity:
+        up_weight = 1 / (model.station.up_sig**2)
+    else:
+        up_weight = np.zeros(len(model.station))
+    weighting_vector[index.start_station_row : index.end_station_row] = interleave3(
+        1 / (model.station.east_sig**2),
+        1 / (model.station.north_sig**2),
+        up_weight
     )
     weighting_vector[
         index.start_block_constraints_row : index.end_block_constraints_row
@@ -1644,12 +1685,19 @@ def _get_weighting_vector_no_meshes(model: Model, index: Index) -> np.ndarray:
     # NOTE: Consider combining with above
     # Initialize and build weighting matrix
     weighting_vector = np.ones(
-        2 * index.n_stations
+        index.end_station_row
         + 3 * index.n_block_constraints
         + index.n_slip_rate_constraints
     )
-    weighting_vector[index.start_station_row : index.end_station_row] = interleave2(
-        1 / (station.east_sig**2), 1 / (station.north_sig**2)
+
+    if model.config.include_vertical_velocity:
+        up_weight = 1 / (station.up_sig**2)
+    else:
+        up_weight = np.zeros(len(station))
+    weighting_vector[index.start_station_row : index.end_station_row] = interleave3(
+        1 / (station.east_sig**2),
+        1 / (station.north_sig**2),
+        up_weight
     )
     weighting_vector[
         index.start_block_constraints_row : index.end_block_constraints_row
@@ -1672,20 +1720,26 @@ def get_weighting_vector_single_mesh_for_col_norms(
 
     # Initialize and build weighting matrix
     weighting_vector = np.ones(
-        2 * index.n_stations
+        index.end_station_row
         + 2 * index.tde.n_tde[mesh_index]
         + index.tde.n_tde_constraints[mesh_index]
     )
 
-    weighting_vector[0 : 2 * index.n_stations] = interleave2(
-        1 / (station.east_sig**2), 1 / (station.north_sig**2)
+    if model.config.include_vertical_velocity:
+        up_weight = 1 / (station.up_sig**2)
+    else:
+        up_weight = np.zeros(len(station))
+    weighting_vector[0 : index.end_station_row] = interleave3(
+        1 / (station.east_sig**2),
+        1 / (station.north_sig**2),
+        up_weight
     )
 
     weighting_vector[
-        2 * index.n_stations : 2 * index.n_stations + 2 * index.tde.n_tde[mesh_index]
+        index.end_station_row : index.end_station_row + 2 * index.tde.n_tde[mesh_index]
     ] = mesh.config.smoothing_weight * np.ones(2 * index.tde.n_tde[mesh_index])
 
-    weighting_vector[2 * index.n_stations + 2 * index.tde.n_tde[mesh_index] : :] = (
+    weighting_vector[index.end_station_row + 2 * index.tde.n_tde[mesh_index] : :] = (
         config.tri_con_weight * np.ones(index.tde.n_tde_constraints[mesh_index])
     )
 
@@ -1698,14 +1752,20 @@ def _get_weighting_vector_eigen(model: Model, index: Index) -> np.ndarray:
 
     # Initialize and build weighting matrix
     weighting_vector = np.ones(
-        2 * index.n_stations
+        index.end_station_row
         + 3 * index.n_block_constraints
         + index.n_slip_rate_constraints
         + index.n_tde_constraints_total
     )
 
-    weighting_vector[index.start_station_row : index.end_station_row] = interleave2(
-        1 / (model.station.east_sig**2), 1 / (model.station.north_sig**2)
+    if model.config.include_vertical_velocity:
+        up_weight = 1 / (model.station.up_sig**2)
+    else:
+        up_weight = np.zeros(len(model.station))
+    weighting_vector[index.start_station_row : index.end_station_row] = interleave3(
+        1 / (model.station.east_sig**2),
+        1 / (model.station.north_sig**2),
+        up_weight
     )
 
     weighting_vector[
@@ -1731,23 +1791,14 @@ def _get_weighting_vector_eigen(model: Model, index: Index) -> np.ndarray:
     return weighting_vector
 
 
-def _get_full_dense_operator_block_only(operators: Operators) -> np.ndarray:
-    index = operators.index
+def _insert_common_block_operators(
+    operator: np.ndarray, operators: Operators, index: Index
+) -> None:
+    """Insert block rotation, block motion constraints, and slip rate constraints.
 
-    # Initialize linear operator
-    operator = np.zeros(
-        (
-            2 * index.n_stations
-            + 3 * index.n_block_constraints
-            + index.n_slip_rate_constraints,
-            3 * index.n_blocks,
-        )
-    )
-
+    This is common to all three operator types (block_only, tde, eigen).
+    """
     # Insert block rotations and elastic velocities from fully locked segments
-    operators.rotation_to_slip_rate_to_okada_to_velocities = (
-        operators.slip_rate_to_okada_to_velocities @ operators.rotation_to_slip_rate
-    )
     operator[
         index.start_station_row : index.end_station_row,
         index.start_block_col : index.end_block_col,
@@ -1769,23 +1820,53 @@ def _get_full_dense_operator_block_only(operators: Operators) -> np.ndarray:
         index.start_slip_rate_constraints_row : index.end_slip_rate_constraints_row,
         index.start_block_col : index.end_block_col,
     ] = operators.slip_rate_constraints
+
+
+def _insert_block_strain_and_mogi(
+    operator: np.ndarray, operators: Operators, index: Index
+) -> None:
+    """Insert block strain and Mogi source operators.
+
+    This is common to tde and eigen operator types.
+    """
+    # Insert block strain operator
+    operator[
+        index.start_station_row : index.end_station_row,
+        index.start_block_strain_col : index.end_block_strain_col,
+    ] = operators.block_strain_rate_to_velocities[index.station_row_keep_index, :]
+
+    # Insert Mogi source operators
+    operator[
+        index.start_station_row : index.end_station_row,
+        index.start_mogi_col : index.end_mogi_col,
+    ] = operators.mogi_to_velocities[index.station_row_keep_index, :]
+
+
+def _get_full_dense_operator_block_only(operators: Operators) -> np.ndarray:
+    index = operators.index
+    operator = np.zeros(
+        (
+            index.end_station_row
+            + 3 * index.n_block_constraints
+            + index.n_slip_rate_constraints,
+            3 * index.n_blocks,
+        )
+    )
+
+    _insert_common_block_operators(operator, operators, index)
     return operator
 
 
-def get_full_dense_operator(operators: Operators) -> np.ndarray:
-    # TODO: This should either take an OperatorBuilder as input and
-    # store the final operator *or* return the final operator, but not
-    # modify the operator in place
+def _get_full_dense_operator_tde(operators: Operators) -> np.ndarray:
+    """Build full dense operator for TDE (non-eigen) case."""
     index = operators.index
     model = operators.model
     assert index.tde is not None
-
-    assert operators.eigen is None
     assert operators.tde is not None
 
     operator = np.zeros(
         (
-            2 * index.n_stations
+            index.end_station_row
             + 3 * index.n_block_constraints
             + index.n_slip_rate_constraints
             + 2 * index.n_tde_total
@@ -1797,45 +1878,21 @@ def get_full_dense_operator(operators: Operators) -> np.ndarray:
         )
     )
 
-    # DEBUG:
-    # IPython.embed(banner1="")
-
-    operator[
-        index.start_station_row : index.end_station_row,
-        index.start_block_col : index.end_block_col,
-    ] = (
-        operators.rotation_to_velocities[index.station_row_keep_index, :]
-        - operators.rotation_to_slip_rate_to_okada_to_velocities[
-            index.station_row_keep_index, :
-        ]
-    )
-
-    # Insert block motion constraints
-    operator[
-        index.start_block_constraints_row : index.end_block_constraints_row,
-        index.start_block_col : index.end_block_col,
-    ] = operators.block_motion_constraints
-
-    # Insert slip rate constraints
-    operator[
-        index.start_slip_rate_constraints_row : index.end_slip_rate_constraints_row,
-        index.start_block_col : index.end_block_col,
-    ] = operators.slip_rate_constraints
+    _insert_common_block_operators(operator, operators, index)
 
     # Insert all TDE operators
     assert operators.tde.tde_to_velocities is not None
     for i in range(len(model.meshes)):
         # Insert TDE to velocity matrix
-        tde_keep_row_index = get_keep_index_12(
-            operators.tde.tde_to_velocities[i].shape[0]
-        )
+        # Use station_row_keep_index for rows to respect vertical flag
+        # TDE columns are always 2-component (strike and dip slip)
         tde_keep_col_index = get_keep_index_12(
             operators.tde.tde_to_velocities[i].shape[1]
         )
         operator[
             index.start_station_row : index.end_station_row,
             index.tde.start_tde_col[i] : index.tde.end_tde_col[i],
-        ] = -operators.tde.tde_to_velocities[i][tde_keep_row_index, :][
+        ] = -operators.tde.tde_to_velocities[i][index.station_row_keep_index, :][
             :, tde_keep_col_index
         ]
 
@@ -1887,45 +1944,25 @@ def get_full_dense_operator(operators: Operators) -> np.ndarray:
                 model.meshes[i].side_slip_idx,
                 :,
             ]
-    # Insert block strain operator
-    operator[
-        index.start_station_row : index.end_station_row,
-        index.start_block_strain_col : index.end_block_strain_col,
-    ] = operators.block_strain_rate_to_velocities[index.station_row_keep_index, :]
 
-    # Insert Mogi source operators
-    operator[
-        index.start_station_row : index.end_station_row,
-        index.start_mogi_col : index.end_mogi_col,
-    ] = operators.mogi_to_velocities[index.station_row_keep_index, :]
-    # Insert TDE coupling constraints into estimation operator
-    # The identity matrices were already inserted as part of the standard slip constraints,
-    # so here we can just insert the rotation-to-slip partials into the block rotation columns
-    # operator[
-    #     index.start_tde_coup_constraint_row[i] : index.end_tde_coup_constraint_row[
-    #         i
-    #     ],
-    #     index.start_block_col : index.end_block_col,
-    # ] = operators.tde_coupling_constraints[i]
-
+    _insert_block_strain_and_mogi(operator, operators, index)
     return operator
 
 
-def get_full_dense_operator_eigen(operators: Operators):
-    # TODO deduplicate with get_full_dense_operator and get_full_dense_operator_block_only
+def _get_full_dense_operator_eigen(operators: Operators) -> np.ndarray:
+    """Build full dense operator for eigen case."""
     index = operators.index
     model = operators.model
 
     assert index.tde is not None
     assert index.eigen is not None
-
     assert operators.eigen is not None
     assert operators.tde is not None
 
     # Initialize linear operator
     operator = np.zeros(
         (
-            2 * index.n_stations
+            index.end_station_row
             + 3 * index.n_block_constraints
             + index.n_slip_rate_constraints
             + index.n_tde_constraints_total,
@@ -1936,35 +1973,16 @@ def get_full_dense_operator_eigen(operators: Operators):
         )
     )
 
-    operator[
-        index.start_station_row : index.end_station_row,
-        index.start_block_col : index.end_block_col,
-    ] = (
-        operators.rotation_to_velocities[index.station_row_keep_index, :]
-        - operators.rotation_to_slip_rate_to_okada_to_velocities[
-            index.station_row_keep_index, :
-        ]
-    )
-
-    # Insert block motion constraints
-    operator[
-        index.start_block_constraints_row : index.end_block_constraints_row,
-        index.start_block_col : index.end_block_col,
-    ] = operators.block_motion_constraints
-
-    # Insert slip rate constraints
-    operator[
-        index.start_slip_rate_constraints_row : index.end_slip_rate_constraints_row,
-        index.start_block_col : index.end_block_col,
-    ] = operators.slip_rate_constraints
+    _insert_common_block_operators(operator, operators, index)
 
     # EIGEN Eigenvector to velocity matrix
     for i in range(index.n_meshes):
         # Insert eigenvector to velocities operator
+        # Use station_row_keep_index to respect vertical flag
         operator[
             index.start_station_row : index.end_station_row,
             index.eigen.start_col_eigen[i] : index.eigen.end_col_eigen[i],
-        ] = operators.eigen.eigen_to_velocities[i]
+        ] = operators.eigen.eigen_to_velocities[i][index.station_row_keep_index, :]
 
     # EIGEN Eigenvector to TDE boundary conditions matrix
     for i in range(index.n_meshes):
@@ -1983,20 +2001,33 @@ def get_full_dense_operator_eigen(operators: Operators):
             index.eigen.start_col_eigen[i] : index.eigen.end_col_eigen[i],
         ] = operators.eigen.eigen_to_tde_bcs[i]
 
-    # EIGEN: Block strain operator
-    station_keep_row_index = get_keep_index_12(3 * index.n_stations)
-    operator[
-        0 : 2 * index.n_stations,
-        index.start_block_strain_col : index.end_block_strain_col,
-    ] = operators.block_strain_rate_to_velocities[station_keep_row_index, :]
-
-    # EIGEN: Mogi operator
-    operator[
-        0 : 2 * index.n_stations,
-        index.start_mogi_col : index.end_mogi_col,
-    ] = operators.mogi_to_velocities[station_keep_row_index, :]
-
+    _insert_block_strain_and_mogi(operator, operators, index)
     return operator
+
+
+def get_full_dense_operator(operators: Operators) -> np.ndarray:
+    """Build the full dense operator matrix based on the operator type.
+
+    Automatically determines which operator type to build based on the
+    presence of eigen/tde operators.
+
+    Args:
+        operators: The Operators object containing all sub-operators.
+
+    Returns:
+        The full dense operator matrix.
+    """
+    if operators.eigen is not None:
+        return _get_full_dense_operator_eigen(operators)
+    elif operators.tde is not None:
+        return _get_full_dense_operator_tde(operators)
+    else:
+        return _get_full_dense_operator_block_only(operators)
+
+
+def get_full_dense_operator_eigen(operators: Operators) -> np.ndarray:
+    """Deprecated: Use get_full_dense_operator instead."""
+    return _get_full_dense_operator_eigen(operators)
 
 
 def get_slip_rate_bounds(segment, block):
@@ -2297,11 +2328,14 @@ def _compute_eigen_to_velocities(
             tde_to_velocities = operators.tde_to_velocities[i]
 
         assert tde_to_velocities is not None and tde_to_velocities.ndim == 2
-        tde_keep_row_index = get_keep_index_12(tde_to_velocities.shape[0])
+        # Slice columns to only strike-slip and dip-slip (exclude tensile)
         tde_keep_col_index = get_keep_index_12(tde_to_velocities.shape[1])  # type: ignore[index]
 
+        # Create eigenvector to velocities operator
+        # Keep all 3 velocity components; use station_row_keep_index when
+        # inserting into the full operator to handle vertical flag
         operators.eigen_to_velocities[i] = (
-            -tde_to_velocities[tde_keep_row_index, :][:, tde_keep_col_index]
+            -tde_to_velocities[:, tde_keep_col_index]
             @ operators.eigenvectors_to_tde_slip[i]
         )
 
@@ -2551,6 +2585,10 @@ def _get_index_no_meshes(model: Model):
     n_segments = len(model.segment)
     n_strain_blocks = model.block.strain_rate_flag.sum()
 
+    # Always use 3 components per station (east, north, up)
+    # Horizontal-only solves are achieved via zero weights for vertical components
+    n_station_rows = 3 * n_stations
+
     return Index(
         n_blocks=n_blocks,
         n_segments=n_segments,
@@ -2559,16 +2597,16 @@ def _get_index_no_meshes(model: Model):
         n_mogis=n_mogi,
         vertical_velocities=np.arange(2, 3 * n_stations, 3),
         n_block_constraints=n_block_constraints,
-        station_row_keep_index=get_keep_index_12(3 * n_stations),
+        station_row_keep_index=np.arange(3 * n_stations),
         start_station_row=0,
-        end_station_row=2 * n_stations,
+        end_station_row=n_station_rows,
         start_block_col=0,
         end_block_col=3 * n_blocks,
-        start_block_constraints_row=2 * n_stations,
-        end_block_constraints_row=(2 * n_stations + 3 * n_block_constraints),
-        start_slip_rate_constraints_row=(2 * n_stations + 3 * n_block_constraints),
+        start_block_constraints_row=n_station_rows,
+        end_block_constraints_row=(n_station_rows + 3 * n_block_constraints),
+        start_slip_rate_constraints_row=(n_station_rows + 3 * n_block_constraints),
         end_slip_rate_constraints_row=(
-            2 * n_stations + 3 * n_block_constraints + n_slip_rate_constraints
+            n_station_rows + 3 * n_block_constraints + n_slip_rate_constraints
         ),
         n_slip_rate_constraints=n_slip_rate_constraints,
         start_block_strain_col=3 * n_blocks,
@@ -2633,7 +2671,7 @@ def _get_index_eigen(model: Model) -> Index:
             eigen.start_col_eigen[i] = 3 * index.n_blocks
             eigen.end_col_eigen[i] = eigen.start_col_eigen[i] + eigen.n_modes_mesh[i]
             eigen.start_tde_row_eigen[i] = 0
-            eigen.end_row_eigen[i] = 2 * index.n_stations
+            eigen.end_row_eigen[i] = index.end_station_row
 
         # Meshes after first mesh
         else:
@@ -2641,7 +2679,7 @@ def _get_index_eigen(model: Model) -> Index:
             eigen.start_col_eigen[i] = eigen.end_col_eigen[i - 1]
             eigen.end_col_eigen[i] = eigen.start_col_eigen[i] + eigen.n_modes_mesh[i]
             eigen.start_tde_row_eigen[i] = 0
-            eigen.end_row_eigen[i] = 2 * index.n_stations
+            eigen.end_row_eigen[i] = index.end_station_row
 
     # EIGEN: Set initial values to follow segment slip rate constraints
     eigen.start_tde_constraint_row_eigen[0] = index.end_slip_rate_constraints_row

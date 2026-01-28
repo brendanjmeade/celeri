@@ -281,6 +281,13 @@ class Config(BaseModel):
     Only used when `sqp2_annealing_enabled` is True.
     """
 
+    include_vertical_velocity: bool = False
+    """When True, include vertical velocity component in station velocity predictions.
+    
+    By default, only horizontal (east and north) velocity components are included in the model.
+    Setting this to True will include the vertical (up) component in forward predictions.
+    """
+
     # Only in tsts/global_config.json?
     mesh_file_names: list[Path] | None = None
 
