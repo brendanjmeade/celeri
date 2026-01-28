@@ -74,7 +74,9 @@ class Estimation:
 
     @cached_property
     def station(self) -> pd.DataFrame:
-        """An extension of the `model.station` dataframe, with additional columns for the estimated velocities returned by the model."""
+        """An extension of the `model.station` dataframe, with additional columns
+        for the estimated velocities returned by the model.
+        """
         station = self.model.station.copy(deep=True)
         station["model_east_vel"] = self.east_vel
         station["model_north_vel"] = self.north_vel
@@ -88,19 +90,18 @@ class Estimation:
             station["model_east_vel_tde"] = self.east_vel_tde
         if self.north_vel_tde is not None:
             station["model_north_vel_tde"] = self.north_vel_tde
+        if self.up_vel_tde is not None:
+            station["model_up_vel_tde"] = self.up_vel_tde
         station["model_east_vel_block_strain_rate"] = self.east_vel_block_strain_rate
         station["model_north_vel_block_strain_rate"] = self.north_vel_block_strain_rate
         station["model_east_vel_mogi"] = self.east_vel_mogi
         station["model_north_vel_mogi"] = self.north_vel_mogi
-        if self.model.config.include_vertical_velocity:
-            station["model_up_vel"] = self.up_vel
-            station["model_up_vel_residual"] = self.up_vel_residual
-            station["model_up_vel_rotation"] = self.up_vel_rotation
-            station["model_up_elastic_segment"] = self.up_vel_elastic_segment
-            station["model_up_vel_block_strain_rate"] = self.up_vel_block_strain_rate
-            station["model_up_vel_mogi"] = self.up_vel_mogi
-            if self.up_vel_tde is not None:
-                station["model_up_vel_tde"] = self.up_vel_tde
+        station["model_up_vel"] = self.up_vel
+        station["model_up_vel_residual"] = self.up_vel_residual
+        station["model_up_vel_rotation"] = self.up_vel_rotation
+        station["model_up_elastic_segment"] = self.up_vel_elastic_segment
+        station["model_up_vel_block_strain_rate"] = self.up_vel_block_strain_rate
+        station["model_up_vel_mogi"] = self.up_vel_mogi
         return station
 
     @cached_property
