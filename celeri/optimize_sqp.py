@@ -45,7 +45,6 @@ def _presolve(
     estimation_qp = Estimation(
         data_vector=operators.data_vector,
         weighting_vector=operators.weighting_vector,
-        operator=operators.full_dense_operator,
         state_vector=np.array(solution_qp["x"]).flatten(),
         operators=operators,
         state_covariance_matrix=None,
@@ -486,7 +485,6 @@ def solve_sqp(
         estimation_qp = Estimation(
             data_vector=operators.data_vector,
             weighting_vector=operators.weighting_vector,
-            operator=operators.full_dense_operator,
             state_vector=np.array(solution_qp["x"]).flatten(),
             operators=operators,
             state_covariance_matrix=None,

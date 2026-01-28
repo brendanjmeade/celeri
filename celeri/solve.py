@@ -40,27 +40,24 @@ from celeri.version import __version__ as celeri_version
 class Estimation:
     """A class to hold an estimation of the model parameters."""
 
-    # The data vector, containing the data and constraints.
     data_vector: np.ndarray
-    # The weighting vector, containing the weights for the data and constraints.
+    """The data vector, containing the data and constraints."""
     weighting_vector: np.ndarray
-    # The full operator, containing the linear operator for the forward model.
-    operator: np.ndarray
-    # The state vector, containing the model parameters.
+    """The weighting vector, containing the weights for the data and constraints."""
     state_vector: np.ndarray
-    # The operators object, containing the operators for the forward model.
+    """The state vector, containing the model parameters."""
     operators: Operators
-
-    # The covariance matrix of the state vector.
+    """The operators object, containing the operators for the forward model."""
     state_covariance_matrix: np.ndarray | None
-    # Trace of out-of-bounds values during optimization.
+    """The covariance matrix of the state vector."""
     n_out_of_bounds_trace: np.ndarray | None = None
-    # Trace from optimization.
+    """Trace of out-of-bounds values during optimization."""
     trace: Any | None = None
-    # MCMC trace from Bayesian inference.
+    """Trace from optimization."""
     mcmc_trace: Any | None = None
-    # Version of celeri used to create this estimation.
+    """MCMC trace from Bayesian inference."""
     celeri_version: str | None = None
+    """Version of celeri used to create this estimation."""
 
     @property
     def model(self) -> Model:
@@ -71,6 +68,11 @@ class Estimation:
     def index(self) -> Index:
         """The index object for the operators."""
         return self.operators.index
+
+    @property
+    def operator(self) -> np.ndarray:
+        """The full operator, containing the linear operator for the forward model."""
+        return self.operators.full_dense_operator
 
     @cached_property
     def station(self) -> pd.DataFrame:
@@ -708,15 +710,6 @@ class Estimation:
             rates[mesh_idx] = elastic[mesh_idx] / kinematic[mesh_idx]
         return rates
 
-    @property
-    def eigenvalues(self) -> np.ndarray | None:
-        """The eigenvalues from the eigen decomposition (if used)."""
-        if self.index.eigen is None:
-            return None
-        return self.state_vector[
-            self.index.eigen.start_col_eigen[0] : self.index.eigen.end_col_eigen[-1]
-        ]
-
     def mcmc_draw(self, draw: int, chain: int):
         """Get the MCMC draw for a specific chain and draw number."""
         if self.mcmc_trace is None:
@@ -772,7 +765,9 @@ class Estimation:
             mcmc_trace = None
 
         extra = {"operators": operators, "mcmc_trace": mcmc_trace}
-        return dataclass_from_disk(cls, output_dir, extra=extra)
+        # Skip "operator" for backwards compatibility - it was removed as a field
+        # and is now a property that delegates to operators.full_dense_operator
+        return dataclass_from_disk(cls, output_dir, extra=extra, skip={"operator"})
 
 
 def build_estimation(
@@ -805,7 +800,6 @@ def build_estimation(
     return Estimation(
         data_vector=data_vector,
         weighting_vector=weighting_vector,
-        operator=operators.full_dense_operator,
         state_vector=state_vector,
         operators=operators,
         state_covariance_matrix=state_covariance_matrix,
