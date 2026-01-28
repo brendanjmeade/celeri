@@ -129,93 +129,66 @@ class EigenIndex:
 
 @dataclass
 class Index:
-    """Index of the full dense linear operators comprising the forward model.
-
-    Attributes:
-        n_blocks : int
-            The number of blocks in the model.
-        n_segments : int
-            The number of segments in the model.
-        n_stations : int
-            The number of stations in the model.
-        n_meshes : int
-            The number of meshes in the model.
-        n_mogis : int
-            The number of Mogi sources in the model.
-        vertical_velocities : np.ndarray
-            The vertical velocities of the stations.
-        n_block_constraints : int
-            The number of block constraints in the model.
-        station_row_keep_index : np.ndarray
-            Indices for station velocity rows in the full operator. When `include_vertical_velocity=False`,
-            contains only horizontal components (east, north); when `True`, contains all 3 components
-            (east, north, up). Length equals `end_station_row`, which is (2 or 3) * n_stations.
-        start_station_row : int
-            The starting index of the station rows in the full operator.
-        end_station_row : int
-            The ending index of the station rows in the full operator.
-        start_block_col : int
-            The starting index of the block columns in the full operator.
-        end_block_col : int
-            The ending index of the block columns in the full operator.
-        start_block_constraints_row : int
-            The starting index of the block constraints rows in the full operator.
-        end_block_constraints_row : int
-            The ending index of the block constraints rows in the full operator.
-        n_slip_rate_constraints : int
-            The number of slip rate constraints in the model.
-        start_slip_rate_constraints_row : int
-            The starting index of the slip rate constraints rows in the full operator.
-        end_slip_rate_constraints_row : int
-            The ending index of the slip rate constraints rows in the full operator.
-        n_strain_blocks : int
-            The number of strain blocks in the model.
-        n_block_strain_components : int
-            The number of block strain components in the model.
-        start_block_strain_col : int
-            The starting index of the block strain columns in the full operator.
-        end_block_strain_col : int
-            The ending index of the block strain columns in the full operator.
-        start_mogi_col : int
-            The starting index of the Mogi columns in the full operator.
-        end_mogi_col : int
-            The ending index of the Mogi columns in the full operator.
-        slip_rate_bounds : np.ndarray
-            The indices of the slip rate bounds in the model.
-        tde : TdeIndex | None
-            The TDE index.
-        eigen : EigenIndex | None
-            The Eigen index.
-    """
+    """Index of the full dense linear operators comprising the forward model."""
 
     n_blocks: int
+    """The number of blocks in the model."""
     n_segments: int
+    """The number of segments in the model."""
     n_stations: int
+    """The number of stations in the model."""
     n_meshes: int
+    """The number of meshes in the model."""
     n_mogis: int
+    """The number of Mogi sources in the model."""
     vertical_velocities: np.ndarray
+    """The vertical velocities of the stations."""
     n_block_constraints: int
+    """The number of block constraints in the model."""
     station_row_keep_index: np.ndarray
+    """The indices comprising the horizontal (spherical plane) vector components acting on the stations.
+
+    Used for assigning horizontal-only forces in the full operator, e.g. block strain.
+    Length is (2 * n_stations). Created using `celeri.utils.get_keep_index_12`.
+    """
     start_station_row: int
+    """The starting index of the station rows in the full operator."""
     end_station_row: int
+    """The ending index of the station rows in the full operator."""
     start_block_col: int
+    """The starting index of the block columns in the full operator."""
     end_block_col: int
+    """The ending index of the block columns in the full operator."""
     start_block_constraints_row: int
+    """The starting index of the block constraints rows in the full operator."""
     end_block_constraints_row: int
+    """The ending index of the block constraints rows in the full operator."""
     n_slip_rate_constraints: int
+    """The number of slip rate constraints in the model."""
     start_slip_rate_constraints_row: int
+    """The starting index of the slip rate constraints rows in the full operator."""
     end_slip_rate_constraints_row: int
+    """The ending index of the slip rate constraints rows in the full operator."""
 
     n_strain_blocks: int
+    """The number of strain blocks in the model."""
     n_block_strain_components: int
+    """The number of block strain components in the model."""
     start_block_strain_col: int
+    """The starting index of the block strain columns in the full operator."""
     end_block_strain_col: int
+    """The ending index of the block strain columns in the full operator."""
 
     start_mogi_col: int
+    """The starting index of the Mogi columns in the full operator."""
     end_mogi_col: int
+    """The ending index of the Mogi columns in the full operator."""
     slip_rate_bounds: np.ndarray
+    """The indices of the slip rate bounds in the model."""
     tde: TdeIndex | None = None
+    """The TDE index."""
     eigen: EigenIndex | None = None
+    """The Eigen index."""
 
     @property
     def n_slip_rate_bounds(self):
@@ -355,67 +328,45 @@ class EigenOperators:
 
 @dataclass
 class Operators:
-    """Linear operators comprising the forward model.
-
-    Attributes:
-        model : Model
-            The model.
-        index : Index
-            Indices to access different parts of the full dense operator.
-        rotation_to_velocities : np.ndarray
-            Maps rotational vectors to velocities.
-        block_motion_constraints : np.ndarray
-            Constraints on block motions.
-        slip_rate_constraints : np.ndarray
-            Limitations on slip rates.
-         rotation_to_slip_rate : np.ndarray
-            Maps block rotations to kinematic slip rates along the segments.
-         block_strain_rate_to_velocities : np.ndarray
-             Computes the components of the predicted velocities on the stations due to the homogenous block strain rates.
-            Has shape (3 * n_stations, 3 * n_strain_blocks).
-        mogi_to_velocities : np.ndarray
-            Computes the components of the predicted velocities on the stations due to the Mogi sources.
-            Has shape (3 * n_stations, n_mogis).
-        slip_rate_to_okada_to_velocities : np.ndarray
-            Okada model slip rate to velocity mapping.
-        rotation_to_tri_slip_rate : dict[int, np.ndarray]
-            Rotation to triangular slip rate mapping.
-        rotation_to_slip_rate_to_okada_to_velocities : np.ndarray
-            Rotation to slip rate to Okada velocities transformation.
-        smoothing_matrix (dict[int, csr_matrix]):
-            Smoothing matrices for various meshes.
-        global_float_block_rotation (np.ndarray):
-            Global rotation operator for the block.
-        tde (TdeOperators | None):
-            TDE-related operators.
-        eigen (EigenOperators | None):
-            Operators related to eigenmodes for TDEs.
-
-    Methods:
-        kinematic_slip_rate(parameters: np.ndarray, mesh_idx: Optional[int], smooth: bool) -> Union[np.ndarray, dict[int, np.ndarray]]:
-            Computes the kinematic slip rates for specified meshes with optional smoothing.
-
-    Properties:
-        weighting_vector: np.ndarray
-            Weighting vector for the operator, applying to constraints and station measurements.
-    """
+    """Linear operators comprising the forward model."""
 
     model: Model
+    """The model."""
     index: Index
+    """Indices to access different parts of the full dense operator."""
     rotation_to_velocities: np.ndarray
+    """Maps rotational vectors to velocities."""
     block_motion_constraints: np.ndarray
+    """Constraints on block motions."""
     slip_rate_constraints: np.ndarray
+    """Limitations on slip rates."""
     rotation_to_slip_rate: np.ndarray
+    """Maps block rotations to kinematic slip rates along the segments."""
     block_strain_rate_to_velocities: np.ndarray
+    """Computes predicted velocities on stations due to homogenous block strain rates.
+
+    Has shape (3 * n_stations, 3 * n_strain_blocks).
+    """
     mogi_to_velocities: np.ndarray
+    """Computes predicted velocities on stations due to Mogi sources.
+
+    Has shape (3 * n_stations, n_mogis).
+    """
     slip_rate_to_okada_to_velocities: np.ndarray
+    """Okada model slip rate to velocity mapping."""
     rotation_to_tri_slip_rate: dict[int, np.ndarray]
+    """Rotation to triangular slip rate mapping."""
     rotation_to_slip_rate_to_okada_to_velocities: np.ndarray
+    """Rotation to slip rate to Okada velocities transformation."""
     # TODO: Switch to csr_array?
     smoothing_matrix: dict[int, csr_matrix]
+    """Smoothing matrices for various meshes."""
     global_float_block_rotation: np.ndarray
+    """Global rotation operator for the block."""
     tde: TdeOperators | None
+    """TDE-related operators."""
     eigen: EigenOperators | None
+    """Operators related to eigenmodes for TDEs."""
 
     @overload
     def kinematic_slip_rate(
