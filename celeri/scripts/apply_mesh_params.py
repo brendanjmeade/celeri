@@ -71,6 +71,16 @@ def main():
     # Define the last dict entry to be changed
     range_end = len(destination) + end_idx + 1
 
+    # Create output filename with "_templated" suffix
+    dest_path = args["destination_file_name"]
+    output_file_name = dest_path.parent / f"{dest_path.stem}_templated{dest_path.suffix}"
+
+    # Track statistics
+    standard_count = 0
+    alternate_count = 0
+    standard_indices = []
+    alternate_indices = []
+
     # Check to see if multiple templates have been passed
     if args["alt_template"] == Path():
         # If not, just use a single template
@@ -81,11 +91,15 @@ def main():
                 if (name != "file_name") & (name != "mesh_filename"):
                     template_value = getattr(template[0], name)
                     setattr(destination[i], name, template_value)
+            standard_count += 1
+            standard_indices.append(i)
 
-        # Write the updated destination file
-        data = [mesh_config.model_dump(mode="json") for mesh_config in destination]
-        with args["destination_file_name"].open("w") as destination_file:
-            json.dump(data, destination_file, indent=4)
+        # Print summary statistics
+        print(f"\nSummary Statistics")
+        print(f"------------------")
+        print(f"Total meshes processed: {standard_count}")
+        print(f"Index range: {start_idx} to {range_end - 1}")
+        print(f"Output file: {output_file_name}")
     else:
         # If so, load the alternate template
         alt_template = celeri.MeshConfig.from_file(args["alt_template"])
@@ -106,6 +120,8 @@ def main():
                         template_value = getattr(alt_template[0], name)
                         # Set the destination to the alternate template value
                         setattr(destination[i], name, template_value)
+                alternate_count += 1
+                alternate_indices.append(i)
             else:
                 # Use the standard template
 
@@ -114,11 +130,28 @@ def main():
                     if (name != "file_name") & (name != "mesh_filename"):
                         template_value = getattr(template[0], name)
                         setattr(destination[i], name, template_value)
+                standard_count += 1
+                standard_indices.append(i)
 
-    # Write the updated destination file
+        # Print summary statistics
+        total_count = standard_count + alternate_count
+        print(f"\nSummary Statistics")
+        print(f"------------------")
+        print(f"Total meshes processed: {total_count}")
+        print(f"Index range: {start_idx} to {range_end - 1}")
+        print(f"Dip threshold: {args['dip_threshold']}°")
+        print(f"\nStandard template applied: {standard_count} meshes")
+        if standard_indices:
+            print(f"  Indices: {standard_indices}")
+        print(f"Alternate template applied: {alternate_count} meshes")
+        if alternate_indices:
+            print(f"  Indices: {alternate_indices}")
+        print(f"Output file: {output_file_name}")
+
+    # Write the output file (does not overwrite original)
     data = [mesh_config.model_dump(mode="json") for mesh_config in destination]
-    with args["destination_file_name"].open("w") as destination_file:
-        json.dump(data, destination_file, indent=4)
+    with output_file_name.open("w") as output_file:
+        json.dump(data, output_file, indent=4)
 
 
 if __name__ == "__main__":
