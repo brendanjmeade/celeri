@@ -718,15 +718,6 @@ class Estimation:
             rates[mesh_idx] = elastic[mesh_idx] / kinematic[mesh_idx]
         return rates
 
-    @property
-    def eigenvalues(self) -> np.ndarray | None:
-        """The eigenvalues from the eigen decomposition (if used)."""
-        if self.index.eigen is None:
-            return None
-        return self.state_vector[
-            self.index.eigen.start_col_eigen[0] : self.index.eigen.end_col_eigen[-1]
-        ]
-
     def mcmc_draw(self, draw: int, chain: int):
         """Get the MCMC draw for a specific chain and draw number."""
         if self.mcmc_trace is None:
