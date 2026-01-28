@@ -28,7 +28,6 @@
     "sar_file_name": null,
     "segment_file_name": "../data/segment/wna_segment0.csv",
     "slip_constraint_weight": 1e5,
-    "snap_segments": 0,
     "solve_type": "dense",
     "station_file_name": "../../data/station/wna_station.csv",
     "tri_con_weight": 1e2,
