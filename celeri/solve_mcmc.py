@@ -82,6 +82,102 @@ def _constrain_field(
     return values
 
 
+def _log1mexp(x: np.ndarray) -> np.ndarray:
+    """log(1 - exp(x)), numerically stable implementation.
+
+    Based on the implementation in PyTensor.
+
+    The domain is x < 0, with _log1mexp(0) = -inf, and _log1mexp(-inf) = 0.
+
+    If x is large negative, then exp(x) is small, so we use the identity:
+
+      log(1 - exp(x)) = log(1 + (-exp(x))) = log1p(-exp(x))
+
+    If x is negative but close to zero, then exp(x) - 1 is small, so we use:
+
+      log(1 - exp(x)) = log(-(exp(x) - 1)) = log(-expm1(x))
+    """
+    return np.where(x < -0.693, np.log1p(-np.exp(x)), np.log(-np.expm1(x)))
+
+
+def _softplus_inv(x: np.ndarray) -> np.ndarray:
+    """Inverse of softplus: log(exp(x) - 1), numerically stable implementation.
+
+    The domain is x > 0, with _softplus_inv(0) = -inf, and _softplus_inv(inf) = inf.
+
+    For numerical stability, reduce to the case of _log1mexp via the identity:
+
+      log(exp(x) - 1) = log(exp(x) * (1 - exp(-x))) = x + log(1 - exp(-x))
+                      = x + _log1mexp(-x)
+    """
+    return x + _log1mexp(-x)
+
+
+def _unconstrain_field(
+    values: np.ndarray,
+    lower: float | None,
+    upper: float | None,
+    softplus_lengthscale: float | None = None,
+) -> np.ndarray:
+    """Inverse of _constrain_field: map constrained values to unconstrained space.
+
+    This is the pointwise inverse of _constrain_field, useful for setting
+    prior means in the unconstrained parameterization.
+
+    Parameters
+    ----------
+    values : np.ndarray
+        The constrained values to transform back to unconstrained space.
+        Must satisfy the bounds (lower < values < upper for two bounds,
+        values > lower for lower bound, values < upper for upper bound).
+    lower : float | None
+        Lower bound for the constraint.
+    upper : float | None
+        Upper bound for the constraint.
+    softplus_lengthscale : float | None
+        Length scale for softplus operations when only one bound is present.
+        Required when exactly one of lower/upper is set.
+
+    Returns
+    -------
+    np.ndarray
+        The unconstrained values.
+    """
+    from scipy.special import logit
+
+    if lower is not None and upper is not None:
+        scale = upper - lower
+        midpoint = (lower + upper) / 2
+        # y = sigmoid(4 * (x - midpoint) / scale) * scale + lower
+        # => x = midpoint + scale * logit((y - lower) / scale) / 4
+        normalized = (values - lower) / scale
+        return midpoint + scale * logit(normalized) / 4
+
+    if lower is not None:
+        if softplus_lengthscale is None:
+            raise ValueError(
+                "softplus_lengthscale is required when only lower bound is set"
+            )
+        # y = lower + L * softplus((x - lower) / L)
+        # => x = lower + L * softplus_inv((y - lower) / L)
+        return lower + softplus_lengthscale * _softplus_inv(
+            (values - lower) / softplus_lengthscale
+        )
+
+    if upper is not None:
+        if softplus_lengthscale is None:
+            raise ValueError(
+                "softplus_lengthscale is required when only upper bound is set"
+            )
+        # y = upper - L * softplus((upper - x) / L)
+        # => x = upper - L * softplus_inv((upper - y) / L)
+        return upper - softplus_lengthscale * _softplus_inv(
+            (upper - values) / softplus_lengthscale
+        )
+
+    return values
+
+
 def _operator_mult(operator: np.ndarray, vector):
     return operator.astype("f").copy(order="F") @ vector.astype("f")
 
