@@ -259,7 +259,7 @@ def test_eigen_to_velocities_shape(config_name):
         # eigen_to_velocities outputs 3 components (east, north, up) per station
         assert operator.shape[0] == 3 * n_stations, (
             f"Mesh {i}: eigen_to_velocities has {operator.shape[0]} rows, "
-            f"expected {3 * n_stations} (3 components × {n_stations} stations)"
+            f"expected {3 * n_stations} (3 components × {n_stations} stations)"  # noqa: RUF001
         )
 
 
