@@ -28,21 +28,20 @@ def _constrain_field(
 ):
     """Optionally transform values to satisfy bounds, using sigmoid or softplus.
 
-    The transformation applied depends on which bounds are present.
+    The transformation applied depends on which bounds are present. All
+    transformations are identity-like away from the bounds: values far from
+    the constrained region pass through approximately unchanged.
 
     No bounds: Values are returned unchanged.
 
     Single bound: A softplus with a given length scale is used.
-    For lower bound: large negative values exponentially approach the lower bound,
-    while large positive values are approximately lower + x.
-    For upper bound: large positive values exponentially approach the upper bound,
-    while large negative values are approximately upper + x.
+    For lower bound: values approaching -∞ asymptote to the lower bound,
+    while large positive values satisfy output ≈ input.
+    For upper bound: values approaching +∞ asymptote to the upper bound,
+    while large negative values satisfy output ≈ input.
 
-    Two bounds: A sigmoid scaled to the range [lower, upper] is used, with
-    unit slope at the center (input values are scaled so f'(0) = 1).
-
-    (Possible softplus TODO: adjust so large positive/negative values asymptote to x
-    rather than lower + x or upper + x.)
+    Two bounds: A sigmoid scaled to the range [lower, upper] is used.
+    The midpoint of the range maps to itself with unit slope (f'(midpoint) = 1).
 
     Parameters
     ----------
@@ -60,7 +59,8 @@ def _constrain_field(
 
     if lower is not None and upper is not None:
         scale = upper - lower
-        return pm.math.sigmoid(4 * values / scale) * scale + lower  # type: ignore[attr-defined]
+        midpoint = (lower + upper) / 2
+        return pm.math.sigmoid(4 * (values - midpoint) / scale) * scale + lower  # type: ignore[attr-defined]
 
     if lower is not None:
         if softplus_lengthscale is None:
@@ -68,7 +68,7 @@ def _constrain_field(
                 "softplus_lengthscale is required when only lower bound is set"
             )
         return lower + softplus_lengthscale * pt.softplus(  # type: ignore[operator]
-            values / softplus_lengthscale
+            (values - lower) / softplus_lengthscale
         )
     if upper is not None:
         if softplus_lengthscale is None:
@@ -76,7 +76,7 @@ def _constrain_field(
                 "softplus_lengthscale is required when only upper bound is set"
             )
         return upper - softplus_lengthscale * pt.softplus(  # type: ignore[operator]
-            -values / softplus_lengthscale
+            (upper - values) / softplus_lengthscale
         )
 
     return values
