@@ -157,10 +157,20 @@ class MeshConfig(BaseModel):
     elastic_constraints_ss: ScalarBound = ScalarBound(lower=None, upper=None)
     elastic_constraints_ds: ScalarBound = ScalarBound(lower=None, upper=None)
 
-    # GP prior sigma for coupling/elastic fields in MCMC.
+    # GP prior mean and sigma for coupling/elastic fields in MCMC.
     # When None, these use defaults from the top-level Config.
+    # The mean_parameterization determines whether the mean is specified in
+    # the constrained (bounded) or unconstrained (transformed) space.
+    coupling_mean_ss: float | None = None
+    coupling_mean_ds: float | None = None
+    coupling_mean_parameterization: Literal["constrained", "unconstrained"] | None = (
+        None
+    )
     coupling_sigma_ss: float | None = None
     coupling_sigma_ds: float | None = None
+    elastic_mean_ss: float | None = None
+    elastic_mean_ds: float | None = None
+    elastic_mean_parameterization: Literal["constrained", "unconstrained"] | None = None
     elastic_sigma_ss: float | None = None
     elastic_sigma_ds: float | None = None
 
