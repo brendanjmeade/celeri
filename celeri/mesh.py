@@ -157,8 +157,12 @@ class MeshConfig(BaseModel):
     elastic_constraints_ss: ScalarBound = ScalarBound(lower=None, upper=None)
     elastic_constraints_ds: ScalarBound = ScalarBound(lower=None, upper=None)
 
-    coupling_sigma: float = 0.25
-    elastic_sigma: float = 1.0
+    # GP prior sigma for coupling/elastic fields in MCMC.
+    # When None, these use defaults from the top-level Config.
+    coupling_sigma_ss: float | None = None
+    coupling_sigma_ds: float | None = None
+    elastic_sigma_ss: float | None = None
+    elastic_sigma_ds: float | None = None
 
     softplus_lengthscale: float = 1.0
 

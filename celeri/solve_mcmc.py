@@ -543,15 +543,24 @@ def _mesh_component(
         "strike_slip",
         "dip_slip",
     )
+    config = model.meshes[mesh_idx].config
     for kind in kinds:
         if kind == "strike_slip":
-            coupling_limit = model.meshes[mesh_idx].config.coupling_constraints_ss
-            rate_limit = model.meshes[mesh_idx].config.elastic_constraints_ss
+            coupling_limit = config.coupling_constraints_ss
+            rate_limit = config.elastic_constraints_ss
+            coupling_sigma = config.coupling_sigma_ss
+            elastic_sigma = config.elastic_sigma_ss
         elif kind == "dip_slip":
-            coupling_limit = model.meshes[mesh_idx].config.coupling_constraints_ds
-            rate_limit = model.meshes[mesh_idx].config.elastic_constraints_ds
+            coupling_limit = config.coupling_constraints_ds
+            rate_limit = config.elastic_constraints_ds
+            coupling_sigma = config.coupling_sigma_ds
+            elastic_sigma = config.elastic_sigma_ds
         else:
             raise ValueError(f"Unknown slip kind: {kind}")
+
+        # These should be set by Config.apply_mcmc_prior_defaults
+        assert coupling_sigma is not None
+        assert elastic_sigma is not None
 
         has_coupling_bound = (
             coupling_limit.lower is not None or coupling_limit.upper is not None
@@ -567,7 +576,7 @@ def _mesh_component(
                 vel_idx,
                 lower=coupling_limit.lower,
                 upper=coupling_limit.upper,
-                sigma=model.meshes[mesh_idx].config.coupling_sigma,
+                sigma=coupling_sigma,
             )
         else:
             elastic_tde, station_vels = _elastic_component(
@@ -578,7 +587,7 @@ def _mesh_component(
                 vel_idx,
                 lower=rate_limit.lower,
                 upper=rate_limit.upper,
-                sigma=model.meshes[mesh_idx].config.elastic_sigma,
+                sigma=elastic_sigma,
             )
 
         rates.append(station_vels)

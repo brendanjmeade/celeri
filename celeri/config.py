@@ -231,6 +231,13 @@ class Config(BaseModel):
     standard unweighted likelihood or if your network has uniform spatial coverage.
     """
 
+    # Default sigma for coupling/elastic GP priors in MCMC.
+    # These are defaults; mesh-specific values can override.
+    default_mcmc_coupling_sigma_ss: float = 1.0
+    default_mcmc_coupling_sigma_ds: float = 1.0
+    default_mcmc_elastic_sigma_ss: float = 1.0
+    default_mcmc_elastic_sigma_ds: float = 1.0
+
     mcmc_station_effective_area: float = 10_000**2
     """Effective area (in m²) for station likelihood weighting in MCMC.
 
@@ -367,6 +374,25 @@ class Config(BaseModel):
             error = mesh_config.has_mixed_constraints()
             if error:
                 raise ValueError(error)
+        return self
+
+    @model_validator(mode="after")
+    def apply_mcmc_prior_defaults(self) -> Self:
+        """Apply default MCMC prior parameters to mesh configs that don't set their own.
+
+        This propagates the top-level default values for coupling/elastic sigma
+        parameters down to individual mesh configurations.
+        """
+        mcmc_prior_defaults = {
+            "coupling_sigma_ss": self.default_mcmc_coupling_sigma_ss,
+            "coupling_sigma_ds": self.default_mcmc_coupling_sigma_ds,
+            "elastic_sigma_ss": self.default_mcmc_elastic_sigma_ss,
+            "elastic_sigma_ds": self.default_mcmc_elastic_sigma_ds,
+        }
+        for mesh_field, default_value in mcmc_prior_defaults.items():
+            for mesh_param in self.mesh_params:
+                if mesh_field not in mesh_param.model_fields_set:
+                    setattr(mesh_param, mesh_field, default_value)
         return self
 
 
