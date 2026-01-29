@@ -553,11 +553,11 @@ def _mesh_component(
         else:
             raise ValueError(f"Unknown slip kind: {kind}")
 
-        has_coupling_limit = (
+        has_coupling_bound = (
             coupling_limit.lower is not None or coupling_limit.upper is not None
         )
 
-        if has_coupling_limit:
+        if has_coupling_bound:
             elastic_tde, station_vels = _coupling_component(
                 model,
                 mesh_idx,
