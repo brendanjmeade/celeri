@@ -73,7 +73,9 @@ def main():
 
     # Create output filename with "_templated" suffix
     dest_path = args["destination_file_name"]
-    output_file_name = dest_path.parent / f"{dest_path.stem}_templated{dest_path.suffix}"
+    output_file_name = (
+        dest_path.parent / f"{dest_path.stem}_templated{dest_path.suffix}"
+    )
 
     # Track statistics
     standard_count = 0
@@ -95,8 +97,8 @@ def main():
             standard_indices.append(i)
 
         # Print summary statistics
-        print(f"\nSummary Statistics")
-        print(f"------------------")
+        print("\nSummary Statistics")
+        print("------------------")
         print(f"Total meshes processed: {standard_count}")
         print(f"Index range: {start_idx} to {range_end - 1}")
         print(f"Output file: {output_file_name}")
@@ -135,8 +137,8 @@ def main():
 
         # Print summary statistics
         total_count = standard_count + alternate_count
-        print(f"\nSummary Statistics")
-        print(f"------------------")
+        print("\nSummary Statistics")
+        print("------------------")
         print(f"Total meshes processed: {total_count}")
         print(f"Index range: {start_idx} to {range_end - 1}")
         print(f"Dip threshold: {args['dip_threshold']}°")

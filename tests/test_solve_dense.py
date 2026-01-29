@@ -259,7 +259,7 @@ def test_eigen_to_velocities_shape(config_name):
         # eigen_to_velocities outputs 3 components (east, north, up) per station
         assert operator.shape[0] == 3 * n_stations, (
             f"Mesh {i}: eigen_to_velocities has {operator.shape[0]} rows, "
-            f"expected {3 * n_stations} (3 components × {n_stations} stations)"
+            f"expected {3 * n_stations} (3 components × {n_stations} stations)"  # noqa: RUF001
         )
 
 
@@ -287,7 +287,9 @@ def test_end_row_eigen_consistency(config_name, include_vertical):
     assert estimation.index.end_station_row == expected_end_row
 
     for i in range(len(estimation.index.eigen.end_row_eigen)):
-        assert estimation.index.eigen.end_row_eigen[i] == estimation.index.end_station_row, (
+        assert (
+            estimation.index.eigen.end_row_eigen[i] == estimation.index.end_station_row
+        ), (
             f"Mesh {i}: end_row_eigen[{i}]={estimation.index.eigen.end_row_eigen[i]} "
             f"doesn't match index.end_station_row={estimation.index.end_station_row}"
         )
