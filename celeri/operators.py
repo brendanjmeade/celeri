@@ -327,6 +327,49 @@ class EigenOperators:
 
 
 @dataclass
+class LosOperators:
+    """Operators for computing LOS velocities at observation locations.
+
+    These operators map model parameters directly to line-of-sight velocities
+    by pre-projecting the (east, north, up) velocity operators onto the look
+    vectors. This avoids repeated dot products during forward evaluation.
+
+    Attributes:
+        rotation_to_los: Maps block rotations to LOS velocities.
+            Shape: (n_los, 3 * n_blocks)
+        block_strain_rate_to_los: Maps block strain rates to LOS velocities.
+            Shape: (n_los, 3 * n_strain_blocks)
+        mogi_to_los: Maps Mogi sources to LOS velocities.
+            Shape: (n_los, n_mogis)
+        okada_to_los: Maps segment slip rates to LOS velocities via Okada.
+            Shape: (n_los, 3 * n_segments)
+        rotation_to_okada_los: Composed operator rotation -> slip rate -> Okada -> LOS.
+            Shape: (n_los, 3 * n_blocks)
+        tde_to_los: Maps TDE slip rates to LOS velocities, by mesh. Can be None
+            if discarded after building eigen_to_los to save memory.
+            Dict mapping mesh index to array of shape (n_los, 3 * n_tde_elements)
+        eigen_to_los: Maps eigenmode coefficients to LOS velocities, by mesh.
+            Dict mapping mesh index to array of shape (n_los, n_modes)
+        los_data: Observed LOS velocities. Shape: (n_los,)
+        los_err: Errors on LOS velocities. Shape: (n_los,)
+    """
+
+    rotation_to_los: np.ndarray
+    block_strain_rate_to_los: np.ndarray
+    mogi_to_los: np.ndarray
+    okada_to_los: np.ndarray
+    rotation_to_okada_los: np.ndarray
+    eigen_to_los: dict[int, np.ndarray]
+    los_data: np.ndarray
+    los_err: np.ndarray
+    tde_to_los: dict[int, np.ndarray] | None = None
+
+    @property
+    def n_los(self) -> int:
+        return len(self.los_data)
+
+
+@dataclass
 class Operators:
     """Linear operators comprising the forward model."""
 
@@ -367,7 +410,10 @@ class Operators:
     """TDE-related operators."""
     eigen: EigenOperators | None
     """Operators related to eigenmodes for TDEs."""
-
+    los: LosOperators | None
+    """Operators for LOS (line-of-sight) observations. These operators map
+    model parameters directly to LOS velocities."""
+    
     @overload
     def kinematic_slip_rate(
         self, parameters: np.ndarray, mesh_idx: int, smooth: bool
@@ -610,6 +656,7 @@ class _OperatorBuilder:
             rotation_to_slip_rate_to_okada_to_velocities=self.rotation_to_slip_rate_to_okada_to_velocities,
             eigen=None,
             tde=None,
+            los=None,
         )
 
     def finalize_tde(self) -> Operators:
@@ -760,6 +807,146 @@ def build_operators(
     if tde:
         return operators.finalize_tde()
     return operators.finalize_basic()
+
+
+def _project_operator_to_los(
+    operator: np.ndarray, look_vectors: np.ndarray
+) -> np.ndarray:
+    """Project a velocity operator onto look vectors to get LOS operator.
+
+    Given an operator G of shape (3 * n_los, n_cols) where rows are interleaved
+    as [E0, N0, U0, E1, N1, U1, ...], and look vectors L of shape (n_los, 3),
+    compute the projection so that:
+
+        los_velocity = projected @ params
+
+    Args:
+        operator: Velocity operator, shape (3 * n_los, n_cols)
+        look_vectors: Look vectors, shape (n_los, 3) with columns [E, N, U]
+
+    Returns:
+        Projected operator, shape (n_los, n_cols)
+    """
+    n_los = look_vectors.shape[0]
+    n_cols = operator.shape[1]
+    operator_reshaped = operator.reshape(n_los, 3, n_cols)
+    return np.einsum("ij,ijk->ik", look_vectors, operator_reshaped)
+
+
+def build_los_operators(
+    model: Model,
+    operators: Operators,
+    *,
+    discard_tde_to_los: bool = False,
+) -> LosOperators | None:
+    """Build operators for LOS (line-of-sight) observations.
+
+    Computes operators that map model parameters directly to LOS velocities
+    by pre-projecting (east, north, up) velocity operators onto look vectors.
+    This avoids repeated dot products during forward evaluation.
+
+    Args:
+        model: The celeri Model containing LOS data in model.los
+        operators: The station-based operators (used for rotation_to_slip_rate)
+        discard_tde_to_los: If True, discard tde_to_los after building eigen_to_los
+            to save memory. Only valid when operators.eigen is not None.
+
+    Returns:
+        LosOperators if LOS data exists, None otherwise.
+    """
+    los = model.los
+    if los.empty:
+        return None
+
+    n_los = len(los)
+    n_blocks = len(model.block)
+    logger.info(f"Building LOS operators for {n_los} observations")
+
+    look_vectors = np.column_stack(
+        [
+            np.asarray(los.look_vector_east.values),
+            np.asarray(los.look_vector_north.values),
+            np.asarray(los.look_vector_up.values),
+        ]
+    )
+
+    # Block rotation to velocity at LOS locations
+    rotation_to_velocities = get_rotation_to_velocities_partials(los, n_blocks)
+    rotation_to_los = _project_operator_to_los(rotation_to_velocities, look_vectors)
+
+    # Block strain rate to velocity at LOS locations
+    block_strain_rate_to_velocities, _ = get_block_strain_rate_to_velocities_partials(
+        model.block, los, model.segment
+    )
+    block_strain_rate_to_los = _project_operator_to_los(
+        block_strain_rate_to_velocities, look_vectors
+    )
+
+    # Mogi source to velocity at LOS locations
+    mogi_to_velocities = get_mogi_to_velocities_partials(model.mogi, los, model.config)
+    mogi_to_los = _project_operator_to_los(mogi_to_velocities, look_vectors)
+
+    # Segment slip rate to Okada velocity at LOS locations
+    okada_to_velocities = get_segment_station_operator_okada(
+        model.segment, los, model.config
+    )
+    okada_to_los = _project_operator_to_los(okada_to_velocities, look_vectors)
+
+    # Composed rotation -> slip rate -> Okada operator
+    rotation_to_okada_velocities = okada_to_velocities @ operators.rotation_to_slip_rate
+    rotation_to_okada_los = _project_operator_to_los(
+        rotation_to_okada_velocities, look_vectors
+    )
+
+    # TDE operators at LOS locations
+    tde_to_los: dict[int, np.ndarray] = {}
+    eigen_to_los: dict[int, np.ndarray] = {}
+
+    if operators.tde is not None:
+        for mesh_idx in model.segment_mesh_indices:
+            tde_to_velocities = get_tde_to_velocities_single_mesh(
+                model.meshes, los, model.config, mesh_idx
+            )
+            tde_to_los[mesh_idx] = _project_operator_to_los(
+                tde_to_velocities, look_vectors
+            )
+
+        if operators.eigen is not None:
+            for mesh_idx in model.segment_mesh_indices:
+                # eigen_to_los = tde_to_los @ eigenvectors
+                # The eigenvectors map from eigenmode coefficients to TDE slip rates
+                tde_los_op = tde_to_los[mesh_idx]
+                # Slice columns to keep only strike-slip and dip-slip (exclude tensile)
+                # For LOS operator, columns are still (ss, ds, ts) interleaved
+                # Need the original tde_to_velocities shape for column slicing
+                tde_velocities: np.ndarray = get_tde_to_velocities_single_mesh(
+                    model.meshes, los, model.config, mesh_idx
+                )
+                tde_keep_col_index = get_keep_index_12(tde_velocities.shape[1])
+                tde_los_ss_ds = tde_los_op[:, tde_keep_col_index]
+                eigenvectors = operators.eigen.eigenvectors_to_tde_slip[mesh_idx]
+                # Note: negative sign because elastic velocity is opposite to slip
+                eigen_to_los[mesh_idx] = -tde_los_ss_ds @ eigenvectors
+
+    los_data = np.asarray(los.los_val.values)
+    los_err = np.asarray(los.los_err.values)
+
+    # Optionally discard tde_to_los to save memory
+    final_tde_to_los: dict[int, np.ndarray] | None = tde_to_los
+    if discard_tde_to_los:
+        final_tde_to_los = None
+
+    return LosOperators(
+        rotation_to_los=rotation_to_los,
+        block_strain_rate_to_los=block_strain_rate_to_los,
+        mogi_to_los=mogi_to_los,
+        okada_to_los=okada_to_los,
+        rotation_to_okada_los=rotation_to_okada_los,
+        eigen_to_los=eigen_to_los,
+        los_data=los_data,
+        los_err=los_err,
+        tde_to_los=final_tde_to_los,
+    )
 
 
 def _store_gaussian_smoothing_operator(

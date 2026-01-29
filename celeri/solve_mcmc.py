@@ -11,7 +11,12 @@ from scipy import linalg, spatial
 from celeri.celeri_util import get_keep_index_12
 from celeri.constants import RADIUS_EARTH
 from celeri.model import Model
-from celeri.operators import Operators, build_operators
+from celeri.operators import (
+    LosOperators,
+    Operators,
+    build_los_operators,
+    build_operators,
+)
 from celeri.solve import Estimation, build_estimation
 
 DIRECTION_IDX = {
@@ -893,6 +898,247 @@ def _add_station_velocity_likelihood(model: Model, mu):
         )
 
 
+def _los_velocity_from_elastic_mesh(
+    model: Model,
+    mesh_idx: int,
+    kind: Literal["strike_slip", "dip_slip"],
+    elastic,
+    los_ops: LosOperators,
+):
+    """Compute LOS velocity from elastic slip rates on a mesh.
+
+    Similar to _station_vel_from_elastic_mesh but for LOS observation points.
+    Uses project_to_eigen method since that's the default for MCMC.
+
+    Parameters
+    ----------
+    model : Model
+        The model instance
+    mesh_idx : int
+        Index of the mesh
+    kind : Literal["strike_slip", "dip_slip"]
+        Type of slip
+    elastic : array
+        Elastic slip rates on the mesh
+    los_ops : LosOperators
+        LOS operators containing eigen_to_los
+
+    Returns
+    -------
+    array
+        LOS velocities at observation locations, shape (n_los,)
+    """
+    eigenvectors = _get_eigenmodes(model, mesh_idx, kind)
+    coefs = _operator_mult(eigenvectors.T, elastic)
+
+    if kind == "strike_slip":
+        n_eigs = model.meshes[mesh_idx].config.n_modes_strike_slip
+        start_idx = 0
+    else:
+        n_eigs = model.meshes[mesh_idx].config.n_modes_dip_slip
+        start_idx = model.meshes[mesh_idx].config.n_modes_strike_slip
+
+    to_los = los_ops.eigen_to_los[mesh_idx][:, start_idx : start_idx + n_eigs]
+
+    los_velocity = _operator_mult(to_los, coefs)
+    return los_velocity
+
+
+def _los_coupling_component(
+    model: Model,
+    mesh_idx: int,
+    kind: Literal["strike_slip", "dip_slip"],
+    rotation,
+    operators: Operators,
+    los_ops: LosOperators,
+    lower: float | None,
+    upper: float | None,
+):
+    """Model elastic slip rate as coupling * kinematic slip rate for LOS.
+    Gets the coupling field from the station component, which already exists.
+
+    Returns the velocities at LOS locations due to elastic deformation.
+    """
+    assert operators.eigen is not None
+    assert operators.tde is not None
+
+    kind_short = {"strike_slip": "ss", "dip_slip": "ds"}[kind]
+    idx = DIRECTION_IDX[kind]
+
+    if mesh_idx not in operators.rotation_to_tri_slip_rate:
+        raise ValueError(
+            f"Mesh {mesh_idx} does not have well defined kinematic slip rates. "
+            "Coupling constraints cannot be used."
+        )
+
+    operator = operators.rotation_to_tri_slip_rate[mesh_idx][idx, :]
+    kinematic = _operator_mult(operator, rotation)
+
+    eigenvectors = _get_eigenmodes(model, mesh_idx, kind)
+    n_eigs = eigenvectors.shape[1]
+
+    import pymc as pm
+
+    try:
+        coefs = pm.modelcontext(None)[f"coupling_coefs_{mesh_idx}_{kind_short}"]
+    except KeyError:
+        # If not defined yet, create them (this shouldn't happen normally)
+        coefs = pm.Normal(
+            f"coupling_coefs_los_{mesh_idx}_{kind_short}", mu=0, sigma=10, shape=n_eigs
+        )
+
+    coupling_field = _operator_mult(eigenvectors, coefs)
+    softplus_lengthscale = model.meshes[mesh_idx].config.softplus_lengthscale
+    coupling_field = _constrain_field(
+        coupling_field, lower, upper, softplus_lengthscale
+    )
+    elastic_tde = kinematic * coupling_field
+
+    los_vels = _los_velocity_from_elastic_mesh(
+        model,
+        mesh_idx,
+        kind,
+        elastic_tde,
+        los_ops,
+    )
+    return los_vels.astype("d")
+
+
+def _los_elastic_component(
+    model: Model,
+    mesh_idx: int,
+    kind: Literal["strike_slip", "dip_slip"],
+    operators: Operators,
+    los_ops: LosOperators,
+    lower: float | None,
+    upper: float | None,
+):
+    """Model elastic slip rate at LOS locations as eigenmode expansion.
+
+    Returns LOS velocities at observation locations due to elastic deformation.
+    """
+    assert operators.eigen is not None
+    assert operators.tde is not None
+
+    import pymc as pm
+
+    kind_short = {"strike_slip": "ss", "dip_slip": "ds"}[kind]
+
+    eigenvectors = _get_eigenmodes(model, mesh_idx, kind)
+    n_eigs = eigenvectors.shape[1]
+
+    if kind == "strike_slip":
+        start_idx = 0
+    else:
+        start_idx = model.meshes[mesh_idx].config.n_modes_strike_slip
+
+    to_los = los_ops.eigen_to_los[mesh_idx][:, start_idx : start_idx + n_eigs]
+
+    # Get elastic eigenmode parameters (should already exist from station component)
+    try:
+        param = pm.modelcontext(None)[f"elastic_eigen_{mesh_idx}_{kind_short}"]
+    except KeyError:
+        # If not defined, create them (shouldn't happen normally)
+        scale = 1 / np.sqrt((to_los**2).mean())
+        raw = pm.Normal(f"elastic_eigen_raw_los_{mesh_idx}_{kind_short}", shape=n_eigs)
+        param = pm.Deterministic(
+            f"elastic_eigen_los_{mesh_idx}_{kind_short}", scale * raw
+        )
+
+    softplus_lengthscale = model.meshes[mesh_idx].config.softplus_lengthscale
+    if lower is None and upper is None:
+        los_vels = _operator_mult(to_los, param)
+    else:
+        elastic_tde = _constrain_field(
+            _operator_mult(eigenvectors, param), lower, upper, softplus_lengthscale
+        )
+        los_vels = _los_velocity_from_elastic_mesh(
+            model,
+            mesh_idx,
+            kind,
+            elastic_tde,
+            los_ops,
+        )
+
+    return los_vels
+
+
+def _los_mesh_component(
+    model: Model,
+    mesh_idx: int,
+    rotation,
+    operators: Operators,
+    los_ops: LosOperators,
+):
+    """Compute velocity contributions from a mesh at LOS locations."""
+    rates = []
+
+    kinds: tuple[Literal["strike_slip"], Literal["dip_slip"]] = (
+        "strike_slip",
+        "dip_slip",
+    )
+    for kind in kinds:
+        if kind == "strike_slip":
+            coupling_limit = model.meshes[mesh_idx].config.coupling_constraints_ss
+            rate_limit = model.meshes[mesh_idx].config.elastic_constraints_ss
+        else:
+            coupling_limit = model.meshes[mesh_idx].config.coupling_constraints_ds
+            rate_limit = model.meshes[mesh_idx].config.elastic_constraints_ds
+
+        has_coupling_limit = (
+            coupling_limit.lower is not None or coupling_limit.upper is not None
+        )
+
+        if has_coupling_limit:
+            los_vels = _los_coupling_component(
+                model,
+                mesh_idx,
+                kind,
+                rotation,
+                operators,
+                los_ops,
+                lower=coupling_limit.lower,
+                upper=coupling_limit.upper,
+            )
+        else:
+            los_vels = _los_elastic_component(
+                model,
+                mesh_idx,
+                kind,
+                operators,
+                los_ops,
+                lower=rate_limit.lower,
+                upper=rate_limit.upper,
+            )
+
+        rates.append(los_vels)
+    return sum(rates)
+
+
+def _add_los_velocity_likelihood(
+    los_ops: LosOperators,
+    los_pred,
+):
+    """Add LOS velocity likelihood to the PyMC model.
+
+    Args:
+        los_ops: LOS operators containing observations and errors
+        los_pred: Predicted LOS velocities, shape (n_los,)
+    """
+    import pymc as pm
+
+    pm.Deterministic("los_predicted", los_pred)
+
+    sigma_los = pm.HalfNormal("sigma_los", sigma=2)
+
+    pm.Normal(
+        "los_velocity",
+        mu=los_pred,
+        sigma=sigma_los * los_ops.los_err,
+        observed=los_ops.los_data,
+    )
+
+
 def _add_segment_constraints(model: Model, operators: Operators, rotation):
     """Add segment slip rate constraints to the PyMC model.
 
@@ -995,11 +1241,18 @@ def _add_segment_constraints(model: Model, operators: Operators, rotation):
             )
 
 
-def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
+def _build_pymc_model(
+    model: Model,
+    operators: Operators,
+) -> PymcModel:
     """Build the complete PyMC model for MCMC inference.
 
     Combines all velocity components (block strain, rotation, Mogi, elastic)
-    and adds likelihoods for station and segment observations.
+    and adds likelihoods for station, LOS, and segment observations.
+
+    Args:
+        model: The celeri Model
+        operators: Operators for the forward model
     """
     assert operators.eigen is not None
     assert operators.tde is not None
@@ -1036,6 +1289,9 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
         "slip_comp": pd.Index(["strike_slip", "dip_slip", "tensile_slip"]),
     }
 
+    if operators.los is not None:
+        coords["los"] = pd.RangeIndex(operators.los.n_los)
+
     with pm.Model(coords=coords) as pymc_model:
         block_strain_rate_velocity = _add_block_strain_rate_component(
             operators, vel_idx
@@ -1069,6 +1325,43 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
 
         _add_station_velocity_likelihood(model, mu_det)
         _add_segment_constraints(model, operators, rotation)
+
+        if operators.los is not None:
+            los = operators.los
+            logger.info(f"Adding LOS likelihood with {los.n_los} observations")
+
+            los_block_strain = _operator_mult(
+                los.block_strain_rate_to_los.astype("f"),
+                pm.modelcontext(None)["block_strain_rate"].astype("f"),
+            )
+
+            los_rotation = _operator_mult(
+                los.rotation_to_los.astype("f"),
+                rotation.astype("f"),
+            )
+
+            los_okada = _operator_mult(
+                los.rotation_to_okada_los.astype("f"),
+                rotation.astype("f"),
+            )
+
+            los_mogi = _operator_mult(
+                los.mogi_to_los.astype("f"),
+                pm.modelcontext(None)["mogi"].astype("f"),
+            )
+
+            los_elastic_velocities = []
+            for key, _ in enumerate(model.meshes):
+                los_elastic_velocities.append(
+                    _los_mesh_component(model, key, rotation, operators, los)
+                )
+            los_elastic = sum(los_elastic_velocities) if los_elastic_velocities else 0
+
+            los_pred = (
+                los_block_strain + los_rotation - los_okada + los_mogi + los_elastic
+            )
+
+            _add_los_velocity_likelihood(los, los_pred)
 
     return pymc_model  # type: ignore[return-value]
 
@@ -1116,10 +1409,9 @@ def solve_mcmc(
                 "a segment with mesh_flag=1 in the segment file."
             )
 
+    use_streaming = model.config.mcmc_station_velocity_method == "project_to_eigen"
+
     if operators is None:
-        # Only use streaming mode (discard_tde_to_velocities=True) when using project_to_eigen.
-        # The direct and low_rank methods require the full tde_to_velocities matrices.
-        use_streaming = model.config.mcmc_station_velocity_method == "project_to_eigen"
         if use_streaming:
             logger.info(
                 "Building operators with streaming mode (discard_tde_to_velocities=True)"
@@ -1136,6 +1428,12 @@ def solve_mcmc(
         raise ValueError(
             "Operators must have both TDE and eigen components for MCMC solve."
         )
+
+    operators.los = build_los_operators(
+        model, operators, discard_tde_to_los=use_streaming
+    )
+    if operators.los is not None:
+        logger.info(f"Built LOS operators for {operators.los.n_los} observations")
 
     pymc_model = _build_pymc_model(model, operators)
 
