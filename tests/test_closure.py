@@ -106,13 +106,13 @@ def test_global_closure():
     config_file_name = "./tests/configs/test_closure_config.json"
     config = celeri.get_config(config_file_name)
     # logger = celeri.get_logger(config)
-    segment, block, meshes, station, mogi, sar = celeri.read_data(config)
+    segment, block, meshes, station, mogi, sar, los = celeri.read_data(config)
 
     station = celeri.process_station(station, config)
     segment = celeri.process_segment(segment, config, meshes)
     sar = celeri.process_sar(sar, config)
-    closure, segment, station, block, mogi, sar = celeri.assign_block_labels(
-        segment, station, block, mogi, sar
+    closure, segment, station, block, mogi, sar, los = celeri.assign_block_labels(
+        segment, station, block, mogi, sar, los
     )
 
     # Compare calculated edge indices with stored edge indices
