@@ -548,9 +548,11 @@ def _mesh_component(
         if kind == "strike_slip":
             coupling_limit = model.meshes[mesh_idx].config.coupling_constraints_ss
             rate_limit = model.meshes[mesh_idx].config.elastic_constraints_ss
-        else:
+        elif kind == "dip_slip":
             coupling_limit = model.meshes[mesh_idx].config.coupling_constraints_ds
             rate_limit = model.meshes[mesh_idx].config.elastic_constraints_ds
+        else:
+            raise ValueError(f"Unknown slip kind: {kind}")
 
         has_coupling_limit = (
             coupling_limit.lower is not None or coupling_limit.upper is not None
