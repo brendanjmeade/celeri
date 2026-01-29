@@ -454,14 +454,6 @@ def _elastic_component(
 
     kind_short = {"strike_slip": "ss", "dip_slip": "ds"}[kind]
 
-    scale = 0.0
-    for op in operators.eigen.eigen_to_velocities.values():
-        # Use sliced operator for scale computation
-        scale += (op[vel_idx, :] ** 2).mean()
-
-    scale = scale / len(operators.eigen.eigen_to_velocities)
-    scale = 1 / np.sqrt(scale)
-
     to_velocity = _get_eigen_to_velocity(
         model,
         mesh_idx,
@@ -473,12 +465,11 @@ def _elastic_component(
         model, mesh_idx, kind, sigma
     )
     n_eigs = variances.size
-    raw = pm.Normal(
-        f"elastic_eigen_raw_{mesh_idx}_{kind_short}",
+    param = pm.Normal(
+        f"elastic_eigen_{mesh_idx}_{kind_short}",
         sigma=np.sqrt(variances),
         shape=n_eigs,
     )
-    param = pm.Deterministic(f"elastic_eigen_{mesh_idx}_{kind_short}", scale * raw)
     softplus_lengthscale = model.meshes[mesh_idx].config.softplus_lengthscale
     elastic_tde = _constrain_field(
         _operator_mult(eigenvectors, param), lower, upper, softplus_lengthscale
