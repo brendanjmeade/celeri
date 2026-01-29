@@ -294,7 +294,8 @@ def _station_vel_from_elastic_mesh(
     method = model.config.mcmc_station_velocity_method
 
     # Validate that tde_to_velocities is available for methods that need it
-    if method in ("direct", "low_rank") and operators.tde.tde_to_velocities is None:
+    tde_to_velocities = operators.tde.tde_to_velocities
+    if method in ("direct", "low_rank") and tde_to_velocities is None:
         raise NotImplementedError(
             f"mcmc_station_velocity_method={method!r} requires tde_to_velocities, "
             "but operators were built with discard_tde_to_velocities=True. "
@@ -303,9 +304,8 @@ def _station_vel_from_elastic_mesh(
         )
 
     if method == "low_rank":
-        to_station = operators.tde.tde_to_velocities[mesh_idx][vel_idx, :][
-            :, idx.start : None : 3
-        ]
+        assert tde_to_velocities is not None
+        to_station = tde_to_velocities[mesh_idx][vel_idx, :][:, idx.start : None : 3]
         u, s, vh = linalg.svd(to_station, full_matrices=False)
         threshold = 1e-5
         mask = s > threshold
@@ -333,9 +333,8 @@ def _station_vel_from_elastic_mesh(
         elastic_velocity = _operator_mult(to_velocity, coefs)
         return elastic_velocity
     elif method == "direct":
-        to_station = operators.tde.tde_to_velocities[mesh_idx][vel_idx, :][
-            :, idx.start : None : 3
-        ]
+        assert tde_to_velocities is not None
+        to_station = tde_to_velocities[mesh_idx][vel_idx, :][:, idx.start : None : 3]
         elastic_velocity = _operator_mult(-to_station, elastic)
         return elastic_velocity
     else:

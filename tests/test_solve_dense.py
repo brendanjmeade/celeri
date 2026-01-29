@@ -14,6 +14,7 @@ def test_operator_tde_to_velocities(config_name):
     estimation = celeri.assemble_and_solve_dense(model, eigen=True, tde=True)
 
     assert estimation.operators.tde is not None
+    assert estimation.operators.tde.tde_to_velocities is not None
 
     operator = estimation.operators.tde.tde_to_velocities[0]
     rng = np.random.default_rng(seed=0)
