@@ -616,31 +616,21 @@ def _mesh_component(
     # These should be set by Config.apply_mcmc_prior_defaults
     assert config.coupling_mean_parameterization is not None
     assert config.elastic_mean_parameterization is not None
+    assert config.coupling_sigma is not None
+    assert config.coupling_mean is not None
+    assert config.elastic_sigma is not None
+    assert config.elastic_mean is not None
 
     for kind in kinds:
         kind_short = {"strike_slip": "ss", "dip_slip": "ds"}[kind]
         if kind == "strike_slip":
             coupling_limit = config.coupling_constraints_ss
             rate_limit = config.elastic_constraints_ss
-            coupling_sigma = config.coupling_sigma_ss
-            coupling_mean = config.coupling_mean_ss
-            elastic_sigma = config.elastic_sigma_ss
-            elastic_mean = config.elastic_mean_ss
         elif kind == "dip_slip":
             coupling_limit = config.coupling_constraints_ds
             rate_limit = config.elastic_constraints_ds
-            coupling_sigma = config.coupling_sigma_ds
-            coupling_mean = config.coupling_mean_ds
-            elastic_sigma = config.elastic_sigma_ds
-            elastic_mean = config.elastic_mean_ds
         else:
             raise ValueError(f"Unknown slip kind: {kind}")
-
-        # These should be set by Config.apply_mcmc_prior_defaults
-        assert coupling_sigma is not None
-        assert coupling_mean is not None
-        assert elastic_sigma is not None
-        assert elastic_mean is not None
 
         has_coupling_bound = (
             coupling_limit.lower is not None or coupling_limit.upper is not None
@@ -648,7 +638,7 @@ def _mesh_component(
 
         if has_coupling_bound:
             mu_unconstrained = _get_unconstrained_mean(
-                coupling_mean,
+                config.coupling_mean,
                 config.coupling_mean_parameterization,
                 coupling_limit.lower,
                 coupling_limit.upper,
@@ -664,12 +654,12 @@ def _mesh_component(
                 vel_idx,
                 lower=coupling_limit.lower,
                 upper=coupling_limit.upper,
-                sigma=coupling_sigma,
+                sigma=config.coupling_sigma,
                 mu_unconstrained=mu_unconstrained,
             )
         else:
             mu_unconstrained = _get_unconstrained_mean(
-                elastic_mean,
+                config.elastic_mean,
                 config.elastic_mean_parameterization,
                 rate_limit.lower,
                 rate_limit.upper,
@@ -684,7 +674,7 @@ def _mesh_component(
                 vel_idx,
                 lower=rate_limit.lower,
                 upper=rate_limit.upper,
-                sigma=elastic_sigma,
+                sigma=config.elastic_sigma,
                 mu_unconstrained=mu_unconstrained,
             )
 

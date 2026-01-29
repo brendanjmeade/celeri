@@ -161,18 +161,14 @@ class MeshConfig(BaseModel):
     # When None, these use defaults from the top-level Config.
     # The mean_parameterization determines whether the mean is specified in
     # the constrained (bounded) or unconstrained (transformed) space.
-    coupling_mean_ss: float | None = None
-    coupling_mean_ds: float | None = None
+    coupling_mean: float | None = None
     coupling_mean_parameterization: Literal["constrained", "unconstrained"] | None = (
         None
     )
-    coupling_sigma_ss: float | None = None
-    coupling_sigma_ds: float | None = None
-    elastic_mean_ss: float | None = None
-    elastic_mean_ds: float | None = None
+    coupling_sigma: float | None = None
+    elastic_mean: float | None = None
     elastic_mean_parameterization: Literal["constrained", "unconstrained"] | None = None
-    elastic_sigma_ss: float | None = None
-    elastic_sigma_ds: float | None = None
+    elastic_sigma: float | None = None
 
     softplus_lengthscale: float = 1.0
 
