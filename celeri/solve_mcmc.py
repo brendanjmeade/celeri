@@ -38,8 +38,8 @@ def _constrain_field(
     For upper bound: large positive values exponentially approach the upper bound,
     while large negative values are approximately upper + x.
 
-    Two bounds: A sigmoid scaled to the range [lower, upper] is used, and
-    input values are interpreted as logits.
+    Two bounds: A sigmoid scaled to the range [lower, upper] is used, with
+    unit slope at the center (input values are scaled so f'(0) = 1).
 
     (Possible softplus TODO: adjust so large positive/negative values asymptote to x
     rather than lower + x or upper + x.)
@@ -60,7 +60,7 @@ def _constrain_field(
 
     if lower is not None and upper is not None:
         scale = upper - lower
-        return pm.math.sigmoid(values) * scale + lower  # type: ignore[attr-defined]
+        return pm.math.sigmoid(4 * values / scale) * scale + lower  # type: ignore[attr-defined]
 
     if lower is not None:
         if softplus_lengthscale is None:
