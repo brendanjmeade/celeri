@@ -703,6 +703,7 @@ def build_operators(
     eigen: bool = True,
     tde: bool = True,
     discard_tde_to_velocities: bool = False,
+    obs_points: pd.DataFrame | None = None,
 ) -> Operators:
     """Build linear operators for the forward model.
 
@@ -715,11 +716,18 @@ def build_operators(
             memory. This is safe when using mcmc_station_velocity_method="project_to_eigen"
             (the default). Set to False if you need the raw TDE operators for
             methods like "direct" or "low_rank".
+        obs_points: DataFrame of observation points to use for building velocity
+            operators. Must have columns: lon, lat, depth, x, y, z, block_label.
+            If None (default), uses model.station. Pass model.obs to include
+            both station and LOS observation points.
     """
     if eigen and not tde:
         raise ValueError("eigen operators require tde")
     if discard_tde_to_velocities and not eigen:
         raise ValueError("discard_tde_to_velocities requires eigen=True")
+
+    if obs_points is None:
+        obs_points = model.station
 
     operators = _OperatorBuilder(model)
 
@@ -727,7 +735,11 @@ def build_operators(
     # When discard_tde_to_velocities is True, skip loading tde_to_velocities
     # as we'll compute eigen_to_velocities in streaming mode later
     _store_elastic_operators(
-        model, operators, tde=tde, skip_tde_to_velocities=discard_tde_to_velocities
+        model,
+        operators,
+        tde=tde,
+        skip_tde_to_velocities=discard_tde_to_velocities,
+        obs_points=obs_points,
     )
 
     # Get TDE smoothing operators
@@ -735,11 +747,11 @@ def build_operators(
 
     # Block rotation to velocity operator
     operators.rotation_to_velocities = get_rotation_to_velocities_partials(
-        model.station, len(model.block)
+        obs_points, len(model.block)
     )
 
     operators.global_float_block_rotation = get_global_float_block_rotation_partials(
-        model.station
+        obs_points
     )
 
     # Soft block motion constraints
@@ -758,12 +770,12 @@ def build_operators(
         operators.block_strain_rate_to_velocities,
         _strain_rate_block_index,
     ) = get_block_strain_rate_to_velocities_partials(
-        model.block, model.station, model.segment
+        model.block, obs_points, model.segment
     )
 
     # Mogi source operator
     operators.mogi_to_velocities = get_mogi_to_velocities_partials(
-        model.mogi, model.station, model.config
+        model.mogi, obs_points, model.config
     )
 
     # Soft TDE boundary condition constraints
@@ -793,7 +805,11 @@ def build_operators(
 
     if eigen:
         _compute_eigen_to_velocities(
-            model, operators, index, streaming=discard_tde_to_velocities
+            model,
+            operators,
+            index,
+            streaming=discard_tde_to_velocities,
+            obs_points=obs_points,
         )
 
     # Get smoothing operators for post-hoc smoothing of slip
@@ -834,24 +850,29 @@ def _store_gaussian_smoothing_operator(
 
 
 def _hash_elastic_operator_input(
-    meshes: list[MeshConfig], station: DataFrame, config: Config
+    meshes: list[MeshConfig], obs_points: DataFrame, config: Config
 ):
-    """Create a hash from geometric components of station DataFrames and elastic
-    parameters from config. This allows us to check if we need to recompute elastic operators,
-    or if we can use cached ones.
+    """Create a hash from observation point geometry and elastic parameters.
+
+    Used to determine if cached elastic operators can be reused. The hash includes:
+    - Geometric columns (lon, lat, depth, x, y, z) for all observation points
+    - Material parameters (mu, lambda)
+    - Mesh configurations (excluding constraint parameters)
 
     Args:
-        meshes: list[MeshConfig] containing mesh configuration information
-        station: DataFrame containing station information
-        config: Config object containing material parameters
+        meshes: List of mesh configurations.
+        obs_points: DataFrame of observation points (stations, LOS, or combined).
+            When using combined observations (model.obs), includes both station
+            and LOS points with their respective columns.
+        config: Config object containing material parameters.
 
     Returns:
-        str: Hash string representing the input data
+        16-character hash string representing the input data.
     """
     geometric_columns = ["lon", "lat", "depth", "x", "y", "z"]
-    station_geom = station[geometric_columns].copy()
-    station_str = station_geom.to_json()
-    assert isinstance(station_str, str)
+    obs_geom = obs_points[geometric_columns].copy()
+    obs_str = obs_geom.to_json()
+    assert isinstance(obs_str, str)
 
     # Get material parameters
     material_params = f"{config.material_mu}_{config.material_lambda}"
@@ -881,7 +902,7 @@ def _hash_elastic_operator_input(
     }
 
     mesh_configs = [mesh.model_dump_json(exclude=constraint_fields) for mesh in meshes]
-    combined_input = "_".join([station_str, material_params, *mesh_configs])
+    combined_input = "_".join([obs_str, material_params, *mesh_configs])
 
     return hashlib.blake2b(combined_input.encode()).hexdigest()[:16]
 
@@ -1006,6 +1027,7 @@ def _store_elastic_operators(
     *,
     tde: bool = True,
     skip_tde_to_velocities: bool = False,
+    obs_points: pd.DataFrame | None = None,
 ):
     """Calculate (or load previously calculated) elastic operators from
     both fully locked segments and TDE-parameterized surfaces.
@@ -1020,11 +1042,12 @@ def _store_elastic_operators(
         tde (bool): Whether to compute TDE operators
         skip_tde_to_velocities (bool): If True, skip loading/computing tde_to_velocities.
             Use this when tde_to_velocities will be computed in streaming mode to save memory.
+        obs_points: DataFrame of observation points. If None, uses model.station.
     """
     config = model.config
     meshes = model.meshes
     segment = model.segment
-    station = model.station
+    station = obs_points if obs_points is not None else model.station
 
     cache = None
 
@@ -2271,7 +2294,11 @@ def _store_eigenvectors_to_tde_slip(model: Model, operators: _OperatorBuilder):
 
 
 def _compute_eigen_to_velocities(
-    model: Model, operators: _OperatorBuilder, index: Index, streaming: bool
+    model: Model,
+    operators: _OperatorBuilder,
+    index: Index,
+    streaming: bool,
+    obs_points: pd.DataFrame | None = None,
 ):
     """Compute eigen_to_velocities for all meshes.
 
@@ -2281,10 +2308,11 @@ def _compute_eigen_to_velocities(
             discarding it before moving to the next mesh. This reduces peak memory
             usage from O(n_meshes * tde_matrix_size) to O(tde_matrix_size).
             If False, uses the pre-computed operators.tde_to_velocities.
+        obs_points: DataFrame of observation points. If None, uses model.station.
     """
     config = model.config
     meshes = model.meshes
-    station = model.station
+    station = obs_points if obs_points is not None else model.station
 
     cache = None
     if streaming and config.elastic_operator_cache_dir is not None:

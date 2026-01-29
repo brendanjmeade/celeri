@@ -641,6 +641,49 @@ def _add_station_velocity_likelihood(model: Model, mu):
         )
 
 
+def _add_los_velocity_likelihood(model: Model, los_mu):
+    """Add LOS velocity likelihood to the PyMC model.
+
+    Projects the 3-component velocity predictions onto look vectors
+    and compares with observed LOS velocities using a Normal likelihood.
+
+    The projection computes: los_pred = v_east * look_east + v_north * look_north + v_up * look_up
+
+    The likelihood uses observation-specific errors scaled by a learned sigma_los parameter.
+
+    Args:
+        model: The celeri Model containing LOS data with look vectors and observations.
+        los_mu: Predicted velocities at LOS locations, shape (n_los, 3) with
+            columns [east, north, up].
+    """
+    import pymc as pm
+
+    n_los = model.n_los
+    logger.info(f"Adding LOS likelihood for {n_los} observations")
+
+    look_vectors = np.column_stack(
+        [
+            np.asarray(model.los.look_vector_east.values),
+            np.asarray(model.los.look_vector_north.values),
+            np.asarray(model.los.look_vector_up.values),
+        ]
+    )
+
+    los_pred = pt.sum(los_mu * look_vectors, axis=1)
+    pm.Deterministic("los_predicted", los_pred)
+
+    sigma_los = pm.HalfNormal("sigma_los", sigma=2)
+    los_data = np.asarray(model.los.los_val.values)
+    los_err = np.asarray(model.los.los_err.values)
+
+    pm.Normal(
+        "los_velocity",
+        mu=los_pred,
+        sigma=sigma_los * los_err,
+        observed=los_data,
+    )
+
+
 def _add_segment_constraints(model: Model, operators: Operators, rotation):
     """Add segment slip rate constraints to the PyMC model.
 
@@ -747,24 +790,51 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
     """Build the complete PyMC model for MCMC inference.
 
     Combines all velocity components (block strain, rotation, Mogi, elastic)
-    and adds likelihoods for station and segment observations.
+    and adds likelihoods for station, LOS, and segment observations.
+
+    Velocity Component Handling:
+        The model computes predicted velocities at all observation points
+        (stations + LOS). How velocity components are used depends on the
+        observation type:
+
+        - Stations: The `include_vertical_velocity` config setting controls
+          whether the vertical (up) component is included in the station
+          likelihood. When False (default), only east and north components
+          are compared to observed velocities.
+
+        - LOS observations: Always require all 3 velocity components
+          (east, north, up) because the LOS likelihood projects the predicted
+          velocity onto the look vector via dot product.
+
+        When LOS data is present, all 3 velocity components are computed for
+        all observation points. The station likelihood then selects only the
+        relevant components (2 or 3) based on `include_vertical_velocity`,
+        while the LOS likelihood uses all 3 for the projection.
+
+    Args:
+        model: The celeri Model containing station, LOS, and segment data.
+        operators: Pre-built linear operators mapping parameters to velocities.
+
+    Returns:
+        PyMC Model object.
     """
     assert operators.eigen is not None
     assert operators.tde is not None
 
     import pymc as pm
 
-    # Check if vertical velocities should be included
-    # If not, we can exclude vertical components from operators for efficiency
     include_vertical = model.config.include_vertical_velocity
-    n_stations = len(model.station)
+    n_stations = model.n_stations
+    n_los = model.n_los
+    n_obs = n_stations + n_los
 
-    if include_vertical:
-        # Keep all 3 velocity components per station (east, north, up)
+    if n_los > 0:
+        vel_idx = np.arange(3 * n_obs)
+        n_vel_components = 3
+    elif include_vertical:
         vel_idx = np.arange(3 * n_stations)
         n_vel_components = 3
     else:
-        # Keep only horizontal components (east, north), excluding vertical (up)
         vel_idx = get_keep_index_12(3 * n_stations)
         n_vel_components = 2
 
@@ -783,6 +853,9 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
         "xy": pd.Index(["x", "y"]),
         "slip_comp": pd.Index(["strike_slip", "dip_slip", "tensile_slip"]),
     }
+
+    if n_los > 0:
+        coords["los"] = pd.RangeIndex(n_los)
 
     with pm.Model(coords=coords) as pymc_model:
         block_strain_rate_velocity = _add_block_strain_rate_component(
@@ -803,19 +876,38 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
             )
         elastic_velocity = sum(elastic_velocities)
 
-        mu = (
+        mu_all = (
             block_strain_rate_velocity
             + rotation_velocity
             + rotation_okada_velocity
             + mogi_velocity
             + elastic_velocity
         )
-        mu = mu.reshape((n_stations, n_vel_components))
 
-        dims = ("station", "xyz") if include_vertical else ("station", "xy")
-        mu_det = pm.Deterministic("mu", mu, dims=dims)
+        if n_los > 0:
+            mu_all = mu_all.reshape((n_obs, 3))
+            station_mu = mu_all[:n_stations, :]
+            los_mu = mu_all[n_stations:, :]
 
-        _add_station_velocity_likelihood(model, mu_det)
+            if include_vertical:
+                mu_station = station_mu
+                dims_station = ("station", "xyz")
+            else:
+                mu_station = station_mu[:, :2]
+                dims_station = ("station", "xy")
+
+            pm.Deterministic("mu", mu_station, dims=dims_station)
+            _add_station_velocity_likelihood(model, mu_station)
+
+            pm.Deterministic("los_mu", los_mu, dims=("los", "xyz"))
+            _add_los_velocity_likelihood(model, los_mu)
+
+        else:
+            mu = mu_all.reshape((n_stations, n_vel_components))
+            dims = ("station", "xyz") if include_vertical else ("station", "xy")
+            mu_det = pm.Deterministic("mu", mu, dims=dims)
+            _add_station_velocity_likelihood(model, mu_det)
+
         _add_segment_constraints(model, operators, rotation)
 
     return pymc_model  # type: ignore[return-value]
@@ -877,8 +969,19 @@ def solve_mcmc(
                 f"Building operators with discard_tde_to_velocities=False "
                 f"(required for mcmc_station_velocity_method={model.config.mcmc_station_velocity_method!r})"
             )
+
+        obs_points = model.obs if model.n_los > 0 else None
+        if model.n_los > 0:
+            logger.info(
+                f"Building operators for {model.n_stations} stations + {model.n_los} LOS observations"
+            )
+
         operators = build_operators(
-            model, tde=True, eigen=True, discard_tde_to_velocities=use_streaming
+            model,
+            tde=True,
+            eigen=True,
+            discard_tde_to_velocities=use_streaming,
+            obs_points=obs_points,
         )
     if operators.tde is None or operators.eigen is None:
         raise ValueError(

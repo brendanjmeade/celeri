@@ -63,6 +63,14 @@ class Config(BaseModel):
     sar_file_name: Path | None = None
     """Location of the sar data (empty for no SAR data)"""
 
+    los_file_name: Path | None = None
+    """Location of the LOS (line-of-sight) velocity data file.
+
+    CSV file with columns: lon, lat, los_val, los_err, look_vector_east,
+    look_vector_north, look_vector_up. Used for InSAR or similar geodetic
+    observations where velocities are measured along a look direction.
+    """
+
     mesh_parameters_file_name: Path
     """Location of the mesh parameters file"""
 
