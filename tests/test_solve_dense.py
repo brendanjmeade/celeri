@@ -287,7 +287,9 @@ def test_end_row_eigen_consistency(config_name, include_vertical):
     assert estimation.index.end_station_row == expected_end_row
 
     for i in range(len(estimation.index.eigen.end_row_eigen)):
-        assert estimation.index.eigen.end_row_eigen[i] == estimation.index.end_station_row, (
+        assert (
+            estimation.index.eigen.end_row_eigen[i] == estimation.index.end_station_row
+        ), (
             f"Mesh {i}: end_row_eigen[{i}]={estimation.index.eigen.end_row_eigen[i]} "
             f"doesn't match index.end_station_row={estimation.index.end_station_row}"
         )

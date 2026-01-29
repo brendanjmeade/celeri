@@ -1518,8 +1518,7 @@ def get_slip_rake_constraints(model: Model) -> np.ndarray:
 
 
 def _get_data_vector_no_meshes(model: Model, index: Index) -> np.ndarray:
-    """
-    Constructs the data vector for an inversion run that does not use mesh-based constraints.
+    """Constructs the data vector for an inversion run that does not use mesh-based constraints.
 
     The data vector is composed of:
     - GPS station velocities, interleaving east, north, and up components for all stations.
@@ -1542,7 +1541,7 @@ def _get_data_vector_no_meshes(model: Model, index: Index) -> np.ndarray:
     data_vector[index.start_station_row : index.end_station_row] = interleave3(
         model.station.east_vel.to_numpy(),
         model.station.north_vel.to_numpy(),
-        model.station.up_vel.to_numpy()
+        model.station.up_vel.to_numpy(),
     )
 
     block_constraints = _get_block_constraints_data(model)
@@ -1559,8 +1558,7 @@ def _get_data_vector_no_meshes(model: Model, index: Index) -> np.ndarray:
 
 
 def _get_data_vector(model: Model, index: Index) -> np.ndarray:
-    """
-    Constructs the data vector for an inversion run that uses mesh-based constraints.
+    """Constructs the data vector for an inversion run that uses mesh-based constraints.
 
     The data vector is composed of:
     - GPS station velocities, interleaving east, north, and up components for all stations.
@@ -1588,7 +1586,7 @@ def _get_data_vector(model: Model, index: Index) -> np.ndarray:
     data_vector[index.start_station_row : index.end_station_row] = interleave3(
         model.station.east_vel.to_numpy(),
         model.station.north_vel.to_numpy(),
-        model.station.up_vel.to_numpy()
+        model.station.up_vel.to_numpy(),
     )
 
     block_constraints = _get_block_constraints_data(model)
@@ -1604,8 +1602,7 @@ def _get_data_vector(model: Model, index: Index) -> np.ndarray:
 
 
 def _get_data_vector_eigen(model: Model, index: Index) -> np.ndarray:
-    """
-    Constructs the data vector for an inversion with eigen operators.
+    """Constructs the data vector for an inversion with eigen operators.
 
     The data vector is composed of:
     - GPS station velocities, interleaving east, north, and up components for all stations.
@@ -1626,7 +1623,7 @@ def _get_data_vector_eigen(model: Model, index: Index) -> np.ndarray:
     data_vector[index.start_station_row : index.end_station_row] = interleave3(
         model.station.east_vel.to_numpy(),
         model.station.north_vel.to_numpy(),
-        model.station.up_vel.to_numpy()
+        model.station.up_vel.to_numpy(),
     )
 
     block_constraints = _get_block_constraints_data(model)
@@ -1658,9 +1655,7 @@ def _get_weighting_vector(model: Model, index: Index):
     else:
         up_weight = np.zeros(len(model.station))
     weighting_vector[index.start_station_row : index.end_station_row] = interleave3(
-        1 / (model.station.east_sig**2),
-        1 / (model.station.north_sig**2),
-        up_weight
+        1 / (model.station.east_sig**2), 1 / (model.station.north_sig**2), up_weight
     )
     weighting_vector[
         index.start_block_constraints_row : index.end_block_constraints_row
@@ -1695,9 +1690,7 @@ def _get_weighting_vector_no_meshes(model: Model, index: Index) -> np.ndarray:
     else:
         up_weight = np.zeros(len(station))
     weighting_vector[index.start_station_row : index.end_station_row] = interleave3(
-        1 / (station.east_sig**2),
-        1 / (station.north_sig**2),
-        up_weight
+        1 / (station.east_sig**2), 1 / (station.north_sig**2), up_weight
     )
     weighting_vector[
         index.start_block_constraints_row : index.end_block_constraints_row
@@ -1730,9 +1723,7 @@ def get_weighting_vector_single_mesh_for_col_norms(
     else:
         up_weight = np.zeros(len(station))
     weighting_vector[0 : index.end_station_row] = interleave3(
-        1 / (station.east_sig**2),
-        1 / (station.north_sig**2),
-        up_weight
+        1 / (station.east_sig**2), 1 / (station.north_sig**2), up_weight
     )
 
     weighting_vector[
@@ -1763,9 +1754,7 @@ def _get_weighting_vector_eigen(model: Model, index: Index) -> np.ndarray:
     else:
         up_weight = np.zeros(len(model.station))
     weighting_vector[index.start_station_row : index.end_station_row] = interleave3(
-        1 / (model.station.east_sig**2),
-        1 / (model.station.north_sig**2),
-        up_weight
+        1 / (model.station.east_sig**2), 1 / (model.station.north_sig**2), up_weight
     )
 
     weighting_vector[

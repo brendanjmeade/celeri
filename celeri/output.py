@@ -19,17 +19,15 @@ if typing.TYPE_CHECKING:
 def write_output(
     estimation: Estimation,
 ):
-    """
-    Write model, configuration, and estimation outputs to disk.
+    """Write model, configuration, and estimation outputs to disk.
 
     This function saves the estimation result, model, stations, segments, meshes, and configuration
     to the config's specified output path.
 
     Args:
-        estimation (Estimation): The result of the model estimation/solve, containing 
+        estimation (Estimation): The result of the model estimation/solve, containing
             operators, model, and output data to be saved.
     """
-
     config = estimation.model.config
     output_path = Path(config.output_path)
     estimation.to_disk(output_path, save_operators=config.save_operators)
