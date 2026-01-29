@@ -393,12 +393,26 @@ def _coupling_component(
         model, mesh_idx, kind, sigma
     )
     n_eigs = variances.size
-    coefs = pm.Normal(
-        f"coupling_coefs_{mesh_idx}_{kind_short}",
-        mu=0,
-        sigma=np.sqrt(variances),
-        shape=n_eigs,
-    )
+
+    if model.meshes[mesh_idx].config.gp_parameterization == "non_centered":
+        # Non-centered: sample white noise, then mollify via eigenvalue scaling
+        white_noise = pm.Normal(
+            f"coupling_coefs_{mesh_idx}_{kind_short}_white_noise",
+            sigma=1,
+            shape=n_eigs,
+        )
+        coefs = pm.Deterministic(
+            f"coupling_coefs_{mesh_idx}_{kind_short}",
+            white_noise * np.sqrt(variances),
+        )
+    else:
+        # Centered: sample directly with heterogeneous variances
+        coefs = pm.Normal(
+            f"coupling_coefs_{mesh_idx}_{kind_short}",
+            mu=0,
+            sigma=np.sqrt(variances),
+            shape=n_eigs,
+        )
 
     coupling_field = _operator_mult(eigenvectors, coefs)
     softplus_lengthscale = model.meshes[mesh_idx].config.softplus_lengthscale
@@ -431,9 +445,10 @@ def _elastic_component(
     sigma: float,
 ):
     """Model elastic slip rate as a linear combination of eigenmodes.
-    Creates parameters for raw elastic eigenmode coefficients, then adds
-    scaled elastic eigenmodes as deterministic variables. Also adds a
-    deterministic variable for the elastic slip rate field.
+
+    Uses either non-centered parameterization (sample white noise, mollify via
+    eigenvalue scaling) or centered parameterization (sample directly with
+    heterogeneous variances), controlled by mesh config.
 
     Returns the estimated elastic slip rates on the TDEs and the
     velocities at the stations due to them.
@@ -465,11 +480,25 @@ def _elastic_component(
         model, mesh_idx, kind, sigma
     )
     n_eigs = variances.size
-    param = pm.Normal(
-        f"elastic_eigen_{mesh_idx}_{kind_short}",
-        sigma=np.sqrt(variances),
-        shape=n_eigs,
-    )
+
+    if model.meshes[mesh_idx].config.gp_parameterization == "non_centered":
+        # Non-centered: sample white noise, then mollify via eigenvalue scaling
+        white_noise = pm.Normal(
+            f"elastic_eigen_{mesh_idx}_{kind_short}_white_noise",
+            sigma=1,
+            shape=n_eigs,
+        )
+        param = pm.Deterministic(
+            f"elastic_eigen_{mesh_idx}_{kind_short}",
+            white_noise * np.sqrt(variances),
+        )
+    else:
+        # Centered: sample directly with heterogeneous variances
+        param = pm.Normal(
+            f"elastic_eigen_{mesh_idx}_{kind_short}",
+            sigma=np.sqrt(variances),
+            shape=n_eigs,
+        )
     softplus_lengthscale = model.meshes[mesh_idx].config.softplus_lengthscale
     elastic_tde = _constrain_field(
         _operator_mult(eigenvectors, param), lower, upper, softplus_lengthscale

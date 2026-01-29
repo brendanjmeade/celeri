@@ -162,6 +162,16 @@ class MeshConfig(BaseModel):
 
     softplus_lengthscale: float = 1.0
 
+    gp_parameterization: Literal["centered", "non_centered"] = "non_centered"
+    """Parameterization for GP coefficients in MCMC.
+
+    Both parameterizations are mathematically equivalent but change the
+    geometry of the sampling space, which can affect HMC performance.
+
+    - "non_centered": Sample white noise and mollify via eigenvalue scaling.
+    - "centered": Sample directly with heterogeneous variances.
+    """
+
     # Hint for the new sqp solver about the likely range of kinematic slip rates.
     sqp_kinematic_slip_rate_hint_ss: ScalarBound = ScalarBound(
         lower=-100.0, upper=100.0
