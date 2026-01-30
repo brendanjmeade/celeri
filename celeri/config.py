@@ -239,16 +239,16 @@ class Config(BaseModel):
     # unconstrained space. For coupling with bounds [0, 1], constrained mean 0.5
     # is at the center. For elastic with one-sided bounds, unconstrained mean 0
     # places the constrained mean at ±softplus_lengthscale.
-    default_mcmc_coupling_mean: float = 0.5
-    default_mcmc_coupling_mean_parameterization: McmcMeanParameterization = (
+    mcmc_default_mesh_coupling_mean: float = 0.5
+    mcmc_default_mesh_coupling_mean_parameterization: McmcMeanParameterization = (
         "constrained"
     )
-    default_mcmc_coupling_sigma: float = 1.0
-    default_mcmc_elastic_mean: float = 0.0
-    default_mcmc_elastic_mean_parameterization: McmcMeanParameterization = (
+    mcmc_default_mesh_coupling_sigma: float = 1.0
+    mcmc_default_mesh_elastic_mean: float = 0.0
+    mcmc_default_mesh_elastic_mean_parameterization: McmcMeanParameterization = (
         "unconstrained"
     )
-    default_mcmc_elastic_sigma: float = 1.0
+    mcmc_default_mesh_elastic_sigma: float = 1.0
 
     mcmc_station_effective_area: float = 10_000**2
     """Effective area (in m²) for station likelihood weighting in MCMC.
@@ -396,12 +396,12 @@ class Config(BaseModel):
         sigma parameters down to individual mesh configurations.
         """
         mcmc_prior_defaults = {
-            "coupling_mean": self.default_mcmc_coupling_mean,
-            "coupling_mean_parameterization": self.default_mcmc_coupling_mean_parameterization,
-            "coupling_sigma": self.default_mcmc_coupling_sigma,
-            "elastic_mean": self.default_mcmc_elastic_mean,
-            "elastic_mean_parameterization": self.default_mcmc_elastic_mean_parameterization,
-            "elastic_sigma": self.default_mcmc_elastic_sigma,
+            "coupling_mean": self.mcmc_default_mesh_coupling_mean,
+            "coupling_mean_parameterization": self.mcmc_default_mesh_coupling_mean_parameterization,
+            "coupling_sigma": self.mcmc_default_mesh_coupling_sigma,
+            "elastic_mean": self.mcmc_default_mesh_elastic_mean,
+            "elastic_mean_parameterization": self.mcmc_default_mesh_elastic_mean_parameterization,
+            "elastic_sigma": self.mcmc_default_mesh_elastic_sigma,
         }
         for mesh_field, default_value in mcmc_prior_defaults.items():
             for mesh_param in self.mesh_params:
