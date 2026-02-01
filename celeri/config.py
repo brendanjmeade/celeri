@@ -208,6 +208,31 @@ class Config(BaseModel):
     Both have equivalent accuracy, but eigenvector signs may differ between algorithms.
     """
 
+    mcmc_default_mesh_matern_nu: float = 0.5
+    """Default Matérn kernel smoothness parameter (nu) for mesh eigenfunction computation.
+
+    This value is used as a fallback when a mesh configuration does not
+    specify its own `matern_nu`.
+
+    Common values:
+    - 0.5: Exponential covariance (rough, continuous but not differentiable)
+    - 1.5: Once-differentiable (moderate smoothness)
+    - 2.5: Twice-differentiable (smooth)
+
+    Higher values produce smoother eigenfunctions.
+    """
+
+    mcmc_default_mesh_matern_length_scale: float = 1.0
+    """Default Matérn kernel length scale for mesh eigenfunction computation.
+
+    This value is used as a fallback when a mesh configuration does not
+    specify its own `matern_length_scale`.
+
+    The interpretation depends on `matern_length_units` in each mesh config:
+    - "diameters": Scales by mesh diameter (default)
+    - "absolute": Uses the value directly in mesh coordinate units
+    """
+
     mcmc_station_velocity_method: McmcStationVelocityMethod = "project_to_eigen"
     """Method for computing station velocities from slip rates in MCMC.
 
@@ -468,15 +493,21 @@ def get_config(file_name: Path | str) -> Config:
     else:
         mesh_params = MeshConfig.from_file(file_path.parent / mesh_parameters_file_name)
 
-    # Apply the top-level default eigenvector algorithm to mesh configs
-    # that don't explicitly set their own
-    mesh_default_eigenvector_algorithm = config_data.get(
-        "mesh_default_eigenvector_algorithm", None
-    )
-    if mesh_default_eigenvector_algorithm is not None:
-        for mesh_param in mesh_params:
-            if "eigenvector_algorithm" not in mesh_param.model_fields_set:
-                mesh_param.eigenvector_algorithm = mesh_default_eigenvector_algorithm
+    # Apply the top-level defaults to mesh configs that don't explicitly set their own
+    mesh_defaults = {
+        "eigenvector_algorithm": config_data.get(
+            "mesh_default_eigenvector_algorithm", None
+        ),
+        "matern_nu": config_data.get("mcmc_default_mesh_matern_nu", None),
+        "matern_length_scale": config_data.get(
+            "mcmc_default_mesh_matern_length_scale", None
+        ),
+    }
+    for field_name, default_value in mesh_defaults.items():
+        if default_value is not None:
+            for mesh_param in mesh_params:
+                if field_name not in mesh_param.model_fields_set:
+                    setattr(mesh_param, field_name, default_value)
 
     config_data["mesh_params"] = mesh_params
     config_data["file_name"] = file_path.resolve()
