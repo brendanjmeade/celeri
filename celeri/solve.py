@@ -59,6 +59,12 @@ class Estimation:
     trace: Any | None = None
     # MCMC trace from Bayesian inference.
     mcmc_trace: Any | None = None
+    # MCMC timing information (ISO format strings and duration in seconds).
+    mcmc_start_time: str | None = None
+    mcmc_end_time: str | None = None
+    mcmc_duration: float | None = None
+    # Number of divergent transitions in MCMC sampling.
+    mcmc_num_divergences: int | None = None
     # Version of celeri used to create this estimation.
     celeri_version: str | None = None
 
