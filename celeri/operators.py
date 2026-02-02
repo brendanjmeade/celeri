@@ -2253,7 +2253,11 @@ def _store_eigenvectors_to_tde_slip(model: Model, operators: _OperatorBuilder):
     for i, mesh in enumerate(meshes):
         logger.info(f"Start: Eigenvectors to TDE slip for mesh: {mesh.file_name}")
         assert mesh.eigenvectors is not None
+        assert mesh.eigenvalues is not None
         eigenvectors = mesh.eigenvectors
+
+        # Store eigenvalues for this mesh
+        operators.eigenvalues[i] = mesh.eigenvalues
 
         operators.eigenvectors_to_tde_slip[i] = np.zeros(
             (
