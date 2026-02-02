@@ -368,6 +368,20 @@ class LosOperators:
     def n_los(self) -> int:
         return len(self.los_data)
 
+    def to_disk(self, output_dir: str | Path):
+        """Save LOS operators to disk."""
+        path = Path(output_dir)
+        skip = set()
+        if self.tde_to_los is None:
+            skip.add("tde_to_los")
+        dataclass_to_disk(self, path, skip=skip)
+
+    @classmethod
+    def from_disk(cls, input_dir: str | Path) -> "LosOperators":
+        """Load LOS operators from disk."""
+        path = Path(input_dir)
+        return dataclass_from_disk(cls, path)
+
 
 @dataclass
 class Operators:
@@ -524,13 +538,15 @@ class Operators:
             self.tde.to_disk(path / "tde")
         if self.eigen is not None:
             self.eigen.to_disk(path / "eigen")
+        if self.los is not None:
+            self.los.to_disk(path / "los")
 
         # Save the smoothing matrix using scipy sparse format
         for mesh_idx, smoothing_matrix in self.smoothing_matrix.items():
             matrix_path = path / f"smoothing_matrix_{mesh_idx}.npz"
             scipy.sparse.save_npz(matrix_path, smoothing_matrix)
 
-        skip = {"tde", "eigen", "index", "model", "smoothing_matrix"}
+        skip = {"tde", "eigen", "los", "index", "model", "smoothing_matrix"}
 
         dataclass_to_disk(self, path, skip=skip)
 
@@ -576,6 +592,11 @@ class Operators:
             eigen = EigenOperators.from_disk(eigen_path)
         else:
             eigen = None
+        los_path = path / "los"
+        if los_path.exists():
+            los = LosOperators.from_disk(los_path)
+        else:
+            los = None
 
         index = Index.from_disk(path / "index")
         model = Model.from_disk(path / "model")
@@ -594,6 +615,7 @@ class Operators:
         extra = {
             "tde": tde,
             "eigen": eigen,
+            "los": los,
             "index": index,
             "model": model,
             "smoothing_matrix": smoothing_matrix,
@@ -903,7 +925,7 @@ def build_los_operators(
     eigen_to_los: dict[int, np.ndarray] = {}
 
     if operators.tde is not None:
-        for mesh_idx in model.segment_mesh_indices:
+        for mesh_idx in range(len(model.meshes)):
             tde_to_velocities = get_tde_to_velocities_single_mesh(
                 model.meshes, los, model.config, mesh_idx
             )
@@ -912,7 +934,7 @@ def build_los_operators(
             )
 
         if operators.eigen is not None:
-            for mesh_idx in model.segment_mesh_indices:
+            for mesh_idx in range(len(model.meshes)):
                 # eigen_to_los = tde_to_los @ eigenvectors
                 # The eigenvectors map from eigenmode coefficients to TDE slip rates
                 tde_los_op = tde_to_los[mesh_idx]
