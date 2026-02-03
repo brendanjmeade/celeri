@@ -288,7 +288,11 @@ T = TypeVar("T")
 
 
 def dataclass_from_disk(
-    cls: type[T], input_dir: str | Path, *, extra: dict[str, Any] | None = None
+    cls: type[T],
+    input_dir: str | Path,
+    *,
+    extra: dict[str, Any] | None = None,
+    skip: set[str] | None = None,
 ) -> T:
     """Load a dataclass object from disk.
 
@@ -296,12 +300,16 @@ def dataclass_from_disk(
         cls: The dataclass type to instantiate
         input_dir: Directory containing the saved data
         extra: Additional attributes to add to the loaded data
+        skip: Set of keys to skip when loading (for backwards compatibility
+            when fields have been removed from the dataclass)
 
     Returns:
         An instance of the dataclass
     """
     if extra is None:
         extra = {}
+    if skip is None:
+        skip = set()
 
     input_dir = Path(input_dir)
 
@@ -338,5 +346,8 @@ def dataclass_from_disk(
         remaining_data = json.load(f)
     data.update(remaining_data)
     data.update(extra)
+
+    for key in skip:
+        data.pop(key, None)
 
     return cls(**data)
