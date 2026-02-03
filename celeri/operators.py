@@ -333,36 +333,28 @@ class LosOperators:
     These operators map model parameters directly to line-of-sight velocities
     by pre-projecting the (east, north, up) velocity operators onto the look
     vectors. This avoids repeated dot products during forward evaluation.
-
-    Attributes:
-        rotation_to_los: Maps block rotations to LOS velocities.
-            Shape: (n_los, 3 * n_blocks)
-        block_strain_rate_to_los: Maps block strain rates to LOS velocities.
-            Shape: (n_los, 3 * n_strain_blocks)
-        mogi_to_los: Maps Mogi sources to LOS velocities.
-            Shape: (n_los, n_mogis)
-        okada_to_los: Maps segment slip rates to LOS velocities via Okada.
-            Shape: (n_los, 3 * n_segments)
-        rotation_to_okada_los: Composed operator rotation -> slip rate -> Okada -> LOS.
-            Shape: (n_los, 3 * n_blocks)
-        tde_to_los: Maps TDE slip rates to LOS velocities, by mesh. Can be None
-            if discarded after building eigen_to_los to save memory.
-            Dict mapping mesh index to array of shape (n_los, 3 * n_tde_elements)
-        eigen_to_los: Maps eigenmode coefficients to LOS velocities, by mesh.
-            Dict mapping mesh index to array of shape (n_los, n_modes)
-        los_data: Observed LOS velocities. Shape: (n_los,)
-        los_err: Errors on LOS velocities. Shape: (n_los,)
     """
 
     rotation_to_los: np.ndarray
+    """Maps block rotations to LOS velocities; shape (n_los, 3 * n_blocks)."""
     block_strain_rate_to_los: np.ndarray
+    """Maps block strain rates to LOS velocities; shape (n_los, 3 * n_strain_blocks)."""
     mogi_to_los: np.ndarray
+    """Maps Mogi sources to LOS velocities; shape (n_los, n_mogis)."""
     okada_to_los: np.ndarray
+    """Maps segment slip rates to LOS velocities via Okada; shape (n_los, 3 * n_segments)."""
     rotation_to_okada_los: np.ndarray
+    """Composed operator rotation -> slip rate -> Okada -> LOS; shape (n_los, 3 * n_blocks)."""
     eigen_to_los: dict[int, np.ndarray]
+    """Maps eigenmode coefficients to LOS velocities, by mesh; dict mapping mesh index to array of shape (n_los, n_modes)."""
     los_data: np.ndarray
+    """Observed LOS velocities; shape (n_los,)."""
     los_err: np.ndarray
+    """Errors on LOS velocities; shape (n_los,)."""
     tde_to_los: dict[int, np.ndarray] | None = None
+    """Maps TDE slip rates to LOS velocities, by mesh;
+    dict mapping mesh index to array of shape (n_los, 3 * n_tde_elements).
+    Can be None if discarded after building eigen_to_los to save memory."""
 
     @property
     def n_los(self) -> int:
@@ -427,7 +419,7 @@ class Operators:
     los: LosOperators | None
     """Operators for LOS (line-of-sight) observations. These operators map
     model parameters directly to LOS velocities."""
-    
+
     @overload
     def kinematic_slip_rate(
         self, parameters: np.ndarray, mesh_idx: int, smooth: bool
@@ -877,7 +869,7 @@ def build_los_operators(
         LosOperators if LOS data exists, None otherwise.
     """
     los = model.los
-    if los.empty:
+    if los is None or los.empty:
         return None
 
     n_los = len(los)

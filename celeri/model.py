@@ -42,7 +42,7 @@ class Model:
     config: Config
     closure: celeri_closure.BlockClosureResult
     sar: pd.DataFrame
-    los: pd.DataFrame
+    los: pd.DataFrame | None
 
     @property
     def segment_mesh_indices(self):
@@ -72,7 +72,8 @@ class Model:
         self.station.to_parquet(output_path / "station.parquet")
         self.mogi.to_parquet(output_path / "mogi.parquet")
         self.sar.to_parquet(output_path / "sar.parquet")
-        self.los.to_parquet(output_path / "los.parquet")
+        if self.los is not None:
+            self.los.to_parquet(output_path / "los.parquet")
         with (output_path / "config.json").open("w") as f:
             f.write(self.config.model_dump_json())
         for i, mesh in enumerate(self.meshes):
@@ -95,20 +96,7 @@ class Model:
 
         # LOS data may not exist in older models
         los_path = path / "los.parquet"
-        if los_path.exists():
-            los = pd.read_parquet(los_path)
-        else:
-            los = pd.DataFrame(
-                columns=[
-                    "lon",
-                    "lat",
-                    "los_val",
-                    "los_err",
-                    "look_vector_east",
-                    "look_vector_north",
-                    "look_vector_up",
-                ]
-            )
+        los = pd.read_parquet(los_path) if los_path.exists() else None
 
         meshes = [
             Mesh.from_disk(mesh_file) for mesh_file in sorted(path.glob("meshes/*"))
@@ -205,24 +193,21 @@ def read_data(config: Config):
         sar = sar.loc[:, ~sar.columns.str.match("Unnamed")]
         logger.success(f"Read: {config.sar_file_name}")
 
-    # Read LOS (line-of-sight) data
-    if config.los_file_name is None:
-        columns = pd.Index(
-            [
-                "lon",
-                "lat",
-                "los_val",
-                "los_err",
-                "look_vector_east",
-                "look_vector_north",
-                "look_vector_up",
-            ]
+    los = None
+    if config.los_file_name is not None:
+        assert Path(config.los_file_name).exists(), (
+            f"LOS file '{config.los_file_name}' does not exist"
         )
-        los = pd.DataFrame(columns=columns)
-        logger.info("No los_file_name")
-    else:
-        los = pd.read_csv(config.los_file_name)
-        los = los.loc[:, ~los.columns.str.match("Unnamed")]
+        columns = [
+            "lon",
+            "lat",
+            "los_val",
+            "los_err",
+            "look_vector_east",
+            "look_vector_north",
+            "look_vector_up",
+        ]
+        los = pd.read_csv(config.los_file_name, usecols=columns)
         logger.success(f"Read: {config.los_file_name}")
 
     return segment, block, meshes, station, mogi, sar, los
@@ -321,15 +306,14 @@ def process_los(los, config):
 
     Adds Cartesian coordinates and depth for LOS observation points.
     """
-    if los.empty:
-        los["depth"] = np.zeros_like(los.lon)
-        los["x"], los["y"], los["z"] = sph2cart(los.lon, los.lat, RADIUS_EARTH)
-        los["block_label"] = -1 * np.ones_like(los.lon)
-    else:
-        los["depth"] = np.zeros(len(los))
-        los["x"], los["y"], los["z"] = sph2cart(
-            los.lon.values, los.lat.values, RADIUS_EARTH
-        )
+    if los is None or los.empty:
+        return los
+
+    los["depth"] = np.zeros(len(los))
+    los["x"], los["y"], los["z"] = sph2cart(
+        los.lon.values, los.lat.values, RADIUS_EARTH
+    )
+    los["block_label"] = -1 * np.ones(len(los), dtype=int)
     return los
 
 
@@ -518,7 +502,7 @@ def assign_block_labels(segment, station, block, mogi, sar, los):
     block = block.copy(deep=True)
     mogi = mogi.copy(deep=True)
     sar = sar.copy(deep=True)
-    los = los.copy(deep=True)
+    los = los.copy(deep=True) if los is not None else None
 
     closure = celeri_closure.BlockClosureResult.from_segments(segment)
     labels = celeri_closure.get_segment_labels(closure)
@@ -659,7 +643,7 @@ def assign_block_labels(segment, station, block, mogi, sar, los):
         )
 
     # Assign block labels to LOS locations
-    if not los.empty:
+    if los is not None and not los.empty:
         los["block_label"] = closure.assign_points(
             los.lon.to_numpy(), los.lat.to_numpy()
         )
