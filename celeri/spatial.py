@@ -1021,10 +1021,7 @@ def get_global_float_block_rotation_partials(station) -> np.ndarray:
     equal to zero and then calling the standard block rotation operator
     function. The matrix returned here only has 3 columns.
     """
-    station_all_on_one_block = station.copy()
-    station_all_on_one_block.block_label.values[:] = (
-        0  # Force all stations to be on one block
-    )
+    station_all_on_one_block = station.assign(block_label=0)
     global_float_block_rotation_operator = get_rotation_to_velocities_partials(
         station_all_on_one_block, 1
     )
