@@ -336,6 +336,7 @@ class TdeOperators:
 @dataclass
 class EigenOperators:
     eigenvectors_to_tde_slip: ByMesh[np.ndarray]
+    eigenvalues: ByMesh[np.ndarray]
     eigen_to_velocities: ByMesh[np.ndarray]
     eigen_to_tde_bcs: ByMesh[np.ndarray]
     linear_gaussian_smoothing: ByMesh[np.ndarray]
@@ -616,6 +617,7 @@ class _OperatorBuilder:
     mogi_to_velocities: np.ndarray | None = None
     slip_rate_to_okada_to_velocities: np.ndarray | None = None
     eigenvectors_to_tde_slip: dict[int, np.ndarray] = field(default_factory=dict)
+    eigenvalues: dict[int, np.ndarray] = field(default_factory=dict)
     rotation_to_tri_slip_rate: dict[int, np.ndarray] = field(default_factory=dict)
     linear_gaussian_smoothing: dict[int, np.ndarray] = field(default_factory=dict)
     tde_to_velocities: dict[int, np.ndarray] = field(default_factory=dict)
@@ -680,9 +682,11 @@ class _OperatorBuilder:
         assert self.eigen_to_velocities is not None
         assert self.eigen_to_tde_bcs is not None
         assert self.eigenvectors_to_tde_slip is not None
+        assert self.eigenvalues is not None
 
         eigen = EigenOperators(
             eigenvectors_to_tde_slip=self.eigenvectors_to_tde_slip,
+            eigenvalues=self.eigenvalues,
             linear_gaussian_smoothing=self.linear_gaussian_smoothing,
             eigen_to_velocities=self.eigen_to_velocities,
             eigen_to_tde_bcs=self.eigen_to_tde_bcs,
@@ -2249,7 +2253,11 @@ def _store_eigenvectors_to_tde_slip(model: Model, operators: _OperatorBuilder):
     for i, mesh in enumerate(meshes):
         logger.info(f"Start: Eigenvectors to TDE slip for mesh: {mesh.file_name}")
         assert mesh.eigenvectors is not None
+        assert mesh.eigenvalues is not None
         eigenvectors = mesh.eigenvectors
+
+        # Store eigenvalues for this mesh
+        operators.eigenvalues[i] = mesh.eigenvalues
 
         operators.eigenvectors_to_tde_slip[i] = np.zeros(
             (

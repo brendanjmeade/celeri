@@ -166,6 +166,51 @@ def parse_args() -> argparse.Namespace:
         required=False,
         help="Random seed for MCMC sampling",
     )
+    parser.add_argument(
+        "--mcmc-chains",
+        type=int,
+        default=None,
+        required=False,
+        help="Number of parallel MCMC chains to run",
+    )
+    parser.add_argument(
+        "--mcmc-backend",
+        type=str,
+        default=None,
+        required=False,
+        choices=["numba", "jax"],
+        help="Backend to use for MCMC computations (numba | jax)",
+    )
+    parser.add_argument(
+        "--mcmc-station-velocity-method",
+        type=str,
+        default=None,
+        required=False,
+        choices=["direct", "low_rank", "project_to_eigen"],
+        help="Method for computing station velocities in MCMC",
+    )
+    parser.add_argument(
+        "--mcmc-station-weighting",
+        type=str,
+        default=None,
+        required=False,
+        help="Station weighting method (voronoi | none)",
+    )
+    parser.add_argument(
+        "--mcmc-station-effective-area",
+        type=float,
+        default=None,
+        required=False,
+        help="Effective area (m²) for station likelihood weighting",
+    )
+    parser.add_argument(
+        "--mesh-default-eigenvector-algorithm",
+        type=str,
+        default=None,
+        required=False,
+        choices=["eigh", "eigsh"],
+        help="Algorithm for mesh eigendecomposition (eigh | eigsh)",
+    )
 
     return parser.parse_args()
 
@@ -175,6 +220,9 @@ def process_args(config: Config, args: argparse.Namespace):
         if key in args:
             args_val = getattr(args, key)
             if args_val is not None:
+                # Handle "none"/"None" string -> None for nullable fields
+                if isinstance(args_val, str) and args_val.lower() == "none":
+                    args_val = None
                 original_val = getattr(config, key)
 
                 # Handle boolean comparison - config may have 1/0 while args has True/False

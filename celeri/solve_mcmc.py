@@ -903,7 +903,13 @@ def solve_mcmc(
         "seed": model.config.mcmc_seed,
     }
     kwargs.update(sample_kwargs or {})
+
+    from datetime import UTC, datetime
+
+    mcmc_start_time = datetime.now(UTC)
     trace = nutpie.sample(compiled, **kwargs)
+    mcmc_end_time = datetime.now(UTC)
+    mcmc_duration = (mcmc_end_time - mcmc_start_time).total_seconds()
 
     operators_tde = build_operators(model, tde=True, eigen=False)
     state_vector = _state_vector_from_draw(
@@ -911,6 +917,10 @@ def solve_mcmc(
     )
     estimation = build_estimation(model, operators_tde, state_vector)
     estimation.mcmc_trace = trace
+    estimation.mcmc_start_time = mcmc_start_time.isoformat()
+    estimation.mcmc_end_time = mcmc_end_time.isoformat()
+    estimation.mcmc_duration = mcmc_duration
+    estimation.mcmc_num_divergences = int(trace.sample_stats.diverging.sum())
     return estimation
 
 
