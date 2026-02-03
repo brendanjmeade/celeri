@@ -5,7 +5,7 @@
 [workspace]
 name = "celeri"
 platforms = ["linux-64", "osx-64", "osx-arm64", "win-64"]
-channels = ["conda-forge", "numba"]
+channels = ["conda-forge"]
 
 [activation.env]
 # When set, compute version from Git tags at runtime instead of from install metadata.
