@@ -63,6 +63,7 @@ mypy = ">=1.19.1"
 scipy-stubs = ">=1.17.0.2"
 pyarrow-stubs = ">=20.0.0.20251215"
 types-tqdm = ">=4.67.0.20250809"
+python = "3.13.*"
 
 [target.linux-64.dependencies]
 libblas = { version = "*", build = "*_mkl" }
