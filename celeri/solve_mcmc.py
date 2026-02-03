@@ -28,21 +28,20 @@ def _constrain_field(
 ):
     """Optionally transform values to satisfy bounds, using sigmoid or softplus.
 
-    The transformation applied depends on which bounds are present.
+    The transformation applied depends on which bounds are present. All
+    transformations are identity-like away from the bounds: values far from
+    the constrained region pass through approximately unchanged.
 
     No bounds: Values are returned unchanged.
 
     Single bound: A softplus with a given length scale is used.
-    For lower bound: large negative values exponentially approach the lower bound,
-    while large positive values are approximately lower + x.
-    For upper bound: large positive values exponentially approach the upper bound,
-    while large negative values are approximately upper + x.
+    For lower bound: values approaching -∞ asymptote to the lower bound,
+    while large positive values satisfy output ≈ input.
+    For upper bound: values approaching +∞ asymptote to the upper bound,
+    while large negative values satisfy output ≈ input.
 
-    Two bounds: A sigmoid scaled to the range [lower, upper] is used, and
-    input values are interpreted as logits.
-
-    (Possible softplus TODO: adjust so large positive/negative values asymptote to x
-    rather than lower + x or upper + x.)
+    Two bounds: A sigmoid scaled to the range [lower, upper] is used.
+    The midpoint of the range maps to itself with unit slope (f'(midpoint) = 1).
 
     Parameters
     ----------
@@ -60,7 +59,8 @@ def _constrain_field(
 
     if lower is not None and upper is not None:
         scale = upper - lower
-        return pm.math.sigmoid(values) * scale + lower  # type: ignore[attr-defined]
+        midpoint = (lower + upper) / 2
+        return pm.math.sigmoid(4 * (values - midpoint) / scale) * scale + lower  # type: ignore[attr-defined]
 
     if lower is not None:
         if softplus_lengthscale is None:
@@ -68,7 +68,7 @@ def _constrain_field(
                 "softplus_lengthscale is required when only lower bound is set"
             )
         return lower + softplus_lengthscale * pt.softplus(  # type: ignore[operator]
-            values / softplus_lengthscale
+            (values - lower) / softplus_lengthscale
         )
     if upper is not None:
         if softplus_lengthscale is None:
@@ -76,7 +76,103 @@ def _constrain_field(
                 "softplus_lengthscale is required when only upper bound is set"
             )
         return upper - softplus_lengthscale * pt.softplus(  # type: ignore[operator]
-            -values / softplus_lengthscale
+            (upper - values) / softplus_lengthscale
+        )
+
+    return values
+
+
+def _log1mexp(x: np.ndarray) -> np.ndarray:
+    """log(1 - exp(x)), numerically stable implementation.
+
+    Based on the implementation in PyTensor.
+
+    The domain is x < 0, with _log1mexp(0) = -inf, and _log1mexp(-inf) = 0.
+
+    If x is large negative, then exp(x) is small, so we use the identity:
+
+      log(1 - exp(x)) = log(1 + (-exp(x))) = log1p(-exp(x))
+
+    If x is negative but close to zero, then exp(x) - 1 is small, so we use:
+
+      log(1 - exp(x)) = log(-(exp(x) - 1)) = log(-expm1(x))
+    """
+    return np.where(x < -0.693, np.log1p(-np.exp(x)), np.log(-np.expm1(x)))
+
+
+def _softplus_inv(x: np.ndarray) -> np.ndarray:
+    """Inverse of softplus: log(exp(x) - 1), numerically stable implementation.
+
+    The domain is x > 0, with _softplus_inv(0) = -inf, and _softplus_inv(inf) = inf.
+
+    For numerical stability, reduce to the case of _log1mexp via the identity:
+
+      log(exp(x) - 1) = log(exp(x) * (1 - exp(-x))) = x + log(1 - exp(-x))
+                      = x + _log1mexp(-x)
+    """
+    return x + _log1mexp(-x)
+
+
+def _unconstrain_field(
+    values: np.ndarray,
+    lower: float | None,
+    upper: float | None,
+    softplus_lengthscale: float | None = None,
+) -> np.ndarray:
+    """Inverse of _constrain_field: map constrained values to unconstrained space.
+
+    This is the pointwise inverse of _constrain_field, useful for setting
+    prior means in the unconstrained parameterization.
+
+    Parameters
+    ----------
+    values : np.ndarray
+        The constrained values to transform back to unconstrained space.
+        Must satisfy the bounds (lower < values < upper for two bounds,
+        values > lower for lower bound, values < upper for upper bound).
+    lower : float | None
+        Lower bound for the constraint.
+    upper : float | None
+        Upper bound for the constraint.
+    softplus_lengthscale : float | None
+        Length scale for softplus operations when only one bound is present.
+        Required when exactly one of lower/upper is set.
+
+    Returns
+    -------
+    np.ndarray
+        The unconstrained values.
+    """
+    from scipy.special import logit
+
+    if lower is not None and upper is not None:
+        scale = upper - lower
+        midpoint = (lower + upper) / 2
+        # y = sigmoid(4 * (x - midpoint) / scale) * scale + lower
+        # => x = midpoint + scale * logit((y - lower) / scale) / 4
+        normalized = (values - lower) / scale
+        return midpoint + scale * logit(normalized) / 4
+
+    if lower is not None:
+        if softplus_lengthscale is None:
+            raise ValueError(
+                "softplus_lengthscale is required when only lower bound is set"
+            )
+        # y = lower + L * softplus((x - lower) / L)
+        # => x = lower + L * softplus_inv((y - lower) / L)
+        return lower + softplus_lengthscale * _softplus_inv(
+            (values - lower) / softplus_lengthscale
+        )
+
+    if upper is not None:
+        if softplus_lengthscale is None:
+            raise ValueError(
+                "softplus_lengthscale is required when only upper bound is set"
+            )
+        # y = upper - L * softplus((upper - x) / L)
+        # => x = upper - L * softplus_inv((upper - y) / L)
+        return upper - softplus_lengthscale * _softplus_inv(
+            (upper - values) / softplus_lengthscale
         )
 
     return values

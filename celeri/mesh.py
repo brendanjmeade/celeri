@@ -157,7 +157,7 @@ class MeshConfig(BaseModel):
     elastic_constraints_ss: ScalarBound = ScalarBound(lower=None, upper=None)
     elastic_constraints_ds: ScalarBound = ScalarBound(lower=None, upper=None)
 
-    coupling_sigma: float = 1.0
+    coupling_sigma: float = 0.25
     elastic_sigma: float = 1.0
 
     softplus_lengthscale: float = 1.0
