@@ -283,9 +283,12 @@ def process_segment(segment, config, meshes):
 
     segment["length"] = np.zeros(len(segment))
     segment["azimuth"] = np.zeros(len(segment))
-    for i in range(len(segment)):
-        segment.azimuth.values[i], _, segment.length.values[i] = GEOID.inv(
-            segment.lon1[i], segment.lat1[i], segment.lon2[i], segment.lat2[i]
+    for i in segment.index:
+        segment.loc[i, "azimuth"], _, segment.loc[i, "length"] = GEOID.inv(
+            segment.loc[i, "lon1"],
+            segment.loc[i, "lat1"],
+            segment.loc[i, "lon2"],
+            segment.loc[i, "lat2"],
         )  # Segment azimuth, Segment length in meters
 
     # This calculation needs to account for the periodic nature of longitude.
@@ -304,11 +307,15 @@ def process_segment(segment, config, meshes):
     segment["mid_lon"] = np.zeros_like(segment.lon1)
     segment["mid_lat"] = np.zeros_like(segment.lon1)
 
-    for i in range(len(segment)):
-        segment.mid_lon.values[i], segment.mid_lat.values[i] = GEOID.npts(
-            segment.lon1[i], segment.lat1[i], segment.lon2[i], segment.lat2[i], 1
+    for i in segment.index:
+        segment.loc[i, "mid_lon"], segment.loc[i, "mid_lat"] = GEOID.npts(
+            segment.loc[i, "lon1"],
+            segment.loc[i, "lat1"],
+            segment.loc[i, "lon2"],
+            segment.loc[i, "lat2"],
+            1,
         )[0]
-    segment.mid_lon.values[segment.mid_lon < 0.0] += 360.0
+    segment.loc[segment.mid_lon < 0.0, "mid_lon"] += 360.0
 
     segment["mid_x"], segment["mid_y"], segment["mid_z"] = sph2cart(
         segment.mid_lon, segment.mid_lat, RADIUS_EARTH
@@ -330,16 +337,16 @@ def order_endpoints_sphere(segment):
     python so I revereted to relative longitude check which sould be fine because
     we're always in 0-360 space.
     """
-    segment_copy = copy.deepcopy(segment)
     endpoints1 = np.transpose(np.array([segment.x1, segment.y1, segment.z1]))
     endpoints2 = np.transpose(np.array([segment.x2, segment.y2, segment.z2]))
     cross_product = np.cross(endpoints1, endpoints2)
-    swap_endpoint_idx = np.where(cross_product[:, 2] < 0)
-    segment_copy.lon1.values[swap_endpoint_idx] = segment.lon2.values[swap_endpoint_idx]
-    segment_copy.lat1.values[swap_endpoint_idx] = segment.lat2.values[swap_endpoint_idx]
-    segment_copy.lon2.values[swap_endpoint_idx] = segment.lon1.values[swap_endpoint_idx]
-    segment_copy.lat2.values[swap_endpoint_idx] = segment.lat1.values[swap_endpoint_idx]
-    return segment_copy
+
+    return segment.assign(
+        lon1=np.where(cross_product[:, 2] < 0, segment.lon2, segment.lon1),
+        lat1=np.where(cross_product[:, 2] < 0, segment.lat2, segment.lat1),
+        lon2=np.where(cross_product[:, 2] < 0, segment.lon1, segment.lon2),
+        lat2=np.where(cross_product[:, 2] < 0, segment.lat1, segment.lat2),
+    )
 
 
 def locking_depth_manager(segment, config):
@@ -347,22 +354,17 @@ def locking_depth_manager(segment, config):
     segment that has the same locking depth flag.  Segments with flag =
     0, 1 are untouched.
     """
-    segment = segment.copy(deep=True)
-    segment.locking_depth.values[segment.locking_depth_flag == 2] = (
-        config.locking_depth_flag2
-    )
-    segment.locking_depth.values[segment.locking_depth_flag == 3] = (
-        config.locking_depth_flag3
-    )
-    segment.locking_depth.values[segment.locking_depth_flag == 4] = (
-        config.locking_depth_flag4
-    )
-    segment.locking_depth.values[segment.locking_depth_flag == 5] = (
-        config.locking_depth_flag5
+    segment = segment.assign(
+        locking_depth=segment.locking_depth.where(
+            segment.locking_depth_flag != 2, config.locking_depth_flag2
+        )
+        .where(segment.locking_depth_flag != 3, config.locking_depth_flag3)
+        .where(segment.locking_depth_flag != 4, config.locking_depth_flag4)
+        .where(segment.locking_depth_flag != 5, config.locking_depth_flag5)
     )
 
     if bool(config.locking_depth_override_flag):
-        segment.locking_depth.values = config.locking_depth_override_value
+        segment = segment.assign(locking_depth=config.locking_depth_override_value)
     return segment
 
 
@@ -375,14 +377,14 @@ def zero_mesh_segment_locking_depth(segment, meshes):
     and mesh_file_index fields must not be equal to zero but also
     less than the number of available mesh files.
     """
-    segment = segment.copy(deep=True)
     toggle_off = np.where(
         (segment.mesh_flag != 0)
         & (segment.mesh_file_index >= 0)
         & (segment.mesh_file_index <= len(meshes))
     )[0]
-    segment.locking_depth.values[toggle_off] = 0
-    return segment
+    return segment.assign(
+        locking_depth=segment.locking_depth.where(~segment.index.isin(toggle_off), 0)
+    )
 
 
 def segment_centroids(segment):
@@ -393,38 +395,41 @@ def segment_centroids(segment):
     segment["centroid_lon"] = np.zeros_like(segment.lon1)
     segment["centroid_lat"] = np.zeros_like(segment.lon1)
 
-    for i in range(len(segment)):
+    for i in segment.index:
         segment_forward_azimuth, _, _ = GEOID.inv(
-            segment.lon1[i], segment.lat1[i], segment.lon2[i], segment.lat2[i]
+            segment.loc[i, "lon1"],
+            segment.loc[i, "lat1"],
+            segment.loc[i, "lon2"],
+            segment.loc[i, "lat2"],
         )
         segment_down_dip_azimuth = segment_forward_azimuth + 90.0 * np.sign(
-            np.cos(np.deg2rad(segment.dip[i]))
+            np.cos(np.deg2rad(segment.loc[i, "dip"]))
         )
-        azimuth_xy_cartesian = (segment.y2[i] - segment.y1[i]) / (
-            segment.x2[i] - segment.x1[i]
+        azimuth_xy_cartesian = (segment.loc[i, "y2"] - segment.loc[i, "y1"]) / (
+            segment.loc[i, "x2"] - segment.loc[i, "x1"]
         )
         azimuth_xy_cartesian = np.arctan(-1.0 / azimuth_xy_cartesian)
-        segment.centroid_z.values[i] = segment.locking_depth[i] / 2.0
-        segment_down_dip_distance = segment.centroid_z[i] / np.abs(
-            np.tan(np.deg2rad(segment.dip[i]))
+        segment.loc[i, "centroid_z"] = segment.loc[i, "locking_depth"] / 2.0
+        segment_down_dip_distance = segment.loc[i, "centroid_z"] / np.abs(
+            np.tan(np.deg2rad(segment.loc[i, "dip"]))
         )
         (
-            segment.centroid_lon.values[i],
-            segment.centroid_lat.values[i],
+            segment.loc[i, "centroid_lon"],
+            segment.loc[i, "centroid_lat"],
             _,
         ) = GEOID.fwd(
-            segment.mid_lon[i],
-            segment.mid_lat[i],
+            segment.loc[i, "mid_lon"],
+            segment.loc[i, "mid_lat"],
             segment_down_dip_azimuth,
             segment_down_dip_distance,
         )
-        segment.centroid_x.values[i] = segment.mid_x[i] + np.sign(
-            np.cos(np.deg2rad(segment.dip[i]))
+        segment.loc[i, "centroid_x"] = segment.loc[i, "mid_x"] + np.sign(
+            np.cos(np.deg2rad(segment.loc[i, "dip"]))
         ) * segment_down_dip_distance * np.cos(azimuth_xy_cartesian)
-        segment.centroid_y.values[i] = segment.mid_y[i] + np.sign(
-            np.cos(np.deg2rad(segment.dip[i]))
+        segment.loc[i, "centroid_y"] = segment.loc[i, "mid_y"] + np.sign(
+            np.cos(np.deg2rad(segment.loc[i, "dip"]))
         ) * segment_down_dip_distance * np.sin(azimuth_xy_cartesian)
-    segment.centroid_lon.values[segment.centroid_lon < 0.0] += 360.0
+    segment.loc[segment.centroid_lon < 0.0, "centroid_lon"] += 360.0
     return segment
 
 
