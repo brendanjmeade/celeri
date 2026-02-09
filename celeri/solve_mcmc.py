@@ -1,4 +1,5 @@
 import importlib.util
+from datetime import UTC, datetime
 from typing import Literal
 
 import numpy as np
@@ -1331,8 +1332,6 @@ def solve_mcmc(
         "seed": model.config.mcmc_seed,
     }
     kwargs.update(sample_kwargs or {})
-
-    from datetime import UTC, datetime
 
     mcmc_start_time = datetime.now(UTC)
     trace = nutpie.sample(compiled, **kwargs)
