@@ -65,6 +65,14 @@ class Config(BaseModel):
     sar_file_name: Path | None = None
     """Location of the sar data (empty for no SAR data)"""
 
+    los_file_name: Path | None = None
+    """Location of the LOS (line-of-sight) velocity data file.
+
+    CSV file with columns: lon, lat, los_val, look_vector_east,
+    look_vector_north, look_vector_up. Used for InSAR or similar geodetic
+    observations where velocities are measured along a look direction.
+    """
+
     mesh_parameters_file_name: Path
     """Location of the mesh parameters file"""
 
@@ -254,10 +262,11 @@ class Config(BaseModel):
     """
 
     mcmc_station_weighting: McmcStationWeighting | None = "voronoi"
-    """Method for weighting station observations in MCMC likelihood.
+    """Method for weighting station and LOS observations in MCMC likelihood.
 
-    Options:
-    - None: All stations weighted equally with weight one.
+    Applied to both GNSS station velocities and LOS (e.g. InSAR) velocities when
+    present. Options:
+    - None: All observations weighted equally with weight one.
     - "voronoi": Weight by Voronoi cell area to reduce over-representation of clusters (default)
 
     The "voronoi" option is a pragmatic approach to handle spatially clustered stations
@@ -284,7 +293,7 @@ class Config(BaseModel):
     mcmc_default_mesh_elastic_sigma: float = 5.0
 
     mcmc_station_effective_area: float = 10_000**2
-    """Effective area (in m²) for station likelihood weighting in MCMC.
+    """Effective area (in m²) for station and LOS likelihood weighting in MCMC.
 
     This parameter controls how station observations are weighted in the likelihood
     based on their spatial density. Stations are weighted by their Voronoi cell area

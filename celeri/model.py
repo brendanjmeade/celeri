@@ -21,26 +21,26 @@ class Model:
 
     Stores indices, meshes, operators, and various data components needed
     for solving interseismic coupling and fault slip rate problems.
-
-    Attributes:
-        meshes: list[Mesh]
-        segment: pd.DataFrame
-        block: pd.DataFrame
-        station: pd.DataFrame
-        mogi: pd.DataFrame
-        config: Config
-        closure: BlockClosureResult
-        sar: pd.DataFrame
     """
 
     meshes: list[Mesh]
+    """List of meshes used in the model."""
     segment: pd.DataFrame
+    """DataFrame containing segment data."""
     block: pd.DataFrame
+    """DataFrame containing block data."""
     station: pd.DataFrame
+    """DataFrame containing station data."""
     mogi: pd.DataFrame
+    """DataFrame containing Mogi data."""
     config: Config
+    """Configuration object."""
     closure: celeri_closure.BlockClosureResult
+    """Result of the block closure operation."""
     sar: pd.DataFrame
+    """DataFrame containing SAR data."""
+    los: pd.DataFrame | None
+    """DataFrame containing LOS data."""
 
     @property
     def segment_mesh_indices(self):
@@ -70,6 +70,8 @@ class Model:
         self.station.to_parquet(output_path / "station.parquet")
         self.mogi.to_parquet(output_path / "mogi.parquet")
         self.sar.to_parquet(output_path / "sar.parquet")
+        if self.los is not None:
+            self.los.to_parquet(output_path / "los.parquet")
         with (output_path / "config.json").open("w") as f:
             f.write(self.config.model_dump_json())
         for i, mesh in enumerate(self.meshes):
@@ -90,6 +92,10 @@ class Model:
         mogi = pd.read_parquet(path / "mogi.parquet")
         sar = pd.read_parquet(path / "sar.parquet")
 
+        # LOS data may not exist in older models
+        los_path = path / "los.parquet"
+        los = pd.read_parquet(los_path) if los_path.exists() else None
+
         meshes = [
             Mesh.from_disk(mesh_file) for mesh_file in sorted(path.glob("meshes/*"))
         ]
@@ -105,6 +111,7 @@ class Model:
             config=config,
             closure=closure,
             sar=sar,
+            los=los,
         )
 
 
@@ -183,7 +190,24 @@ def read_data(config: Config):
         sar = pd.read_csv(config.sar_file_name)
         sar = sar.loc[:, ~sar.columns.str.match("Unnamed")]
         logger.success(f"Read: {config.sar_file_name}")
-    return segment, block, meshes, station, mogi, sar
+
+    los = None
+    if config.los_file_name is not None:
+        assert Path(config.los_file_name).exists(), (
+            f"LOS file '{config.los_file_name}' does not exist"
+        )
+        columns = [
+            "lon",
+            "lat",
+            "los_val",
+            "look_vector_east",
+            "look_vector_north",
+            "look_vector_up",
+        ]
+        los = pd.read_csv(config.los_file_name, usecols=columns)
+        logger.success(f"Read: {config.los_file_name}")
+
+    return segment, block, meshes, station, mogi, sar, los
 
 
 def create_output_folder(config: Config):
@@ -199,13 +223,14 @@ def build_model(
     override_station: pd.DataFrame | None = None,
     override_mogi: pd.DataFrame | None = None,
     override_sar: pd.DataFrame | None = None,
+    override_los: pd.DataFrame | None = None,
 ) -> Model:
     if isinstance(config_path, Config):
         config = config_path
     else:
         config = get_config(config_path)
     create_output_folder(config)
-    segment, block, meshes, station, mogi, sar = read_data(config)
+    segment, block, meshes, station, mogi, sar, los = read_data(config)
 
     if override_segment is not None:
         segment = override_segment
@@ -219,12 +244,15 @@ def build_model(
         mogi = override_mogi
     if override_sar is not None:
         sar = override_sar
+    if override_los is not None:
+        los = override_los
 
     station = process_station(station, config)
     segment = process_segment(segment, config, meshes)
     sar = process_sar(sar, config)
-    closure, segment, station, block, mogi, sar = assign_block_labels(
-        segment, station, block, mogi, sar
+    los = process_los(los, config)
+    closure, segment, station, block, mogi, sar, los = assign_block_labels(
+        segment=segment, station=station, block=block, mogi=mogi, sar=sar, los=los
     )
 
     return Model(
@@ -235,6 +263,7 @@ def build_model(
         config=config,
         mogi=mogi,
         sar=sar,
+        los=los,
         closure=closure,
     )
 
@@ -267,6 +296,22 @@ def process_sar(sar, config):
         sar["x"] = []
         sar["block_label"] = []
     return sar
+
+
+def process_los(los, config):
+    """Preprocessing of LOS (line-of-sight) data.
+
+    Adds Cartesian coordinates and depth for LOS observation points.
+    """
+    if los is None or los.empty:
+        return los
+
+    los["depth"] = np.zeros(len(los))
+    los["x"], los["y"], los["z"] = sph2cart(
+        los.lon.values, los.lat.values, RADIUS_EARTH
+    )
+    los["block_label"] = -1 * np.ones(len(los), dtype=int)
+    return los
 
 
 def process_segment(segment, config, meshes):
@@ -444,7 +489,7 @@ def inpolygon(xq, yq, xv, yv):
     return p.contains_points(q).reshape(shape)
 
 
-def assign_block_labels(segment, station, block, mogi, sar):
+def assign_block_labels(*, segment, station, block, mogi, sar, los=None):
     """Ben Thompson's implementation of the half edge approach to the
     block labeling problem and east/west assignment.
     """
@@ -454,6 +499,7 @@ def assign_block_labels(segment, station, block, mogi, sar):
     block = block.copy(deep=True)
     mogi = mogi.copy(deep=True)
     sar = sar.copy(deep=True)
+    los = los.copy(deep=True) if los is not None else None
 
     closure = celeri_closure.BlockClosureResult.from_segments(segment)
     labels = celeri_closure.get_segment_labels(closure)
@@ -593,7 +639,13 @@ def assign_block_labels(segment, station, block, mogi, sar):
             mogi.lon.to_numpy(), mogi.lat.to_numpy()
         )
 
-    return closure, segment, station, block, mogi, sar
+    # Assign block labels to LOS locations
+    if los is not None and not los.empty:
+        los["block_label"] = closure.assign_points(
+            los.lon.to_numpy(), los.lat.to_numpy()
+        )
+
+    return closure, segment, station, block, mogi, sar, los
 
 
 def assign_mesh_segment_labels(

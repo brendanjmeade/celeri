@@ -1,4 +1,5 @@
 import importlib.util
+from datetime import UTC, datetime
 from typing import Literal
 
 import numpy as np
@@ -11,13 +12,71 @@ from scipy import linalg, spatial
 from celeri.celeri_util import get_keep_index_12
 from celeri.constants import RADIUS_EARTH
 from celeri.model import Model
-from celeri.operators import Operators, build_operators
+from celeri.operators import (
+    LosOperators,
+    Operators,
+    build_los_operators,
+    build_operators,
+)
 from celeri.solve import Estimation, build_estimation
 
 DIRECTION_IDX = {
     "strike_slip": slice(None, None, 2),
     "dip_slip": slice(1, None, 2),
 }
+
+
+def _compute_voronoi_weights(
+    xyz: np.ndarray,
+    effective_area: float,
+    *,
+    radius: float = RADIUS_EARTH,
+) -> tuple[np.ndarray, dict]:
+    """Compute Voronoi area weights for points on the sphere.
+
+    Args:
+        xyz: 2d array of shape (n_points, 3) containing the x, y, z coordinates of the points.
+        effective_area: Effective area (in m²) for weighting, set in config.mcmc_station_effective_area.
+        radius: Radius of the sphere (in m).
+
+    Returns:
+        weight: 1d array of length n_points, in (0, 1]
+        diagnostics: dict with n, weight_min, weight_max, effective_n, n_full_weight, effective_area_km
+    """
+    voronoi = spatial.SphericalVoronoi(xyz, int(radius))
+    areas = voronoi.calculate_areas()
+    areas_clipped = np.minimum(effective_area, areas)
+    weight = areas_clipped / effective_area
+    effective_n = (weight.sum() ** 2) / ((weight**2).sum())
+    diagnostics = {
+        "n": len(weight),
+        "weight_min": float(weight.min()),
+        "weight_max": float(weight.max()),
+        "effective_n": effective_n,
+        "n_full_weight": int((areas >= effective_area).sum()),
+        "effective_area_km": np.sqrt(effective_area) / 1000,
+    }
+    return weight, diagnostics
+
+
+def _log_weighting_diagnostics(diagnostics: dict, label: str) -> None:
+    """Log Voronoi weighting diagnostics."""
+    logger.info(f"{label} weighting diagnostics:")
+    logger.info(f"  Number of points: {diagnostics['n']}")
+    logger.info(
+        f"  Effective area threshold: {diagnostics['effective_area_km']:.1f} km "
+        f"x {diagnostics['effective_area_km']:.1f} km"
+    )
+    logger.info(
+        f"  Weight range: [{diagnostics['weight_min']:.3f}, {diagnostics['weight_max']:.3f}]"
+    )
+    logger.info(
+        f"  Effective sample size: {diagnostics['effective_n']:.1f} "
+        f"(vs {diagnostics['n']} points)"
+    )
+    logger.info(
+        f"  Points at full weight (area >= threshold): {diagnostics['n_full_weight']}"
+    )
 
 
 def _constrain_field(
@@ -273,7 +332,7 @@ def _get_eigen_to_velocity(
         mesh_idx: Index of the mesh
         kind: Type of slip ("strike_slip" or "dip_slip")
         operators: Operators containing eigen information
-        vel_idx: Row indices to select velocity components (horizontal only or all 3)
+        vel_idx: Row indices to select station velocity components (horizontal only or all 3)
     """
     assert operators.eigen is not None
 
@@ -316,15 +375,20 @@ def _get_eigenmode_prior_variances(
     return eigenvectors, variances
 
 
-def _station_vel_from_elastic_mesh(
+def _velocities_from_elastic_mesh(
     model: Model,
     mesh_idx: int,
     kind: Literal["strike_slip", "dip_slip"],
     elastic,
     operators: Operators,
-    vel_idx: np.ndarray,
+    *,
+    vel_idx: np.ndarray | None = None,
+    los_ops: LosOperators | None = None,
 ):
-    """Compute elastic velocity at stations from slip rates on a mesh.
+    """Compute observations from elastic slip rates on a mesh.
+
+    Computes either station velocities or LOS velocities depending on
+    which parameters are provided.
 
     Parameters
     ----------
@@ -338,14 +402,40 @@ def _station_vel_from_elastic_mesh(
         Elastic slip rates on the mesh
     operators : Operators
         Operators containing TDE and eigen information
-    vel_idx : np.ndarray
-        Row indices to select velocity components (horizontal only or all 3)
+    vel_idx : np.ndarray | None
+        Row indices to select station velocity components (horizontal only or all 3).
+        If provided, compute station velocities.
+    los_ops : LosOperators | None
+        LOS operators containing eigen_to_los. If provided, compute LOS velocities.
 
     Returns
     -------
     array
-        Elastic velocities at station locations (flattened, selected components)
+        Velocities at observation locations (station or LOS depending on inputs)
+
+    Raises
+    ------
+    ValueError
+        If neither vel_idx nor los_ops is provided.
     """
+    if vel_idx is None and los_ops is None:
+        raise ValueError("Either vel_idx or los_ops must be provided")
+
+    if los_ops is not None:
+        eigenvectors = _get_eigenmodes(model, mesh_idx, kind)
+        coefs = _operator_mult(eigenvectors.T, elastic)
+
+        if kind == "strike_slip":
+            n_eigs = model.meshes[mesh_idx].config.n_modes_strike_slip
+            start_idx = 0
+        else:
+            n_eigs = model.meshes[mesh_idx].config.n_modes_dip_slip
+            start_idx = model.meshes[mesh_idx].config.n_modes_strike_slip
+
+        to_los = los_ops.eigen_to_los[mesh_idx][:, start_idx : start_idx + n_eigs]
+        return _operator_mult(to_los, coefs)
+
+    assert vel_idx is not None
     assert operators.tde is not None
     idx = DIRECTION_IDX[kind]
     method = model.config.mcmc_station_velocity_method
@@ -412,11 +502,13 @@ def _coupling_component(
     upper: float | None,
     sigma: float,
     mu_unconstrained: float,
+    *,
+    los_ops: LosOperators | None = None,
 ):
     """Model elastic slip rate as coupling * kinematic slip rate.
 
     Returns the estimated elastic slip rates on the TDEs and the
-    velocities at the stations due to them.
+    velocities at the stations (and optionally LOS locations) due to them.
 
     Args:
         model: The model instance
@@ -429,6 +521,11 @@ def _coupling_component(
         upper: Upper bound for coupling constraint
         sigma: Amplitude scale parameter for GP prior
         mu_unconstrained: Prior mean in unconstrained space
+        los_ops: LOS operators. If provided, also compute LOS velocities.
+
+    Returns:
+        Tuple of (elastic_tde, station_vels, los_vels) where los_vels is None
+        if los_ops is not provided.
     """
     assert operators.eigen is not None
     assert operators.tde is not None
@@ -483,15 +580,28 @@ def _coupling_component(
     elastic_tde = kinematic * coupling_field
     pm.Deterministic(f"elastic_{mesh_idx}_{kind_short}", elastic_tde)
 
-    station_vels = _station_vel_from_elastic_mesh(
+    station_vels = _velocities_from_elastic_mesh(
         model,
         mesh_idx,
         kind,
         elastic_tde,
         operators,
-        vel_idx,
+        vel_idx=vel_idx,
     )
-    return elastic_tde, station_vels.astype("d")
+
+    los_vels = None
+    if los_ops is not None:
+        los_vels = _velocities_from_elastic_mesh(
+            model,
+            mesh_idx,
+            kind,
+            elastic_tde,
+            operators,
+            los_ops=los_ops,
+        )
+        los_vels = los_vels.astype("d")
+
+    return elastic_tde, station_vels.astype("d"), los_vels
 
 
 def _elastic_component(
@@ -504,6 +614,8 @@ def _elastic_component(
     upper: float | None,
     sigma: float,
     mu_unconstrained: float,
+    *,
+    los_ops: LosOperators | None = None,
 ):
     """Model elastic slip rate as a linear combination of eigenmodes.
 
@@ -512,7 +624,7 @@ def _elastic_component(
     heterogeneous variances), controlled by mesh config.
 
     Returns the estimated elastic slip rates on the TDEs and the
-    velocities at the stations due to them.
+    velocities at the stations (and optionally LOS locations) due to them.
 
     Args:
         model: The model instance
@@ -524,6 +636,11 @@ def _elastic_component(
         upper: Upper bound for elastic constraint
         sigma: Amplitude scale parameter for GP prior
         mu_unconstrained: Prior mean in unconstrained space
+        los_ops: LOS operators. If provided, also compute LOS velocities.
+
+    Returns:
+        Tuple of (elastic_tde, station_vels, los_vels) where los_vels is None
+        if los_ops is not provided.
     """
     assert operators.eigen is not None
     assert operators.tde is not None
@@ -577,16 +694,40 @@ def _elastic_component(
     if lower is None and upper is None:
         station_vels = _operator_mult(to_velocity, param)
     else:
-        station_vels = _station_vel_from_elastic_mesh(
+        station_vels = _velocities_from_elastic_mesh(
             model,
             mesh_idx,
             kind,
             elastic_tde,
             operators,
-            vel_idx,
+            vel_idx=vel_idx,
         )
 
-    return elastic_tde, station_vels
+    # Compute LOS velocities if requested
+    los_vels = None
+    if los_ops is not None:
+        if kind == "strike_slip":
+            start_idx = 0
+        else:
+            start_idx = model.meshes[mesh_idx].config.n_modes_strike_slip
+
+        to_los = los_ops.eigen_to_los[mesh_idx][:, start_idx : start_idx + n_eigs]
+
+        if lower is None and upper is None:
+            # Use direct eigen_to_los operator when no constraints
+            los_vels = _operator_mult(to_los, param)
+        else:
+            # Must project through elastic_tde when constraints are applied
+            los_vels = _velocities_from_elastic_mesh(
+                model,
+                mesh_idx,
+                kind,
+                elastic_tde,
+                operators,
+                los_ops=los_ops,
+            )
+
+    return elastic_tde, station_vels, los_vels
 
 
 def _mesh_component(
@@ -595,6 +736,8 @@ def _mesh_component(
     rotation,
     operators: Operators,
     vel_idx: np.ndarray,
+    *,
+    los_ops: LosOperators | None = None,
 ):
     """Compute velocity contributions from a mesh.
 
@@ -604,8 +747,14 @@ def _mesh_component(
         rotation: Rotation parameters
         operators: Operators containing TDE and eigen information
         vel_idx: Row indices to select velocity components (horizontal only or all 3)
+        los_ops: LOS operators. If provided, also compute LOS velocities.
+
+    Returns:
+        Tuple of (station_velocity, los_velocity) where los_velocity is None
+        if los_ops is not provided.
     """
-    rates = []
+    station_rates = []
+    los_rates: list | None = [] if los_ops is not None else None
 
     kinds: tuple[Literal["strike_slip"], Literal["dip_slip"]] = (
         "strike_slip",
@@ -645,7 +794,7 @@ def _mesh_component(
                 config.softplus_lengthscale,
                 f"coupling_{kind_short} mesh {mesh_idx}",
             )
-            elastic_tde, station_vels = _coupling_component(
+            elastic_tde, station_vels, los_vels = _coupling_component(
                 model,
                 mesh_idx,
                 kind,
@@ -656,6 +805,7 @@ def _mesh_component(
                 upper=coupling_limit.upper,
                 sigma=config.coupling_sigma,
                 mu_unconstrained=mu_unconstrained,
+                los_ops=los_ops,
             )
         else:
             mu_unconstrained = _get_unconstrained_mean(
@@ -666,7 +816,7 @@ def _mesh_component(
                 config.softplus_lengthscale,
                 f"elastic_{kind_short} mesh {mesh_idx}",
             )
-            elastic_tde, station_vels = _elastic_component(
+            elastic_tde, station_vels, los_vels = _elastic_component(
                 model,
                 mesh_idx,
                 kind,
@@ -676,11 +826,16 @@ def _mesh_component(
                 upper=rate_limit.upper,
                 sigma=config.elastic_sigma,
                 mu_unconstrained=mu_unconstrained,
+                los_ops=los_ops,
             )
 
-        rates.append(station_vels)
+        station_rates.append(station_vels)
+        if los_rates is not None and los_vels is not None:
+            los_rates.append(los_vels)
         _add_tde_elastic_constraints(model, mesh_idx, elastic_tde, kind)
-    return sum(rates)
+
+    los_result = sum(los_rates) if los_rates else None
+    return sum(station_rates), los_result
 
 
 def _add_tde_elastic_constraints(
@@ -849,32 +1004,11 @@ def _add_station_velocity_likelihood(model: Model, mu):
             nu=6,
         )
     elif model.config.mcmc_station_weighting == "voronoi":
-        effective_area = model.config.mcmc_station_effective_area
-
-        voroni = spatial.SphericalVoronoi(
-            model.station[["x", "y", "z"]].values, int(RADIUS_EARTH)
+        weight, diagnostics = _compute_voronoi_weights(
+            model.station[["x", "y", "z"]].values,
+            model.config.mcmc_station_effective_area,
         )
-        areas = voroni.calculate_areas()
-
-        areas_clipped = np.minimum(effective_area, areas)
-        weight = areas_clipped / effective_area
-
-        # Log diagnostics about the weighting
-        effective_n = (weight.sum() ** 2) / (weight**2).sum()
-        logger.info("Station weighting diagnostics:")
-        logger.info(f"  Number of stations: {len(weight)}")
-        logger.info(
-            f"  Effective area threshold: {np.sqrt(effective_area) / 1000:.1f} km "
-            f"x {np.sqrt(effective_area) / 1000:.1f} km"
-        )
-        logger.info(f"  Weight range: [{weight.min():.3f}, {weight.max():.3f}]")
-        logger.info(
-            f"  Effective sample size: {effective_n:.1f} (vs {len(weight)} stations)"
-        )
-        logger.info(
-            "  Stations at full weight (area >= threshold): "
-            f"{(areas >= effective_area).sum()}"
-        )
+        _log_weighting_diagnostics(diagnostics, "Station")
 
         pm.CustomDist(
             "station_velocity",
@@ -890,6 +1024,67 @@ def _add_station_velocity_likelihood(model: Model, mu):
         raise ValueError(
             f"Unknown mcmc_station_weighting: {model.config.mcmc_station_weighting}. "
             "Must be None or 'voronoi'."
+        )
+
+
+def _add_los_velocity_likelihood(
+    model: Model,
+    los_ops: LosOperators,
+    los_pred,
+):
+    r"""Add LOS velocity likelihood to the PyMC model.
+
+    Uses the same Voronoi area weighting as station likelihood when
+    mcmc_station_weighting is \"voronoi\".
+
+    Args:
+        model: Model (for config and LOS coordinates).
+        los_ops: LOS operators containing observations.
+        los_pred: Predicted LOS velocities, shape (n_los,).
+    """
+    import pymc as pm
+
+    pm.Deterministic("los_predicted", los_pred)
+
+    sigma_los = pm.HalfNormal("sigma_los", sigma=2)
+
+    weighting = model.config.mcmc_station_weighting
+    if weighting is None:
+        logger.info(f"Using unweighted LOS likelihood ({los_ops.n_los} points)")
+        pm.Normal(
+            "los_velocity",
+            mu=los_pred,
+            sigma=sigma_los,
+            observed=los_ops.los_data,
+        )
+    elif weighting == "voronoi":
+        assert model.los is not None  # guaranteed when LOS likelihood is added
+        weight, diagnostics = _compute_voronoi_weights(
+            model.los[["x", "y", "z"]].values,
+            model.config.mcmc_station_effective_area,
+        )
+        _log_weighting_diagnostics(diagnostics, "LOS")
+
+        def los_logp(value, weight, mu, sigma):
+            dist = pm.Normal.dist(mu=mu, sigma=sigma)
+            return pt.sum(weight * pm.logp(dist, value))
+
+        def los_random(weight, mu, sigma, rng=None, size=None):
+            return pm.Normal.dist(mu=mu, sigma=sigma, rng=rng, size=size)
+
+        pm.CustomDist(
+            "los_velocity",
+            weight,
+            los_pred,
+            sigma_los,
+            logp=los_logp,
+            random=los_random,
+            observed=los_ops.los_data,
+            dims=("los",),
+        )
+    else:
+        raise ValueError(
+            f"Unknown mcmc_station_weighting: {weighting}. Must be None or 'voronoi'."
         )
 
 
@@ -995,11 +1190,18 @@ def _add_segment_constraints(model: Model, operators: Operators, rotation):
             )
 
 
-def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
+def _build_pymc_model(
+    model: Model,
+    operators: Operators,
+) -> PymcModel:
     """Build the complete PyMC model for MCMC inference.
 
     Combines all velocity components (block strain, rotation, Mogi, elastic)
-    and adds likelihoods for station and segment observations.
+    and adds likelihoods for station, LOS, and segment observations.
+
+    Args:
+        model: The celeri Model
+        operators: Operators for the forward model
     """
     assert operators.eigen is not None
     assert operators.tde is not None
@@ -1036,6 +1238,10 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
         "slip_comp": pd.Index(["strike_slip", "dip_slip", "tensile_slip"]),
     }
 
+    if operators.los is not None:
+        assert model.los is not None
+        coords["los"] = model.los.index
+
     with pm.Model(coords=coords) as pymc_model:
         block_strain_rate_velocity = _add_block_strain_rate_component(
             operators, vel_idx
@@ -1047,12 +1253,16 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
 
         mogi_velocity = _add_mogi_component(operators, vel_idx)
 
-        # Add elastic velocity from meshes
+        # Add elastic velocity from meshes (and LOS if available)
         elastic_velocities = []
+        los_elastic_velocities: list = []
         for key, _ in enumerate(model.meshes):
-            elastic_velocities.append(
-                _mesh_component(model, key, rotation, operators, vel_idx)
+            station_vel, los_vel = _mesh_component(
+                model, key, rotation, operators, vel_idx, los_ops=operators.los
             )
+            elastic_velocities.append(station_vel)
+            if los_vel is not None:
+                los_elastic_velocities.append(los_vel)
         elastic_velocity = sum(elastic_velocities)
 
         mu = (
@@ -1069,6 +1279,38 @@ def _build_pymc_model(model: Model, operators: Operators) -> PymcModel:
 
         _add_station_velocity_likelihood(model, mu_det)
         _add_segment_constraints(model, operators, rotation)
+
+        if operators.los is not None:
+            los = operators.los
+            logger.info(f"Adding LOS likelihood with {los.n_los} observations")
+
+            los_block_strain = _operator_mult(
+                los.block_strain_rate_to_los.astype("f"),
+                pm.modelcontext(None)["block_strain_rate"].astype("f"),
+            )
+
+            los_rotation = _operator_mult(
+                los.rotation_to_los.astype("f"),
+                rotation.astype("f"),
+            )
+
+            los_okada = _operator_mult(
+                los.rotation_to_okada_los.astype("f"),
+                rotation.astype("f"),
+            )
+
+            los_mogi = _operator_mult(
+                los.mogi_to_los.astype("f"),
+                pm.modelcontext(None)["mogi"].astype("f"),
+            )
+
+            los_elastic = sum(los_elastic_velocities) if los_elastic_velocities else 0
+
+            los_pred = (
+                los_block_strain + los_rotation - los_okada + los_mogi + los_elastic
+            )
+
+            _add_los_velocity_likelihood(model, los, los_pred)
 
     return pymc_model  # type: ignore[return-value]
 
@@ -1116,10 +1358,9 @@ def solve_mcmc(
                 "a segment with mesh_flag=1 in the segment file."
             )
 
+    use_streaming = model.config.mcmc_station_velocity_method == "project_to_eigen"
+
     if operators is None:
-        # Only use streaming mode (discard_tde_to_velocities=True) when using project_to_eigen.
-        # The direct and low_rank methods require the full tde_to_velocities matrices.
-        use_streaming = model.config.mcmc_station_velocity_method == "project_to_eigen"
         if use_streaming:
             logger.info(
                 "Building operators with streaming mode (discard_tde_to_velocities=True)"
@@ -1136,6 +1377,12 @@ def solve_mcmc(
         raise ValueError(
             "Operators must have both TDE and eigen components for MCMC solve."
         )
+
+    operators.los = build_los_operators(
+        model, operators, discard_tde_to_los=use_streaming
+    )
+    if operators.los is not None:
+        logger.info(f"Built LOS operators for {operators.los.n_los} observations")
 
     pymc_model = _build_pymc_model(model, operators)
 
@@ -1155,8 +1402,6 @@ def solve_mcmc(
         "seed": model.config.mcmc_seed,
     }
     kwargs.update(sample_kwargs or {})
-
-    from datetime import UTC, datetime
 
     mcmc_start_time = datetime.now(UTC)
     trace = nutpie.sample(compiled, **kwargs)
