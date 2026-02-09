@@ -276,7 +276,7 @@ class Config(BaseModel):
     mcmc_default_mesh_coupling_mean_parameterization: McmcMeanParameterization = (
         "constrained"
     )
-    mcmc_default_mesh_coupling_sigma: float = 5.0
+    mcmc_default_mesh_coupling_sigma: float = 1.0
     mcmc_default_mesh_elastic_mean: float = 0.0
     mcmc_default_mesh_elastic_mean_parameterization: McmcMeanParameterization = (
         "unconstrained"
