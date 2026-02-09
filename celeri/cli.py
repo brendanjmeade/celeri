@@ -204,12 +204,54 @@ def parse_args() -> argparse.Namespace:
         help="Effective area (m²) for station likelihood weighting",
     )
     parser.add_argument(
+        "--mcmc-default-mesh-coupling-mean",
+        type=float,
+        default=None,
+        required=False,
+        help="Default GP prior mean for mesh coupling",
+    )
+    parser.add_argument(
+        "--mcmc-default-mesh-coupling-sigma",
+        type=float,
+        default=None,
+        required=False,
+        help="Default GP prior sigma for mesh coupling",
+    )
+    parser.add_argument(
+        "--mcmc-default-mesh-elastic-mean",
+        type=float,
+        default=None,
+        required=False,
+        help="Default GP prior mean for mesh elastic rates",
+    )
+    parser.add_argument(
+        "--mcmc-default-mesh-elastic-sigma",
+        type=float,
+        default=None,
+        required=False,
+        help="Default GP prior sigma for mesh elastic rates",
+    )
+    parser.add_argument(
         "--mesh-default-eigenvector-algorithm",
         type=str,
         default=None,
         required=False,
         choices=["eigh", "eigsh"],
         help="Algorithm for mesh eigendecomposition (eigh | eigsh)",
+    )
+    parser.add_argument(
+        "--mcmc-default-mesh-matern-nu",
+        type=float,
+        default=None,
+        required=False,
+        help="Default Matérn smoothness parameter (nu) for mesh eigenfunctions",
+    )
+    parser.add_argument(
+        "--mcmc-default-mesh-matern-length-scale",
+        type=float,
+        default=None,
+        required=False,
+        help="Default Matérn length scale for mesh eigenfunctions",
     )
 
     return parser.parse_args()

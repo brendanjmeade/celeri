@@ -28,6 +28,8 @@ McmcStationVelocityMethod = Literal[
 
 McmcStationWeighting = Literal["voronoi",]
 
+McmcMeanParameterization = Literal["constrained", "unconstrained"]
+
 
 class Config(BaseModel):
     # Forbid extra fields when reading from JSON
@@ -196,14 +198,47 @@ class Config(BaseModel):
     mesh_default_eigenvector_algorithm: EigenvectorAlgorithm = "eigh"
     """Default algorithm for computing eigenvectors in mesh processing.
 
-    This value is used as a fallback when a mesh configuration does not
-    specify its own `eigenvector_algorithm`.
+    Propagated to each mesh's ``eigenvector_algorithm`` unless overridden
+    in the per-mesh configuration.
 
     Options:
     - "eigh": Dense eigenvalue decomposition (scipy.linalg.eigh). Faster for many modes.
     - "eigsh": Sparse eigenvalue decomposition (scipy.sparse.linalg.eigsh). Faster for few modes.
 
     Both have equivalent accuracy, but eigenvector signs may differ between algorithms.
+    """
+
+    mcmc_default_mesh_matern_nu: float = 2.5
+    """Default Matérn kernel smoothness parameter (nu) for mesh eigenfunction computation.
+
+    Propagated to each mesh's ``matern_nu`` unless overridden in the per-mesh
+    configuration.
+
+    Common values:
+    - 0.5: Exponential covariance (rough, continuous but not differentiable)
+    - 1.5: Once-differentiable (moderate smoothness)
+    - 2.5: Twice-differentiable (smooth)
+
+    Higher values produce smoother eigenfunctions.
+    """
+
+    mcmc_default_mesh_matern_length_scale: float = 0.2
+    """Default Matérn kernel length scale for mesh eigenfunction computation.
+
+    Propagated to each mesh's ``matern_length_scale`` unless overridden in the
+    per-mesh configuration.
+
+    The interpretation depends on ``mesh_default_matern_length_units``.
+    """
+
+    mesh_default_matern_length_units: Literal["absolute", "diameters"] = "diameters"
+    """Default units for the Matérn kernel length scale.
+
+    Propagated to each mesh's ``matern_length_units`` unless overridden in the
+    per-mesh configuration.
+
+    - "diameters": Scales by mesh diameter (max pairwise centroid distance)
+    - "absolute": Uses the value directly in mesh coordinate units (meters)
     """
 
     mcmc_station_velocity_method: McmcStationVelocityMethod = "project_to_eigen"
@@ -230,6 +265,23 @@ class Config(BaseModel):
     stations in dense clusters proportionally to their spacing. Use None if you want
     standard unweighted likelihood or if your network has uniform spatial coverage.
     """
+
+    # Default mean and sigma for coupling/elastic GP priors in MCMC.
+    # These are defaults; mesh-specific values can override.
+    # The "parameterization" determines whether the mean is in constrained or
+    # unconstrained space. For coupling with bounds [0, 1], constrained mean 0.5
+    # is at the center. For elastic with one-sided bounds, unconstrained mean 0
+    # places the constrained mean at ±softplus_lengthscale.
+    mcmc_default_mesh_coupling_mean: float = 0.9
+    mcmc_default_mesh_coupling_mean_parameterization: McmcMeanParameterization = (
+        "constrained"
+    )
+    mcmc_default_mesh_coupling_sigma: float = 1.0
+    mcmc_default_mesh_elastic_mean: float = 0.0
+    mcmc_default_mesh_elastic_mean_parameterization: McmcMeanParameterization = (
+        "unconstrained"
+    )
+    mcmc_default_mesh_elastic_sigma: float = 5.0
 
     mcmc_station_effective_area: float = 10_000**2
     """Effective area (in m²) for station likelihood weighting in MCMC.
@@ -369,6 +421,34 @@ class Config(BaseModel):
                 raise ValueError(error)
         return self
 
+    @model_validator(mode="after")
+    def apply_mesh_defaults(self) -> Self:
+        """Propagate top-level defaults to mesh configs that don't set their own.
+
+        MeshConfig fields that default to None inherit from the corresponding
+        Config-level default.  Per-mesh overrides (explicitly set in the mesh
+        JSON) are preserved.
+        """
+        defaults: dict[str, object] = {
+            # GP kernel hyperparameters
+            "matern_nu": self.mcmc_default_mesh_matern_nu,
+            "matern_length_scale": self.mcmc_default_mesh_matern_length_scale,
+            "matern_length_units": self.mesh_default_matern_length_units,
+            "eigenvector_algorithm": self.mesh_default_eigenvector_algorithm,
+            # MCMC prior parameters
+            "coupling_mean": self.mcmc_default_mesh_coupling_mean,
+            "coupling_mean_parameterization": self.mcmc_default_mesh_coupling_mean_parameterization,
+            "coupling_sigma": self.mcmc_default_mesh_coupling_sigma,
+            "elastic_mean": self.mcmc_default_mesh_elastic_mean,
+            "elastic_mean_parameterization": self.mcmc_default_mesh_elastic_mean_parameterization,
+            "elastic_sigma": self.mcmc_default_mesh_elastic_sigma,
+        }
+        for mesh_field, default_value in defaults.items():
+            for mesh_param in self.mesh_params:
+                if mesh_field not in mesh_param.model_fields_set:
+                    setattr(mesh_param, mesh_field, default_value)
+        return self
+
 
 def _get_output_path(base: Path) -> Path:
     """Generate a unique numbered output path within the base directory.
@@ -428,16 +508,7 @@ def get_config(file_name: Path | str) -> Config:
     else:
         mesh_params = MeshConfig.from_file(file_path.parent / mesh_parameters_file_name)
 
-    # Apply the top-level default eigenvector algorithm to mesh configs
-    # that don't explicitly set their own
-    mesh_default_eigenvector_algorithm = config_data.get(
-        "mesh_default_eigenvector_algorithm", None
-    )
-    if mesh_default_eigenvector_algorithm is not None:
-        for mesh_param in mesh_params:
-            if "eigenvector_algorithm" not in mesh_param.model_fields_set:
-                mesh_param.eigenvector_algorithm = mesh_default_eigenvector_algorithm
-
+    # Top-level defaults are propagated to mesh configs by Config.apply_mesh_defaults
     config_data["mesh_params"] = mesh_params
     config_data["file_name"] = file_path.resolve()
 

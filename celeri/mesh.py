@@ -84,18 +84,21 @@ class MeshConfig(BaseModel):
         Tuple containing the constrained upper and lower bounds for the elastic rates on the mesh for strike-slip.
     elastic_constraints_ds : ScalarBound
         Tuple containing the constrained upper and lower bounds for the elastic rates on the mesh for dip-slip.
-    matern_nu : float
-        Matérn kernel smoothness parameter (default 1/2). Common values: 1/2 (exponential),
+    matern_nu : float | None
+        Matérn kernel smoothness parameter. When None, inherits from
+        Config.mcmc_default_mesh_matern_nu. Common values: 1/2 (exponential),
         3/2 (once-differentiable), 5/2 (twice-differentiable).
-    matern_length_scale : float
-        Matérn kernel length scale (default 1.0). Interpretation depends on matern_length_units.
-    matern_length_units : Literal["absolute", "diameters"]
-        Units for matern_length_scale: 'diameters' scales by mesh diameter (default),
-        'absolute' uses the value directly in the same units as mesh coordinates.
-    eigenvector_algorithm : Literal["eigh", "eigsh"]
-        Algorithm for eigendecomposition (default "eigh"). 'eigh' (dense LAPACK) is faster for
-        many modes, 'eigsh' (sparse ARPACK) is faster for few modes. Both have equivalent accuracy,
-        but eigenvector signs may differ between algorithms.
+    matern_length_scale : float | None
+        Matérn kernel length scale. When None, inherits from
+        Config.mcmc_default_mesh_matern_length_scale.
+    matern_length_units : Literal["absolute", "diameters"] | None
+        Units for matern_length_scale. When None, inherits from
+        Config.mesh_default_matern_length_units. 'diameters' scales by mesh
+        diameter, 'absolute' uses the value directly in mesh coordinate units.
+    eigenvector_algorithm : Literal["eigh", "eigsh"] | None
+        Algorithm for eigendecomposition. When None, inherits from
+        Config.mesh_default_eigenvector_algorithm. 'eigh' (dense LAPACK) is
+        faster for many modes, 'eigsh' (sparse ARPACK) is faster for few modes.
     softplus_lengthscale : float
         Length scale for the softplus operations for sign constraints when only one bound (upper or lower) is present.
         Automatically set to 1.0 mm/yr if one bound is present.
@@ -157,10 +160,30 @@ class MeshConfig(BaseModel):
     elastic_constraints_ss: ScalarBound = ScalarBound(lower=None, upper=None)
     elastic_constraints_ds: ScalarBound = ScalarBound(lower=None, upper=None)
 
-    coupling_sigma: float = 0.25
-    elastic_sigma: float = 1.0
+    # GP prior mean and sigma for coupling/elastic fields in MCMC.
+    # When None, these use defaults from the top-level Config.
+    # The mean_parameterization determines whether the mean is specified in
+    # the constrained (bounded) or unconstrained (transformed) space.
+    coupling_mean: float | None = None
+    coupling_mean_parameterization: Literal["constrained", "unconstrained"] | None = (
+        None
+    )
+    coupling_sigma: float | None = None
+    elastic_mean: float | None = None
+    elastic_mean_parameterization: Literal["constrained", "unconstrained"] | None = None
+    elastic_sigma: float | None = None
 
     softplus_lengthscale: float = 1.0
+
+    gp_parameterization: Literal["centered", "non_centered"] = "non_centered"
+    """Parameterization for GP coefficients in MCMC.
+
+    Both parameterizations are mathematically equivalent but change the
+    geometry of the sampling space, which can affect HMC performance.
+
+    - "non_centered": Sample white noise and mollify via eigenvalue scaling.
+    - "centered": Sample directly with heterogeneous variances.
+    """
 
     # Hint for the new sqp solver about the likely range of kinematic slip rates.
     sqp_kinematic_slip_rate_hint_ss: ScalarBound = ScalarBound(
@@ -175,11 +198,13 @@ class MeshConfig(BaseModel):
     iterative_coupling_smoothing_length_scale: float | None = None
     iterative_coupling_kinematic_slip_regularization_scale: float = 1.0
 
-    # GP kernel hyperparameters for eigenmode computation
-    matern_nu: float = 0.5
-    matern_length_scale: float = 1.0
-    matern_length_units: Literal["absolute", "diameters"] = "diameters"
-    eigenvector_algorithm: Literal["eigh", "eigsh"] = "eigh"
+    # GP kernel hyperparameters for eigenmode computation.
+    # When None, the top-level Config defaults are used
+    # (propagated by Config.apply_mesh_defaults).
+    matern_nu: float | None = None
+    matern_length_scale: float | None = None
+    matern_length_units: Literal["absolute", "diameters"] | None = None
+    eigenvector_algorithm: Literal["eigh", "eigsh"] | None = None
 
     @classmethod
     def from_file(cls, filename: str | Path) -> list[MeshConfig]:
@@ -806,6 +831,18 @@ class Mesh:
             mesh["side_slip_idx"],
         )
 
+        assert config.matern_nu is not None, (
+            "MeshConfig.matern_nu must be set (propagated by Config.apply_mesh_defaults)"
+        )
+        assert config.matern_length_scale is not None, (
+            "MeshConfig.matern_length_scale must be set (propagated by Config.apply_mesh_defaults)"
+        )
+        assert config.matern_length_units is not None, (
+            "MeshConfig.matern_length_units must be set (propagated by Config.apply_mesh_defaults)"
+        )
+        assert config.eigenvector_algorithm is not None, (
+            "MeshConfig.eigenvector_algorithm must be set (propagated by Config.apply_mesh_defaults)"
+        )
         mesh["eigenvalues"], mesh["eigenvectors"] = _get_eigenvalues_and_eigenvectors(
             mesh["n_modes"],
             mesh["x_centroid"],
@@ -895,6 +932,18 @@ class Mesh:
         )
 
         if mesh.eigenvalues is None or mesh.eigenvectors is None:
+            assert config.matern_nu is not None, (
+                "MeshConfig.matern_nu must be set (propagated by Config.apply_mesh_defaults)"
+            )
+            assert config.matern_length_scale is not None, (
+                "MeshConfig.matern_length_scale must be set (propagated by Config.apply_mesh_defaults)"
+            )
+            assert config.matern_length_units is not None, (
+                "MeshConfig.matern_length_units must be set (propagated by Config.apply_mesh_defaults)"
+            )
+            assert config.eigenvector_algorithm is not None, (
+                "MeshConfig.eigenvector_algorithm must be set (propagated by Config.apply_mesh_defaults)"
+            )
             mesh.eigenvalues, mesh.eigenvectors = _get_eigenvalues_and_eigenvectors(
                 mesh.n_modes,
                 mesh.x_centroid,

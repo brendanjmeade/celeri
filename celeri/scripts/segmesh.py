@@ -440,7 +440,11 @@ def main():
         for j in range(n_new_meshes):
             filename = mesh_dir / f"{seg_file_stem}_segmesh{j}.msh"
             new_entry = celeri.MeshConfig(
-                file_name=model.config.mesh_parameters_file_name
+                file_name=model.config.mesh_parameters_file_name,
+                matern_nu=model.config.mcmc_default_mesh_matern_nu,
+                matern_length_scale=model.config.mcmc_default_mesh_matern_length_scale,
+                matern_length_units=model.config.mesh_default_matern_length_units,
+                eigenvector_algorithm=model.config.mesh_default_eigenvector_algorithm,
             )
             new_entry.mesh_filename = filename
             model.config.mesh_params.append(new_entry)

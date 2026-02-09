@@ -178,6 +178,63 @@ def _unconstrain_field(
     return values
 
 
+def _get_unconstrained_mean(
+    mean: float,
+    mean_parameterization: str,
+    lower: float | None,
+    upper: float | None,
+    softplus_lengthscale: float | None,
+    field_name: str,
+) -> float:
+    """Convert a prior mean to unconstrained space.
+
+    Parameters
+    ----------
+    mean : float
+        The prior mean value.
+    mean_parameterization : str
+        Either "constrained" (mean is in bounded space) or "unconstrained".
+    lower : float | None
+        Lower bound for the constraint.
+    upper : float | None
+        Upper bound for the constraint.
+    softplus_lengthscale : float | None
+        Length scale for softplus operations when only one bound is present.
+    field_name : str
+        Name of the field for error messages (e.g., "coupling_ss").
+
+    Returns
+    -------
+    float
+        The unconstrained mean.
+
+    Raises
+    ------
+    ValueError
+        If mean_parameterization is "constrained" and the mean is outside the
+        domain of the inverse function (i.e., outside the bounds).
+    """
+    if mean_parameterization == "unconstrained":
+        return mean
+
+    # mean_parameterization == "constrained"
+    # Validate that the constrained mean is within bounds
+    if lower is not None and mean <= lower:
+        raise ValueError(
+            f"{field_name}: constrained mean {mean} must be > lower bound {lower}. "
+            f"Set a mesh-specific value or use unconstrained parameterization."
+        )
+    if upper is not None and mean >= upper:
+        raise ValueError(
+            f"{field_name}: constrained mean {mean} must be < upper bound {upper}. "
+            f"Set a mesh-specific value or use unconstrained parameterization."
+        )
+
+    return _unconstrain_field(
+        np.array([mean]), lower, upper, softplus_lengthscale
+    ).item()
+
+
 def _operator_mult(operator: np.ndarray, vector):
     return operator.astype("f").copy(order="F") @ vector.astype("f")
 
@@ -234,6 +291,31 @@ def _get_eigen_to_velocity(
     return to_velocity
 
 
+def _get_eigenmode_prior_variances(
+    model: Model,
+    mesh_idx: int,
+    kind: Literal["strike_slip", "dip_slip"],
+    sigma: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return eigenmodes and variances for the normal priors of the GP coefficients.
+
+    The variances are the eigenvalues of the covariance matrix: when we diagonalize,
+    the "co-" goes away, so we are left with the "variance" of each eigenmode.
+
+    The mesh kernel eigen-decomposition (in `mesh.py`) is pre-computed with a
+    unit amplitude scale parameter (`sigma=1`). We reintroduce the amplitude
+    scale parameter here by multiplying the eigenvalues by `sigma**2`.
+    """
+    eigenvectors = _get_eigenmodes(model, mesh_idx, kind)
+    n_eigs = eigenvectors.shape[1]
+    mesh = model.meshes[mesh_idx]
+    assert mesh.eigenvalues is not None
+    unit_amplitude_variances = mesh.eigenvalues[:n_eigs]
+
+    variances = sigma**2 * unit_amplitude_variances
+    return eigenvectors, variances
+
+
 def _station_vel_from_elastic_mesh(
     model: Model,
     mesh_idx: int,
@@ -269,7 +351,8 @@ def _station_vel_from_elastic_mesh(
     method = model.config.mcmc_station_velocity_method
 
     # Validate that tde_to_velocities is available for methods that need it
-    if method in ("direct", "low_rank") and operators.tde.tde_to_velocities is None:
+    tde_to_velocities = operators.tde.tde_to_velocities
+    if method in ("direct", "low_rank") and tde_to_velocities is None:
         raise NotImplementedError(
             f"mcmc_station_velocity_method={method!r} requires tde_to_velocities, "
             "but operators were built with discard_tde_to_velocities=True. "
@@ -278,9 +361,8 @@ def _station_vel_from_elastic_mesh(
         )
 
     if method == "low_rank":
-        to_station = operators.tde.tde_to_velocities[mesh_idx][vel_idx, :][
-            :, idx.start : None : 3
-        ]
+        assert tde_to_velocities is not None
+        to_station = tde_to_velocities[mesh_idx][vel_idx, :][:, idx.start : None : 3]
         u, s, vh = linalg.svd(to_station, full_matrices=False)
         threshold = 1e-5
         mask = s > threshold
@@ -308,9 +390,8 @@ def _station_vel_from_elastic_mesh(
         elastic_velocity = _operator_mult(to_velocity, coefs)
         return elastic_velocity
     elif method == "direct":
-        to_station = operators.tde.tde_to_velocities[mesh_idx][vel_idx, :][
-            :, idx.start : None : 3
-        ]
+        assert tde_to_velocities is not None
+        to_station = tde_to_velocities[mesh_idx][vel_idx, :][:, idx.start : None : 3]
         elastic_velocity = _operator_mult(-to_station, elastic)
         return elastic_velocity
     else:
@@ -329,6 +410,8 @@ def _coupling_component(
     vel_idx: np.ndarray,
     lower: float | None,
     upper: float | None,
+    sigma: float,
+    mu_unconstrained: float,
 ):
     """Model elastic slip rate as coupling * kinematic slip rate.
 
@@ -344,6 +427,8 @@ def _coupling_component(
         vel_idx: Row indices to select velocity components (horizontal only or all 3)
         lower: Lower bound for coupling constraint
         upper: Upper bound for coupling constraint
+        sigma: Amplitude scale parameter for GP prior
+        mu_unconstrained: Prior mean in unconstrained space
     """
     assert operators.eigen is not None
     assert operators.tde is not None
@@ -363,14 +448,34 @@ def _coupling_component(
     kinematic = _operator_mult(operator, rotation)
     pm.Deterministic(f"kinematic_{mesh_idx}_{kind_short}", kinematic)
 
-    eigenvectors = _get_eigenmodes(model, mesh_idx, kind)
-    n_eigs = eigenvectors.shape[1]
-    coefs = pm.Normal(
-        f"coupling_coefs_{mesh_idx}_{kind_short}", mu=0, sigma=10, shape=n_eigs
+    eigenvectors, variances = _get_eigenmode_prior_variances(
+        model, mesh_idx, kind, sigma
     )
-
-    coupling_field = _operator_mult(eigenvectors, coefs)
+    n_eigs = variances.size
     softplus_lengthscale = model.meshes[mesh_idx].config.softplus_lengthscale
+
+    if model.meshes[mesh_idx].config.gp_parameterization == "non_centered":
+        # Non-centered: sample white noise, then mollify via eigenvalue scaling
+        white_noise = pm.Normal(
+            f"coupling_coefs_{mesh_idx}_{kind_short}_white_noise",
+            sigma=1,
+            shape=n_eigs,
+        )
+        coefs = pm.Deterministic(
+            f"coupling_coefs_{mesh_idx}_{kind_short}",
+            white_noise * np.sqrt(variances),
+        )
+    else:
+        # Centered: sample directly with heterogeneous variances
+        coefs = pm.Normal(
+            f"coupling_coefs_{mesh_idx}_{kind_short}",
+            mu=0,
+            sigma=np.sqrt(variances),
+            shape=n_eigs,
+        )
+
+    # Add mean offset in unconstrained space before constraining
+    coupling_field = _operator_mult(eigenvectors, coefs) + mu_unconstrained
     coupling_field = _constrain_field(
         coupling_field, lower, upper, softplus_lengthscale
     )
@@ -397,11 +502,14 @@ def _elastic_component(
     vel_idx: np.ndarray,
     lower: float | None,
     upper: float | None,
+    sigma: float,
+    mu_unconstrained: float,
 ):
     """Model elastic slip rate as a linear combination of eigenmodes.
-    Creates parameters for raw elastic eigenmode coefficients, then adds
-    scaled elastic eigenmodes as deterministic variables. Also adds a
-    deterministic variable for the elastic slip rate field.
+
+    Uses either non-centered parameterization (sample white noise, mollify via
+    eigenvalue scaling) or centered parameterization (sample directly with
+    heterogeneous variances), controlled by mesh config.
 
     Returns the estimated elastic slip rates on the TDEs and the
     velocities at the stations due to them.
@@ -414,6 +522,8 @@ def _elastic_component(
         vel_idx: Row indices to select velocity components (horizontal only or all 3)
         lower: Lower bound for elastic constraint
         upper: Upper bound for elastic constraint
+        sigma: Amplitude scale parameter for GP prior
+        mu_unconstrained: Prior mean in unconstrained space
     """
     assert operators.eigen is not None
     assert operators.tde is not None
@@ -421,17 +531,7 @@ def _elastic_component(
     import pymc as pm
 
     kind_short = {"strike_slip": "ss", "dip_slip": "ds"}[kind]
-    DIRECTION_IDX[kind]
 
-    scale = 0.0
-    for op in operators.eigen.eigen_to_velocities.values():
-        # Use sliced operator for scale computation
-        scale += (op[vel_idx, :] ** 2).mean()
-
-    scale = scale / len(operators.eigen.eigen_to_velocities)
-    scale = 1 / np.sqrt(scale)
-
-    eigenvectors = _get_eigenmodes(model, mesh_idx, kind)
     to_velocity = _get_eigen_to_velocity(
         model,
         mesh_idx,
@@ -439,13 +539,36 @@ def _elastic_component(
         operators,
         vel_idx,
     )
-    n_eigs = eigenvectors.shape[1]
-
-    raw = pm.Normal(f"elastic_eigen_raw_{mesh_idx}_{kind_short}", shape=n_eigs)
-    param = pm.Deterministic(f"elastic_eigen_{mesh_idx}_{kind_short}", scale * raw)
+    eigenvectors, variances = _get_eigenmode_prior_variances(
+        model, mesh_idx, kind, sigma
+    )
+    n_eigs = variances.size
     softplus_lengthscale = model.meshes[mesh_idx].config.softplus_lengthscale
+
+    if model.meshes[mesh_idx].config.gp_parameterization == "non_centered":
+        # Non-centered: sample white noise, then mollify via eigenvalue scaling
+        white_noise = pm.Normal(
+            f"elastic_eigen_{mesh_idx}_{kind_short}_white_noise",
+            sigma=1,
+            shape=n_eigs,
+        )
+        param = pm.Deterministic(
+            f"elastic_eigen_{mesh_idx}_{kind_short}",
+            white_noise * np.sqrt(variances),
+        )
+    else:
+        # Centered: sample directly with heterogeneous variances
+        param = pm.Normal(
+            f"elastic_eigen_{mesh_idx}_{kind_short}",
+            sigma=np.sqrt(variances),
+            shape=n_eigs,
+        )
+    # Add mean offset in unconstrained space before constraining
     elastic_tde = _constrain_field(
-        _operator_mult(eigenvectors, param), lower, upper, softplus_lengthscale
+        _operator_mult(eigenvectors, param) + mu_unconstrained,
+        lower,
+        upper,
+        softplus_lengthscale,
     )
     pm.Deterministic(f"elastic_{mesh_idx}_{kind_short}", elastic_tde)
 
@@ -488,19 +611,40 @@ def _mesh_component(
         "strike_slip",
         "dip_slip",
     )
-    for kind in kinds:
-        if kind == "strike_slip":
-            coupling_limit = model.meshes[mesh_idx].config.coupling_constraints_ss
-            rate_limit = model.meshes[mesh_idx].config.elastic_constraints_ss
-        else:
-            coupling_limit = model.meshes[mesh_idx].config.coupling_constraints_ds
-            rate_limit = model.meshes[mesh_idx].config.elastic_constraints_ds
+    config = model.meshes[mesh_idx].config
 
-        has_coupling_limit = (
+    # These should be set by Config.apply_mesh_defaults
+    assert config.coupling_mean_parameterization is not None
+    assert config.elastic_mean_parameterization is not None
+    assert config.coupling_sigma is not None
+    assert config.coupling_mean is not None
+    assert config.elastic_sigma is not None
+    assert config.elastic_mean is not None
+
+    for kind in kinds:
+        kind_short = {"strike_slip": "ss", "dip_slip": "ds"}[kind]
+        if kind == "strike_slip":
+            coupling_limit = config.coupling_constraints_ss
+            rate_limit = config.elastic_constraints_ss
+        elif kind == "dip_slip":
+            coupling_limit = config.coupling_constraints_ds
+            rate_limit = config.elastic_constraints_ds
+        else:
+            raise ValueError(f"Unknown slip kind: {kind}")
+
+        has_coupling_bound = (
             coupling_limit.lower is not None or coupling_limit.upper is not None
         )
 
-        if has_coupling_limit:
+        if has_coupling_bound:
+            mu_unconstrained = _get_unconstrained_mean(
+                config.coupling_mean,
+                config.coupling_mean_parameterization,
+                coupling_limit.lower,
+                coupling_limit.upper,
+                config.softplus_lengthscale,
+                f"coupling_{kind_short} mesh {mesh_idx}",
+            )
             elastic_tde, station_vels = _coupling_component(
                 model,
                 mesh_idx,
@@ -510,8 +654,18 @@ def _mesh_component(
                 vel_idx,
                 lower=coupling_limit.lower,
                 upper=coupling_limit.upper,
+                sigma=config.coupling_sigma,
+                mu_unconstrained=mu_unconstrained,
             )
         else:
+            mu_unconstrained = _get_unconstrained_mean(
+                config.elastic_mean,
+                config.elastic_mean_parameterization,
+                rate_limit.lower,
+                rate_limit.upper,
+                config.softplus_lengthscale,
+                f"elastic_{kind_short} mesh {mesh_idx}",
+            )
             elastic_tde, station_vels = _elastic_component(
                 model,
                 mesh_idx,
@@ -520,6 +674,8 @@ def _mesh_component(
                 vel_idx,
                 lower=rate_limit.lower,
                 upper=rate_limit.upper,
+                sigma=config.elastic_sigma,
+                mu_unconstrained=mu_unconstrained,
             )
 
         rates.append(station_vels)
