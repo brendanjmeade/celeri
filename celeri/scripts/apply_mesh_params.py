@@ -151,7 +151,13 @@ def main():
         print(f"Output file: {output_file_name}")
 
     # Write the output file (does not overwrite original)
-    data = [mesh_config.model_dump(mode="json") for mesh_config in destination]
+    # Use relative paths based on the output file's parent directory
+    output_dir = output_file_name.parent.resolve()
+    context = {"paths_relative_to": output_dir}
+    data = [
+        mesh_config.model_dump(mode="json", context=context)
+        for mesh_config in destination
+    ]
     with output_file_name.open("w") as output_file:
         json.dump(data, output_file, indent=4)
 
