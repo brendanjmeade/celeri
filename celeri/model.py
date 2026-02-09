@@ -255,7 +255,7 @@ def build_model(
     sar = process_sar(sar, config)
     los = process_los(los, config)
     closure, segment, station, block, mogi, sar, los = assign_block_labels(
-        segment, station, block, mogi, sar, los
+        segment=segment, station=station, block=block, mogi=mogi, sar=sar, los=los
     )
 
     return Model(
@@ -492,7 +492,7 @@ def inpolygon(xq, yq, xv, yv):
     return p.contains_points(q).reshape(shape)
 
 
-def assign_block_labels(segment, station, block, mogi, sar, los):
+def assign_block_labels(*, segment, station, block, mogi, sar, los=None):
     """Ben Thompson's implementation of the half edge approach to the
     block labeling problem and east/west assignment.
     """

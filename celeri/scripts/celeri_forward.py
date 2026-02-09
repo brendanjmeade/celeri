@@ -77,8 +77,12 @@ def create_forward_operators_batch(estimation, lon_batch, lat_batch):
     sar = pd.DataFrame()
 
     # Assign block labels to the batch stations
-    _closure, segment, batch_station, block, mogi, sar = assign_block_labels(
-        model.segment, batch_station, model.block, model.mogi, sar
+    _closure, segment, batch_station, block, mogi, sar, _los = assign_block_labels(
+        segment=model.segment,
+        station=batch_station,
+        block=model.block,
+        mogi=model.mogi,
+        sar=sar,
     )
 
     # Import the spatial functions we need

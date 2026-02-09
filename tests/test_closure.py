@@ -112,7 +112,7 @@ def test_global_closure():
     segment = celeri.process_segment(segment, config, meshes)
     sar = celeri.process_sar(sar, config)
     closure, segment, station, block, mogi, sar, los = celeri.assign_block_labels(
-        segment, station, block, mogi, sar, los
+        segment=segment, station=station, block=block, mogi=mogi, sar=sar, los=los
     )
 
     # Compare calculated edge indices with stored edge indices
