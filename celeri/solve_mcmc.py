@@ -613,7 +613,7 @@ def _mesh_component(
     )
     config = model.meshes[mesh_idx].config
 
-    # These should be set by Config.apply_mcmc_prior_defaults
+    # These should be set by Config.apply_mesh_defaults
     assert config.coupling_mean_parameterization is not None
     assert config.elastic_mean_parameterization is not None
     assert config.coupling_sigma is not None

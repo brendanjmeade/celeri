@@ -198,8 +198,8 @@ class Config(BaseModel):
     mesh_default_eigenvector_algorithm: EigenvectorAlgorithm = "eigh"
     """Default algorithm for computing eigenvectors in mesh processing.
 
-    This value is used as a fallback when a mesh configuration does not
-    specify its own `eigenvector_algorithm`.
+    Propagated to each mesh's ``eigenvector_algorithm`` unless overridden
+    in the per-mesh configuration.
 
     Options:
     - "eigh": Dense eigenvalue decomposition (scipy.linalg.eigh). Faster for many modes.
@@ -211,8 +211,8 @@ class Config(BaseModel):
     mcmc_default_mesh_matern_nu: float = 2.5
     """Default Matérn kernel smoothness parameter (nu) for mesh eigenfunction computation.
 
-    This value is used as a fallback when a mesh configuration does not
-    specify its own `matern_nu`.
+    Propagated to each mesh's ``matern_nu`` unless overridden in the per-mesh
+    configuration.
 
     Common values:
     - 0.5: Exponential covariance (rough, continuous but not differentiable)
@@ -225,12 +225,20 @@ class Config(BaseModel):
     mcmc_default_mesh_matern_length_scale: float = 0.2
     """Default Matérn kernel length scale for mesh eigenfunction computation.
 
-    This value is used as a fallback when a mesh configuration does not
-    specify its own `matern_length_scale`.
+    Propagated to each mesh's ``matern_length_scale`` unless overridden in the
+    per-mesh configuration.
 
-    The interpretation depends on `matern_length_units` in each mesh config:
-    - "diameters": Scales by mesh diameter (default)
-    - "absolute": Uses the value directly in mesh coordinate units
+    The interpretation depends on ``mesh_default_matern_length_units``.
+    """
+
+    mesh_default_matern_length_units: Literal["absolute", "diameters"] = "diameters"
+    """Default units for the Matérn kernel length scale.
+
+    Propagated to each mesh's ``matern_length_units`` unless overridden in the
+    per-mesh configuration.
+
+    - "diameters": Scales by mesh diameter (max pairwise centroid distance)
+    - "absolute": Uses the value directly in mesh coordinate units (meters)
     """
 
     mcmc_station_velocity_method: McmcStationVelocityMethod = "project_to_eigen"
@@ -414,13 +422,20 @@ class Config(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def apply_mcmc_prior_defaults(self) -> Self:
-        """Apply default MCMC prior parameters to mesh configs that don't set their own.
+    def apply_mesh_defaults(self) -> Self:
+        """Propagate top-level defaults to mesh configs that don't set their own.
 
-        This propagates the top-level default values for coupling/elastic mean and
-        sigma parameters down to individual mesh configurations.
+        MeshConfig fields that default to None inherit from the corresponding
+        Config-level default.  Per-mesh overrides (explicitly set in the mesh
+        JSON) are preserved.
         """
-        mcmc_prior_defaults = {
+        defaults: dict[str, object] = {
+            # GP kernel hyperparameters
+            "matern_nu": self.mcmc_default_mesh_matern_nu,
+            "matern_length_scale": self.mcmc_default_mesh_matern_length_scale,
+            "matern_length_units": self.mesh_default_matern_length_units,
+            "eigenvector_algorithm": self.mesh_default_eigenvector_algorithm,
+            # MCMC prior parameters
             "coupling_mean": self.mcmc_default_mesh_coupling_mean,
             "coupling_mean_parameterization": self.mcmc_default_mesh_coupling_mean_parameterization,
             "coupling_sigma": self.mcmc_default_mesh_coupling_sigma,
@@ -428,7 +443,7 @@ class Config(BaseModel):
             "elastic_mean_parameterization": self.mcmc_default_mesh_elastic_mean_parameterization,
             "elastic_sigma": self.mcmc_default_mesh_elastic_sigma,
         }
-        for mesh_field, default_value in mcmc_prior_defaults.items():
+        for mesh_field, default_value in defaults.items():
             for mesh_param in self.mesh_params:
                 if mesh_field not in mesh_param.model_fields_set:
                     setattr(mesh_param, mesh_field, default_value)
@@ -493,22 +508,7 @@ def get_config(file_name: Path | str) -> Config:
     else:
         mesh_params = MeshConfig.from_file(file_path.parent / mesh_parameters_file_name)
 
-    # Apply the top-level defaults to mesh configs that don't explicitly set their own
-    mesh_defaults = {
-        "eigenvector_algorithm": config_data.get(
-            "mesh_default_eigenvector_algorithm", None
-        ),
-        "matern_nu": config_data.get("mcmc_default_mesh_matern_nu", None),
-        "matern_length_scale": config_data.get(
-            "mcmc_default_mesh_matern_length_scale", None
-        ),
-    }
-    for field_name, default_value in mesh_defaults.items():
-        if default_value is not None:
-            for mesh_param in mesh_params:
-                if field_name not in mesh_param.model_fields_set:
-                    setattr(mesh_param, field_name, default_value)
-
+    # Top-level defaults are propagated to mesh configs by Config.apply_mesh_defaults
     config_data["mesh_params"] = mesh_params
     config_data["file_name"] = file_path.resolve()
 
