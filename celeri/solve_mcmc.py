@@ -34,6 +34,11 @@ def _compute_voronoi_weights(
 ) -> tuple[np.ndarray, dict]:
     """Compute Voronoi area weights for points on the sphere.
 
+    Args:
+        xyz: 2d array of shape (n_points, 3) containing the x, y, z coordinates of the points.
+        effective_area: Effective area (in m²) for weighting, set in config.mcmc_station_effective_area.
+        radius: Radius of the sphere (in m).
+
     Returns:
         weight: 1d array of length n_points, in (0, 1]
         diagnostics: dict with n, weight_min, weight_max, effective_n, n_full_weight, effective_area_km

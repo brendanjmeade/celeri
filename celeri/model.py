@@ -21,28 +21,26 @@ class Model:
 
     Stores indices, meshes, operators, and various data components needed
     for solving interseismic coupling and fault slip rate problems.
-
-    Attributes:
-        meshes: list[Mesh]
-        segment: pd.DataFrame
-        block: pd.DataFrame
-        station: pd.DataFrame
-        mogi: pd.DataFrame
-        config: Config
-        closure: BlockClosureResult
-        sar: pd.DataFrame
-        los: pd.DataFrame
     """
 
     meshes: list[Mesh]
+    """List of meshes used in the model."""
     segment: pd.DataFrame
+    """DataFrame containing segment data."""
     block: pd.DataFrame
+    """DataFrame containing block data."""
     station: pd.DataFrame
+    """DataFrame containing station data."""
     mogi: pd.DataFrame
+    """DataFrame containing Mogi data."""
     config: Config
+    """Configuration object."""
     closure: celeri_closure.BlockClosureResult
+    """Result of the block closure operation."""
     sar: pd.DataFrame
+    """DataFrame containing SAR data."""
     los: pd.DataFrame | None
+    """DataFrame containing LOS data."""
 
     @property
     def segment_mesh_indices(self):
