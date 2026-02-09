@@ -919,6 +919,7 @@ def build_los_operators(
     # TDE operators at LOS locations
     tde_to_los: dict[int, np.ndarray] = {}
     eigen_to_los: dict[int, np.ndarray] = {}
+    tde_n_cols: dict[int, int] = {}
 
     if operators.tde is not None:
         for mesh_idx in range(len(model.meshes)):
@@ -928,6 +929,7 @@ def build_los_operators(
             tde_to_los[mesh_idx] = _project_operator_to_los(
                 tde_to_velocities, look_vectors
             )
+            tde_n_cols[mesh_idx] = tde_to_velocities.shape[1]
 
         if operators.eigen is not None:
             for mesh_idx in range(len(model.meshes)):
@@ -935,12 +937,7 @@ def build_los_operators(
                 # The eigenvectors map from eigenmode coefficients to TDE slip rates
                 tde_los_op = tde_to_los[mesh_idx]
                 # Slice columns to keep only strike-slip and dip-slip (exclude tensile)
-                # For LOS operator, columns are still (ss, ds, ts) interleaved
-                # Need the original tde_to_velocities shape for column slicing
-                tde_velocities: np.ndarray = get_tde_to_velocities_single_mesh(
-                    model.meshes, los, model.config, mesh_idx
-                )
-                tde_keep_col_index = get_keep_index_12(tde_velocities.shape[1])
+                tde_keep_col_index = get_keep_index_12(tde_n_cols[mesh_idx])
                 tde_los_ss_ds = tde_los_op[:, tde_keep_col_index]
                 eigenvectors = operators.eigen.eigenvectors_to_tde_slip[mesh_idx]
                 # Note: negative sign because elastic velocity is opposite to slip
