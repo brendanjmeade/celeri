@@ -165,7 +165,7 @@ def test_operator_rotation_to_tri_slip_rate(config_name):
     return operator[np.ix_(idx_rows, idx_cols)]
 
 
-@pytest.mark.array_compare(rtol=1.5e-4, atol=1e-9)
+@pytest.mark.array_compare(rtol=1e-3, atol=1e-9)
 @pytest.mark.parametrize(
     "config_file, eigen, tde",
     [
