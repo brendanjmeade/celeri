@@ -208,7 +208,7 @@ class Config(BaseModel):
     Both have equivalent accuracy, but eigenvector signs may differ between algorithms.
     """
 
-    mcmc_default_mesh_matern_nu: float = 0.5
+    mcmc_default_mesh_matern_nu: float = 2.5
     """Default Matérn kernel smoothness parameter (nu) for mesh eigenfunction computation.
 
     This value is used as a fallback when a mesh configuration does not
