@@ -1170,7 +1170,8 @@ def _build_pymc_model(
     }
 
     if operators.los is not None:
-        coords["los"] = pd.RangeIndex(operators.los.n_los)
+        assert model.los is not None
+        coords["los"] = model.los.index
 
     with pm.Model(coords=coords) as pymc_model:
         block_strain_rate_velocity = _add_block_strain_rate_component(
