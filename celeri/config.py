@@ -222,7 +222,7 @@ class Config(BaseModel):
     Higher values produce smoother eigenfunctions.
     """
 
-    mcmc_default_mesh_matern_length_scale: float = 1.0
+    mcmc_default_mesh_matern_length_scale: float = 0.2
     """Default Matérn kernel length scale for mesh eigenfunction computation.
 
     This value is used as a fallback when a mesh configuration does not
