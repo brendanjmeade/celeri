@@ -26,6 +26,54 @@ DIRECTION_IDX = {
 }
 
 
+def _compute_voronoi_weights(
+    xyz: np.ndarray,
+    effective_area: float,
+    *,
+    radius: float = RADIUS_EARTH,
+) -> tuple[np.ndarray, dict]:
+    """Compute Voronoi area weights for points on the sphere.
+
+    Returns:
+        weight: 1d array of length n_points, in (0, 1]
+        diagnostics: dict with n, weight_min, weight_max, effective_n, n_full_weight, effective_area_km
+    """
+    voronoi = spatial.SphericalVoronoi(xyz, int(radius))
+    areas = voronoi.calculate_areas()
+    areas_clipped = np.minimum(effective_area, areas)
+    weight = areas_clipped / effective_area
+    effective_n = (weight.sum() ** 2) / ((weight**2).sum())
+    diagnostics = {
+        "n": len(weight),
+        "weight_min": float(weight.min()),
+        "weight_max": float(weight.max()),
+        "effective_n": effective_n,
+        "n_full_weight": int((areas >= effective_area).sum()),
+        "effective_area_km": np.sqrt(effective_area) / 1000,
+    }
+    return weight, diagnostics
+
+
+def _log_weighting_diagnostics(diagnostics: dict, label: str) -> None:
+    """Log Voronoi weighting diagnostics."""
+    logger.info(f"{label} weighting diagnostics:")
+    logger.info(f"  Number of points: {diagnostics['n']}")
+    logger.info(
+        f"  Effective area threshold: {diagnostics['effective_area_km']:.1f} km "
+        f"x {diagnostics['effective_area_km']:.1f} km"
+    )
+    logger.info(
+        f"  Weight range: [{diagnostics['weight_min']:.3f}, {diagnostics['weight_max']:.3f}]"
+    )
+    logger.info(
+        f"  Effective sample size: {diagnostics['effective_n']:.1f} "
+        f"(vs {diagnostics['n']} points)"
+    )
+    logger.info(
+        f"  Points at full weight (area >= threshold): {diagnostics['n_full_weight']}"
+    )
+
+
 def _constrain_field(
     values,
     lower: float | None,
@@ -951,32 +999,11 @@ def _add_station_velocity_likelihood(model: Model, mu):
             nu=6,
         )
     elif model.config.mcmc_station_weighting == "voronoi":
-        effective_area = model.config.mcmc_station_effective_area
-
-        voroni = spatial.SphericalVoronoi(
-            model.station[["x", "y", "z"]].values, int(RADIUS_EARTH)
+        weight, diagnostics = _compute_voronoi_weights(
+            model.station[["x", "y", "z"]].values,
+            model.config.mcmc_station_effective_area,
         )
-        areas = voroni.calculate_areas()
-
-        areas_clipped = np.minimum(effective_area, areas)
-        weight = areas_clipped / effective_area
-
-        # Log diagnostics about the weighting
-        effective_n = (weight.sum() ** 2) / (weight**2).sum()
-        logger.info("Station weighting diagnostics:")
-        logger.info(f"  Number of stations: {len(weight)}")
-        logger.info(
-            f"  Effective area threshold: {np.sqrt(effective_area) / 1000:.1f} km "
-            f"x {np.sqrt(effective_area) / 1000:.1f} km"
-        )
-        logger.info(f"  Weight range: [{weight.min():.3f}, {weight.max():.3f}]")
-        logger.info(
-            f"  Effective sample size: {effective_n:.1f} (vs {len(weight)} stations)"
-        )
-        logger.info(
-            "  Stations at full weight (area >= threshold): "
-            f"{(areas >= effective_area).sum()}"
-        )
+        _log_weighting_diagnostics(diagnostics, "Station")
 
         pm.CustomDist(
             "station_velocity",
@@ -996,14 +1023,19 @@ def _add_station_velocity_likelihood(model: Model, mu):
 
 
 def _add_los_velocity_likelihood(
+    model: Model,
     los_ops: LosOperators,
     los_pred,
 ):
-    """Add LOS velocity likelihood to the PyMC model.
+    r"""Add LOS velocity likelihood to the PyMC model.
+
+    Uses the same Voronoi area weighting as station likelihood when
+    mcmc_station_weighting is \"voronoi\".
 
     Args:
-        los_ops: LOS operators containing observations and errors
-        los_pred: Predicted LOS velocities, shape (n_los,)
+        model: Model (for config and LOS coordinates).
+        los_ops: LOS operators containing observations.
+        los_pred: Predicted LOS velocities, shape (n_los,).
     """
     import pymc as pm
 
@@ -1011,12 +1043,44 @@ def _add_los_velocity_likelihood(
 
     sigma_los = pm.HalfNormal("sigma_los", sigma=2)
 
-    pm.Normal(
-        "los_velocity",
-        mu=los_pred,
-        sigma=sigma_los,
-        observed=los_ops.los_data,
-    )
+    weighting = model.config.mcmc_station_weighting
+    if weighting is None:
+        logger.info(f"Using unweighted LOS likelihood ({los_ops.n_los} points)")
+        pm.Normal(
+            "los_velocity",
+            mu=los_pred,
+            sigma=sigma_los,
+            observed=los_ops.los_data,
+        )
+    elif weighting == "voronoi":
+        assert model.los is not None  # guaranteed when LOS likelihood is added
+        weight, diagnostics = _compute_voronoi_weights(
+            model.los[["x", "y", "z"]].values,
+            model.config.mcmc_station_effective_area,
+        )
+        _log_weighting_diagnostics(diagnostics, "LOS")
+
+        def los_logp(value, weight, mu, sigma):
+            dist = pm.Normal.dist(mu=mu, sigma=sigma)
+            return pt.sum(weight * pm.logp(dist, value))
+
+        def los_random(weight, mu, sigma, rng=None, size=None):
+            return pm.Normal.dist(mu=mu, sigma=sigma, rng=rng, size=size)
+
+        pm.CustomDist(
+            "los_velocity",
+            weight,
+            los_pred,
+            sigma_los,
+            logp=los_logp,
+            random=los_random,
+            observed=los_ops.los_data,
+            dims=("los",),
+        )
+    else:
+        raise ValueError(
+            f"Unknown mcmc_station_weighting: {weighting}. Must be None or 'voronoi'."
+        )
 
 
 def _add_segment_constraints(model: Model, operators: Operators, rotation):
@@ -1241,7 +1305,7 @@ def _build_pymc_model(
                 los_block_strain + los_rotation - los_okada + los_mogi + los_elastic
             )
 
-            _add_los_velocity_likelihood(los, los_pred)
+            _add_los_velocity_likelihood(model, los, los_pred)
 
     return pymc_model  # type: ignore[return-value]
 
