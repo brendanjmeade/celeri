@@ -68,7 +68,7 @@ class Config(BaseModel):
     los_file_name: Path | None = None
     """Location of the LOS (line-of-sight) velocity data file.
 
-    CSV file with columns: lon, lat, los_val, los_err, look_vector_east,
+    CSV file with columns: lon, lat, los_val, look_vector_east,
     look_vector_north, look_vector_up. Used for InSAR or similar geodetic
     observations where velocities are measured along a look direction.
     """

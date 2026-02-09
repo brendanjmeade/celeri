@@ -349,8 +349,6 @@ class LosOperators:
     """Maps eigenmode coefficients to LOS velocities, by mesh; dict mapping mesh index to array of shape (n_los, n_modes)."""
     los_data: np.ndarray
     """Observed LOS velocities; shape (n_los,)."""
-    los_err: np.ndarray
-    """Errors on LOS velocities; shape (n_los,)."""
     tde_to_los: dict[int, np.ndarray] | None = None
     """Maps TDE slip rates to LOS velocities, by mesh;
     dict mapping mesh index to array of shape (n_los, 3 * n_tde_elements).
@@ -372,7 +370,7 @@ class LosOperators:
     def from_disk(cls, input_dir: str | Path) -> "LosOperators":
         """Load LOS operators from disk."""
         path = Path(input_dir)
-        return dataclass_from_disk(cls, path)
+        return dataclass_from_disk(cls, path, skip={"los_err"})
 
 
 @dataclass
@@ -944,7 +942,6 @@ def build_los_operators(
                 eigen_to_los[mesh_idx] = -tde_los_ss_ds @ eigenvectors
 
     los_data = np.asarray(los.los_val.values)
-    los_err = np.asarray(los.los_err.values)
 
     # Optionally discard tde_to_los to save memory
     final_tde_to_los: dict[int, np.ndarray] | None = tde_to_los
@@ -959,7 +956,6 @@ def build_los_operators(
         rotation_to_okada_los=rotation_to_okada_los,
         eigen_to_los=eigen_to_los,
         los_data=los_data,
-        los_err=los_err,
         tde_to_los=final_tde_to_los,
     )
 

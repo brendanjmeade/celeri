@@ -1014,7 +1014,7 @@ def _add_los_velocity_likelihood(
     pm.Normal(
         "los_velocity",
         mu=los_pred,
-        sigma=sigma_los * los_ops.los_err,
+        sigma=sigma_los,
         observed=los_ops.los_data,
     )
 

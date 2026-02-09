@@ -202,7 +202,6 @@ def read_data(config: Config):
             "lon",
             "lat",
             "los_val",
-            "los_err",
             "look_vector_east",
             "look_vector_north",
             "look_vector_up",
