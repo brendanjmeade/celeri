@@ -842,6 +842,10 @@ def _project_operator_to_los(
         Projected operator, shape (n_los, n_cols)
     """
     n_los = look_vectors.shape[0]
+    assert operator.shape[0] == 3 * n_los, (
+        f"Operator has {operator.shape[0]} rows but expected "
+        f"{3 * n_los} (3 * {n_los} look vectors)"
+    )
     n_cols = operator.shape[1]
     operator_reshaped = operator.reshape(n_los, 3, n_cols)
     return np.einsum("ij,ijk->ik", look_vectors, operator_reshaped)
