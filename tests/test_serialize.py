@@ -390,3 +390,46 @@ def test_estimation_serialization_minimal(config_file, temp_dir):
         original_estimation.slip_rates,
         deserialized_estimation.slip_rates,
     )
+
+
+def test_mesh_config_relative_path_context(temp_dir):
+    """Test MeshConfig serialization with relative path context."""
+    import json
+
+    from celeri.mesh import MeshConfig
+
+    # Load an existing mesh config from test data
+    mesh_params_file = Path("./tests/data/mesh/test_japan_mesh_parameters.json")
+    mesh_configs = MeshConfig.from_file(mesh_params_file)
+    mesh_config = mesh_configs[0]
+
+    # All paths should be absolute after loading (due to relative_paths validator)
+    assert mesh_config.file_name.is_absolute()
+    assert mesh_config.mesh_filename is None or mesh_config.mesh_filename.is_absolute()
+
+    # Test 1: Serialize without context (should use absolute paths)
+    data_without_context = mesh_config.model_dump()
+    assert data_without_context["mesh_filename"].is_absolute()
+    assert data_without_context["file_name"].is_absolute()
+
+    # Test 2: Serialize with relative_paths context
+    # Use the parent directory of the mesh params file as the base
+    base_dir = mesh_params_file.parent.resolve()
+    context = {"paths_relative_to": base_dir}
+    data_with_context = mesh_config.model_dump(context=context)
+
+    # The paths should now be relative to base_dir
+    assert not data_with_context["mesh_filename"].is_absolute()
+    assert not data_with_context["file_name"].is_absolute()
+
+    # Test 3: Verify serialization to JSON with relative paths
+    json_str = mesh_config.model_dump_json(context=context)
+    json_data = json.loads(json_str)
+
+    # JSON should contain relative paths as strings
+    assert not Path(json_data["mesh_filename"]).is_absolute()
+    assert not Path(json_data["file_name"]).is_absolute()
+
+    # Test 4: Error case - non-absolute path in context
+    with pytest.raises(ValueError, match="must be an absolute path"):
+        mesh_config.model_dump(context={"paths_relative_to": Path("relative/path")})
