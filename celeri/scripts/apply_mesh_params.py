@@ -111,9 +111,9 @@ def main():
         # For each set of mesh_params to be changed
         for i in range(start_idx, range_end):
             # Check the dip threshold
-            # If the mesh's mean element dip is greater than the threshold
-            # Taking the mean as the magnitudes of the deviation from 90, so that dips expressed > 90 don't bias mean
-            if 90 - np.mean(np.abs(90 - meshes[i].dip)) > args["dip_threshold"]:
+            # If the mesh's maximum element dip is greater than the threshold
+            # Taking the max of the magnitudes of the deviation from 90, so that dips expressed > 90 don't bias mean
+            if 90 - np.max(np.abs(90 - meshes[i].dip)) > args["dip_threshold"]:
                 # Use the alternate template
 
                 # For each mesh_param in the template list (except filenames)
