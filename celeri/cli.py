@@ -253,6 +253,42 @@ def parse_args() -> argparse.Namespace:
         required=False,
         help="Default Matérn length scale for mesh eigenfunctions",
     )
+    parser.add_argument(
+        "--mcmc-default-mesh-gp-parameterization",
+        type=str,
+        default=None,
+        required=False,
+        choices=["centered", "non_centered"],
+        help="Default GP parameterization for mesh (centered | non_centered)",
+    )
+    parser.add_argument(
+        "--mcmc-default-mesh-softplus-lengthscale",
+        type=float,
+        default=None,
+        required=False,
+        help="Default softplus length scale for one-sided bound constraints",
+    )
+    parser.add_argument(
+        "--mcmc-default-mesh-top-elastic-constraint-sigma",
+        type=float,
+        default=None,
+        required=False,
+        help="Default sigma for top boundary elastic constraint in MCMC",
+    )
+    parser.add_argument(
+        "--mcmc-default-mesh-bottom-elastic-constraint-sigma",
+        type=float,
+        default=None,
+        required=False,
+        help="Default sigma for bottom boundary elastic constraint in MCMC",
+    )
+    parser.add_argument(
+        "--mcmc-default-mesh-side-elastic-constraint-sigma",
+        type=float,
+        default=None,
+        required=False,
+        help="Default sigma for side boundary elastic constraint in MCMC",
+    )
 
     return parser.parse_args()
 
