@@ -341,9 +341,9 @@ def plot_input_summary(
         is_constrained_tde[meshes[i].top_elements] = meshes[
             i
         ].config.top_slip_rate_constraint
-        is_constrained_tde[meshes[i].bot_elements] = meshes[
+        is_constrained_tde[meshes[i].bottom_elements] = meshes[
             i
-        ].config.bot_slip_rate_constraint
+        ].config.bottom_slip_rate_constraint
         is_constrained_tde[meshes[i].side_elements] = meshes[
             i
         ].config.side_slip_rate_constraint
@@ -1589,10 +1589,10 @@ def plot_mesh_mode(meshes, eigenvectors_to_tde_slip, mesh_idx, mode_idx, start_i
 
 def plot_tde_boundary_condition_labels(meshes, mesh_idx):
     top_indices = np.asarray(np.where(meshes[mesh_idx].top_elements))
-    bot_indices = np.asarray(np.where(meshes[mesh_idx].bot_elements))
+    bottom_indices = np.asarray(np.where(meshes[mesh_idx].bottom_elements))
     side_indices = np.asarray(np.where(meshes[mesh_idx].side_elements))
     print(f"{top_indices.size=}")
-    print(f"{bot_indices.size=}")
+    print(f"{bottom_indices.size=}")
     print(f"{side_indices.size=}")
 
     plt.figure()
@@ -1609,10 +1609,10 @@ def plot_tde_boundary_condition_labels(meshes, mesh_idx):
         label="top",
     )
     plt.plot(
-        meshes[mesh_idx].lon_centroid[bot_indices].flatten(),
-        meshes[mesh_idx].lat_centroid[bot_indices].flatten(),
+        meshes[mesh_idx].lon_centroid[bottom_indices].flatten(),
+        meshes[mesh_idx].lat_centroid[bottom_indices].flatten(),
         "gs",
-        label="bot",
+        label="bottom",
     )
     plt.plot(
         meshes[mesh_idx].lon_centroid[side_indices].flatten(),

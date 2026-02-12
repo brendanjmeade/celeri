@@ -68,13 +68,13 @@ class MeshConfig(BaseModel):
         Number of eigenmodes to use for dip-slip.
     top_slip_rate_constraint : Literal[0, 1, 2]
         Constraints for slip rates on the top boundary of the mesh.
-    bot_slip_rate_constraint : Literal[0, 1, 2]
+    bottom_slip_rate_constraint : Literal[0, 1, 2]
         Constraints for slip rates on the bottom boundary of the mesh.
     side_slip_rate_constraint : Literal[0, 1, 2]
         Constraints for slip rates on the side boundary of the mesh.
     top_slip_rate_weight : float
         Weight for top boundary zero-slip constraint loss during optimization.
-    bot_slip_rate_weight : float
+    bottom_slip_rate_weight : float
         Weight for bottom boundary zero-slip constraint loss during optimization.
     side_slip_rate_weight : float
         Weight for side boundary zero-slip constraint loss during optimization.
@@ -117,6 +117,29 @@ class MeshConfig(BaseModel):
     # Forbid extra fields when reading from JSON
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _rename_legacy_bot_fields(cls, data: Any) -> Any:
+        """Rewrite legacy ``bot_`` field names to ``bottom_``."""
+        if not isinstance(data, dict):
+            return data
+        _RENAMES = {
+            "bot_slip_rate_constraint": "bottom_slip_rate_constraint",
+            "bot_slip_rate_weight": "bottom_slip_rate_weight",
+            "bot_elastic_constraint_sigma": "bottom_elastic_constraint_sigma",
+        }
+        for old, new in _RENAMES.items():
+            if old in data:
+                import warnings
+
+                warnings.warn(
+                    f"MeshConfig field '{old}' is deprecated, use '{new}' instead.",
+                    FutureWarning,
+                    stacklevel=2,
+                )
+                data[new] = data.pop(old)
+        return data
+
     # The path to the mesh configuration file itself.
     # All other paths in this configuration are relative to this file.
     file_name: Path
@@ -129,29 +152,29 @@ class MeshConfig(BaseModel):
 
     # TODO should be a string with Literal types or bool?
     # Constraints for slip rates on the boundary of the mesh.
-    # These use mesh.top_slip_idx, mesh.bot_slip_idx, and mesh.side_slip_idx
+    # These use mesh.top_slip_idx, mesh.bottom_slip_idx, and mesh.side_slip_idx
     # to identify the slip rates to constrain.
     # 0: Don't constrain, 1: Constrain to zero, 2: ????
     top_slip_rate_constraint: Literal[0, 1, 2] = 0
-    bot_slip_rate_constraint: Literal[0, 1, 2] = 0
+    bottom_slip_rate_constraint: Literal[0, 1, 2] = 0
     side_slip_rate_constraint: Literal[0, 1, 2] = 0
 
     # Weight for zero-slip constraint loss during optimization.
     # This will not be used if the elastic velocities are
     # computed using the TDE eigenmodes.
     top_slip_rate_weight: float = 1.0
-    bot_slip_rate_weight: float = 1.0
+    bottom_slip_rate_weight: float = 1.0
     side_slip_rate_weight: float = 1.0
 
     # Weight for TDE modes boundary conditions.
-    # This is used instead of `top_slip_rate_weight`, `bot_slip_rate_weight`, and
+    # This is used instead of `top_slip_rate_weight`, `bottom_slip_rate_weight`, and
     # `side_slip_rate_weight` if the TDE eigenmodes are used.
     eigenmode_slip_rate_constraint_weight: float = 1.0
 
     # Sigma for the artificial observed 0s on elastic velocities at the
     # boundaries, used in MCMC sampling when the corresponding constraint == 1.
     top_elastic_constraint_sigma: float = 0.5
-    bot_elastic_constraint_sigma: float = 0.5
+    bottom_elastic_constraint_sigma: float = 0.5
     side_elastic_constraint_sigma: float = 0.5
 
     # Filename for fixed slip rates, not currently used
@@ -349,7 +372,7 @@ def _compute_mesh_edge_elements(mesh: dict):
 
     Modifies:
         mesh["top_elements"]: np.ndarray of bool, True for elements on the top surface.
-        mesh["bot_elements"]: np.ndarray of bool, True for elements on the bottom surface.
+        mesh["bottom_elements"]: np.ndarray of bool, True for elements on the bottom surface.
         mesh["side_elements"]: np.ndarray of bool, True for elements on mesh sides.
     """
     _compute_ordered_edge_nodes(mesh)
@@ -459,7 +482,7 @@ def _compute_mesh_edge_elements(mesh: dict):
         if abs(depth_bin_min[zero_idx[-1]] - depth_bin_max[zero_idx[0] - 1]) > 10:
             bots[centroid_depths > depth_bin_min[zero_idx[-1]]] = False
     # Assign in to meshes dict
-    mesh["bot_elements"] = bots
+    mesh["bottom_elements"] = bots
 
     # Side elements are a set difference between all edges and tops, bottoms
     sides = np.full(len(vertices), False, dtype=bool)
@@ -474,7 +497,7 @@ def _compute_mesh_edge_elements(mesh: dict):
 def _compute_n_tde_constraints(
     n_tde: int,
     top_slip_idx: np.ndarray,
-    bot_slip_idx: np.ndarray,
+    bottom_slip_idx: np.ndarray,
     side_slip_idx: np.ndarray,
 ) -> int:
     """Compute the total number of TDE constraints.
@@ -485,7 +508,7 @@ def _compute_n_tde_constraints(
     Args:
         n_tde: Number of triangular elements
         top_slip_idx: Indices for top boundary constraints
-        bot_slip_idx: Indices for bottom boundary constraints
+        bottom_slip_idx: Indices for bottom boundary constraints
         side_slip_idx: Indices for side boundary constraints
 
     Returns:
@@ -494,7 +517,7 @@ def _compute_n_tde_constraints(
     tde_slip_rate_constraints = np.zeros((2 * n_tde, 2 * n_tde))
     end_row = 0
 
-    boundary_slip_indices = [top_slip_idx, bot_slip_idx, side_slip_idx]
+    boundary_slip_indices = [top_slip_idx, bottom_slip_idx, side_slip_idx]
 
     for slip_idx in boundary_slip_indices:
         if len(slip_idx) > 0:
@@ -639,7 +662,7 @@ class Mesh:
                  The edges constituting the perimeter of the mesh.
              side_elements: np.ndarray
                  Bool indicating the presence of side elements on each triangle.
-             bot_elements: np.ndarray
+             bottom_elements: np.ndarray
                  Bool indicating if each triangle is a bottom element. Each triangle along the edge of the mesh will
                  naturally have two vertices which compose the outer edge that actually belongs to the perimeter of the mesh,
                  and a third "interior" vertex. A bottom element is defined as an edge triangle such that the depth
@@ -704,7 +727,7 @@ class Mesh:
     n_modes_total: int
     ordered_edge_nodes: np.ndarray
     top_elements: np.ndarray
-    bot_elements: np.ndarray
+    bottom_elements: np.ndarray
     side_elements: np.ndarray
     x_perimeter: np.ndarray
     y_perimeter: np.ndarray
@@ -712,7 +735,7 @@ class Mesh:
     share: np.ndarray
     tri_shared_sides_distances: np.ndarray
     top_slip_idx: np.ndarray
-    bot_slip_idx: np.ndarray
+    bottom_slip_idx: np.ndarray
     side_slip_idx: np.ndarray
     n_tde_constraints: int
     eigenvalues: np.ndarray | None = None
@@ -848,7 +871,7 @@ class Mesh:
 
         boundary_constraints = [
             ("top", config.top_slip_rate_constraint, mesh["top_elements"]),
-            ("bot", config.bot_slip_rate_constraint, mesh["bot_elements"]),
+            ("bottom", config.bottom_slip_rate_constraint, mesh["bottom_elements"]),
             ("side", config.side_slip_rate_constraint, mesh["side_elements"]),
         ]
         for name, constraint_value, elements in boundary_constraints:
@@ -861,7 +884,7 @@ class Mesh:
         mesh["n_tde_constraints"] = _compute_n_tde_constraints(
             mesh["n_tde"],
             mesh["top_slip_idx"],
-            mesh["bot_slip_idx"],
+            mesh["bottom_slip_idx"],
             mesh["side_slip_idx"],
         )
 
@@ -948,7 +971,7 @@ class Mesh:
 
         boundary_constraints = [
             ("top", config.top_slip_rate_constraint, mesh.top_elements),
-            ("bot", config.bot_slip_rate_constraint, mesh.bot_elements),
+            ("bottom", config.bottom_slip_rate_constraint, mesh.bottom_elements),
             ("side", config.side_slip_rate_constraint, mesh.side_elements),
         ]
         for name, constraint_value, elements in boundary_constraints:
@@ -961,7 +984,7 @@ class Mesh:
         mesh.n_tde_constraints = _compute_n_tde_constraints(
             mesh.n_tde,
             mesh.top_slip_idx,
-            mesh.bot_slip_idx,
+            mesh.bottom_slip_idx,
             mesh.side_slip_idx,
         )
 
