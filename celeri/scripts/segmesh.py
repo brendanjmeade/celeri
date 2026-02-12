@@ -324,17 +324,17 @@ def main():
             )[1]
 
             # Bottom indices 1 are first, odds, and last
-            bot_idx1 = np.zeros((len(ordered_coords),))
-            bot_idx1[1:-1] = np.arange(1, len(ordered_seg_idx) - 1, 2)
-            bot_idx1[-1] = len(ordered_seg_idx) - 1
+            bottom_idx1 = np.zeros((len(ordered_coords),))
+            bottom_idx1[1:-1] = np.arange(1, len(ordered_seg_idx) - 1, 2)
+            bottom_idx1[-1] = len(ordered_seg_idx) - 1
             # Bottom indices 2 are first, evens, and last
-            bot_idx2 = np.zeros((len(ordered_coords),))
-            bot_idx2[1:-1] = np.arange(2, len(ordered_seg_idx) - 1, 2)
-            bot_idx2[-1] = len(ordered_seg_idx) - 1
-            bot_coords1 = seg_coords_bot[ordered_seg_idx[bot_idx1.astype(int)], :]
-            bot_coords2 = seg_coords_bot[ordered_seg_idx[bot_idx2.astype(int)], :]
+            bottom_idx2 = np.zeros((len(ordered_coords),))
+            bottom_idx2[1:-1] = np.arange(2, len(ordered_seg_idx) - 1, 2)
+            bottom_idx2[-1] = len(ordered_seg_idx) - 1
+            bottom_coords1 = seg_coords_bot[ordered_seg_idx[bottom_idx1.astype(int)], :]
+            bottom_coords2 = seg_coords_bot[ordered_seg_idx[bottom_idx2.astype(int)], :]
             # Bottom coordinates are averages of "internal" endpoints (hanging ends are also averaged, but they're duplicates)
-            bot_coords = (bot_coords1 + bot_coords2) / 2
+            bottom_coords = (bottom_coords1 + bottom_coords2) / 2
 
             # Top coordinates are ordered block coordinates with zero depths appended
             top_coords = np.hstack((ordered_coords, np.zeros((len(ordered_coords), 1))))
@@ -342,7 +342,7 @@ def main():
             filename = mesh_dir / f"{seg_file_stem}_segmesh{mesh_idx}.msh"
 
             # Combined coordinates making a continuous perimeter loop
-            all_coords = np.vstack((top_coords, np.flipud(bot_coords)))
+            all_coords = np.vstack((top_coords, np.flipud(bottom_coords)))
             # Number of geometric objects
             n_coords = np.shape(all_coords)[0]
             n_surf = int((n_coords - 2) / 2)

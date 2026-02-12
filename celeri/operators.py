@@ -59,8 +59,8 @@ class TdeIndex:
     end_tde_constraint_row: np.ndarray
     start_tde_top_constraint_row: np.ndarray
     end_tde_top_constraint_row: np.ndarray
-    start_tde_bot_constraint_row: np.ndarray
-    end_tde_bot_constraint_row: np.ndarray
+    start_tde_bottom_constraint_row: np.ndarray
+    end_tde_bottom_constraint_row: np.ndarray
     start_tde_side_constraint_row: np.ndarray
     end_tde_side_constraint_row: np.ndarray
     start_tde_coup_constraint_row: np.ndarray
@@ -1015,13 +1015,13 @@ def _hash_elastic_operator_input(
         "sqp_kinematic_slip_rate_hint_ss",
         "sqp_kinematic_slip_rate_hint_ds",
         "top_slip_rate_constraint",
-        "bot_slip_rate_constraint",
+        "bottom_slip_rate_constraint",
         "top_elastic_constraint_sigma",
-        "bot_elastic_constraint_sigma",
+        "bottom_elastic_constraint_sigma",
         "side_elastic_constraint_sigma",
         "side_slip_rate_constraint",
         "top_slip_rate_weight",
-        "bot_slip_rate_weight",
+        "bottom_slip_rate_weight",
         "side_slip_rate_weight",
         "eigenmode_slip_rate_constraint_weight",
         "a_priori_slip_filename",
@@ -1367,7 +1367,7 @@ def _store_tde_slip_rate_constraints(model: Model, operators: _OperatorBuilder):
     or coupling fractions on elements lining the edges of the mesh,
     as controlled by input parameters
     top_slip_rate_constraint,
-    bot_slip_rate_constraint,
+    bottom_slip_rate_constraint,
     side_slip_rate_constraint,.
 
     and at other elements with indices specified as
@@ -1389,7 +1389,7 @@ def _store_tde_slip_rate_constraints(model: Model, operators: _OperatorBuilder):
         # Process boundary constraints (top, bottom, side)
         boundary_constraints = [
             meshes[i].top_slip_idx,
-            meshes[i].bot_slip_idx,
+            meshes[i].bottom_slip_idx,
             meshes[i].side_slip_idx,
         ]
 
@@ -1926,13 +1926,13 @@ def _get_weighting_vector_eigen(model: Model, index: Index) -> np.ndarray:
 
     # TODO: Need to think about constraints weights
     # This is the only place where any individual constraint weights enter
-    # I'm only using on of them: meshes[i].bot_slip_rate_weight
+    # I'm only using on of them: meshes[i].bottom_slip_rate_weight
     for i in range(len(model.meshes)):
         weighting_vector[
             index.eigen.start_tde_constraint_row_eigen[
                 i
             ] : index.eigen.end_tde_constraint_row_eigen[i]
-        ] = model.meshes[i].config.bot_slip_rate_weight * np.ones(
+        ] = model.meshes[i].config.bottom_slip_rate_weight * np.ones(
             index.tde.n_tde_constraints[i]
         )
 
@@ -2072,14 +2072,14 @@ def _get_full_dense_operator_tde(operators: Operators) -> np.ndarray:
                 model.meshes[i].top_slip_idx,
                 index.start_block_col : index.end_block_col,
             ]
-        if model.meshes[i].config.bot_slip_rate_constraint == 2:
+        if model.meshes[i].config.bottom_slip_rate_constraint == 2:
             operator[
-                index.tde.start_tde_bot_constraint_row[
+                index.tde.start_tde_bottom_constraint_row[
                     i
-                ] : index.tde.end_tde_bot_constraint_row[i],
+                ] : index.tde.end_tde_bottom_constraint_row[i],
                 index.start_block_col : index.end_block_col,
             ] = -operators.rotation_to_tri_slip_rate[i][
-                model.meshes[i].bot_slip_idx,
+                model.meshes[i].bottom_slip_idx,
                 :,
             ]
         if model.meshes[i].config.side_slip_rate_constraint == 2:
@@ -2631,8 +2631,8 @@ def _get_index(model: Model) -> Index:
         end_tde_constraint_row=np.zeros(index.n_meshes, dtype=int),
         start_tde_top_constraint_row=np.zeros(index.n_meshes, dtype=int),
         end_tde_top_constraint_row=np.zeros(index.n_meshes, dtype=int),
-        start_tde_bot_constraint_row=np.zeros(index.n_meshes, dtype=int),
-        end_tde_bot_constraint_row=np.zeros(index.n_meshes, dtype=int),
+        start_tde_bottom_constraint_row=np.zeros(index.n_meshes, dtype=int),
+        end_tde_bottom_constraint_row=np.zeros(index.n_meshes, dtype=int),
         start_tde_side_constraint_row=np.zeros(index.n_meshes, dtype=int),
         end_tde_side_constraint_row=np.zeros(index.n_meshes, dtype=int),
         start_tde_coup_constraint_row=np.zeros(index.n_meshes, dtype=int),
@@ -2673,12 +2673,14 @@ def _get_index(model: Model) -> Index:
         tde.end_tde_top_constraint_row[i] = tde.start_tde_top_constraint_row[i] + count
 
         # Set bottom constraint row indices
-        tde.start_tde_bot_constraint_row[i] = tde.end_tde_top_constraint_row[i]
-        count = len(model.meshes[i].bot_slip_idx)
-        tde.end_tde_bot_constraint_row[i] = tde.start_tde_bot_constraint_row[i] + count
+        tde.start_tde_bottom_constraint_row[i] = tde.end_tde_top_constraint_row[i]
+        count = len(model.meshes[i].bottom_slip_idx)
+        tde.end_tde_bottom_constraint_row[i] = (
+            tde.start_tde_bottom_constraint_row[i] + count
+        )
 
         # Set side constraint row indices
-        tde.start_tde_side_constraint_row[i] = tde.end_tde_bot_constraint_row[i]
+        tde.start_tde_side_constraint_row[i] = tde.end_tde_bottom_constraint_row[i]
         count = len(model.meshes[i].side_slip_idx)
         tde.end_tde_side_constraint_row[i] = (
             tde.start_tde_side_constraint_row[i] + count

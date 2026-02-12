@@ -894,10 +894,10 @@ def _add_tde_elastic_constraints(
             mesh.config.top_elastic_constraint_sigma,
         ),
         (
-            "bot",
-            mesh.bot_elements,
-            mesh.config.bot_slip_rate_constraint,
-            mesh.config.bot_elastic_constraint_sigma,
+            "bottom",
+            mesh.bottom_elements,
+            mesh.config.bottom_slip_rate_constraint,
+            mesh.config.bottom_elastic_constraint_sigma,
         ),
         (
             "side",
