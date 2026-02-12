@@ -237,3 +237,6 @@ module = [
     "spherical_geometry.*",
 ]
 ignore_missing_imports = true
+
+[tool.ty.environment]
+python = ".pixi/envs/default"

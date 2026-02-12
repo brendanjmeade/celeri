@@ -31,6 +31,8 @@ McmcStationWeighting = Literal["voronoi",]
 
 McmcMeanParameterization = Literal["constrained", "unconstrained"]
 
+McmcRotationParameterization = Literal["svd", "noncentered"]
+
 
 class Config(RelativePathSerializerMixin, BaseModel):
     # Forbid extra fields when reading from JSON
@@ -360,6 +362,16 @@ class Config(RelativePathSerializerMixin, BaseModel):
 
     Propagated to each mesh's ``side_elastic_constraint_sigma`` unless
     overridden in the per-mesh configuration.
+    """
+
+    mcmc_block_rotation_rms_velocity_prior_sigma: float = 50.0
+    """Prior standard deviation (in mm/yr) for block root mean squared velocity in MCMC.
+
+    This is used in conjunction with block moment tensors to place an informative
+    prior on the mean squared velocity of each block. The root mean squared velocity
+    for a block with rotation ω and moment tensor M is:
+        v_rms = r × sqrt(ω^T (I - M) ω)
+    where r is Earth's radius.
     """
 
     mcmc_station_effective_area: float = 10_000**2
