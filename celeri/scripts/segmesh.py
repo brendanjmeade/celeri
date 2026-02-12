@@ -441,13 +441,13 @@ def main():
             filename = mesh_dir / f"{seg_file_stem}_segmesh{j}.msh"
             new_entry = celeri.MeshConfig(
                 file_name=model.config.mesh_parameters_file_name,
-                matern_nu=model.config.mcmc_default_mesh_matern_nu,
-                matern_length_scale=model.config.mcmc_default_mesh_matern_length_scale,
-                matern_length_units=model.config.mesh_default_matern_length_units,
-                eigenvector_algorithm=model.config.mesh_default_eigenvector_algorithm,
             )
             new_entry.mesh_filename = filename
             model.config.mesh_params.append(new_entry)
+        # Populate None defaults on newly appended meshes from Config-level values.
+        # propagate_mesh_defaults only touches fields that are None, so
+        # existing meshes (which already have their defaults) are unaffected.
+        model.config.propagate_mesh_defaults()
     else:
         segmesh_file_index = []
 
