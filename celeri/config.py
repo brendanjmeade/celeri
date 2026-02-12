@@ -479,13 +479,17 @@ class Config(BaseModel):
                 raise ValueError(error)
         return self
 
-    @model_validator(mode="after")
-    def apply_mesh_defaults(self) -> Self:
-        """Propagate top-level defaults to mesh configs that don't set their own.
+    def propagate_mesh_defaults(self) -> None:
+        """Propagate top-level defaults to mesh configs that still have None.
 
-        MeshConfig fields that default to None inherit from the corresponding
-        Config-level default.  Per-mesh overrides (explicitly set in the mesh
-        JSON) are preserved.
+        Every MeshConfig field listed below uses ``None`` to mean "inherit
+        from the top-level Config".  We fill in the default whenever the
+        current value **is** None — not just when the field was never set —
+        so that round-tripping through JSON (which serialises None as null
+        and marks the field as explicitly set on reload) still works.
+
+        Called automatically during validation, but can also be called
+        explicitly after appending new MeshConfig objects to ``mesh_params``.
         """
         defaults: dict[str, object] = {
             # GP kernel hyperparameters
@@ -510,8 +514,12 @@ class Config(BaseModel):
         }
         for mesh_field, default_value in defaults.items():
             for mesh_param in self.mesh_params:
-                if mesh_field not in mesh_param.model_fields_set:
+                if getattr(mesh_param, mesh_field) is None:
                     setattr(mesh_param, mesh_field, default_value)
+
+    @model_validator(mode="after")
+    def _apply_mesh_defaults(self) -> Self:
+        self.propagate_mesh_defaults()
         return self
 
 
