@@ -701,14 +701,22 @@ def _elastic_component(
     # When bounds ARE present, the constraint function is nonlinear and we
     # must go through _velocities_from_elastic_mesh which projects the
     # constrained elastic_tde back into eigenspace before multiplying by T.
-    if lower is None and upper is None:
+    #
+    # Pre-compute the mean-field eigencoefficients once (used for both
+    # station velocities and LOS velocities when no bounds are present).
+    unconstrained = lower is None and upper is None
+    if unconstrained and mu_unconstrained != 0.0:
+        mean_coefs = eigenvectors.T @ np.ones(eigenvectors.shape[0])
+    else:
+        mean_coefs = None
+
+    if unconstrained:
         station_vels = _operator_mult(to_velocity, param)
-        if mu_unconstrained != 0.0:
+        if mean_coefs is not None:
             # Constant velocity contribution of the mean field projected
             # onto the eigensubspace: mu * T @ (V^T @ 1_{n_tde})
-            _mean_coefs = eigenvectors.T @ np.ones(eigenvectors.shape[0])
             station_vels = station_vels + mu_unconstrained * _operator_mult(
-                to_velocity, _mean_coefs
+                to_velocity, mean_coefs
             )
     else:
         station_vels = _velocities_from_elastic_mesh(
@@ -730,13 +738,12 @@ def _elastic_component(
 
         to_los = los_ops.eigen_to_los[mesh_idx][:, start_idx : start_idx + n_eigs]
 
-        if lower is None and upper is None:
+        if unconstrained:
             # Use direct eigen_to_los operator when no constraints
             los_vels = _operator_mult(to_los, param)
-            if mu_unconstrained != 0.0:
-                _mean_coefs = eigenvectors.T @ np.ones(eigenvectors.shape[0])
+            if mean_coefs is not None:
                 los_vels = los_vels + mu_unconstrained * _operator_mult(
-                    to_los, _mean_coefs
+                    to_los, mean_coefs
                 )
         else:
             # Must project through elastic_tde when constraints are applied
