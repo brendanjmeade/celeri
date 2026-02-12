@@ -30,6 +30,8 @@ McmcStationWeighting = Literal["voronoi",]
 
 McmcMeanParameterization = Literal["constrained", "unconstrained"]
 
+McmcRotationParameterization = Literal["svd", "noncentered"]
+
 
 class Config(BaseModel):
     # Forbid extra fields when reading from JSON
@@ -359,6 +361,20 @@ class Config(BaseModel):
 
     Propagated to each mesh's ``side_elastic_constraint_sigma`` unless
     overridden in the per-mesh configuration.
+    """
+
+    mcmc_block_rotation_rms_velocity_prior_sigma: float = 80.0
+    """Prior standard deviation for block root mean squared rotation velocity in MCMC on the blocks.
+
+    UNITS: [mm/yr]
+    """
+
+    mcmc_block_rotation_parametrization: McmcRotationParameterization = "svd"
+    """Parametrization for block rotation in MCMC.
+
+    - "svd": Use SVD-based reparametrization with flat prior on raw parameters (default)
+    - "noncentered": Use non-centered parametrization with Cholesky decomposition of
+      the prior covariance, transforming white noise to the rotation space
     """
 
     mcmc_station_effective_area: float = 10_000**2
