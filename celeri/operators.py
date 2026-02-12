@@ -1376,7 +1376,7 @@ def _store_tde_slip_rate_constraints(model: Model, operators: _OperatorBuilder):
     as controlled by input parameters
     top_slip_rate_constraint,
     bottom_slip_rate_constraint,
-    side_slip_rate_constraint,.
+    side_slip_rate_constraint,
 
     and at other elements with indices specified as
     ss_slip_constraint_idx,
@@ -1934,7 +1934,7 @@ def _get_weighting_vector_eigen(model: Model, index: Index) -> np.ndarray:
 
     # TODO: Need to think about constraints weights
     # This is the only place where any individual constraint weights enter
-    # I'm only using on of them: meshes[i].bottom_slip_rate_weight
+    # I'm only using one of them: meshes[i].bottom_slip_rate_weight
     for i in range(len(model.meshes)):
         weighting_vector[
             index.eigen.start_tde_constraint_row_eigen[
