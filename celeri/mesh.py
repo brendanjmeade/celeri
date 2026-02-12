@@ -130,6 +130,11 @@ class MeshConfig(BaseModel):
         }
         for old, new in _RENAMES.items():
             if old in data:
+                if new in data:
+                    raise ValueError(
+                        f"MeshConfig received both '{old}' (deprecated) and '{new}'. "
+                        f"Remove the deprecated '{old}' key."
+                    )
                 import warnings
 
                 warnings.warn(
@@ -953,7 +958,16 @@ class Mesh:
         config = MeshConfig(**config_data)
 
         # Use the general dataclass deserialization function with the config as extra data
-        mesh = dataclass_from_disk(cls, input_dir, extra={"config": config})
+        mesh = dataclass_from_disk(
+            cls,
+            input_dir,
+            extra={"config": config},
+            rename={
+                # bot_ -> bottom_ rename (backward compat with older serialized meshes)
+                "bot_elements": "bottom_elements",
+                "bot_slip_idx": "bottom_slip_idx",
+            },
+        )
 
         # Compute shared sides and distances if not already loaded (backward compatibility)
         from celeri.spatial import get_shared_sides, get_tri_shared_sides_distances

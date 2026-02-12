@@ -293,6 +293,7 @@ def dataclass_from_disk(
     *,
     extra: dict[str, Any] | None = None,
     skip: set[str] | None = None,
+    rename: dict[str, str] | None = None,
 ) -> T:
     """Load a dataclass object from disk.
 
@@ -302,6 +303,9 @@ def dataclass_from_disk(
         extra: Additional attributes to add to the loaded data
         skip: Set of keys to skip when loading (for backwards compatibility
             when fields have been removed from the dataclass)
+        rename: Mapping of old key names to new key names (for backwards
+            compatibility when fields have been renamed in the dataclass).
+            Old keys found in the loaded data are silently renamed.
 
     Returns:
         An instance of the dataclass
@@ -310,6 +314,8 @@ def dataclass_from_disk(
         extra = {}
     if skip is None:
         skip = set()
+    if rename is None:
+        rename = {}
 
     input_dir = Path(input_dir)
 
@@ -349,5 +355,10 @@ def dataclass_from_disk(
 
     for key in skip:
         data.pop(key, None)
+
+    # Rename old keys to new keys for backwards compatibility
+    for old_key, new_key in rename.items():
+        if old_key in data and new_key not in data:
+            data[new_key] = data.pop(old_key)
 
     return cls(**data)
