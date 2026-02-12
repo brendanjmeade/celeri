@@ -178,9 +178,11 @@ class MeshConfig(BaseModel):
 
     # Sigma for the artificial observed 0s on elastic velocities at the
     # boundaries, used in MCMC sampling when the corresponding constraint == 1.
-    top_elastic_constraint_sigma: float = 0.5
-    bottom_elastic_constraint_sigma: float = 0.5
-    side_elastic_constraint_sigma: float = 0.5
+    # When None, these use defaults from the top-level Config
+    # (propagated by Config.apply_mesh_defaults).
+    top_elastic_constraint_sigma: float | None = None
+    bottom_elastic_constraint_sigma: float | None = None
+    side_elastic_constraint_sigma: float | None = None
 
     # Filename for fixed slip rates, not currently used
     a_priori_slip_filename: Path | None = None
@@ -208,9 +210,13 @@ class MeshConfig(BaseModel):
     elastic_mean_parameterization: Literal["constrained", "unconstrained"] | None = None
     elastic_sigma: float | None = None
 
-    softplus_lengthscale: float = 1.0
+    # When None, uses the default from the top-level Config
+    # (propagated by Config.apply_mesh_defaults).
+    softplus_lengthscale: float | None = None
 
-    gp_parameterization: Literal["centered", "non_centered"] = "non_centered"
+    # When None, uses the default from the top-level Config
+    # (propagated by Config.apply_mesh_defaults).
+    gp_parameterization: Literal["centered", "non_centered"] | None = None
     """Parameterization for GP coefficients in MCMC.
 
     Both parameterizations are mathematically equivalent but change the
