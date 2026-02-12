@@ -756,6 +756,10 @@ def _elastic_component(
                 los_ops=los_ops,
             )
 
+    station_vels = station_vels.astype("d")
+    if los_vels is not None:
+        los_vels = los_vels.astype("d")
+
     return elastic_tde, station_vels, los_vels
 
 
