@@ -87,7 +87,15 @@ class TdeIndex:
     def from_disk(cls, input_dir: str | Path) -> "TdeIndex":
         """Load TDE operators from disk."""
         path = Path(input_dir) / "tde_index"
-        return dataclass_from_disk(cls, path)
+        return dataclass_from_disk(
+            cls,
+            path,
+            rename={
+                # bot_ -> bottom_ rename (backward compat with older serialized indices)
+                "start_tde_bot_constraint_row": "start_tde_bottom_constraint_row",
+                "end_tde_bot_constraint_row": "end_tde_bottom_constraint_row",
+            },
+        )
 
 
 @dataclass
