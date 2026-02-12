@@ -689,10 +689,27 @@ def _elastic_component(
     )
     pm.Deterministic(f"elastic_{mesh_idx}_{kind_short}", elastic_tde)
 
-    # Compute elastic velocity at stations. The operator already
-    # includes a negative sign. eigen_to_velocities uses selected velocity components.
+    # Compute elastic velocity at stations via the precomputed
+    # eigen_to_velocity operator (the "project_to_eigen" fast path).
+    #
+    # When there are no bounds, _constrain_field is identity, so
+    #   elastic_tde = V @ c + mu                        (n_tde,)
+    # The project_to_eigen velocity is T @ V^T @ elastic_tde.  Expanding:
+    #   T @ V^T @ (V @ c + mu) = T @ c + mu * T @ (V^T @ 1)
+    # The second term is a constant precomputed once (zero per-step cost).
+    #
+    # When bounds ARE present, the constraint function is nonlinear and we
+    # must go through _velocities_from_elastic_mesh which projects the
+    # constrained elastic_tde back into eigenspace before multiplying by T.
     if lower is None and upper is None:
         station_vels = _operator_mult(to_velocity, param)
+        if mu_unconstrained != 0.0:
+            # Constant velocity contribution of the mean field projected
+            # onto the eigensubspace: mu * T @ (V^T @ 1_{n_tde})
+            _mean_coefs = eigenvectors.T @ np.ones(eigenvectors.shape[0])
+            station_vels = station_vels + mu_unconstrained * _operator_mult(
+                to_velocity, _mean_coefs
+            )
     else:
         station_vels = _velocities_from_elastic_mesh(
             model,
@@ -716,6 +733,11 @@ def _elastic_component(
         if lower is None and upper is None:
             # Use direct eigen_to_los operator when no constraints
             los_vels = _operator_mult(to_los, param)
+            if mu_unconstrained != 0.0:
+                _mean_coefs = eigenvectors.T @ np.ones(eigenvectors.shape[0])
+                los_vels = los_vels + mu_unconstrained * _operator_mult(
+                    to_los, _mean_coefs
+                )
         else:
             # Must project through elastic_tde when constraints are applied
             los_vels = _velocities_from_elastic_mesh(
