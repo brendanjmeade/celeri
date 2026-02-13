@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from pathlib import Path
+
 from loguru import logger
 
 import celeri
@@ -12,6 +14,11 @@ def main():
 
     # Read in command file and start logging
     config = celeri.get_config(args.config_file_name)
+
+    # Write output directory path to file for scripted discovery
+    if args.run_dir_file:
+        Path(args.run_dir_file).write_text(str(config.output_path))
+
     logger = celeri.get_logger(config)
     celeri.process_args(config, args)
     model = celeri.build_model(config)
