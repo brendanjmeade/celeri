@@ -116,6 +116,10 @@ class Model:
 
 
 def read_data(config: Config):
+    # Propagate top-level mesh defaults into any MeshConfig fields that are
+    # still None.  This is deferred from Config construction so that CLI
+    # overrides (via process_args) take effect before propagation.
+    config.propagate_mesh_defaults()
     logger.info("Reading data files")
     # Read segment data
     segment = pd.read_csv(config.segment_file_name)
