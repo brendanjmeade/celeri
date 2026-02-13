@@ -696,7 +696,8 @@ def _elastic_component(
     #   elastic_tde = V @ c + mu                        (n_tde,)
     # The project_to_eigen velocity is T @ V^T @ elastic_tde.  Expanding:
     #   T @ V^T @ (V @ c + mu) = T @ c + mu * T @ (V^T @ 1)
-    # The second term is a constant precomputed once (zero per-step cost).
+    # The second term's matrix-vector multiply is precomputed once; at
+    # runtime we only pay a cheap vector add per step.
     #
     # When bounds ARE present, the constraint function is nonlinear and we
     # must go through _velocities_from_elastic_mesh which projects the
@@ -706,7 +707,7 @@ def _elastic_component(
     # station velocities and LOS velocities when no bounds are present).
     unconstrained = lower is None and upper is None
     if unconstrained and mu_unconstrained != 0.0:
-        mean_coefs = eigenvectors.T @ np.ones(eigenvectors.shape[0])
+        mean_coefs = eigenvectors.sum(axis=0)
     else:
         mean_coefs = None
 
