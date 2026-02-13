@@ -491,8 +491,9 @@ class Config(BaseModel):
         so that round-tripping through JSON (which serialises None as null
         and marks the field as explicitly set on reload) still works.
 
-        Called automatically during validation, but can also be called
-        explicitly after appending new MeshConfig objects to ``mesh_params``.
+        This is **not** called automatically during validation so that CLI
+        overrides (via ``process_args``) take effect before propagation.
+        It is called at the start of ``read_data``.
         """
         defaults: dict[str, object] = {
             # GP kernel hyperparameters
@@ -519,11 +520,6 @@ class Config(BaseModel):
             for mesh_param in self.mesh_params:
                 if getattr(mesh_param, mesh_field) is None:
                     setattr(mesh_param, mesh_field, default_value)
-
-    @model_validator(mode="after")
-    def _apply_mesh_defaults(self) -> Self:
-        self.propagate_mesh_defaults()
-        return self
 
 
 def _get_output_path(base: Path) -> Path:
