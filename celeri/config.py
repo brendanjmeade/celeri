@@ -377,14 +377,6 @@ class Config(RelativePathSerializerMixin, BaseModel):
     10⁻⁹ rad/yr (nanoradians per year, or 10⁻³ microradians per year).
     """
 
-    mcmc_block_rotation_parametrization: McmcRotationParameterization = "svd"
-    """Parametrization for block rotation in MCMC.
-
-    - "svd": Use SVD-based reparametrization with flat prior on raw parameters (default)
-    - "noncentered": Use non-centered parametrization with Cholesky decomposition of
-      the prior covariance, transforming white noise to the rotation space
-    """
-
     mcmc_station_effective_area: float = 10_000**2
     """Effective area for station and LOS likelihood weighting in MCMC.
 

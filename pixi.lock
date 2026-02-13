@@ -4822,8 +4822,8 @@ packages:
   timestamp: 1768852915341
 - pypi: ./
   name: celeri
-  version: 0.0.4.post1.dev507+g1f688d397
-  sha256: f0ff950e1085a5e6d151986bdb030f692752550189e8a2ac20dc71ca5c8e54e4
+  version: 0.0.4.post1.dev525+gbbfa7686b.d20260220
+  sha256: ba70ab40c643588ae311325e5558e8a73656a0576aa7f0245dd8778eb0a7b80c
   requires_dist:
   - cartopy
   - colorcet
