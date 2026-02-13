@@ -50,6 +50,9 @@ class Config(BaseModel):
     output_path: Path
     """Where to store the output of estimation runs (subdir of base_runs_folder)"""
 
+    description: str | None = None
+    """Optional human-readable description or tag for this run."""
+
     block_file_name: Path
     """Location of the file containing the blocks"""
 
