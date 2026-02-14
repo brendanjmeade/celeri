@@ -11,6 +11,7 @@ from scipy import linalg, spatial
 
 from celeri.celeri_util import get_keep_index_12
 from celeri.constants import RADIUS_EARTH
+from celeri.mesh import Mesh
 from celeri.model import Model
 from celeri.operators import (
     LosOperators,
@@ -689,10 +690,36 @@ def _elastic_component(
     )
     pm.Deterministic(f"elastic_{mesh_idx}_{kind_short}", elastic_tde)
 
-    # Compute elastic velocity at stations. The operator already
-    # includes a negative sign. eigen_to_velocities uses selected velocity components.
-    if lower is None and upper is None:
+    # Compute elastic velocity at stations via the precomputed
+    # eigen_to_velocity operator (the "project_to_eigen" fast path).
+    #
+    # When there are no bounds, _constrain_field is identity, so
+    #   elastic_tde = V @ c + mu                        (n_tde,)
+    # The project_to_eigen velocity is T @ V^T @ elastic_tde.  Expanding:
+    #   T @ V^T @ (V @ c + mu) = T @ c + mu * T @ (V^T @ 1)
+    # The second term's matrix-vector multiply is precomputed once; at
+    # runtime we only pay a cheap vector add per step.
+    #
+    # When bounds ARE present, the constraint function is nonlinear and we
+    # must go through _velocities_from_elastic_mesh which projects the
+    # constrained elastic_tde back into eigenspace before multiplying by T.
+    #
+    # Pre-compute the mean-field eigencoefficients once (used for both
+    # station velocities and LOS velocities when no bounds are present).
+    unconstrained = lower is None and upper is None
+    if unconstrained and mu_unconstrained != 0.0:
+        mean_coefs = eigenvectors.sum(axis=0)
+    else:
+        mean_coefs = None
+
+    if unconstrained:
         station_vels = _operator_mult(to_velocity, param)
+        if mean_coefs is not None:
+            # Constant velocity contribution of the mean field projected
+            # onto the eigensubspace: mu * T @ (V^T @ 1_{n_tde})
+            station_vels = station_vels + mu_unconstrained * _operator_mult(
+                to_velocity, mean_coefs
+            )
     else:
         station_vels = _velocities_from_elastic_mesh(
             model,
@@ -713,9 +740,13 @@ def _elastic_component(
 
         to_los = los_ops.eigen_to_los[mesh_idx][:, start_idx : start_idx + n_eigs]
 
-        if lower is None and upper is None:
+        if unconstrained:
             # Use direct eigen_to_los operator when no constraints
             los_vels = _operator_mult(to_los, param)
+            if mean_coefs is not None:
+                los_vels = los_vels + mu_unconstrained * _operator_mult(
+                    to_los, mean_coefs
+                )
         else:
             # Must project through elastic_tde when constraints are applied
             los_vels = _velocities_from_elastic_mesh(
@@ -726,6 +757,10 @@ def _elastic_component(
                 operators,
                 los_ops=los_ops,
             )
+
+    station_vels = station_vels.astype("d")
+    if los_vels is not None:
+        los_vels = los_vels.astype("d")
 
     return elastic_tde, station_vels, los_vels
 
@@ -860,10 +895,10 @@ def _add_tde_elastic_constraints(
             mesh.config.top_elastic_constraint_sigma,
         ),
         (
-            "bot",
-            mesh.bot_elements,
-            mesh.config.bot_slip_rate_constraint,
-            mesh.config.bot_elastic_constraint_sigma,
+            "bottom",
+            mesh.bottom_elements,
+            mesh.config.bottom_slip_rate_constraint,
+            mesh.config.bottom_elastic_constraint_sigma,
         ),
         (
             "side",
@@ -908,12 +943,21 @@ def _add_block_strain_rate_component(operators: Operators, vel_idx: np.ndarray):
     return _operator_mult(op, block_strain_rate)
 
 
-def _add_rotation_component(operators: Operators, vel_idx: np.ndarray):
+def _add_rotation_component(
+    meshes: list[Mesh], operators: Operators, vel_idx: np.ndarray
+):
     """Add block rotation component to the PyMC model.
 
     Returns rotation parameters and velocity contributions.
 
+    The SVD is computed from the combined station-velocity and boundary-
+    constraint operators.  Each ``rotation_raw`` coordinate is additionally
+    scaled by the inverse singular value, so that the Hessian in the raw
+    parameter space is approximately identity.  This prevents step-size
+    collapse when ``bc_sigma`` is small.
+
     Args:
+        meshes: Meshes (needed for boundary constraint geometry)
         operators: The operators object
         vel_idx: Row indices to select velocity components (horizontal only or all 3)
     """
@@ -926,12 +970,73 @@ def _add_rotation_component(operators: Operators, vel_idx: np.ndarray):
 
     A = rotation_to_vel - rotation_to_okada_vel
     scale = 1e6
-    B = A / scale
-    _u, _s, vh = linalg.svd(B, full_matrices=False)
+
+    # Collect boundary constraint rows weighted by coupling_init / sigma.
+    bc_rows: list[np.ndarray] = []
+    coupling_init = 0.5  # sigmoid(0) at initialisation
+    for mesh_idx, mesh in enumerate(meshes):
+        if mesh_idx not in operators.rotation_to_tri_slip_rate:
+            continue
+        R = operators.rotation_to_tri_slip_rate[mesh_idx]
+        R_ss = R[::2, :]  # strike-slip rows (n_tde, n_rot)
+        R_ds = R[1::2, :]  # dip-slip rows   (n_tde, n_rot)
+
+        for _name, elements, constraint_flag, sigma in [
+            (
+                "top",
+                mesh.top_elements,
+                mesh.config.top_slip_rate_constraint,
+                mesh.config.top_elastic_constraint_sigma,
+            ),
+            (
+                "bottom",
+                mesh.bottom_elements,
+                mesh.config.bottom_slip_rate_constraint,
+                mesh.config.bottom_elastic_constraint_sigma,
+            ),
+            (
+                "side",
+                mesh.side_elements,
+                mesh.config.side_slip_rate_constraint,
+                mesh.config.side_elastic_constraint_sigma,
+            ),
+        ]:
+            if constraint_flag != 1 or sigma is None or sigma <= 0:
+                continue
+            idx = np.where(elements)[0]
+            if len(idx) == 0:
+                continue
+            weight = coupling_init / sigma
+            bc_rows.append(weight * R_ss[idx, :])
+            bc_rows.append(weight * R_ds[idx, :])
+
+    if bc_rows:
+        n_bc = sum(r.shape[0] for r in bc_rows)
+        logger.info(
+            f"Rotation SVD: stacking {n_bc} boundary-constraint rows "
+            f"onto {A.shape[0]} velocity rows"
+        )
+        M = np.vstack([A, *bc_rows]) / scale
+    else:
+        M = A / scale
+
+    _u, _s, vh = linalg.svd(M, full_matrices=False)
+
+    # Scale each raw coordinate by 1/s so the Hessian in raw space ≈ I.
+    # Clip small singular values to avoid blow-up in near-null directions.
+    s_floor = _s.max() * 1e-6
+    inv_s = 1.0 / np.maximum(_s, s_floor)
+    logger.info(
+        f"Rotation SVD: condition number {_s.max() / _s.min():.1f}, "
+        f"s range [{_s.min():.2e}, {_s.max():.2e}]"
+    )
+
     raw = pm.StudentT("rotation_raw", sigma=20, nu=4, dims="rotation_param")
 
     rotation = pm.Deterministic(
-        "rotation", _operator_mult(vh.T, raw / scale), dims="rotation_param"
+        "rotation",
+        _operator_mult(vh.T, raw * inv_s / scale),
+        dims="rotation_param",
     )
 
     rotation_velocity = _operator_mult(rotation_to_vel, rotation)
@@ -1248,7 +1353,7 @@ def _build_pymc_model(
         )
 
         rotation, rotation_velocity, rotation_okada_velocity = _add_rotation_component(
-            operators, vel_idx
+            model.meshes, operators, vel_idx
         )
 
         mogi_velocity = _add_mogi_component(operators, vel_idx)

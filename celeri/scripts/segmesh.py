@@ -324,17 +324,17 @@ def main():
             )[1]
 
             # Bottom indices 1 are first, odds, and last
-            bot_idx1 = np.zeros((len(ordered_coords),))
-            bot_idx1[1:-1] = np.arange(1, len(ordered_seg_idx) - 1, 2)
-            bot_idx1[-1] = len(ordered_seg_idx) - 1
+            bottom_idx1 = np.zeros((len(ordered_coords),))
+            bottom_idx1[1:-1] = np.arange(1, len(ordered_seg_idx) - 1, 2)
+            bottom_idx1[-1] = len(ordered_seg_idx) - 1
             # Bottom indices 2 are first, evens, and last
-            bot_idx2 = np.zeros((len(ordered_coords),))
-            bot_idx2[1:-1] = np.arange(2, len(ordered_seg_idx) - 1, 2)
-            bot_idx2[-1] = len(ordered_seg_idx) - 1
-            bot_coords1 = seg_coords_bot[ordered_seg_idx[bot_idx1.astype(int)], :]
-            bot_coords2 = seg_coords_bot[ordered_seg_idx[bot_idx2.astype(int)], :]
+            bottom_idx2 = np.zeros((len(ordered_coords),))
+            bottom_idx2[1:-1] = np.arange(2, len(ordered_seg_idx) - 1, 2)
+            bottom_idx2[-1] = len(ordered_seg_idx) - 1
+            bottom_coords1 = seg_coords_bot[ordered_seg_idx[bottom_idx1.astype(int)], :]
+            bottom_coords2 = seg_coords_bot[ordered_seg_idx[bottom_idx2.astype(int)], :]
             # Bottom coordinates are averages of "internal" endpoints (hanging ends are also averaged, but they're duplicates)
-            bot_coords = (bot_coords1 + bot_coords2) / 2
+            bottom_coords = (bottom_coords1 + bottom_coords2) / 2
 
             # Top coordinates are ordered block coordinates with zero depths appended
             top_coords = np.hstack((ordered_coords, np.zeros((len(ordered_coords), 1))))
@@ -342,7 +342,7 @@ def main():
             filename = mesh_dir / f"{seg_file_stem}_segmesh{mesh_idx}.msh"
 
             # Combined coordinates making a continuous perimeter loop
-            all_coords = np.vstack((top_coords, np.flipud(bot_coords)))
+            all_coords = np.vstack((top_coords, np.flipud(bottom_coords)))
             # Number of geometric objects
             n_coords = np.shape(all_coords)[0]
             n_surf = int((n_coords - 2) / 2)
@@ -441,13 +441,13 @@ def main():
             filename = mesh_dir / f"{seg_file_stem}_segmesh{j}.msh"
             new_entry = celeri.MeshConfig(
                 file_name=model.config.mesh_parameters_file_name,
-                matern_nu=model.config.mcmc_default_mesh_matern_nu,
-                matern_length_scale=model.config.mcmc_default_mesh_matern_length_scale,
-                matern_length_units=model.config.mesh_default_matern_length_units,
-                eigenvector_algorithm=model.config.mesh_default_eigenvector_algorithm,
             )
             new_entry.mesh_filename = filename
             model.config.mesh_params.append(new_entry)
+        # Populate None defaults on newly appended meshes from Config-level values.
+        # propagate_mesh_defaults only touches fields that are None, so
+        # existing meshes (which already have their defaults) are unaffected.
+        model.config.propagate_mesh_defaults()
     else:
         segmesh_file_index = []
 
