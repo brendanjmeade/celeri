@@ -11,6 +11,7 @@ from scipy import linalg, spatial
 
 from celeri.celeri_util import get_keep_index_12
 from celeri.constants import RADIUS_EARTH
+from celeri.mesh import Mesh
 from celeri.model import Model
 from celeri.operators import (
     LosOperators,
@@ -942,12 +943,21 @@ def _add_block_strain_rate_component(operators: Operators, vel_idx: np.ndarray):
     return _operator_mult(op, block_strain_rate)
 
 
-def _add_rotation_component(operators: Operators, vel_idx: np.ndarray):
+def _add_rotation_component(
+    meshes: list[Mesh], operators: Operators, vel_idx: np.ndarray
+):
     """Add block rotation component to the PyMC model.
 
     Returns rotation parameters and velocity contributions.
 
+    The SVD is computed from the combined station-velocity and boundary-
+    constraint operators.  Each ``rotation_raw`` coordinate is additionally
+    scaled by the inverse singular value, so that the Hessian in the raw
+    parameter space is approximately identity.  This prevents step-size
+    collapse when ``bc_sigma`` is small.
+
     Args:
+        meshes: Meshes (needed for boundary constraint geometry)
         operators: The operators object
         vel_idx: Row indices to select velocity components (horizontal only or all 3)
     """
@@ -958,14 +968,81 @@ def _add_rotation_component(operators: Operators, vel_idx: np.ndarray):
         vel_idx, :
     ]
 
-    A = rotation_to_vel - rotation_to_okada_vel
-    scale = 1e6
-    B = A / scale
-    _u, _s, vh = linalg.svd(B, full_matrices=False)
+    # Jacobian: rotation parameters -> net station velocities (rigid - elastic backslip)
+    jacobian = rotation_to_vel - rotation_to_okada_vel
+
+    # Collect boundary constraint rows weighted by 1/sigma so the SVD
+    # captures stiff boundary-constraint directions.
+    bc_rows: list[np.ndarray] = []
+    for mesh_idx, mesh in enumerate(meshes):
+        if mesh_idx not in operators.rotation_to_tri_slip_rate:
+            continue
+        R = operators.rotation_to_tri_slip_rate[mesh_idx]
+        R_ss = R[::2, :]  # strike-slip rows (n_tde, n_rot)
+        R_ds = R[1::2, :]  # dip-slip rows   (n_tde, n_rot)
+
+        for _name, elements, constraint_flag, sigma in [
+            (
+                "top",
+                mesh.top_elements,
+                mesh.config.top_slip_rate_constraint,
+                mesh.config.top_elastic_constraint_sigma,
+            ),
+            (
+                "bottom",
+                mesh.bottom_elements,
+                mesh.config.bottom_slip_rate_constraint,
+                mesh.config.bottom_elastic_constraint_sigma,
+            ),
+            (
+                "side",
+                mesh.side_elements,
+                mesh.config.side_slip_rate_constraint,
+                mesh.config.side_elastic_constraint_sigma,
+            ),
+        ]:
+            if constraint_flag != 1:
+                continue
+            assert sigma is not None, (
+                "constraint sigma not yet propagated from propagate_mesh_defaults"
+            )
+            idx = np.where(elements)[0]
+            if len(idx) == 0:
+                continue
+            bc_rows.append(R_ss[idx, :] / sigma)
+            bc_rows.append(R_ds[idx, :] / sigma)
+
+    if bc_rows:
+        n_bc = sum(r.shape[0] for r in bc_rows)
+        logger.info(
+            f"Rotation SVD: stacking {n_bc} boundary-constraint rows "
+            f"onto {jacobian.shape[0]} velocity rows"
+        )
+        combined = np.vstack([jacobian, *bc_rows])
+    else:
+        combined = jacobian
+
+    _u, sv, vh = linalg.svd(combined, full_matrices=False)
+
+    # Scale each raw coordinate by 1/sv so the Hessian in raw space ≈ I.
+    inv_sv = 1.0 / sv
+    if inv_sv.max() > 1e6:
+        logger.warning(
+            f"Rotation SVD: clipping {(inv_sv > 1e6).sum()} near-null "
+            f"singular values (max 1/sv = {inv_sv.max():.2e})"
+        )
+        np.minimum(inv_sv, 1e6, out=inv_sv)
+    logger.info(
+        f"Rotation SVD: condition number {sv.max() / sv.min():.1f}, "
+        f"s range [{sv.min():.2e}, {sv.max():.2e}]"
+    )
+
     raw = pm.StudentT("rotation_raw", sigma=20, nu=4, dims="rotation_param")
 
     rotation = pm.Deterministic(
-        "rotation", _operator_mult(vh.T, raw / scale), dims="rotation_param"
+        "rotation",
+        _operator_mult(vh.T, raw * inv_sv),
+        dims="rotation_param",
     )
 
     rotation_velocity = _operator_mult(rotation_to_vel, rotation)
@@ -1282,7 +1359,7 @@ def _build_pymc_model(
         )
 
         rotation, rotation_velocity, rotation_okada_velocity = _add_rotation_component(
-            operators, vel_idx
+            model.meshes, operators, vel_idx
         )
 
         mogi_velocity = _add_mogi_component(operators, vel_idx)
