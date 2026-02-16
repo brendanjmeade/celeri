@@ -689,10 +689,36 @@ def _elastic_component(
     )
     pm.Deterministic(f"elastic_{mesh_idx}_{kind_short}", elastic_tde)
 
-    # Compute elastic velocity at stations. The operator already
-    # includes a negative sign. eigen_to_velocities uses selected velocity components.
-    if lower is None and upper is None:
+    # Compute elastic velocity at stations via the precomputed
+    # eigen_to_velocity operator (the "project_to_eigen" fast path).
+    #
+    # When there are no bounds, _constrain_field is identity, so
+    #   elastic_tde = V @ c + mu                        (n_tde,)
+    # The project_to_eigen velocity is T @ V^T @ elastic_tde.  Expanding:
+    #   T @ V^T @ (V @ c + mu) = T @ c + mu * T @ (V^T @ 1)
+    # The second term's matrix-vector multiply is precomputed once; at
+    # runtime we only pay a cheap vector add per step.
+    #
+    # When bounds ARE present, the constraint function is nonlinear and we
+    # must go through _velocities_from_elastic_mesh which projects the
+    # constrained elastic_tde back into eigenspace before multiplying by T.
+    #
+    # Pre-compute the mean-field eigencoefficients once (used for both
+    # station velocities and LOS velocities when no bounds are present).
+    unconstrained = lower is None and upper is None
+    if unconstrained and mu_unconstrained != 0.0:
+        mean_coefs = eigenvectors.sum(axis=0)
+    else:
+        mean_coefs = None
+
+    if unconstrained:
         station_vels = _operator_mult(to_velocity, param)
+        if mean_coefs is not None:
+            # Constant velocity contribution of the mean field projected
+            # onto the eigensubspace: mu * T @ (V^T @ 1_{n_tde})
+            station_vels = station_vels + mu_unconstrained * _operator_mult(
+                to_velocity, mean_coefs
+            )
     else:
         station_vels = _velocities_from_elastic_mesh(
             model,
@@ -713,9 +739,13 @@ def _elastic_component(
 
         to_los = los_ops.eigen_to_los[mesh_idx][:, start_idx : start_idx + n_eigs]
 
-        if lower is None and upper is None:
+        if unconstrained:
             # Use direct eigen_to_los operator when no constraints
             los_vels = _operator_mult(to_los, param)
+            if mean_coefs is not None:
+                los_vels = los_vels + mu_unconstrained * _operator_mult(
+                    to_los, mean_coefs
+                )
         else:
             # Must project through elastic_tde when constraints are applied
             los_vels = _velocities_from_elastic_mesh(
@@ -726,6 +756,10 @@ def _elastic_component(
                 operators,
                 los_ops=los_ops,
             )
+
+    station_vels = station_vels.astype("d")
+    if los_vels is not None:
+        los_vels = los_vels.astype("d")
 
     return elastic_tde, station_vels, los_vels
 
