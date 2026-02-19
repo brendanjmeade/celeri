@@ -6,6 +6,7 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
+from celeri.celeri_util import RelativePathSerializerMixin
 from celeri.mesh import MeshConfig
 
 Sqp2Objective = Literal[
@@ -31,7 +32,7 @@ McmcStationWeighting = Literal["voronoi",]
 McmcMeanParameterization = Literal["constrained", "unconstrained"]
 
 
-class Config(BaseModel):
+class Config(RelativePathSerializerMixin, BaseModel):
     # Forbid extra fields when reading from JSON
     model_config = ConfigDict(extra="forbid")
 

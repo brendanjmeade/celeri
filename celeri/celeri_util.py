@@ -9,6 +9,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pyproj
 from loguru import logger
+from pydantic import (
+    BaseModel,
+    SerializationInfo,
+    SerializerFunctionWrapHandler,
+    model_serializer,
+)
 from rich.console import Console
 from rich.table import Table
 from rich.text import Text
@@ -612,3 +618,34 @@ def euler_pole_covariance_to_rotation_vector_covariance(
         omega_y_sig[i] = np.sqrt(main_diagonal_values[1])
         omega_z_sig[i] = np.sqrt(main_diagonal_values[2])
     return omega_x_sig, omega_y_sig, omega_z_sig
+
+
+class RelativePathSerializerMixin(BaseModel):
+    """Mixin to convert paths to relative paths depending on context."""
+
+    @model_serializer(mode="wrap")
+    def _relative_path_context(
+        self, handler: SerializerFunctionWrapHandler, info: SerializationInfo
+    ) -> dict[str, object]:
+        """Convert paths to relative paths depending on context."""
+        ctx = info.context or {}
+        relative_to = ctx.get("paths_relative_to", None)
+        if relative_to is None:
+            return handler(self)
+
+        assert isinstance(relative_to, Path)
+        if not relative_to.is_absolute():
+            raise ValueError(
+                f"Context 'relative_paths' must be an absolute path, got {relative_to}"
+            )
+
+        data = handler(self)
+        for name in type(self).model_fields:
+            is_path = isinstance(getattr(self, name), Path)
+            if is_path:
+                relative_path = Path(data[name]).relative_to(relative_to, walk_up=True)
+                if isinstance(data[name], str):
+                    data[name] = str(relative_path)
+                else:
+                    data[name] = relative_path
+        return data

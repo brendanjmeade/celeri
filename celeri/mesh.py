@@ -13,18 +13,17 @@ import scipy.linalg
 import scipy.sparse.linalg
 import scipy.spatial.distance
 from loguru import logger
-from pydantic import (
-    BaseModel,
-    ConfigDict,
-    SerializationInfo,
-    SerializerFunctionWrapHandler,
-    model_serializer,
-    model_validator,
-)
+from pydantic import BaseModel, ConfigDict, model_validator
 from sklearn.gaussian_process.kernels import Matern
 
 from celeri import constants
-from celeri.celeri_util import cart2sph, sph2cart, triangle_area, wrap2360
+from celeri.celeri_util import (
+    RelativePathSerializerMixin,
+    cart2sph,
+    sph2cart,
+    triangle_area,
+    wrap2360,
+)
 from celeri.output import dataclass_from_disk, dataclass_to_disk
 
 # Should be once we support Python 3.12+
@@ -50,7 +49,7 @@ class ScalarBound(BaseModel):
         return data
 
 
-class MeshConfig(BaseModel):
+class MeshConfig(RelativePathSerializerMixin, BaseModel):
     """Configuration for the mesh."""
 
     # Forbid extra fields when reading from JSON
@@ -385,33 +384,6 @@ class MeshConfig(BaseModel):
             params["file_name"] = filename
 
         return [cls.model_validate(params) for params in params_list]
-
-    @model_serializer(mode="wrap")
-    def _relative_path_context(
-        self, handler: SerializerFunctionWrapHandler, info: SerializationInfo
-    ) -> dict[str, object]:
-        """Convert paths to relative paths depending on context."""
-        ctx = info.context or {}
-        relative_to = ctx.get("paths_relative_to", None)
-        if relative_to is None:
-            return handler(self)
-
-        assert isinstance(relative_to, Path)
-        if not relative_to.is_absolute():
-            raise ValueError(
-                f"Context 'relative_paths' must be an absolute path, got {relative_to}"
-            )
-
-        data = handler(self)
-        for name in type(self).model_fields:
-            is_path = isinstance(getattr(self, name), Path)
-            if is_path:
-                relative_path = Path(data[name]).relative_to(relative_to, walk_up=True)
-                if isinstance(data[name], str):
-                    data[name] = str(relative_path)
-                else:
-                    data[name] = relative_path
-        return data
 
     @model_validator(mode="after")
     def relative_paths(self) -> MeshConfig:
