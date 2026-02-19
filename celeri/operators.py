@@ -1,3 +1,29 @@
+"""Operators for the Celeri Forward Model
+
+This module defines linear operators that map model parameters to observables.
+
+Unit Conventions
+----------------
+The operators in this module follow these unit conventions:
+
+- **Velocities**: mm/yr (at stations, LOS points, or from slip)
+- **Rotations**: milli rad/yr (10⁻³ rad/yr) internally
+- **Slip rates**: mm/yr (on segments and TDEs)
+- **Distances**: meters
+- **Areas**: m² or dimensionless (normalized by R_earth²)
+- **Angles**: degrees (in input data) or radians (in computations)
+
+Key Operator Units
+------------------
+- rotation_to_velocities: [m/rad] - converts [milli rad/yr] → [mm/yr]
+- rotation_to_slip_rate: [m/rad] - converts [milli rad/yr] → [mm/yr]
+- tde_to_velocities: [dimensionless] - converts [mm/yr] slip → [mm/yr] velocity
+- slip_rate_to_okada_to_velocities: [dimensionless] - [mm/yr] → [mm/yr]
+
+The conversion works because: R_earth [m] × ω [milli rad/yr] = v [mm/yr]
+where 1 meter × 1 milli rad/yr = 1 mm/yr in angular→linear velocity conversion.
+"""
+
 import hashlib
 from dataclasses import dataclass, field
 from functools import cached_property
@@ -59,8 +85,8 @@ class TdeIndex:
     end_tde_constraint_row: np.ndarray
     start_tde_top_constraint_row: np.ndarray
     end_tde_top_constraint_row: np.ndarray
-    start_tde_bot_constraint_row: np.ndarray
-    end_tde_bot_constraint_row: np.ndarray
+    start_tde_bottom_constraint_row: np.ndarray
+    end_tde_bottom_constraint_row: np.ndarray
     start_tde_side_constraint_row: np.ndarray
     end_tde_side_constraint_row: np.ndarray
     start_tde_coup_constraint_row: np.ndarray
@@ -87,7 +113,15 @@ class TdeIndex:
     def from_disk(cls, input_dir: str | Path) -> "TdeIndex":
         """Load TDE operators from disk."""
         path = Path(input_dir) / "tde_index"
-        return dataclass_from_disk(cls, path)
+        return dataclass_from_disk(
+            cls,
+            path,
+            rename={
+                # bot_ -> bottom_ rename (backward compat with older serialized indices)
+                "start_tde_bot_constraint_row": "start_tde_bottom_constraint_row",
+                "end_tde_bot_constraint_row": "end_tde_bottom_constraint_row",
+            },
+        )
 
 
 @dataclass
@@ -288,6 +322,14 @@ class Index:
 
 @dataclass
 class TdeOperators:
+    """Operators for Triangular Dislocation Elements (TDEs).
+
+    UNITS:
+        - tde_slip_rate_constraints: [dimensionless] - constraint matrix
+        - tde_to_velocities: [dimensionless] - maps TDE slip rates [mm/yr] to
+          station velocities [mm/yr]. Shape (3*n_stations, 3*n_tde) per mesh.
+    """
+
     tde_slip_rate_constraints: ByMesh[np.ndarray]
     tde_to_velocities: ByMesh[np.ndarray] | None = None
 
@@ -308,11 +350,27 @@ class TdeOperators:
 
 @dataclass
 class EigenOperators:
+    """Operators for eigenmode-based TDE parameterization.
+
+    UNITS:
+        - eigenvectors_to_tde_slip: [dimensionless] - spatial patterns mapping
+          eigenmode coefficients to TDE slip rates. Shape (n_tde, n_modes) per mesh.
+        - eigenvalues: [dimensionless] - relative variance of each eigenmode when σ=1.
+          Physical variance = σ² × eigenvalue, where σ carries the units (dimensionless
+          for coupling, [mm/yr] for elastic slip rates).
+        - eigen_to_velocities: [dimensionless] - maps eigenmode coefficients to
+          station velocities [mm/yr]. Shape (3*n_stations, n_modes) per mesh.
+        - eigen_to_tde_bcs: [dimensionless] - maps eigenmodes to boundary constraints
+        - linear_gaussian_smoothing: [dimensionless] - Gaussian smoothing weights
+    """
+
     eigenvectors_to_tde_slip: ByMesh[np.ndarray]
-    eigenvalues: ByMesh[np.ndarray]
     eigen_to_velocities: ByMesh[np.ndarray]
     eigen_to_tde_bcs: ByMesh[np.ndarray]
     linear_gaussian_smoothing: ByMesh[np.ndarray]
+    # Added in PR #269; defaults to empty dict for backward compat with older
+    # saved models that don't have this field on disk.
+    eigenvalues: ByMesh[np.ndarray] = field(default_factory=dict)
 
     def to_disk(self, output_dir: str | Path):
         """Save TDE operators to disk."""
@@ -336,23 +394,39 @@ class LosOperators:
     """
 
     rotation_to_los: np.ndarray
-    """Maps block rotations to LOS velocities; shape (n_los, 3 * n_blocks)."""
+    """Maps block rotations to LOS velocities; shape (n_los, 3 * n_blocks).
+
+    UNITS: [m/rad] - maps [milli rad/yr] → [mm/yr] LOS velocity."""
     block_strain_rate_to_los: np.ndarray
-    """Maps block strain rates to LOS velocities; shape (n_los, 3 * n_strain_blocks)."""
+    """Maps block strain rates to LOS velocities; shape (n_los, 3 * n_strain_blocks).
+
+    UNITS: [dimensionless] - maps strain rate parameters → [mm/yr] LOS velocity."""
     mogi_to_los: np.ndarray
-    """Maps Mogi sources to LOS velocities; shape (n_los, n_mogis)."""
+    """Maps Mogi sources to LOS velocities; shape (n_los, n_mogis).
+
+    UNITS: [dimensionless] - maps Mogi parameters → [mm/yr] LOS velocity."""
     okada_to_los: np.ndarray
-    """Maps segment slip rates to LOS velocities via Okada; shape (n_los, 3 * n_segments)."""
+    """Maps segment slip rates to LOS velocities via Okada; shape (n_los, 3 * n_segments).
+
+    UNITS: [dimensionless] - maps slip rates [mm/yr] → [mm/yr] LOS velocity."""
     rotation_to_okada_los: np.ndarray
-    """Composed operator rotation -> slip rate -> Okada -> LOS; shape (n_los, 3 * n_blocks)."""
+    """Composed operator rotation -> slip rate -> Okada -> LOS; shape (n_los, 3 * n_blocks).
+
+    UNITS: [m/rad] - maps [milli rad/yr] → [mm/yr] LOS velocity."""
     eigen_to_los: dict[int, np.ndarray]
-    """Maps eigenmode coefficients to LOS velocities, by mesh; dict mapping mesh index to array of shape (n_los, n_modes)."""
+    """Maps eigenmode coefficients to LOS velocities, by mesh; dict mapping mesh index to array of shape (n_los, n_modes).
+
+    UNITS: [dimensionless]"""
     los_data: np.ndarray
-    """Observed LOS velocities; shape (n_los,)."""
+    """Observed LOS velocities; shape (n_los,).
+
+    UNITS: [mm/yr]"""
     tde_to_los: dict[int, np.ndarray] | None = None
     """Maps TDE slip rates to LOS velocities, by mesh;
     dict mapping mesh index to array of shape (n_los, 3 * n_tde_elements).
-    Can be None if discarded after building eigen_to_los to save memory."""
+    Can be None if discarded after building eigen_to_los to save memory.
+
+    UNITS: [dimensionless] - maps TDE slip rates [mm/yr] → [mm/yr] LOS velocity."""
 
     @property
     def n_los(self) -> int:
@@ -382,13 +456,37 @@ class Operators:
     index: Index
     """Indices to access different parts of the full dense operator."""
     rotation_to_velocities: np.ndarray
-    """Maps rotational vectors to velocities."""
+    """Maps rotational vectors to velocities.
+
+    UNITS: [m/rad] (or [m·rad⁻¹] tracking radians as pseudo-units)
+
+    The internal rotation parameters in celeri are in [milli rad/yr], so when
+    applying this operator to get velocities in mm/yr, the conversion is:
+        v [mm/yr] = rotation_to_velocities [m/rad] × ω [milli rad/yr]
+                  = [m] × [milli rad/yr]
+                  = [mm/yr]
+
+    Has shape (3 * n_stations, 3 * n_blocks) with components interleaved as
+    (east, north, up) for each station.
+    """
     block_motion_constraints: np.ndarray
     """Constraints on block motions."""
     slip_rate_constraints: np.ndarray
     """Limitations on slip rates."""
     rotation_to_slip_rate: np.ndarray
-    """Maps block rotations to kinematic slip rates along the segments."""
+    """Maps block rotations to kinematic slip rates along the segments.
+
+    UNITS: [m/rad] (or [m·rad⁻¹] tracking radians as pseudo-units)
+
+    The internal rotation parameters in celeri are in [milli rad/yr], and the
+    resulting slip rates are in [mm/yr], so the conversion is:
+        slip_rate [mm/yr] = rotation_to_slip_rate [m/rad] × ω [milli rad/yr]
+                          = [m] × [milli rad/yr]
+                          = [mm/yr]
+
+    Has shape (3 * n_segments, 3 * n_blocks) with components (strike, dip, tensile)
+    for each segment and 3 rotation parameters for each block.
+    """
     block_strain_rate_to_velocities: np.ndarray
     """Computes predicted velocities on stations due to homogenous block strain rates.
 
@@ -400,11 +498,25 @@ class Operators:
     Has shape (3 * n_stations, n_mogis).
     """
     slip_rate_to_okada_to_velocities: np.ndarray
-    """Okada model slip rate to velocity mapping."""
+    """Okada model slip rate to velocity mapping.
+
+    UNITS: [dimensionless] - Maps slip rates [mm/yr] to velocities [mm/yr].
+    The Okada Green's functions provide the geometric relationship between
+    slip on a fault and surface velocities.
+
+    Has shape (3 * n_stations, 3 * n_segments).
+    """
     rotation_to_tri_slip_rate: dict[int, np.ndarray]
-    """Rotation to triangular slip rate mapping."""
+    """Rotation to triangular slip rate mapping.
+
+    UNITS: [m/rad] - Maps block rotations [milli rad/yr] to TDE slip rates [mm/yr].
+    One array per mesh index."""
     rotation_to_slip_rate_to_okada_to_velocities: np.ndarray
-    """Rotation to slip rate to Okada velocities transformation."""
+    """Rotation to slip rate to Okada velocities transformation.
+
+    UNITS: [m/rad] - Maps block rotations [milli rad/yr] to velocities [mm/yr].
+    Composed operator: slip_rate_to_okada_to_velocities @ rotation_to_slip_rate.
+    """
     # TODO: Switch to csr_array?
     smoothing_matrix: dict[int, csr_matrix]
     """Smoothing matrices for various meshes."""
@@ -1015,13 +1127,13 @@ def _hash_elastic_operator_input(
         "sqp_kinematic_slip_rate_hint_ss",
         "sqp_kinematic_slip_rate_hint_ds",
         "top_slip_rate_constraint",
-        "bot_slip_rate_constraint",
+        "bottom_slip_rate_constraint",
         "top_elastic_constraint_sigma",
-        "bot_elastic_constraint_sigma",
+        "bottom_elastic_constraint_sigma",
         "side_elastic_constraint_sigma",
         "side_slip_rate_constraint",
         "top_slip_rate_weight",
-        "bot_slip_rate_weight",
+        "bottom_slip_rate_weight",
         "side_slip_rate_weight",
         "eigenmode_slip_rate_constraint_weight",
         "a_priori_slip_filename",
@@ -1367,8 +1479,8 @@ def _store_tde_slip_rate_constraints(model: Model, operators: _OperatorBuilder):
     or coupling fractions on elements lining the edges of the mesh,
     as controlled by input parameters
     top_slip_rate_constraint,
-    bot_slip_rate_constraint,
-    side_slip_rate_constraint,.
+    bottom_slip_rate_constraint,
+    side_slip_rate_constraint,
 
     and at other elements with indices specified as
     ss_slip_constraint_idx,
@@ -1389,7 +1501,7 @@ def _store_tde_slip_rate_constraints(model: Model, operators: _OperatorBuilder):
         # Process boundary constraints (top, bottom, side)
         boundary_constraints = [
             meshes[i].top_slip_idx,
-            meshes[i].bot_slip_idx,
+            meshes[i].bottom_slip_idx,
             meshes[i].side_slip_idx,
         ]
 
@@ -1431,6 +1543,9 @@ def _store_tde_coupling_constraints(model: Model, operators: _OperatorBuilder):
 def get_rotation_to_tri_slip_rate_partials(model: Model, mesh_idx: int) -> np.ndarray:
     """Calculate partial derivatives relating relative block motion to TDE slip rates
     for a single mesh. Called within a loop from get_tde_coupling_constraints().
+
+    UNITS: Returns operator with units [m/rad], which maps block rotations
+    [milli rad/yr] to TDE slip rates [mm/yr].
     """
     n_blocks = len(model.block)
     tri_slip_rate_partials = np.zeros((3 * model.meshes[mesh_idx].n_tde, 3 * n_blocks))
@@ -1926,13 +2041,13 @@ def _get_weighting_vector_eigen(model: Model, index: Index) -> np.ndarray:
 
     # TODO: Need to think about constraints weights
     # This is the only place where any individual constraint weights enter
-    # I'm only using on of them: meshes[i].bot_slip_rate_weight
+    # I'm only using one of them: meshes[i].bottom_slip_rate_weight
     for i in range(len(model.meshes)):
         weighting_vector[
             index.eigen.start_tde_constraint_row_eigen[
                 i
             ] : index.eigen.end_tde_constraint_row_eigen[i]
-        ] = model.meshes[i].config.bot_slip_rate_weight * np.ones(
+        ] = model.meshes[i].config.bottom_slip_rate_weight * np.ones(
             index.tde.n_tde_constraints[i]
         )
 
@@ -2072,14 +2187,14 @@ def _get_full_dense_operator_tde(operators: Operators) -> np.ndarray:
                 model.meshes[i].top_slip_idx,
                 index.start_block_col : index.end_block_col,
             ]
-        if model.meshes[i].config.bot_slip_rate_constraint == 2:
+        if model.meshes[i].config.bottom_slip_rate_constraint == 2:
             operator[
-                index.tde.start_tde_bot_constraint_row[
+                index.tde.start_tde_bottom_constraint_row[
                     i
-                ] : index.tde.end_tde_bot_constraint_row[i],
+                ] : index.tde.end_tde_bottom_constraint_row[i],
                 index.start_block_col : index.end_block_col,
             ] = -operators.rotation_to_tri_slip_rate[i][
-                model.meshes[i].bot_slip_idx,
+                model.meshes[i].bottom_slip_idx,
                 :,
             ]
         if model.meshes[i].config.side_slip_rate_constraint == 2:
@@ -2403,6 +2518,15 @@ def get_qp_slip_rate_inequality_operator_and_data_vector(
 
 
 def _store_eigenvectors_to_tde_slip(model: Model, operators: _OperatorBuilder):
+    """Store eigenvectors and eigenvalues for eigenmode-based TDE parameterization.
+
+    UNITS:
+        - eigenvectors: [dimensionless] - spatial patterns (normalized)
+        - eigenvalues: [dimensionless] - relative variance of each mode when σ=1.
+          Physical variance = σ² × eigenvalue, where σ is the amplitude scale parameter.
+          Units of the variance depend on context: dimensionless for coupling fields,
+          [mm²/yr²] for elastic slip rate fields.
+    """
     meshes = model.meshes
 
     for i, mesh in enumerate(meshes):
@@ -2514,6 +2638,15 @@ def _compute_eigen_to_velocities(
 def rotation_vectors_to_euler_poles(
     rotation_vector_x, rotation_vector_y, rotation_vector_z
 ):
+    """Convert Cartesian rotation vectors to Euler pole representation.
+
+    UNITS:
+        Input: rotation_vector_* in [milli rad/yr]
+        Output:
+            - euler_lon, euler_lat in [degrees]
+            - euler_rate in [deg/Myr]
+    """
+
     def xyz_to_lon_lat(x, y, z):
         # TODO: Should I use proj and proper ellipsoid here?
         lon = np.arctan2(y, x)
@@ -2529,6 +2662,7 @@ def rotation_vectors_to_euler_poles(
 
     # Loop over each pole
     for i in range(n_poles):
+        # Magnitude in [milli rad/yr]
         euler_rate[i] = np.sqrt(
             rotation_vector_x[i] ** 2.0
             + rotation_vector_y[i] ** 2.0
@@ -2549,8 +2683,12 @@ def rotation_vectors_to_euler_poles(
     # Make sure we have west longitude
     euler_lon = np.where(euler_lon < 0, euler_lon + 360, euler_lon)
 
-    # Convert the rotation rate from rad/yr to degrees per million years
-    SCALE_TO_DEG_PER_MILLION_YEARS = 1e3  # TODO: Check this
+    # Convert the rotation rate from [milli rad/yr] to [deg/Myr]
+    # Input euler_rate is in [milli rad/yr] = [10^-3 rad/yr]
+    # First convert to [rad/yr], then to [deg/yr], then to [deg/Myr]:
+    # [milli rad/yr] × 10^3 [1/milli] × (180/π) [deg/rad] = [deg/Myr]
+    # The 10^3 factor converts both [milli rad] → [rad] AND [yr] → [Myr]
+    SCALE_TO_DEG_PER_MILLION_YEARS = 1e3
     euler_rate = SCALE_TO_DEG_PER_MILLION_YEARS * np.rad2deg(euler_rate)
 
     return euler_lon, euler_lat, euler_rate
@@ -2631,8 +2769,8 @@ def _get_index(model: Model) -> Index:
         end_tde_constraint_row=np.zeros(index.n_meshes, dtype=int),
         start_tde_top_constraint_row=np.zeros(index.n_meshes, dtype=int),
         end_tde_top_constraint_row=np.zeros(index.n_meshes, dtype=int),
-        start_tde_bot_constraint_row=np.zeros(index.n_meshes, dtype=int),
-        end_tde_bot_constraint_row=np.zeros(index.n_meshes, dtype=int),
+        start_tde_bottom_constraint_row=np.zeros(index.n_meshes, dtype=int),
+        end_tde_bottom_constraint_row=np.zeros(index.n_meshes, dtype=int),
         start_tde_side_constraint_row=np.zeros(index.n_meshes, dtype=int),
         end_tde_side_constraint_row=np.zeros(index.n_meshes, dtype=int),
         start_tde_coup_constraint_row=np.zeros(index.n_meshes, dtype=int),
@@ -2673,12 +2811,14 @@ def _get_index(model: Model) -> Index:
         tde.end_tde_top_constraint_row[i] = tde.start_tde_top_constraint_row[i] + count
 
         # Set bottom constraint row indices
-        tde.start_tde_bot_constraint_row[i] = tde.end_tde_top_constraint_row[i]
-        count = len(model.meshes[i].bot_slip_idx)
-        tde.end_tde_bot_constraint_row[i] = tde.start_tde_bot_constraint_row[i] + count
+        tde.start_tde_bottom_constraint_row[i] = tde.end_tde_top_constraint_row[i]
+        count = len(model.meshes[i].bottom_slip_idx)
+        tde.end_tde_bottom_constraint_row[i] = (
+            tde.start_tde_bottom_constraint_row[i] + count
+        )
 
         # Set side constraint row indices
-        tde.start_tde_side_constraint_row[i] = tde.end_tde_bot_constraint_row[i]
+        tde.start_tde_side_constraint_row[i] = tde.end_tde_bottom_constraint_row[i]
         count = len(model.meshes[i].side_slip_idx)
         tde.end_tde_side_constraint_row[i] = (
             tde.start_tde_side_constraint_row[i] + count

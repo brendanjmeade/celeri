@@ -50,138 +50,248 @@ class ScalarBound(BaseModel):
 
 
 class MeshConfig(RelativePathSerializerMixin, BaseModel):
-    """Configuration for the mesh.
-
-    Attributes
-    ----------
-    file_name : Path
-        The path to the mesh configuration file itself. All other paths in this
-        configuration are relative to this file.
-    mesh_filename : Path, optional
-        The path to the mesh file, if any.
-    smoothing_weight : float
-        Weight for Laplacian smoothing of slip rates.
-    n_modes_strike_slip : int
-        Number of eigenmodes to use for strike- and dip-slips.
-    n_modes_dip_slip : int
-        Number of eigenmodes to use for dip-slip.
-    top_slip_rate_constraint : Literal[0, 1, 2]
-        Constraints for slip rates on the top boundary of the mesh.
-    bot_slip_rate_constraint : Literal[0, 1, 2]
-        Constraints for slip rates on the bottom boundary of the mesh.
-    side_slip_rate_constraint : Literal[0, 1, 2]
-        Constraints for slip rates on the side boundary of the mesh.
-    top_slip_rate_weight : float
-        Weight for top boundary zero-slip constraint loss during optimization.
-    bot_slip_rate_weight : float
-        Weight for bottom boundary zero-slip constraint loss during optimization.
-    side_slip_rate_weight : float
-        Weight for side boundary zero-slip constraint loss during optimization.
-    eigenmode_slip_rate_constraint_weight : float
-        Weight for TDE modes boundary conditions if TDE eigenmodes are used.
-    a_priori_slip_filename : Path, optional
-        Filename for fixed slip rates, not currently used.
-    coupling_constraints_ss : ScalarBound
-        Tuple containing the constrained upper and lower bounds for the coupling on the mesh for strike-slip. The
-        coupling is the ratio of elastic to kinematic slip rates.
-    coupling_constraints_ds : ScalarBound
-        Tuple containing the constrained upper and lower bounds for the coupling on the mesh for dip-slip.
-    elastic_constraints_ss : ScalarBound
-        Tuple containing the constrained upper and lower bounds for the elastic rates on the mesh for strike-slip.
-    elastic_constraints_ds : ScalarBound
-        Tuple containing the constrained upper and lower bounds for the elastic rates on the mesh for dip-slip.
-    matern_nu : float | None
-        Matérn kernel smoothness parameter. When None, inherits from
-        Config.mcmc_default_mesh_matern_nu. Common values: 1/2 (exponential),
-        3/2 (once-differentiable), 5/2 (twice-differentiable).
-    matern_length_scale : float | None
-        Matérn kernel length scale. When None, inherits from
-        Config.mcmc_default_mesh_matern_length_scale.
-    matern_length_units : Literal["absolute", "diameters"] | None
-        Units for matern_length_scale. When None, inherits from
-        Config.mesh_default_matern_length_units. 'diameters' scales by mesh
-        diameter, 'absolute' uses the value directly in mesh coordinate units.
-    eigenvector_algorithm : Literal["eigh", "eigsh"] | None
-        Algorithm for eigendecomposition. When None, inherits from
-        Config.mesh_default_eigenvector_algorithm. 'eigh' (dense LAPACK) is
-        faster for many modes, 'eigsh' (sparse ARPACK) is faster for few modes.
-    softplus_lengthscale : float
-        Length scale for the softplus operations for sign constraints when only one bound (upper or lower) is present.
-        Automatically set to 1.0 mm/yr if one bound is present.
-            Softplus must operate on a unitless quantity; without a length scale divisor,
-        the model would change with the units of the input values. As length scale approaches 0, the
-        softplus approaches ReLU. Large length scales smooth out the softplus elbow.
-    """
+    """Configuration for the mesh."""
 
     # Forbid extra fields when reading from JSON
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
-    # The path to the mesh configuration file itself.
-    # All other paths in this configuration are relative to this file.
+    @model_validator(mode="before")
+    @classmethod
+    def _rename_legacy_bot_fields(cls, data: Any) -> Any:
+        """Rewrite legacy ``bot_`` field names to ``bottom_``."""
+        if not isinstance(data, dict):
+            return data
+        _RENAMES = {
+            "bot_slip_rate_constraint": "bottom_slip_rate_constraint",
+            "bot_slip_rate_weight": "bottom_slip_rate_weight",
+            "bot_elastic_constraint_sigma": "bottom_elastic_constraint_sigma",
+        }
+        for old, new in _RENAMES.items():
+            if old in data:
+                if new in data:
+                    raise ValueError(
+                        f"MeshConfig received both '{old}' (deprecated) and '{new}'. "
+                        f"Remove the deprecated '{old}' key."
+                    )
+                import warnings
+
+                warnings.warn(
+                    f"MeshConfig field '{old}' is deprecated, use '{new}' instead.",
+                    FutureWarning,
+                    stacklevel=2,
+                )
+                data[new] = data.pop(old)
+        return data
+
     file_name: Path
+    """The path to the mesh configuration file itself.
+
+    All other paths in this configuration are relative to this file.
+    """
+
     mesh_filename: Path | None = None
-    # Weight for Laplacian smooting of slip rates (TODO unit?)
+    """Path to the mesh file, if any."""
+
     smoothing_weight: float = 1.0
-    # Number of eigenmodes to use for strike-slip and dip-slip
+    """Weight for Laplacian smoothing of slip rates.
+
+    UNITS: [dimensionless] - relative weighting factor
+    """
+
     n_modes_strike_slip: int = 10
+    """Number of eigenmodes to use for strike-slip."""
+
     n_modes_dip_slip: int = 10
+    """Number of eigenmodes to use for dip-slip."""
 
     # TODO should be a string with Literal types or bool?
     # Constraints for slip rates on the boundary of the mesh.
-    # These use mesh.top_slip_idx, mesh.bot_slip_idx, and mesh.side_slip_idx
+    # These use mesh.top_slip_idx, mesh.bottom_slip_idx, and mesh.side_slip_idx
     # to identify the slip rates to constrain.
     # 0: Don't constrain, 1: Constrain to zero, 2: ????
     top_slip_rate_constraint: Literal[0, 1, 2] = 0
-    bot_slip_rate_constraint: Literal[0, 1, 2] = 0
+    """Constraints for slip rates on the top boundary of the mesh.
+
+    Uses mesh.top_slip_idx to identify the slip rates to constrain.
+    - 0: Don't constrain
+    - 1: Constrain to zero
+    - 2: (TODO: document)
+    """
+
+    bottom_slip_rate_constraint: Literal[0, 1, 2] = 0
+    """Constraints for slip rates on the bottom boundary of the mesh.
+
+    Uses mesh.bottom_slip_idx to identify the slip rates to constrain.
+    - 0: Don't constrain
+    - 1: Constrain to zero
+    - 2: (TODO: document)
+    """
+
     side_slip_rate_constraint: Literal[0, 1, 2] = 0
+    """Constraints for slip rates on the side boundary of the mesh.
 
-    # Weight for zero-slip constraint loss during optimization.
-    # This will not be used if the elastic velocities are
-    # computed using the TDE eigenmodes.
+    Uses mesh.side_slip_idx to identify the slip rates to constrain.
+    - 0: Don't constrain
+    - 1: Constrain to zero
+    - 2: (TODO: document)
+    """
+
     top_slip_rate_weight: float = 1.0
-    bot_slip_rate_weight: float = 1.0
+    """Weight for top boundary zero-slip constraint loss during optimization.
+
+    Not used if elastic velocities are computed using TDE eigenmodes.
+
+    UNITS: [dimensionless] - relative weighting factor
+    """
+
+    bottom_slip_rate_weight: float = 1.0
+    """Weight for bottom boundary zero-slip constraint loss during optimization.
+
+    Not used if elastic velocities are computed using TDE eigenmodes.
+
+    UNITS: [dimensionless] - relative weighting factor
+    """
+
     side_slip_rate_weight: float = 1.0
+    """Weight for side boundary zero-slip constraint loss during optimization.
 
-    # Weight for TDE modes boundary conditions.
-    # This is used instead of `top_slip_rate_weight`, `bot_slip_rate_weight`, and
-    # `side_slip_rate_weight` if the TDE eigenmodes are used.
+    Not used if elastic velocities are computed using TDE eigenmodes.
+
+    UNITS: [dimensionless] - relative weighting factor
+    """
+
     eigenmode_slip_rate_constraint_weight: float = 1.0
+    """Weight for TDE modes boundary conditions.
 
-    # Sigma for the artificial observed 0s on elastic velocities at the
-    # boundaries, used in MCMC sampling when the corresponding constraint == 1.
-    top_elastic_constraint_sigma: float = 0.5
-    bot_elastic_constraint_sigma: float = 0.5
-    side_elastic_constraint_sigma: float = 0.5
+    This is used instead of top_slip_rate_weight, bottom_slip_rate_weight, and
+    side_slip_rate_weight if the TDE eigenmodes are used.
 
-    # Filename for fixed slip rates, not currently used
+    UNITS: [dimensionless] - relative weighting factor
+    """
+
+    top_elastic_constraint_sigma: float | None = None
+    """Sigma for artificial observed 0s on elastic velocities at top boundary.
+
+    When None, uses default from Config.mcmc_default_mesh_top_elastic_constraint_sigma.
+    Used in MCMC sampling when the corresponding constraint == 1.
+
+    UNITS: [mm/yr]
+    """
+
+    bottom_elastic_constraint_sigma: float | None = None
+    """Sigma for artificial observed 0s on elastic velocities at bottom boundary.
+
+    When None, uses default from Config.mcmc_default_mesh_bottom_elastic_constraint_sigma.
+    Used in MCMC sampling when the corresponding constraint == 1.
+
+    UNITS: [mm/yr]
+    """
+
+    side_elastic_constraint_sigma: float | None = None
+    """Sigma for artificial observed 0s on elastic velocities at side boundaries.
+
+    When None, uses default from Config.mcmc_default_mesh_side_elastic_constraint_sigma.
+    Used in MCMC sampling when the corresponding constraint == 1.
+
+    UNITS: [mm/yr]
+    """
+
     a_priori_slip_filename: Path | None = None
+    """Filename for fixed slip rates (not currently used)."""
 
-    # Constraints for the coupling on the mesh, ie the ratio
-    # of elastic and kinematic slip rates.
-    # Specified independently for strike-slip and dip-slip
     coupling_constraints_ss: ScalarBound = ScalarBound(lower=None, upper=None)
+    """Constraints for strike-slip coupling on the mesh.
+
+    Coupling is the ratio of elastic and kinematic slip rates.
+
+    UNITS: [dimensionless] - coupling is a fraction (typically 0 to 1)
+    """
+
     coupling_constraints_ds: ScalarBound = ScalarBound(lower=None, upper=None)
+    """Constraints for dip-slip coupling on the mesh.
 
-    # Constraints for elastic rates on the mesh.
+    Coupling is the ratio of elastic and kinematic slip rates.
+
+    UNITS: [dimensionless] - coupling is a fraction (typically 0 to 1)
+    """
+
     elastic_constraints_ss: ScalarBound = ScalarBound(lower=None, upper=None)
-    elastic_constraints_ds: ScalarBound = ScalarBound(lower=None, upper=None)
+    """Constraints for strike-slip elastic rates on the mesh.
 
-    # GP prior mean and sigma for coupling/elastic fields in MCMC.
-    # When None, these use defaults from the top-level Config.
-    # The mean_parameterization determines whether the mean is specified in
-    # the constrained (bounded) or unconstrained (transformed) space.
+    UNITS: [mm/yr]
+    """
+
+    elastic_constraints_ds: ScalarBound = ScalarBound(lower=None, upper=None)
+    """Constraints for dip-slip elastic rates on the mesh.
+
+    UNITS: [mm/yr]
+    """
+
     coupling_mean: float | None = None
+    """GP prior mean for coupling field in MCMC.
+
+    When None, uses default from Config.mcmc_default_mesh_coupling_mean.
+    The coupling_mean_parameterization determines whether this is specified
+    in constrained (bounded) or unconstrained (transformed) space.
+
+    UNITS: [dimensionless]
+    """
+
     coupling_mean_parameterization: Literal["constrained", "unconstrained"] | None = (
         None
     )
+    """Parameterization for coupling_mean (constrained or unconstrained space).
+
+    When None, uses default from Config.mcmc_default_mesh_coupling_mean_parameterization.
+    """
+
     coupling_sigma: float | None = None
+    """GP prior amplitude scale for coupling field in MCMC.
+
+    When None, uses default from Config.mcmc_default_mesh_coupling_sigma.
+
+    UNITS: [dimensionless]
+    """
+
     elastic_mean: float | None = None
+    """GP prior mean for elastic slip rate field in MCMC.
+
+    When None, uses default from Config.mcmc_default_mesh_elastic_mean.
+    The elastic_mean_parameterization determines whether this is specified
+    in constrained (bounded) or unconstrained (transformed) space.
+
+    UNITS: [mm/yr]
+    """
+
     elastic_mean_parameterization: Literal["constrained", "unconstrained"] | None = None
+    """Parameterization for elastic_mean (constrained or unconstrained space).
+
+    When None, uses default from Config.mcmc_default_mesh_elastic_mean_parameterization.
+    """
+
     elastic_sigma: float | None = None
+    """GP prior amplitude scale for elastic slip rate field in MCMC.
 
-    softplus_lengthscale: float = 1.0
+    When None, uses default from Config.mcmc_default_mesh_elastic_sigma.
 
-    gp_parameterization: Literal["centered", "non_centered"] = "non_centered"
+    UNITS: [mm/yr]
+    """
+
+    softplus_lengthscale: float | None = None
+    """Length scale for softplus operations for sign constraints.
+
+    When None, uses default from Config.mcmc_default_mesh_softplus_lengthscale.
+    Used when only one bound (upper or lower) is present. Softplus must operate
+    on a unitless quantity; without a length scale divisor, the model would
+    change with the units of the input values. As length scale approaches 0,
+    the softplus approaches ReLU. Large length scales smooth out the softplus elbow.
+
+    UNITS: [mm/yr] for elastic constraints, [dimensionless] for coupling
+    """
+
+    # When None, uses the default from the top-level Config
+    # (propagated by Config.apply_mesh_defaults).
+    gp_parameterization: Literal["centered", "non_centered"] | None = None
     """Parameterization for GP coefficients in MCMC.
 
     Both parameterizations are mathematically equivalent but change the
@@ -191,26 +301,67 @@ class MeshConfig(RelativePathSerializerMixin, BaseModel):
     - "centered": Sample directly with heterogeneous variances.
     """
 
-    # Hint for the new sqp solver about the likely range of kinematic slip rates.
     sqp_kinematic_slip_rate_hint_ss: ScalarBound = ScalarBound(
         lower=-100.0, upper=100.0
     )
+    """Hint for SQP solver about likely range of strike-slip kinematic slip rates.
+
+    UNITS: [mm/yr]
+    """
+
     sqp_kinematic_slip_rate_hint_ds: ScalarBound = ScalarBound(
         lower=-100.0, upper=100.0
     )
+    """Hint for SQP solver about likely range of dip-slip kinematic slip rates.
 
-    # Parameters for SQP solver
+    UNITS: [mm/yr]
+    """
+
     iterative_coupling_linear_slip_rate_reduction_factor: float = 0.025
-    iterative_coupling_smoothing_length_scale: float | None = None
-    iterative_coupling_kinematic_slip_regularization_scale: float = 1.0
+    """Reduction factor for SQP solver.
 
-    # GP kernel hyperparameters for eigenmode computation.
-    # When None, the top-level Config defaults are used
-    # (propagated by Config.apply_mesh_defaults).
+    UNITS: [dimensionless]
+    """
+
+    iterative_coupling_smoothing_length_scale: float | None = None
+    """Smoothing length scale for SQP solver."""
+
+    iterative_coupling_kinematic_slip_regularization_scale: float = 1.0
+    """Regularization scale factor for SQP solver."""
+
     matern_nu: float | None = None
+    """Matérn kernel smoothness parameter for eigenmode computation.
+
+    When None, uses default from Config.mcmc_default_mesh_matern_nu.
+    Common values: 0.5 (exponential), 1.5 (once-differentiable), 2.5 (twice-differentiable).
+
+    UNITS: [dimensionless]
+    """
+
     matern_length_scale: float | None = None
+    """Matérn kernel length scale for eigenmode computation.
+
+    When None, uses default from Config.mcmc_default_mesh_matern_length_scale.
+    Interpretation depends on matern_length_units.
+
+    UNITS: depends on matern_length_units - [mesh diameters] or [TODO]
+    """
+
     matern_length_units: Literal["absolute", "diameters"] | None = None
+    """Units for matern_length_scale.
+
+    When None, uses default from Config.mesh_default_matern_length_units.
+    - "diameters": scales by mesh diameter
+    - "absolute": uses value directly in mesh coordinate units
+    """
+
     eigenvector_algorithm: Literal["eigh", "eigsh"] | None = None
+    """Algorithm for eigendecomposition.
+
+    When None, uses default from Config.mesh_default_eigenvector_algorithm.
+    - "eigh": dense LAPACK (faster for many modes)
+    - "eigsh": sparse ARPACK (faster for few modes)
+    """
 
     @classmethod
     def from_file(cls, filename: str | Path) -> list[MeshConfig]:
@@ -321,7 +472,7 @@ def _compute_mesh_edge_elements(mesh: dict):
 
     Modifies:
         mesh["top_elements"]: np.ndarray of bool, True for elements on the top surface.
-        mesh["bot_elements"]: np.ndarray of bool, True for elements on the bottom surface.
+        mesh["bottom_elements"]: np.ndarray of bool, True for elements on the bottom surface.
         mesh["side_elements"]: np.ndarray of bool, True for elements on mesh sides.
     """
     _compute_ordered_edge_nodes(mesh)
@@ -431,7 +582,7 @@ def _compute_mesh_edge_elements(mesh: dict):
         if abs(depth_bin_min[zero_idx[-1]] - depth_bin_max[zero_idx[0] - 1]) > 10:
             bots[centroid_depths > depth_bin_min[zero_idx[-1]]] = False
     # Assign in to meshes dict
-    mesh["bot_elements"] = bots
+    mesh["bottom_elements"] = bots
 
     # Side elements are a set difference between all edges and tops, bottoms
     sides = np.full(len(vertices), False, dtype=bool)
@@ -446,7 +597,7 @@ def _compute_mesh_edge_elements(mesh: dict):
 def _compute_n_tde_constraints(
     n_tde: int,
     top_slip_idx: np.ndarray,
-    bot_slip_idx: np.ndarray,
+    bottom_slip_idx: np.ndarray,
     side_slip_idx: np.ndarray,
 ) -> int:
     """Compute the total number of TDE constraints.
@@ -457,7 +608,7 @@ def _compute_n_tde_constraints(
     Args:
         n_tde: Number of triangular elements
         top_slip_idx: Indices for top boundary constraints
-        bot_slip_idx: Indices for bottom boundary constraints
+        bottom_slip_idx: Indices for bottom boundary constraints
         side_slip_idx: Indices for side boundary constraints
 
     Returns:
@@ -466,7 +617,7 @@ def _compute_n_tde_constraints(
     tde_slip_rate_constraints = np.zeros((2 * n_tde, 2 * n_tde))
     end_row = 0
 
-    boundary_slip_indices = [top_slip_idx, bot_slip_idx, side_slip_idx]
+    boundary_slip_indices = [top_slip_idx, bottom_slip_idx, side_slip_idx]
 
     for slip_idx in boundary_slip_indices:
         if len(slip_idx) > 0:
@@ -611,7 +762,7 @@ class Mesh:
                  The edges constituting the perimeter of the mesh.
              side_elements: np.ndarray
                  Bool indicating the presence of side elements on each triangle.
-             bot_elements: np.ndarray
+             bottom_elements: np.ndarray
                  Bool indicating if each triangle is a bottom element. Each triangle along the edge of the mesh will
                  naturally have two vertices which compose the outer edge that actually belongs to the perimeter of the mesh,
                  and a third "interior" vertex. A bottom element is defined as an edge triangle such that the depth
@@ -676,7 +827,7 @@ class Mesh:
     n_modes_total: int
     ordered_edge_nodes: np.ndarray
     top_elements: np.ndarray
-    bot_elements: np.ndarray
+    bottom_elements: np.ndarray
     side_elements: np.ndarray
     x_perimeter: np.ndarray
     y_perimeter: np.ndarray
@@ -684,7 +835,7 @@ class Mesh:
     share: np.ndarray
     tri_shared_sides_distances: np.ndarray
     top_slip_idx: np.ndarray
-    bot_slip_idx: np.ndarray
+    bottom_slip_idx: np.ndarray
     side_slip_idx: np.ndarray
     n_tde_constraints: int
     eigenvalues: np.ndarray | None = None
@@ -820,7 +971,7 @@ class Mesh:
 
         boundary_constraints = [
             ("top", config.top_slip_rate_constraint, mesh["top_elements"]),
-            ("bot", config.bot_slip_rate_constraint, mesh["bot_elements"]),
+            ("bottom", config.bottom_slip_rate_constraint, mesh["bottom_elements"]),
             ("side", config.side_slip_rate_constraint, mesh["side_elements"]),
         ]
         for name, constraint_value, elements in boundary_constraints:
@@ -833,7 +984,7 @@ class Mesh:
         mesh["n_tde_constraints"] = _compute_n_tde_constraints(
             mesh["n_tde"],
             mesh["top_slip_idx"],
-            mesh["bot_slip_idx"],
+            mesh["bottom_slip_idx"],
             mesh["side_slip_idx"],
         )
 
@@ -902,7 +1053,16 @@ class Mesh:
         config = MeshConfig(**config_data)
 
         # Use the general dataclass deserialization function with the config as extra data
-        mesh = dataclass_from_disk(cls, input_dir, extra={"config": config})
+        mesh = dataclass_from_disk(
+            cls,
+            input_dir,
+            extra={"config": config},
+            rename={
+                # bot_ -> bottom_ rename (backward compat with older serialized meshes)
+                "bot_elements": "bottom_elements",
+                "bot_slip_idx": "bottom_slip_idx",
+            },
+        )
 
         # Compute shared sides and distances if not already loaded (backward compatibility)
         from celeri.spatial import get_shared_sides, get_tri_shared_sides_distances
@@ -920,7 +1080,7 @@ class Mesh:
 
         boundary_constraints = [
             ("top", config.top_slip_rate_constraint, mesh.top_elements),
-            ("bot", config.bot_slip_rate_constraint, mesh.bot_elements),
+            ("bottom", config.bottom_slip_rate_constraint, mesh.bottom_elements),
             ("side", config.side_slip_rate_constraint, mesh.side_elements),
         ]
         for name, constraint_value, elements in boundary_constraints:
@@ -933,7 +1093,7 @@ class Mesh:
         mesh.n_tde_constraints = _compute_n_tde_constraints(
             mesh.n_tde,
             mesh.top_slip_idx,
-            mesh.bot_slip_idx,
+            mesh.bottom_slip_idx,
             mesh.side_slip_idx,
         )
 

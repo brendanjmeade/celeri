@@ -51,6 +51,9 @@ class Config(RelativePathSerializerMixin, BaseModel):
     output_path: Path
     """Where to store the output of estimation runs (subdir of base_runs_folder)"""
 
+    description: str | None = None
+    """Optional human-readable description or tag for this run."""
+
     block_file_name: Path
     """Location of the file containing the blocks"""
 
@@ -126,10 +129,12 @@ class Config(RelativePathSerializerMixin, BaseModel):
     The regularization is implemented as a Student's t prior with this
     standard deviation in mm/yr, and 5 degrees of freedom. This means that
     sigma has an inverse relationship with the severity of the regularization.
+
+    UNITS: [mm/yr]
     """
 
     segment_slip_rate_bound_sigma: float = 1.0
-    """Standard deviation for slip rate bounds at segments in mm/yr.
+    """Standard deviation for slip rate bounds at segments.
 
     This is used in `solve_mcmc` to implement soft slip rate bounds.
 
@@ -144,6 +149,8 @@ class Config(RelativePathSerializerMixin, BaseModel):
     a `slip_rate_bound_sigma` column in the segment file. If present, each
     segment will use its own sigma value from that column (defaults to 1.0
     if the column is missing).
+
+    UNITS: [mm/yr]
     """
 
     sqp2_objective: Sqp2Objective = "qr_sum_of_squares"
@@ -283,18 +290,80 @@ class Config(RelativePathSerializerMixin, BaseModel):
     # is at the center. For elastic with one-sided bounds, unconstrained mean 0
     # places the constrained mean at ±softplus_lengthscale.
     mcmc_default_mesh_coupling_mean: float = 0.9
+    """Default prior mean for coupling field (dimensionless, in (0, 1))."""
+
     mcmc_default_mesh_coupling_mean_parameterization: McmcMeanParameterization = (
         "constrained"
     )
     mcmc_default_mesh_coupling_sigma: float = 1.0
+    """Default prior amplitude scale for coupling field (dimensionless)."""
+
     mcmc_default_mesh_elastic_mean: float = 0.0
+    """Default prior mean for elastic slip rate field.
+
+    UNITS: [mm/yr]
+    """
+
     mcmc_default_mesh_elastic_mean_parameterization: McmcMeanParameterization = (
         "unconstrained"
     )
     mcmc_default_mesh_elastic_sigma: float = 5.0
+    """Default prior amplitude scale for elastic slip rate field.
+
+    UNITS: [mm/yr]
+    """
+
+    mcmc_default_mesh_gp_parameterization: Literal["centered", "non_centered"] = (
+        "non_centered"
+    )
+    """Default parameterization for GP coefficients in MCMC.
+
+    Both parameterizations are mathematically equivalent but change the
+    geometry of the sampling space, which can affect HMC performance.
+
+    - "non_centered": Sample white noise and mollify via eigenvalue scaling.
+    - "centered": Sample directly with heterogeneous variances.
+
+    Propagated to each mesh's ``gp_parameterization`` unless overridden
+    in the per-mesh configuration.
+    """
+
+    mcmc_default_mesh_softplus_lengthscale: float = 1.0
+    """Default softplus length scale for sign constraints with one-sided bounds.
+
+    As the length scale approaches 0, softplus approaches ReLU.
+    Larger values smooth out the softplus elbow.
+
+    Propagated to each mesh's ``softplus_lengthscale`` unless overridden
+    in the per-mesh configuration.
+    """
+
+    mcmc_default_mesh_top_elastic_constraint_sigma: float = 0.5
+    """Default sigma for the artificial observed 0s on elastic velocities at
+    the top boundary, used in MCMC when ``top_slip_rate_constraint == 1``.
+
+    Propagated to each mesh's ``top_elastic_constraint_sigma`` unless
+    overridden in the per-mesh configuration.
+    """
+
+    mcmc_default_mesh_bottom_elastic_constraint_sigma: float = 0.5
+    """Default sigma for the artificial observed 0s on elastic velocities at
+    the bottom boundary, used in MCMC when ``bottom_slip_rate_constraint == 1``.
+
+    Propagated to each mesh's ``bottom_elastic_constraint_sigma`` unless
+    overridden in the per-mesh configuration.
+    """
+
+    mcmc_default_mesh_side_elastic_constraint_sigma: float = 0.5
+    """Default sigma for the artificial observed 0s on elastic velocities at
+    the side boundary, used in MCMC when ``side_slip_rate_constraint == 1``.
+
+    Propagated to each mesh's ``side_elastic_constraint_sigma`` unless
+    overridden in the per-mesh configuration.
+    """
 
     mcmc_station_effective_area: float = 10_000**2
-    """Effective area (in m²) for station and LOS likelihood weighting in MCMC.
+    """Effective area for station and LOS likelihood weighting in MCMC.
 
     This parameter controls how station observations are weighted in the likelihood
     based on their spatial density. Stations are weighted by their Voronoi cell area
@@ -304,14 +373,16 @@ class Config(RelativePathSerializerMixin, BaseModel):
     Interpretation:
     - Smaller values: Give more uniform weight to all stations, regardless of spacing
     - Larger values: Weight stations more strongly based on their Voronoi cell area
-    - Default (50000²): Stations separated by ~50 km or more get equal weight
+    - Default (10000²): Stations separated by ~10 km or more get equal weight
 
-    The default value of 2.5e9 m² corresponds to a square roughly 50 km on a side.
-    This means stations that are more than ~50 km apart will receive equal weighting,
+    The default value of 1e8 m² corresponds to a square roughly 10 km on a side.
+    This means stations that are more than ~10 km apart will receive equal weighting,
     while stations in dense clusters will be down-weighted proportionally to avoid
     over-representing those regions.
 
     Only used when mcmc_station_weighting is "voronoi".
+
+    UNITS: [m²]
     """
 
     sqp2_annealing_enabled: bool = False
@@ -328,7 +399,7 @@ class Config(RelativePathSerializerMixin, BaseModel):
     """
 
     sqp2_annealing_schedule: list[float] = [0.125, 0.125, 0.125]
-    """Looseness values (mm/yr) for each annealing pass.
+    """Looseness values for each annealing pass.
 
     After the solver converges with no out-of-bounds values, each value in this
     list triggers an additional SQP pass where the coupling constraints are
@@ -341,6 +412,8 @@ class Config(RelativePathSerializerMixin, BaseModel):
     disabling annealing (single-shot solve).
 
     Only used when `sqp2_annealing_enabled` is True.
+
+    UNITS: [mm/yr]
     """
 
     include_vertical_velocity: bool = False
@@ -431,13 +504,18 @@ class Config(RelativePathSerializerMixin, BaseModel):
                 raise ValueError(error)
         return self
 
-    @model_validator(mode="after")
-    def apply_mesh_defaults(self) -> Self:
-        """Propagate top-level defaults to mesh configs that don't set their own.
+    def propagate_mesh_defaults(self) -> None:
+        """Propagate top-level defaults to mesh configs that still have None.
 
-        MeshConfig fields that default to None inherit from the corresponding
-        Config-level default.  Per-mesh overrides (explicitly set in the mesh
-        JSON) are preserved.
+        Every MeshConfig field listed below uses ``None`` to mean "inherit
+        from the top-level Config".  We fill in the default whenever the
+        current value **is** None — not just when the field was never set —
+        so that round-tripping through JSON (which serialises None as null
+        and marks the field as explicitly set on reload) still works.
+
+        This is **not** called automatically during validation so that CLI
+        overrides (via ``process_args``) take effect before propagation.
+        It is called at the start of ``read_data``.
         """
         defaults: dict[str, object] = {
             # GP kernel hyperparameters
@@ -452,12 +530,18 @@ class Config(RelativePathSerializerMixin, BaseModel):
             "elastic_mean": self.mcmc_default_mesh_elastic_mean,
             "elastic_mean_parameterization": self.mcmc_default_mesh_elastic_mean_parameterization,
             "elastic_sigma": self.mcmc_default_mesh_elastic_sigma,
+            # Other MCMC parameters
+            "gp_parameterization": self.mcmc_default_mesh_gp_parameterization,
+            "softplus_lengthscale": self.mcmc_default_mesh_softplus_lengthscale,
+            # Boundary constraint sigmas
+            "top_elastic_constraint_sigma": self.mcmc_default_mesh_top_elastic_constraint_sigma,
+            "bottom_elastic_constraint_sigma": self.mcmc_default_mesh_bottom_elastic_constraint_sigma,
+            "side_elastic_constraint_sigma": self.mcmc_default_mesh_side_elastic_constraint_sigma,
         }
         for mesh_field, default_value in defaults.items():
             for mesh_param in self.mesh_params:
-                if mesh_field not in mesh_param.model_fields_set:
+                if getattr(mesh_param, mesh_field) is None:
                     setattr(mesh_param, mesh_field, default_value)
-        return self
 
 
 def _get_output_path(base: Path) -> Path:
