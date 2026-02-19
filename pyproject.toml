@@ -179,6 +179,9 @@ ignore = [
     "E501",  # line-too-long
     "BLE001",  # bare except
     "PERF203", # try-except-in-loop
+    "RUF001",  # ambiguous-unicode-char-string (Unicode math symbols are fine in scientific code)
+    "RUF002",  # ambiguous-unicode-char-docstring
+    "RUF003",  # ambiguous-unicode-char-comment
     # The following list is recommended to disable these when using ruff's formatter.
     # (Not all of the following are actually enabled.)
     "W191",  # tab-indentation
