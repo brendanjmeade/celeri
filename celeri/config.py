@@ -295,6 +295,55 @@ class Config(BaseModel):
     )
     mcmc_default_mesh_elastic_sigma: float = 5.0
 
+    mcmc_default_mesh_gp_parameterization: Literal["centered", "non_centered"] = (
+        "non_centered"
+    )
+    """Default parameterization for GP coefficients in MCMC.
+
+    Both parameterizations are mathematically equivalent but change the
+    geometry of the sampling space, which can affect HMC performance.
+
+    - "non_centered": Sample white noise and mollify via eigenvalue scaling.
+    - "centered": Sample directly with heterogeneous variances.
+
+    Propagated to each mesh's ``gp_parameterization`` unless overridden
+    in the per-mesh configuration.
+    """
+
+    mcmc_default_mesh_softplus_lengthscale: float = 1.0
+    """Default softplus length scale for sign constraints with one-sided bounds.
+
+    As the length scale approaches 0, softplus approaches ReLU.
+    Larger values smooth out the softplus elbow.
+
+    Propagated to each mesh's ``softplus_lengthscale`` unless overridden
+    in the per-mesh configuration.
+    """
+
+    mcmc_default_mesh_top_elastic_constraint_sigma: float = 0.5
+    """Default sigma for the artificial observed 0s on elastic velocities at
+    the top boundary, used in MCMC when ``top_slip_rate_constraint == 1``.
+
+    Propagated to each mesh's ``top_elastic_constraint_sigma`` unless
+    overridden in the per-mesh configuration.
+    """
+
+    mcmc_default_mesh_bottom_elastic_constraint_sigma: float = 0.5
+    """Default sigma for the artificial observed 0s on elastic velocities at
+    the bottom boundary, used in MCMC when ``bottom_slip_rate_constraint == 1``.
+
+    Propagated to each mesh's ``bottom_elastic_constraint_sigma`` unless
+    overridden in the per-mesh configuration.
+    """
+
+    mcmc_default_mesh_side_elastic_constraint_sigma: float = 0.5
+    """Default sigma for the artificial observed 0s on elastic velocities at
+    the side boundary, used in MCMC when ``side_slip_rate_constraint == 1``.
+
+    Propagated to each mesh's ``side_elastic_constraint_sigma`` unless
+    overridden in the per-mesh configuration.
+    """
+
     mcmc_station_effective_area: float = 10_000**2
     """Effective area (in m²) for station and LOS likelihood weighting in MCMC.
 
@@ -433,13 +482,18 @@ class Config(BaseModel):
                 raise ValueError(error)
         return self
 
-    @model_validator(mode="after")
-    def apply_mesh_defaults(self) -> Self:
-        """Propagate top-level defaults to mesh configs that don't set their own.
+    def propagate_mesh_defaults(self) -> None:
+        """Propagate top-level defaults to mesh configs that still have None.
 
-        MeshConfig fields that default to None inherit from the corresponding
-        Config-level default.  Per-mesh overrides (explicitly set in the mesh
-        JSON) are preserved.
+        Every MeshConfig field listed below uses ``None`` to mean "inherit
+        from the top-level Config".  We fill in the default whenever the
+        current value **is** None — not just when the field was never set —
+        so that round-tripping through JSON (which serialises None as null
+        and marks the field as explicitly set on reload) still works.
+
+        This is **not** called automatically during validation so that CLI
+        overrides (via ``process_args``) take effect before propagation.
+        It is called at the start of ``read_data``.
         """
         defaults: dict[str, object] = {
             # GP kernel hyperparameters
@@ -454,12 +508,18 @@ class Config(BaseModel):
             "elastic_mean": self.mcmc_default_mesh_elastic_mean,
             "elastic_mean_parameterization": self.mcmc_default_mesh_elastic_mean_parameterization,
             "elastic_sigma": self.mcmc_default_mesh_elastic_sigma,
+            # Other MCMC parameters
+            "gp_parameterization": self.mcmc_default_mesh_gp_parameterization,
+            "softplus_lengthscale": self.mcmc_default_mesh_softplus_lengthscale,
+            # Boundary constraint sigmas
+            "top_elastic_constraint_sigma": self.mcmc_default_mesh_top_elastic_constraint_sigma,
+            "bottom_elastic_constraint_sigma": self.mcmc_default_mesh_bottom_elastic_constraint_sigma,
+            "side_elastic_constraint_sigma": self.mcmc_default_mesh_side_elastic_constraint_sigma,
         }
         for mesh_field, default_value in defaults.items():
             for mesh_param in self.mesh_params:
-                if mesh_field not in mesh_param.model_fields_set:
+                if getattr(mesh_param, mesh_field) is None:
                     setattr(mesh_param, mesh_field, default_value)
-        return self
 
 
 def _get_output_path(base: Path) -> Path:
