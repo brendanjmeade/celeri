@@ -309,10 +309,12 @@ class TdeOperators:
 @dataclass
 class EigenOperators:
     eigenvectors_to_tde_slip: ByMesh[np.ndarray]
-    eigenvalues: ByMesh[np.ndarray]
     eigen_to_velocities: ByMesh[np.ndarray]
     eigen_to_tde_bcs: ByMesh[np.ndarray]
     linear_gaussian_smoothing: ByMesh[np.ndarray]
+    # Added in PR #269; defaults to empty dict for backward compat with older
+    # saved models that don't have this field on disk.
+    eigenvalues: ByMesh[np.ndarray] = field(default_factory=dict)
 
     def to_disk(self, output_dir: str | Path):
         """Save TDE operators to disk."""

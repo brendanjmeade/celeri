@@ -254,6 +254,21 @@ def parse_args() -> argparse.Namespace:
         help="Default Matérn length scale for mesh eigenfunctions",
     )
 
+    parser.add_argument(
+        "--description",
+        type=str,
+        default=None,
+        required=False,
+        help="Human-readable description or tag for this run",
+    )
+    parser.add_argument(
+        "--run-dir-file",
+        type=str,
+        default=None,
+        required=False,
+        help="Write the output directory path to this file (for scripted discovery)",
+    )
+
     return parser.parse_args()
 
 
