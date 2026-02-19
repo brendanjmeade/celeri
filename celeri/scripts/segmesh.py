@@ -465,9 +465,12 @@ def main():
     new_mesh_param_name = model.config.mesh_parameters_file_name.with_name(
         model.config.mesh_parameters_file_name.stem + "_segmesh.json"
     )
-
+    # Use relative paths based on the output file's parent directory
+    output_dir = new_mesh_param_name.parent.resolve()
+    context = {"paths_relative_to": output_dir}
     data = [
-        mesh_config.model_dump(mode="json") for mesh_config in model.config.mesh_params
+        mesh_config.model_dump(mode="json", context=context)
+        for mesh_config in model.config.mesh_params
     ]
     with new_mesh_param_name.open("w") as mf:
         json.dump(data, mf, indent=4)
@@ -490,8 +493,12 @@ def main():
     # Strip mesh params from config, because if we need to edit params, we want to do so in one place (*mesh_params_segmesh.json)
     delattr(model.config, "mesh_params")
 
+    # Express paths relative to the config file directory
+    config_dir = new_config_file_name.parent.resolve()
+    context = {"paths_relative_to": config_dir}
+    data = model.config.model_dump(mode="json", context=context)
     with new_config_file_name.open("w") as cf:
-        cf.write(model.config.model_dump_json(indent=4))
+        json.dump(data, cf, indent=4)
 
     # # Visualize meshes
 
