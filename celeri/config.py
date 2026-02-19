@@ -128,10 +128,12 @@ class Config(BaseModel):
     The regularization is implemented as a Student's t prior with this
     standard deviation in mm/yr, and 5 degrees of freedom. This means that
     sigma has an inverse relationship with the severity of the regularization.
+
+    UNITS: [mm/yr]
     """
 
     segment_slip_rate_bound_sigma: float = 1.0
-    """Standard deviation for slip rate bounds at segments in mm/yr.
+    """Standard deviation for slip rate bounds at segments.
 
     This is used in `solve_mcmc` to implement soft slip rate bounds.
 
@@ -146,6 +148,8 @@ class Config(BaseModel):
     a `slip_rate_bound_sigma` column in the segment file. If present, each
     segment will use its own sigma value from that column (defaults to 1.0
     if the column is missing).
+
+    UNITS: [mm/yr]
     """
 
     sqp2_objective: Sqp2Objective = "qr_sum_of_squares"
@@ -285,15 +289,28 @@ class Config(BaseModel):
     # is at the center. For elastic with one-sided bounds, unconstrained mean 0
     # places the constrained mean at ±softplus_lengthscale.
     mcmc_default_mesh_coupling_mean: float = 0.9
+    """Default prior mean for coupling field (dimensionless, in (0, 1))."""
+
     mcmc_default_mesh_coupling_mean_parameterization: McmcMeanParameterization = (
         "constrained"
     )
     mcmc_default_mesh_coupling_sigma: float = 1.0
+    """Default prior amplitude scale for coupling field (dimensionless)."""
+
     mcmc_default_mesh_elastic_mean: float = 0.0
+    """Default prior mean for elastic slip rate field.
+
+    UNITS: [mm/yr]
+    """
+
     mcmc_default_mesh_elastic_mean_parameterization: McmcMeanParameterization = (
         "unconstrained"
     )
     mcmc_default_mesh_elastic_sigma: float = 5.0
+    """Default prior amplitude scale for elastic slip rate field.
+
+    UNITS: [mm/yr]
+    """
 
     mcmc_default_mesh_gp_parameterization: Literal["centered", "non_centered"] = (
         "non_centered"
@@ -345,7 +362,7 @@ class Config(BaseModel):
     """
 
     mcmc_station_effective_area: float = 10_000**2
-    """Effective area (in m²) for station and LOS likelihood weighting in MCMC.
+    """Effective area for station and LOS likelihood weighting in MCMC.
 
     This parameter controls how station observations are weighted in the likelihood
     based on their spatial density. Stations are weighted by their Voronoi cell area
@@ -355,14 +372,16 @@ class Config(BaseModel):
     Interpretation:
     - Smaller values: Give more uniform weight to all stations, regardless of spacing
     - Larger values: Weight stations more strongly based on their Voronoi cell area
-    - Default (50000²): Stations separated by ~50 km or more get equal weight
+    - Default (10000²): Stations separated by ~10 km or more get equal weight
 
-    The default value of 2.5e9 m² corresponds to a square roughly 50 km on a side.
-    This means stations that are more than ~50 km apart will receive equal weighting,
+    The default value of 1e8 m² corresponds to a square roughly 10 km on a side.
+    This means stations that are more than ~10 km apart will receive equal weighting,
     while stations in dense clusters will be down-weighted proportionally to avoid
     over-representing those regions.
 
     Only used when mcmc_station_weighting is "voronoi".
+
+    UNITS: [m²]
     """
 
     sqp2_annealing_enabled: bool = False
@@ -379,7 +398,7 @@ class Config(BaseModel):
     """
 
     sqp2_annealing_schedule: list[float] = [0.125, 0.125, 0.125]
-    """Looseness values (mm/yr) for each annealing pass.
+    """Looseness values for each annealing pass.
 
     After the solver converges with no out-of-bounds values, each value in this
     list triggers an additional SQP pass where the coupling constraints are
@@ -392,6 +411,8 @@ class Config(BaseModel):
     disabling annealing (single-shot solve).
 
     Only used when `sqp2_annealing_enabled` is True.
+
+    UNITS: [mm/yr]
     """
 
     include_vertical_velocity: bool = False

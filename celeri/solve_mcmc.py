@@ -1,3 +1,20 @@
+"""MCMC Solver for Celeri
+
+This module implements Markov Chain Monte Carlo sampling for slip rate estimation
+using PyMC and nutpie.
+
+Unit Conventions
+----------------
+- Velocities and slip rates: mm/yr
+- Rotations: milli rad/yr (10⁻³ rad/yr)
+- Distances and radius: meters
+- Areas: m²
+- Coupling: dimensionless (0 to 1)
+- Angular to linear velocity conversion: v [mm/yr] = R_earth [m] × ω [milli rad/yr]
+  This works because 1 meter × 1 milli rad/yr = 1 mm/yr in the context of
+  angular velocity × radius = linear velocity.
+"""
+
 import importlib.util
 from datetime import UTC, datetime
 from typing import Literal
@@ -37,10 +54,11 @@ def _compute_voronoi_weights(
     Args:
         xyz: 2d array of shape (n_points, 3) containing the x, y, z coordinates of the points.
         effective_area: Effective area (in m²) for weighting, set in config.mcmc_station_effective_area.
+            Must be in m² to match SphericalVoronoi output units.
         radius: Radius of the sphere (in m).
 
     Returns:
-        weight: 1d array of length n_points, in (0, 1]
+        weight: 1d array of length n_points, in (0, 1], dimensionless
         diagnostics: dict with n, weight_min, weight_max, effective_n, n_full_weight, effective_area_km
     """
     voronoi = spatial.SphericalVoronoi(xyz, int(radius))
@@ -926,9 +944,13 @@ def _add_block_strain_rate_component(operators: Operators, vel_idx: np.ndarray):
     Args:
         operators: The operators object
         vel_idx: Row indices to select velocity components (horizontal only or all 3)
+
+    Returns:
+        Velocity contribution in mm/yr
     """
     import pymc as pm
 
+    # Prior on raw strain rate parameters (sigma scaled to operator; results in mm/yr after operator application)
     raw = pm.Normal("block_strain_rate_raw", sigma=100, dims="block_strain_rate_param")
     op = operators.block_strain_rate_to_velocities[vel_idx, :]
     if op.size == 0:
@@ -982,6 +1004,9 @@ def _add_mogi_component(operators: Operators, vel_idx: np.ndarray):
     Args:
         operators: The operators object
         vel_idx: Row indices to select velocity components (horizontal only or all 3)
+
+    Returns:
+        Velocity contribution in mm/yr
     """
     import pymc as pm
 
@@ -1000,9 +1025,14 @@ def _add_station_velocity_likelihood(model: Model, mu):
     """Add station velocity likelihood to the PyMC model.
 
     Uses area-weighted Student-t likelihood for station observations.
+
+    Args:
+        model: The model instance
+        mu: Predicted velocities in mm/yr
     """
     import pymc as pm
 
+    # Velocity uncertainty prior in mm/yr
     sigma = pm.HalfNormal("sigma", sigma=2)
 
     if model.config.include_vertical_velocity:
@@ -1073,13 +1103,14 @@ def _add_los_velocity_likelihood(
 
     Args:
         model: Model (for config and LOS coordinates).
-        los_ops: LOS operators containing observations.
-        los_pred: Predicted LOS velocities, shape (n_los,).
+        los_ops: LOS operators containing observations (in mm/yr).
+        los_pred: Predicted LOS velocities in mm/yr, shape (n_los,).
     """
     import pymc as pm
 
     pm.Deterministic("los_predicted", los_pred)
 
+    # LOS velocity uncertainty prior in mm/yr
     sigma_los = pm.HalfNormal("sigma_los", sigma=2)
 
     weighting = model.config.mcmc_station_weighting
@@ -1126,6 +1157,14 @@ def _add_segment_constraints(model: Model, operators: Operators, rotation):
     """Add segment slip rate constraints to the PyMC model.
 
     Includes regularization, observations, and bounds on slip rates.
+
+    Args:
+        model: The model instance
+        operators: Operators containing rotation_to_slip_rate
+        rotation: Rotation parameters in milli rad/yr
+
+    Note:
+        All slip rates and uncertainties are in mm/yr.
     """
     import pymc as pm
 
