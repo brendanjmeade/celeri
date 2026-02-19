@@ -491,7 +491,7 @@ def main():
     # Reference new mesh parameter file, including newly created meshes
     model.config.mesh_parameters_file_name = Path(new_mesh_param_name)
     # Strip mesh params from config, because if we need to edit params, we want to do so in one place (*mesh_params_segmesh.json)
-    delattr(model.config, "mesh_params")
+    model.config.mesh_params = []
 
     # Express paths relative to the config file directory
     config_dir = new_config_file_name.parent.resolve()
