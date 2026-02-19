@@ -656,7 +656,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/64/b9/6ab941001c23cfb43499b5b0b7417b0bb4dfba3a29ffa2b06985422dad50/nvidia_nvshmem_cu12-3.5.19-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/9a/c9/010fa37a6b83e6fd6afb9434d9b71d454ad3d420d35205aeb333f0227e65/okada_wrapper-24.6.15.tar.gz
       - pypi: https://files.pythonhosted.org/packages/3f/ee/8c483b9384f269a14f62fa9760d0021273d1786128273ee14962468d9114/scikit_learn_stubs-0.0.3-py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/4b/4c/3e407fbfa913134eaae55e766f3749042e3cc002fcd01aec5cd2b29bc331/tfp_nightly-0.26.0.dev20260205-py2.py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/27/41/bb6d0b5e724112ebe1d9b24c5f59c9c9bc18d8a57c584efb890b3dc15b7b/tfp_nightly-0.26.0.dev20260219-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/e5/a9/554ac40810e530263b6163b30a2b623bc16aae3fb64416f5d2b3657d0729/types_shapely-2.1.0.20250917-py3-none-any.whl
       - pypi: ./
       osx-64:
@@ -4822,8 +4822,8 @@ packages:
   timestamp: 1768852915341
 - pypi: ./
   name: celeri
-  version: 0.0.4.post1.dev425+gee5ffe823.d20260203
-  sha256: 369b4b921323b3a249dcc2901469286c87369f301b2ab31dd8606ad100ebb54d
+  version: 0.0.4.post1.dev507+g1f688d397
+  sha256: f0ff950e1085a5e6d151986bdb030f692752550189e8a2ac20dc71ca5c8e54e4
   requires_dist:
   - cartopy
   - colorcet
@@ -23998,10 +23998,10 @@ packages:
   - pkg:pypi/terminado?source=hash-mapping
   size: 24749
   timestamp: 1766513766867
-- pypi: https://files.pythonhosted.org/packages/4b/4c/3e407fbfa913134eaae55e766f3749042e3cc002fcd01aec5cd2b29bc331/tfp_nightly-0.26.0.dev20260205-py2.py3-none-any.whl
+- pypi: https://files.pythonhosted.org/packages/27/41/bb6d0b5e724112ebe1d9b24c5f59c9c9bc18d8a57c584efb890b3dc15b7b/tfp_nightly-0.26.0.dev20260219-py2.py3-none-any.whl
   name: tfp-nightly
-  version: 0.26.0.dev20260205
-  sha256: 7896ba5ab1de0af04958fc1148486ead33746d771ff927a32a38f791837c33d9
+  version: 0.26.0.dev20260219
+  sha256: 031ccab80466509df2a408205204a17fc82801eb38b32f5c430d8dbc85d05483
   requires_dist:
   - absl-py
   - six>=1.10.0
