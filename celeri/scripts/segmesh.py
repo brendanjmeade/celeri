@@ -490,13 +490,14 @@ def main():
     model.config.segment_file_name = Path(new_segment_file_name)
     # Reference new mesh parameter file, including newly created meshes
     model.config.mesh_parameters_file_name = Path(new_mesh_param_name)
-    # Strip mesh params from config, because if we need to edit params, we want to do so in one place (*mesh_params_segmesh.json)
-    model.config.mesh_params = []
 
     # Express paths relative to the config file directory
     config_dir = new_config_file_name.parent.resolve()
     context = {"paths_relative_to": config_dir}
-    data = model.config.model_dump(mode="json", context=context)
+    # Excluse mesh_params attribute, because we likely want to set those later using apply_mesh_params
+    data = model.config.model_dump(
+        mode="json", context=context, exclude={"mesh_params"}
+    )
     with new_config_file_name.open("w") as cf:
         json.dump(data, cf, indent=4)
 
