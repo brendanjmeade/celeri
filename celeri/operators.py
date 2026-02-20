@@ -53,6 +53,9 @@ from celeri.config import Config
 from celeri.constants import (
     DEG_PER_MYR_TO_RAD_PER_YR,
 )
+from celeri.mean_block_velocity import (
+    compute_moment_tensor_lambert,
+)
 from celeri.mesh import ByMesh, Mesh, MeshConfig
 from celeri.model import (
     Model,
@@ -522,6 +525,24 @@ class Operators:
     """Smoothing matrices for various meshes."""
     global_float_block_rotation: np.ndarray
     """Global rotation operator for the block."""
+    block_moment_tensors: np.ndarray
+    """Moment tensors for each block.
+
+    UNITS: [rad⁻²] when tracking radians as pseudo-units.
+    Numerically dimensionless (computed on unit sphere), but when tracking
+    radians as pseudo-units for dimensional analysis, M has units [rad⁻²].
+
+    Shape (n_blocks, 3, 3). The moment tensor characterizes the spatial
+    distribution of a block for computing mean velocities.
+
+    It is defined as M = (1/A) ∫∫ r⊗r dA,
+    where A is the area of the block and r is the position vector.
+    """
+    block_areas: np.ndarray
+    """Spherical areas for each block.
+
+    UNITS: [rad²] - Normalized area on unit sphere.
+    """
     tde: TdeOperators | None
     """TDE-related operators."""
     eigen: EigenOperators | None
@@ -748,6 +769,8 @@ class _OperatorBuilder:
     eigen_to_tde_bcs: dict[int, np.ndarray] = field(default_factory=dict)
     rotation_to_slip_rate_to_okada_to_velocities: np.ndarray | None = None
     global_float_block_rotation: np.ndarray | None = None
+    block_moment_tensors: np.ndarray | None = None
+    block_areas: np.ndarray | None = None
 
     def finalize_basic(self) -> Operators:
         assert self.index is not None
@@ -763,6 +786,8 @@ class _OperatorBuilder:
         assert self.tde_slip_rate_constraints is not None
         assert self.global_float_block_rotation is not None
         assert self.rotation_to_slip_rate_to_okada_to_velocities is not None
+        assert self.block_moment_tensors is not None
+        assert self.block_areas is not None
 
         return Operators(
             model=self.model,
@@ -778,6 +803,8 @@ class _OperatorBuilder:
             smoothing_matrix=self.smoothing_matrix,
             global_float_block_rotation=self.global_float_block_rotation,
             rotation_to_slip_rate_to_okada_to_velocities=self.rotation_to_slip_rate_to_okada_to_velocities,
+            block_moment_tensors=self.block_moment_tensors,
+            block_areas=self.block_areas,
             eigen=None,
             tde=None,
             los=None,
@@ -821,6 +848,63 @@ class _OperatorBuilder:
             operators.tde.tde_to_velocities = None
 
         return operators
+
+
+def _store_block_moment_tensors(model: Model, operators: "_OperatorBuilder"):
+    """Compute and store moment tensors and areas for all blocks.
+
+    The moment tensor M is numerically dimensionless (on unit sphere), but
+    when tracking radians as pseudo-units, M has units [rad⁻²] and areas
+    have units [rad²] (steradians). Multiply areas by RADIUS_EARTH² to get
+    physical areas in m².
+
+    Args:
+        model: The model containing block definitions.
+        operators: The operator builder to store results in.
+    """
+    logger.info("Computing block moment tensors and areas")
+    n_blocks = len(model.block)
+
+    block_moment_tensors = np.zeros((n_blocks, 3, 3))
+    block_areas = np.zeros(n_blocks)
+
+    for block_idx in range(n_blocks):
+        # Get block polygon vertices from closure
+        if model.closure.polygons is None:
+            raise ValueError(
+                "Model closure polygons are not defined, cannot compute block moment tensors"
+            )
+
+        polygon = model.closure.polygons[block_idx]
+
+        # Use precomputed Cartesian coordinates from polygon
+        if polygon.vertices_xyz is None or polygon.interior_xyz is None:
+            raise ValueError(
+                f"Polygon for block {block_idx} is missing precomputed Cartesian coordinates"
+            )
+
+        # Remove duplicate last vertex
+        vertices_xyz = polygon.vertices_xyz[:-1, :]
+
+        if len(vertices_xyz) < 3:
+            raise ValueError(
+                f"Block {block_idx} has fewer than 3 vertices, cannot compute moment tensor"
+            )
+
+        # Compute moment tensor and area
+        M, area = compute_moment_tensor_lambert(
+            vertices_xyz,
+            vertices_xyz.mean(axis=0),
+            integration_method="spherical",
+            max_triangle_edge_length=0.1,
+        )
+        block_moment_tensors[block_idx] = M
+        block_areas[block_idx] = area
+
+    operators.block_moment_tensors = block_moment_tensors
+    operators.block_areas = block_areas
+
+    logger.success(f"Computed moment tensors for {n_blocks} blocks")
 
 
 def build_operators(
@@ -924,6 +1008,10 @@ def build_operators(
 
     # Get smoothing operators for post-hoc smoothing of slip
     _store_gaussian_smoothing_operator(model.meshes, operators, index)
+
+    # Compute block moment tensors and areas
+    _store_block_moment_tensors(model, operators)
+
     if eigen:
         return operators.finalize_eigen(
             discard_tde_to_velocities=discard_tde_to_velocities
