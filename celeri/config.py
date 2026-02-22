@@ -374,6 +374,25 @@ class Config(RelativePathSerializerMixin, BaseModel):
     where r is Earth's radius.
     """
 
+    mcmc_block_rotation_rms_velocity_flag_sigma: float = 2.0
+    """Standard deviation (in mm/yr) for enforcing block rotation RMS velocity in MCMC.
+
+    For blocks with a pre-specified euler pole in the block file (rotation_flag
+    set to 1), this this parameter is used to enforce a soft constraint for the
+    rotation of the block.
+
+    It specifies the standard deviation of the root mean squared velocity
+    *relative to the specified euler pole*.
+
+    The euler_lat_sig and euler_lon_sig parameters in the block file are ignored
+    in MCMC.
+
+    The value can be overriden on a per-block basis with a
+    `rotation_rms_velocity_flag_sigma` column in the block file.
+
+    UNITS: [mm/yr]
+    """
+
     mcmc_station_effective_area: float = 10_000**2
     """Effective area for station and LOS likelihood weighting in MCMC.
 

@@ -1029,12 +1029,19 @@ def _block_rotation_precision(
         sigma_rms: The RMS velocity prior width in mm/yr.
         mu: The prior mean rotation vector in [rad/Gyr].
     """
-
     if model.block.rotation_flag[block_idx] == 0:
-        sigma_rms = operators.model.config.mcmc_block_rotation_rms_velocity_prior_sigma
+        sigma_rms = model.config.mcmc_block_rotation_rms_velocity_prior_sigma
         mu = np.zeros(3)
     else:
-        sigma_rms = 2.0
+        if (
+            "rotation_rms_velocity_flag_sigma" in model.block.columns
+            and not np.isnan(model.block.rotation_rms_velocity_flag_sigma[block_idx])
+            and model.block.rotation_rms_velocity_flag_sigma[block_idx] != 0
+        ):
+            sigma_rms = model.block.rotation_rms_velocity_flag_sigma[block_idx]
+        else:
+            sigma_rms = model.config.mcmc_block_rotation_rms_velocity_flag_sigma
+
         euler_pole = np.array(
             [model.block.euler_lat[block_idx], model.block.euler_lon[block_idx]]
         )
