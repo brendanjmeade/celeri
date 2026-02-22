@@ -1469,7 +1469,18 @@ def _add_segment_constraints(model: Model, operators: Operators, rotation):
             if "slip_rate_bound_sigma" in model.segment.columns:
                 bound_sig = model.segment.slip_rate_bound_sigma.values[bound_flags == 1]
             else:
-                bound_sig = model.config.segment_slip_rate_bound_sigma
+                bound_sig = np.full(
+                    ((bound_flags == 1).sum()),
+                    model.config.segment_slip_rate_bound_sigma,
+                )
+
+            bound_sig = np.where(bound_sig == 0, np.nan, bound_sig)
+            bound_sig = np.where(
+                np.isnan(bound_sig),
+                model.config.segment_slip_rate_bound_sigma,
+                bound_sig,
+            )
+
             pm.Censored(
                 f"segment_{comp}_rate_lower_bound",
                 dist=pm.Normal.dist(
