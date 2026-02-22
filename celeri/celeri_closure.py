@@ -535,7 +535,7 @@ class Polygon:
             by Roger Stafford.
 
         http://www.mathworks.com/matlabcentral/newsreader/view_thread/276271
-        """  # noqa: RUF002 (allow cross product character)
+        """
         # TODO: Currently, the bounding box test is turned off!
         # TODO: Currently, the bounding box test is turned off!
         # TODO: Currently, the bounding box test is turned off!
