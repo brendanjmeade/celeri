@@ -688,7 +688,7 @@ def plot_mesh(
     vmin=None,
     vmax=None,
     cmap="seismic",
-    center=0,
+    center=None,
     set_limits=False,
 ):
     """Plot a 2D or cross-sectional mesh. Determines if a mesh
@@ -731,7 +731,10 @@ def plot_mesh(
     if vmax is None:
         vmax = np.max([1e-10, np.max(fill_value)])
 
-    norm = colors.TwoSlopeNorm(vmin=vmin, vcenter=center, vmax=vmax)
+    if center is None:
+        norm = colors.Normalize(vmin=vmin, vmax=vmax)
+    else:
+        norm = colors.TwoSlopeNorm(vmin=vmin, vcenter=center, vmax=vmax)
 
     points = mesh.points
     cross_section = (
