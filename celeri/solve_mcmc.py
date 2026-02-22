@@ -1413,10 +1413,10 @@ def _add_segment_constraints(model: Model, operators: Operators, rotation):
         for i, kind in enumerate(["ss", "ds", "ts"]):
             pm.StudentT(
                 f"segment_slip_rate_regularization_{kind}",
-                mu=segment_rates[(model.segment[f"{kind}_reg_flag"] == 1).values, i],
+                mu=segment_rates[(model.segment[f"{kind}_rate_flag"] == 2).values, i],
                 sigma=gamma,
                 nu=5,
-                observed=np.zeros((model.segment[f"{kind}_reg_flag"] == 1).sum()),
+                observed=np.zeros((model.segment[f"{kind}_rate_flag"] == 2).sum()),
             )
 
     pm.Deterministic("segment_slip_rate", segment_rates, dims=("segment", "slip_comp"))
