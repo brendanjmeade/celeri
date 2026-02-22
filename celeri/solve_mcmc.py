@@ -974,28 +974,47 @@ class RotationTransform(Transform):
         scale_diag: Diagonal scaling matrix (as a 1D array of positive values)
     """
 
-    name = "rotation_svd"
+    name = "svd"
 
-    def __init__(self, vh, scale_diag):
+    def __init__(self, vh, scale_diag, mu):
         self.vh = vh
         self.scale_diag = scale_diag
+        self.mu = mu
 
     def forward(self, value, *inputs):
         """Map from constrained to unconstrained space."""
         # Don't use _operator_mult here since we want to stay in float64
-        return self.scale_diag * (self.vh @ value)
+        return self.scale_diag * (self.vh @ value) + self.mu
 
     def backward(self, value, *inputs):
         # Don't use _operator_mult here since we want to stay in float64
-        return self.vh.T @ (value / self.scale_diag)
+        return self.vh.T @ ((value - self.mu) / self.scale_diag)
 
     def log_jac_det(self, value, *inputs):
         return pt.constant(-np.sum(np.log(self.scale_diag)))
 
 
-def _block_rotation_precision(
-    moment_tensor: np.ndarray, sigma_rms: float
+def _euler_poles_to_rotation_vector(
+    euler_pole: np.ndarray, rate: np.ndarray
 ) -> np.ndarray:
+    """Convert Euler poles (lat, lon) and rate in deg/Myr to rotation vectors in [rad/Gyr]."""
+    # Convert lat/lon to radians and rate to rad/Gyr
+    lat_rad = np.deg2rad(euler_pole[0])
+    lon_rad = np.deg2rad(euler_pole[1])
+    rate_rad_gyr = np.deg2rad(rate) * 1e3  # deg/Myr to rad/Gyr
+
+    # Convert to Cartesian coordinates
+    x = np.cos(lat_rad) * np.cos(lon_rad)
+    y = np.cos(lat_rad) * np.sin(lon_rad)
+    z = np.sin(lat_rad)
+
+    rotation_vector = rate_rad_gyr * np.array([x, y, z])
+    return rotation_vector
+
+
+def _block_rotation_precision(
+    model: Model, operators: Operators, block_idx: int
+) -> tuple[np.ndarray, float, np.ndarray]:
     """Precision matrix for a single block's rotation prior (units: [rad/Gyr]^-2).
 
     The prior is an MVN with precision proportional to (I - M), where M is the
@@ -1007,14 +1026,30 @@ def _block_rotation_precision(
 
     Returns:
         3x3 precision matrix for the block rotation vector in [rad/Gyr].
+        sigma_rms: The RMS velocity prior width in mm/yr.
+        mu: The prior mean rotation vector in [rad/Gyr].
     """
-    return (1e-18 * (RADIUS_EARTH * 1000 / sigma_rms) ** 2) * (
+
+    if model.block.rotation_flag[block_idx] == 0:
+        sigma_rms = operators.model.config.mcmc_block_rotation_rms_velocity_prior_sigma
+        mu = np.zeros(3)
+    else:
+        sigma_rms = 2.0
+        euler_pole = np.array(
+            [model.block.euler_lat[block_idx], model.block.euler_lon[block_idx]]
+        )
+        rate = model.block.rotation_rate[block_idx]
+        mu = _euler_poles_to_rotation_vector(euler_pole, rate)
+    assert operators.block_moment_tensors is not None
+    moment_tensor = operators.block_moment_tensors[block_idx]
+    prec = (1e-18 * (RADIUS_EARTH * 1000 / sigma_rms) ** 2) * (
         np.eye(3) - moment_tensor
     )
+    return prec, sigma_rms, mu
 
 
 def _build_rotation_transform(
-    operators: Operators, vel_idx: np.ndarray
+    model: Model, operators: Operators, vel_idx: np.ndarray
 ) -> "RotationTransform":
     """Build an SVD-based reparametrisation transform for block rotations.
 
@@ -1080,21 +1115,23 @@ def _build_rotation_transform(
 
     # Rotation prior — append the Cholesky transpose of the block-diagonal
     # precision matrix so the prior curvature is included in the whitening.
-    sigma_rms = operators.model.config.mcmc_block_rotation_rms_velocity_prior_sigma
+    assert operators.block_moment_tensors is not None
     n_rot = 3 * len(operators.block_moment_tensors)
     A_prior = np.zeros((n_rot, n_rot))
-    for block_idx, M in enumerate(operators.block_moment_tensors):
-        P = _block_rotation_precision(M, sigma_rms)
+    mu = np.zeros(n_rot)
+    for block_idx in range(len(model.block)):
+        P, _, mu_block = _block_rotation_precision(model, operators, block_idx)
         L = np.linalg.cholesky(P)
         i = block_idx * 3
         A_prior[i : i + 3, i : i + 3] = L.T
+        mu[i : i + 3] = mu_block
     A_parts.append(A_prior)
 
     _u, svdvals, vh = linalg.svd(np.vstack(A_parts), full_matrices=False)
-    return RotationTransform(vh, svdvals)
+    return RotationTransform(vh, svdvals, mu)
 
 
-def _add_rotation_component(operators: Operators, vel_idx: np.ndarray):
+def _add_rotation_component(model: Model, operators: Operators, vel_idx: np.ndarray):
     """Add block rotation component to the PyMC model.
 
     Returns rotation parameters and velocity contributions.
@@ -1115,14 +1152,13 @@ def _add_rotation_component(operators: Operators, vel_idx: np.ndarray):
         vel_idx, :
     ]
 
-    n_blocks = len(operators.block_moment_tensors)
-    sigma_rms = operators.model.config.mcmc_block_rotation_rms_velocity_prior_sigma
+    assert operators.block_moment_tensors is not None
+
+    n_blocks = len(model.block)
 
     def make_rotation_dist(block_idx):
-        precision = _block_rotation_precision(
-            operators.block_moment_tensors[block_idx], sigma_rms
-        )
-        return pm.MvNormal.dist(mu=np.zeros(3), tau=precision)
+        precision, _, mu = _block_rotation_precision(model, operators, block_idx)
+        return pm.MvNormal.dist(mu=mu, tau=precision)
 
     def rotation_prior_logp(rotation_vec):
         """Log-probability for MVN prior on block rotations."""
@@ -1152,7 +1188,7 @@ def _add_rotation_component(operators: Operators, vel_idx: np.ndarray):
         else:
             return np.concatenate(rotation_samples, axis=-1)
 
-    rotation_transform = _build_rotation_transform(operators, vel_idx)
+    rotation_transform = _build_rotation_transform(model, operators, vel_idx)
 
     # Units: [rad / Gyr]
     # Now using proper transform instead of manual implementation
@@ -1171,13 +1207,17 @@ def _add_rotation_component(operators: Operators, vel_idx: np.ndarray):
         "rotation", rotation_rad_per_Gyr * 1e-6, dims="rotation_param"
     )
 
+    pm.Deterministic(
+        "rotation_rad_per_Myr",
+        rotation_rad_per_Gyr.reshape((n_blocks, 3)) * 1e-3,
+        dims=("block", "xyz"),
+    )
+
     # Add deterministic variable for root mean squared velocity per block
     rms_velocities = []
     for block_idx in range(n_blocks):
         block_rot = rotation_rad_per_Gyr[block_idx * 3 : (block_idx + 1) * 3]
-        precision = _block_rotation_precision(
-            operators.block_moment_tensors[block_idx], sigma_rms
-        )
+        precision, sigma_rms, _ = _block_rotation_precision(model, operators, block_idx)
         quad_form = block_rot.T @ precision @ block_rot
         rms_vel = pt.sqrt(quad_form) * sigma_rms
         rms_velocities.append(rms_vel)
@@ -1518,7 +1558,7 @@ def _build_pymc_model(
         )
 
         rotation, rotation_velocity, rotation_okada_velocity = _add_rotation_component(
-            operators, vel_idx
+            model, operators, vel_idx
         )
 
         mogi_velocity = _add_mogi_component(operators, vel_idx)
