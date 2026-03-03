@@ -81,7 +81,7 @@ from celeri.solve import (
     build_estimation,
     lsqlin_qp,
 )
-from celeri.solve_mcmc import solve_mcmc
+from celeri.solve_mcmc import WaicSummary, select_chains, solve_mcmc, waic_summary
 from celeri.spatial import (
     get_okada_displacements,
     get_shared_sides,
@@ -97,6 +97,7 @@ __all__ = [
     "MeshConfig",
     "Model",
     "Operators",
+    "WaicSummary",
     "__version__",
     "align_velocities",
     "assemble_and_solve_dense",
@@ -166,9 +167,11 @@ __all__ = [
     "process_segment",
     "process_station",
     "read_data",
+    "select_chains",
     "solve_mcmc",
     "solve_sqp",
     "solve_sqp2",
+    "waic_summary",
     "wrap2360",
     "write_output",
 ]
