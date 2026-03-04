@@ -1654,6 +1654,88 @@ def select_chains(
     (observation-axis noise), because all chains share the same
     observations and that uncertainty cancels in pairwise differences.
 
+    Diagnostics example
+    -------------------
+    A typical log table (4 chains)::
+
+      Chain  div      LPPD  p_WAIC      WAIC  SE_WAIC  k>0.7  dW-dL    MC_SD   dWAIC      z
+          0    0  -13710.9    59.2  -13770.1    109.0      5  +0.03    0.748  -222.9 -218.3 ✗
+          1    0  -13491.1    56.2  -13547.2    105.4      9  +0.00    0.695    +0.0   +0.0 ✓
+          2    0  -13492.0    55.6  -13547.6    105.4      3  +0.00    0.739    -0.4   -0.4 ✓
+          3    0  -13492.1    55.9  -13547.9    105.4      4  +0.03    0.705    -0.7   -0.7 ✓
+
+    Column guide (left to right):
+
+    **div** — Number of divergent transitions in the chain.  Divergences
+    indicate the sampler encountered regions of high curvature it could
+    not follow; even a few divergences can bias posterior estimates.
+    Zero is ideal.
+
+    **LPPD** — Total log-likelihood in nats: the raw energy of the
+    posterior predictive (higher = better fit).  Dominates WAIC since
+    p_WAIC is comparatively small.  Chains in the same mode have nearly
+    identical LPPD; a chain in a subdominant mode shows a clearly worse
+    value (here chain 0 is ~220 nats below chains 1-3).
+
+    **p_WAIC** — Effective number of parameters (complexity penalty).
+    Usually a small fraction of |LPPD| (here ~57 vs ~13 500).  Stable
+    across chains in the same mode.  Different modes *can* have different
+    p_WAIC (here chain 0 is slightly higher at 59.2 vs ~56), reflecting
+    a different effective complexity in that region of parameter space.
+
+    **WAIC** — ``LPPD - p_WAIC`` (higher = better).  A bias-corrected
+    estimate of the out-of-sample expected log pointwise predictive
+    density (ELPD), where p_WAIC corrects for the optimism of the
+    in-sample LPPD.  This is the basis for all comparisons, but it is
+    the *difference* dWAIC (further right) that we actually evaluate.
+
+    **SE_WAIC** — Standard error of WAIC across observations.  A
+    standard diagnostic quantity included for completeness.  Since all
+    chains share the same observations, SE cancels in pairwise
+    differences and does *not* enter the z-score.  Useful only as a
+    sanity check: a noticeably different SE (here 109.0 for chain 0 vs
+    ~105 for chains 1-3) is a secondary signal that the chain sees the
+    data differently.
+
+    **k>0.7** — Number of observations with Pareto k > 0.7, a
+    diagnostic from LOO cross-validation (PSIS-LOO) indicating where
+    importance-sampling leave-one-out estimates are unreliable.  Zero or
+    low counts are ideal.  High counts (tens to hundreds) suggest the
+    model is sensitive to particular observations; compare across chains
+    to see whether problematic observations are mode-specific.
+
+    **dW-dL** — ``dWAIC - dLOO`` for each chain relative to the leader.
+    WAIC and LOO are both approximations of ELPD; this column checks
+    that they agree on inter-chain differences.  Values should be small
+    relative to MC_SD (here ~0.03 vs MC_SD ~0.7, i.e. a few percent),
+    confirming that the simpler WAIC-based z-score is trustworthy.
+    Values comparable to MC_SD would indicate meaningful disagreement
+    between the two estimators, warranting investigation.
+
+    **MC_SD** — Monte Carlo noise SD of WAIC (via the infinitesimal
+    jackknife over draws).  Sets the scale of dWAIC in standard
+    deviations: a dWAIC of one MC_SD is indistinguishable from sampling
+    noise.  MC_SD is usually similar across chains (even across modes,
+    here 0.748 for subdominant chain 0 vs 0.695–0.739 for chains 1-3)
+    because it depends mainly on the number of draws and observations,
+    not on which mode the chain occupies.
+
+    **dWAIC** — WAIC difference from the leader (always ≤ 0; exactly 0
+    for the leader by definition).  The numerator of the z-score.
+    Same-mode chains differ by at most a few MC_SD (here chains 1-3 are
+    within 1 MC_SD); a subdominant-mode chain differs by many MC_SD
+    (chain 0: -222.9, i.e. ~300 × MC_SD).
+
+    **z** — z-score: distance from the leader in standard deviations,
+    ``dWAIC / sqrt(mc_sd_chain² + mc_sd_leader²)``.  Always ≤ 0.
+    Most same-mode chains should have |z| < 4; subdominant-mode
+    outliers should have |z| > 6.
+
+    **✓ / ✗** — Whether the chain is kept (``z ≥ -z_threshold``) or
+    excluded.  In practice the gap between same-mode and subdominant-mode
+    z-scores is enormous (here -218 vs -0.7), so the filtering decision
+    is not sensitive to the exact threshold.
+
     Parameters
     ----------
     trace : arviz.InferenceData
@@ -1707,16 +1789,19 @@ def select_chains(
     leader_waic = summaries[leader].elpd_waic
     leader_loo = loo[leader].elpd_loo
 
+    diverging = trace.sample_stats.diverging.values  # type: ignore[attr-defined]  # (n_chains, S)
+
     kept_indices: list[int] = []
     logger.info("Per-chain WAIC / LOO diagnostics:")
     logger.info(
-        f"  {'Chain':>7} {'LPPD':>12} {'p_WAIC':>8} {'WAIC':>12} "
+        f"  {'Chain':>5} {'div':>4} {'LPPD':>10} {'p_WAIC':>7} {'WAIC':>10} "
         f"{'SE_WAIC':>8} {'k>0.7':>6} {'dW-dL':>6} "
-        f"{'MC_SD':>8} {'dWAIC':>8} {'z':>6} {'':<1}"
+        f"{'MC_SD':>8} {'dWAIC':>7} {'z':>6} {'':<1}"
     )
-    for c in chains:
+    for i, c in enumerate(chains):
         ws = summaries[c]
         lo = loo[c]
+        n_div = int(diverging[i].sum())
         n_high_k = int((lo.pareto_k.values.ravel() > 0.7).sum())
         d_waic = ws.elpd_waic - leader_waic
         assert d_waic <= 0, f"Chain {c} has higher WAIC than leader {leader}"
@@ -1728,9 +1813,9 @@ def select_chains(
             kept_indices.append(int(c))
         mark = "\u2713" if keep else "\u2717"
         logger.info(
-            f"  {c:>7} {ws.lppd:>12.1f} {ws.p_waic:>8.1f} {ws.elpd_waic:>12.1f} "
+            f"  {c:>5} {n_div:>4} {ws.lppd:>10.1f} {ws.p_waic:>7.1f} {ws.elpd_waic:>10.1f} "
             f"{ws.se:>8.1f} {n_high_k:>6} {d_waic - d_loo:>+6.2f} "
-            f"{ws.mc_sd:>8.1f} {d_waic:>+8.1f} {z:>+6.1f} {mark}"
+            f"{ws.mc_sd:>8.3f} {d_waic:>+7.1f} {z:>+6.1f} {mark}"
         )
 
     logger.info(
