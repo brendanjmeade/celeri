@@ -1,15 +1,53 @@
 """Tests for solve_mcmc module."""
 
+import arviz as az
 import numpy as np
 import pytest
 from numpy.testing import assert_allclose
 
-from celeri.solve_mcmc import _constrain_field, _unconstrain_field
+from celeri.solve_mcmc import _constrain_field, _unconstrain_field, waic_summary
 
 
 def _eval_if_tensor(x):
     """Evaluate PyTensor tensor, or return numpy array as-is."""
     return x.eval() if hasattr(x, "eval") else x
+
+
+class TestWaicSummary:
+    """Verify waic_summary matches arviz.waic on synthetic log-likelihood data."""
+
+    @pytest.mark.parametrize(
+        "S, N, loc, scale, seed",
+        [
+            (200, 50, -2.0, 0.5, 0),
+            (500, 300, -5.0, 1.0, 1),
+        ],
+        ids=["small", "medium"],
+    )
+    def test_matches_arviz(self, S: int, N: int, loc: float, scale: float, seed: int):
+        rng = np.random.default_rng(seed)
+        ll = rng.normal(loc, scale, size=(S, N))
+
+        ws = waic_summary(ll)
+
+        idata = az.from_dict(log_likelihood={"y": ll[np.newaxis, :, :]})
+        aw = az.waic(idata, var_name="y")
+
+        assert_allclose(ws.elpd_waic, aw.elpd_waic, rtol=1e-10)
+        assert_allclose(ws.p_waic, aw.p_waic, rtol=1e-10)
+        assert_allclose(ws.se, aw.se, rtol=1e-10)
+
+    def test_elpd_equals_lppd_minus_p(self):
+        rng = np.random.default_rng(99)
+        ll = rng.normal(-4.0, 1.0, size=(300, 80))
+        ws = waic_summary(ll)
+        assert_allclose(ws.elpd_waic, ws.lppd - ws.p_waic, rtol=1e-12)
+
+    def test_mc_sd_positive(self):
+        rng = np.random.default_rng(77)
+        ll = rng.normal(-3.0, 0.8, size=(400, 60))
+        ws = waic_summary(ll)
+        assert ws.mc_sd > 0
 
 
 class TestConstrainUnconstrainRoundtrip:
