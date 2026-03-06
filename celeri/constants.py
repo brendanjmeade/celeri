@@ -5,6 +5,8 @@ GEOID = pyproj.Geod(ellps="WGS84")
 KM2M = 1.0e3
 M2MM = 1.0e3
 RADIUS_EARTH = np.float64((GEOID.a + GEOID.b) / 2)
+"""Radius of the earth in meters."""
+
 DEG_PER_MYR_TO_RAD_PER_YR = 1 / 1e3
 # The conversion should be 1 / 1e3. Linear units for Cartesian conversions are
 # in meters, but we need to convert them to mm to be consistent with mm/yr
