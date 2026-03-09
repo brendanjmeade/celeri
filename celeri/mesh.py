@@ -443,9 +443,10 @@ def _compute_ordered_edge_nodes(mesh: dict):
         idx = np.where(
             edge_nodes == mesh["ordered_edge_nodes"][j - 1, 1]
         )  # Edge node indices the same as previous row, second column
-        next_idx = np.where(
+        (next_idx,) = np.where(
             idx[0][:] != last_row
         )  # One of those indices is the last row itself. Find the other row index
+        (next_idx,) = next_idx
         next_row = idx[0][next_idx]  # Index of the next ordered row
         next_col = idx[1][next_idx]  # Index of the next ordered column (1 or 2)
         if next_col == 1:
