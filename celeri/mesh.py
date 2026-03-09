@@ -664,12 +664,17 @@ def _get_eigenvalues_and_eigenvectors(
     matern_length_scale: float = 1.0,
     matern_length_units: Literal["absolute", "diameters"] = "diameters",
     eigenvector_algorithm: Literal["eigh", "eigsh"] = "eigh",
-) -> tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, float]:
     """Get the eigenvalues and eigenvectors of the mesh Matérn kernel.
 
     The kernel is computed with unit amplitude scale parameter (sigma=1).
     Eigenvalues scale as sigma**2, so the amplitude can be reintroduced later
     by multiplying eigenvalues by sigma**2 (eigenvectors are unchanged).
+
+    Returns:
+        eigenvalues: Top eigenvalues in descending order (n_eigenvalues,)
+        eigenvectors: Corresponding eigenvectors as columns (n_tde, n_eigenvalues)
+        trace: Trace of the full covariance matrix (= sum of all eigenvalues)
     """
     n_tde = x.size
 
@@ -687,6 +692,8 @@ def _get_eigenvalues_and_eigenvectors(
     # and the general case with proper numerical stability
     kernel = Matern(nu=matern_nu, length_scale=matern_length_scale)
     covariance_matrix = kernel(centroid_coordinates)
+
+    trace = float(np.trace(covariance_matrix))
 
     # Algorithm choice: see https://github.com/brendanjmeade/celeri/pull/367#issuecomment-2690519498
     # and https://stackoverflow.com/questions/12167654/fastest-way-to-compute-k-largest-eigenvalues-and-corresponding-eigenvectors-with
@@ -708,7 +715,218 @@ def _get_eigenvalues_and_eigenvectors(
     )
     eigenvalues_descending = eigenvalues_ascending[::-1]
     eigenvectors_descending = eigenvectors_ascending[:, ::-1]
-    return eigenvalues_descending, eigenvectors_descending
+    return eigenvalues_descending, eigenvectors_descending, trace
+
+
+def _get_absolute_length_scale_and_area(
+    x_centroid: np.ndarray,
+    y_centroid: np.ndarray,
+    z_centroid: np.ndarray,
+    areas: np.ndarray,
+    matern_length_scale: float,
+    matern_length_units: Literal["absolute", "diameters"],
+) -> tuple[float, float, float]:
+    """Compute the absolute Matérn length scale, total mesh area, and diameter.
+
+    Returns (abs_length_scale, total_area, diameter) in physical units
+    (metres, m², metres).
+    """
+    centroids = np.column_stack([x_centroid, y_centroid, z_centroid])
+    diameter = float(np.max(scipy.spatial.distance.pdist(centroids)))
+    if matern_length_units == "diameters":
+        abs_length_scale = matern_length_scale * diameter
+    else:
+        abs_length_scale = matern_length_scale
+    return abs_length_scale, float(areas.sum()), diameter
+
+
+def _weyl_n_estimate(
+    nu: float,
+    abs_length_scale: float,
+    total_area: float,
+    epsilon: float,
+    correction: float = 1.0,
+) -> int:
+    """Weyl asymptotic estimate of eigenmodes needed for a target truncation error.
+
+    For a Matérn-ν kernel on a 2D manifold of physical area *total_area*
+    with absolute length scale *abs_length_scale*, estimates the number of
+    eigenmodes N such that the fraction of prior variance discarded is
+    approximately *epsilon*.  See https://github.com/brendanjmeade/celeri/issues/374.
+
+    When *correction* ≠ 1, the raw Weyl prediction is renormalized so that the
+    corrected truncation-error curve passes through a known calibration point.
+    Specifically, ``correction = error_exact(N0) / error_weyl(N0)`` where N0
+    is the number of modes already computed.
+    """
+    import math
+
+    return math.ceil(
+        nu
+        * total_area
+        / (2 * math.pi * abs_length_scale**2)
+        * (epsilon / correction) ** (-1 / nu)
+    )
+
+
+def _weyl_correction(
+    nu: float,
+    abs_length_scale: float,
+    total_area: float,
+    n_modes: int,
+    error_exact: float,
+) -> float:
+    """Compute a mesh-specific correction factor for the Weyl estimate.
+
+    The raw Weyl formula underestimates the truncation error by a roughly
+    constant factor.  By comparing the *exact* error at our operating point
+    (*n_modes*) with the Weyl prediction we obtain a correction that
+    dramatically improves extrapolated N estimates.
+    """
+    import math
+
+    weyl_arg = 2 * math.pi * abs_length_scale**2 * n_modes / (nu * total_area)
+    error_weyl = weyl_arg ** (-nu)
+    return error_exact / error_weyl
+
+
+def _weyl_length_scale_estimate(
+    nu: float,
+    total_area: float,
+    n_modes: int,
+    epsilon: float,
+    correction: float = 1.0,
+) -> float:
+    """Weyl asymptotic estimate of the minimum absolute length scale (metres).
+
+    For a Matérn-ν kernel on a 2D manifold of physical area *total_area*,
+    estimates the length scale ℓ such that *n_modes* eigenmodes capture
+    a fraction ``1 - epsilon`` of the prior variance.
+    """
+    import math
+
+    return math.sqrt(
+        nu * total_area / (2 * math.pi * n_modes) * (epsilon / correction) ** (-1 / nu)
+    )
+
+
+def _log_eigenvalue_truncation(
+    eigenvalues: np.ndarray,
+    trace: float,
+    n_modes: int,
+    *,
+    x_centroid: np.ndarray | None = None,
+    y_centroid: np.ndarray | None = None,
+    z_centroid: np.ndarray | None = None,
+    areas: np.ndarray | None = None,
+    nu: float | None = None,
+    matern_length_scale: float | None = None,
+    matern_length_units: Literal["absolute", "diameters"] | None = None,
+) -> None:
+    """Log the fraction of prior variance captured and N for standard thresholds.
+
+    When mesh geometry (*x/y/z_centroid*, *areas*) and kernel parameters
+    (*nu*, *matern_length_scale*, *matern_length_units*) are provided,
+    unreachable thresholds are supplemented with a corrected Weyl asymptotic
+    estimate for N (shown as ``~N``), and a rough estimate of the minimum
+    length scale needed at the current *n_modes* (shown as ``≈ℓ``).
+
+    The Weyl correction renormalizes the asymptotic formula using the exact
+    truncation error at the current *n_modes* as a calibration point.
+    """
+    captured = eigenvalues.sum()
+    ratio = captured / trace
+    cumsum = np.cumsum(eigenvalues)
+
+    can_weyl = (
+        x_centroid is not None
+        and y_centroid is not None
+        and z_centroid is not None
+        and areas is not None
+        and nu is not None
+        and matern_length_scale is not None
+        and matern_length_units is not None
+    )
+
+    abs_length_scale: float | None = None
+    total_area: float | None = None
+    diameter: float | None = None
+    correction = 1.0
+    if can_weyl:
+        assert (
+            x_centroid is not None
+            and y_centroid is not None
+            and z_centroid is not None
+            and areas is not None
+            and nu is not None
+            and matern_length_scale is not None
+            and matern_length_units is not None
+        )
+        abs_length_scale, total_area, diameter = _get_absolute_length_scale_and_area(
+            x_centroid,
+            y_centroid,
+            z_centroid,
+            areas,
+            matern_length_scale,
+            matern_length_units,
+        )
+        error_exact = 1 - ratio
+        if error_exact > 0:
+            correction = _weyl_correction(
+                nu, abs_length_scale, total_area, n_modes, error_exact
+            )
+
+    thresholds = [0.90, 0.95, 0.99, 0.999]
+    n_parts = []
+    for t in thresholds:
+        idx = int(np.searchsorted(cumsum, t * trace) + 1)
+        if idx <= n_modes:
+            n_parts.append(f"N({t:.1%})={idx}")
+        elif can_weyl:
+            assert (
+                abs_length_scale is not None
+                and total_area is not None
+                and nu is not None
+            )
+            est = _weyl_n_estimate(nu, abs_length_scale, total_area, 1 - t, correction)
+            n_parts.append(f"N({t:.1%})~{est}")
+        else:
+            n_parts.append(f"N({t:.1%})>{n_modes}")
+    logger.info(
+        f"Eigenvalue truncation: {ratio:.2%} of prior variance captured "
+        f"by {n_modes} modes ({', '.join(n_parts)})"
+    )
+
+    if can_weyl:
+        assert (
+            nu is not None
+            and total_area is not None
+            and diameter is not None
+            and matern_length_units is not None
+        )
+        ell_parts = []
+        for t in thresholds:
+            abs_ell = _weyl_length_scale_estimate(
+                nu, total_area, n_modes, 1 - t, correction
+            )
+            if matern_length_units == "diameters":
+                ell_parts.append(f"ℓ({t:.1%})≈{abs_ell / diameter:.2f}⌀")
+            else:
+                ell_parts.append(f"ℓ({t:.1%})≈{abs_ell:.0f}m")
+        units_note = (
+            f"1⌀ = {diameter:.0f}m" if matern_length_units == "diameters" else "m"
+        )
+        logger.info(
+            f"Rough min length scale for {n_modes} modes ({units_note}): "
+            f"{', '.join(ell_parts)}"
+        )
+
+    if ratio < 0.95:
+        logger.warning(
+            f"Only {ratio:.2%} of prior variance captured by "
+            f"{n_modes} eigenmodes. Consider increasing n_eigenvalues "
+            f"or matern_length_scale to reduce truncation artifacts."
+        )
 
 
 @dataclass
@@ -1001,15 +1219,29 @@ class Mesh:
         assert config.eigenvector_algorithm is not None, (
             "MeshConfig.eigenvector_algorithm must be set (propagated by Config.apply_mesh_defaults)"
         )
-        mesh["eigenvalues"], mesh["eigenvectors"] = _get_eigenvalues_and_eigenvectors(
+        mesh["eigenvalues"], mesh["eigenvectors"], trace = (
+            _get_eigenvalues_and_eigenvectors(
+                mesh["n_modes"],
+                mesh["x_centroid"],
+                mesh["y_centroid"],
+                mesh["z_centroid"],
+                matern_nu=config.matern_nu,
+                matern_length_scale=config.matern_length_scale,
+                matern_length_units=config.matern_length_units,
+                eigenvector_algorithm=config.eigenvector_algorithm,
+            )
+        )
+        _log_eigenvalue_truncation(
+            mesh["eigenvalues"],
+            trace,
             mesh["n_modes"],
-            mesh["x_centroid"],
-            mesh["y_centroid"],
-            mesh["z_centroid"],
-            matern_nu=config.matern_nu,
+            x_centroid=mesh["x_centroid"],
+            y_centroid=mesh["y_centroid"],
+            z_centroid=mesh["z_centroid"],
+            areas=mesh["areas"],
+            nu=config.matern_nu,
             matern_length_scale=config.matern_length_scale,
             matern_length_units=config.matern_length_units,
-            eigenvector_algorithm=config.eigenvector_algorithm,
         )
 
         logger.success(f"Read: {filename}")
@@ -1111,15 +1343,29 @@ class Mesh:
             assert config.eigenvector_algorithm is not None, (
                 "MeshConfig.eigenvector_algorithm must be set (propagated by Config.apply_mesh_defaults)"
             )
-            mesh.eigenvalues, mesh.eigenvectors = _get_eigenvalues_and_eigenvectors(
+            mesh.eigenvalues, mesh.eigenvectors, trace = (
+                _get_eigenvalues_and_eigenvectors(
+                    mesh.n_modes,
+                    mesh.x_centroid,
+                    mesh.y_centroid,
+                    mesh.z_centroid,
+                    matern_nu=config.matern_nu,
+                    matern_length_scale=config.matern_length_scale,
+                    matern_length_units=config.matern_length_units,
+                    eigenvector_algorithm=config.eigenvector_algorithm,
+                )
+            )
+            _log_eigenvalue_truncation(
+                mesh.eigenvalues,
+                trace,
                 mesh.n_modes,
-                mesh.x_centroid,
-                mesh.y_centroid,
-                mesh.z_centroid,
-                matern_nu=config.matern_nu,
+                x_centroid=mesh.x_centroid,
+                y_centroid=mesh.y_centroid,
+                z_centroid=mesh.z_centroid,
+                areas=mesh.areas,
+                nu=config.matern_nu,
                 matern_length_scale=config.matern_length_scale,
                 matern_length_units=config.matern_length_units,
-                eigenvector_algorithm=config.eigenvector_algorithm,
             )
 
         return mesh
