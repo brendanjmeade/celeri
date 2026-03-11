@@ -21,6 +21,7 @@ from typing import Literal, cast
 
 import numpy as np
 import pandas as pd
+import pymc as pm
 import pytensor.tensor as pt
 from loguru import logger
 from pymc import Model as PymcModel
@@ -1735,6 +1736,12 @@ def solve_mcmc(
     trace = nutpie.sample(compiled, **kwargs)  # type: ignore
     mcmc_end_time = datetime.now(UTC)
     mcmc_duration = (mcmc_end_time - mcmc_start_time).total_seconds()
+
+    ll_vars = ["station_velocity"]
+    if "los_velocity" in pymc_model.named_vars:
+        ll_vars.append("los_velocity")
+    logger.info(f"Computing pointwise log-likelihoods for {ll_vars}")
+    pm.compute_log_likelihood(trace, model=pymc_model, var_names=ll_vars)
 
     state_vector = _state_vector_from_draw(
         model, operators, trace.mean(["chain", "draw"])

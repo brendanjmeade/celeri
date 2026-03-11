@@ -14,6 +14,7 @@ from celeri.celeri_util import (
 )
 from celeri.cli import parse_args, process_args
 from celeri.config import Config, get_config
+from celeri.filter_mcmc_chains_by_waic import WaicSummary, select_chains, waic_summary
 from celeri.mesh import Mesh, MeshConfig
 from celeri.model import (
     Model,
@@ -97,6 +98,7 @@ __all__ = [
     "MeshConfig",
     "Model",
     "Operators",
+    "WaicSummary",
     "__version__",
     "align_velocities",
     "assemble_and_solve_dense",
@@ -166,9 +168,11 @@ __all__ = [
     "process_segment",
     "process_station",
     "read_data",
+    "select_chains",
     "solve_mcmc",
     "solve_sqp",
     "solve_sqp2",
+    "waic_summary",
     "wrap2360",
     "write_output",
 ]
