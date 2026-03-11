@@ -904,15 +904,19 @@ def _log_eigenvalue_truncation(
             and diameter is not None
             and matern_length_units is not None
         )
+        # Cap the correction at 1.0 for ℓ estimates: when the mesh is
+        # underprovisioned (C < 1), the correction was calibrated far from
+        # the Weyl regime and degrades the estimate at larger ℓ.
+        ell_correction = max(correction, 1.0)
         ell_parts = []
         for t in thresholds:
             abs_ell = _weyl_length_scale_estimate(
-                nu, total_area, n_modes, 1 - t, correction
+                nu, total_area, n_modes, 1 - t, ell_correction
             )
             if matern_length_units == "diameters":
-                ell_parts.append(f"ℓ({t:.1%})≈{abs_ell / diameter:.2f}⌀")
+                ell_parts.append(f"ℓ({t:.1%})≈{abs_ell / diameter:.2g}⌀")
             else:
-                ell_parts.append(f"ℓ({t:.1%})≈{abs_ell:.0f}m")
+                ell_parts.append(f"ℓ({t:.1%})≈{abs_ell:.2g}m")
         units_note = (
             f"1⌀ = {diameter:.0f}m" if matern_length_units == "diameters" else "m"
         )
