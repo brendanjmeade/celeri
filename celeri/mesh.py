@@ -910,9 +910,9 @@ def _log_eigenvalue_truncation(
                 nu, total_area, n_modes, 1 - t, correction
             )
             if matern_length_units == "diameters":
-                ell_parts.append(f"ℓ({t:.1%})≈{abs_ell / diameter:.2f}⌀")
+                ell_parts.append(f"ℓ({t:.1%})≈{abs_ell / diameter:.2g}⌀")
             else:
-                ell_parts.append(f"ℓ({t:.1%})≈{abs_ell:.0f}m")
+                ell_parts.append(f"ℓ({t:.1%})≈{abs_ell:.2g}m")
         units_note = (
             f"1⌀ = {diameter:.0f}m" if matern_length_units == "diameters" else "m"
         )
