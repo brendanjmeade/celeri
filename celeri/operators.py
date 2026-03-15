@@ -55,7 +55,6 @@ from celeri.constants import (
 )
 from celeri.mean_block_velocity import (
     compute_moment_tensor_lambert,
-    latlon_to_cartesian,
 )
 from celeri.mesh import ByMesh, Mesh, MeshConfig
 from celeri.model import (
