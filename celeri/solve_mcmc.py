@@ -1729,6 +1729,7 @@ def solve_mcmc(
         "store_unconstrained": True,
         "store_gradient": True,
         "seed": model.config.mcmc_seed,
+        "target_accept": model.config.mcmc_target_accept,
     }
     kwargs.update(sample_kwargs or {})
 

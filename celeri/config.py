@@ -210,6 +210,14 @@ class Config(RelativePathSerializerMixin, BaseModel):
     mcmc_chains: int = 1
     """Number of parallel MCMC chains to run."""
 
+    mcmc_target_accept: float = 0.9
+    """Target acceptance rate for the NUTS sampler (range 0–1).
+
+    The typical nutpie/PyMC default is 0.8. Higher values produce smaller
+    step sizes, leading to slower but more reliable sampling with fewer
+    divergences.
+    """
+
     mcmc_backend: Literal["numba", "jax"] = "jax"
     """Backend to use for MCMC computations."""
 
