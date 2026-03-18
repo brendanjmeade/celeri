@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 from numpy.testing import assert_allclose
 
+import celeri
 from celeri.solve_mcmc import _constrain_field, _unconstrain_field
 
 
@@ -140,3 +141,29 @@ class TestUnconstrainFieldErrors:
         """Should raise if softplus_lengthscale not provided for upper bound."""
         with pytest.raises(ValueError, match="softplus_lengthscale is required"):
             _unconstrain_field(np.array([1.0]), lower=None, upper=2.0)
+
+
+def test_mcmc_selection():
+    """mcmc_draw runs and returns a correctly subsetted mcmc_trace."""
+    config = celeri.get_config("data/config/wna_config.json")
+    model = celeri.build_model(config)
+    estimation = celeri.solve_mcmc(
+        model, sample_kwargs={"tune": 10, "draws": 10, "chains": 4}
+    )
+
+    # Scalar: both dims dropped, so posterior has no draw/chain coords
+    scalar = estimation.mcmc_draw(draw=0, chain=0)
+    assert "draw" not in scalar.mcmc_trace.posterior.dims
+    assert "chain" not in scalar.mcmc_trace.posterior.dims
+
+    # List: selected draws/chains are exactly what was asked for
+    listed = estimation.mcmc_draw(draw=[0, 1, 2], chain=[0])
+    assert list(listed.mcmc_trace.posterior.coords["draw"].values) == [0, 1, 2]
+    assert list(listed.mcmc_trace.posterior.coords["chain"].values) == [0]
+
+    # Slice + None: sliced draws are subset, all chains kept
+    sliced = estimation.mcmc_draw(draw=slice(0, 5))
+    assert len(sliced.mcmc_trace.posterior.coords["draw"]) == 6
+    assert len(sliced.mcmc_trace.posterior.coords["chain"]) == len(
+        estimation.mcmc_trace.posterior.coords["chain"]
+    )

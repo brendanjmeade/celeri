@@ -718,16 +718,47 @@ class Estimation:
             rates[mesh_idx] = elastic[mesh_idx] / kinematic[mesh_idx]
         return rates
 
-    def mcmc_draw(self, draw: int, chain: int):
-        """Get the MCMC draw for a specific chain and draw number."""
+    def mcmc_draw(
+        self,
+        draw: int | slice | list[int] | None = None,
+        chain: int | slice | list[int] | None = None,
+    ):
+        """Get an estimation from a subset of MCMC draws/chains.
+
+        Pass an integer, slice, or list of indices to select a subset of draws
+        or chains.  ``None`` (the default) means "all draws/chains".  The
+        returned :class:`Estimation` has its ``state_vector`` built from the
+        mean of the selected samples and its ``mcmc_trace`` restricted to the
+        selected subset.
+
+        Args:
+            draw: Draw index, slice, or list of indices to select.  ``None``
+                keeps all draws.
+            chain: Chain index, slice, or list of indices to select.  ``None``
+                keeps all chains.
+        """
         if self.mcmc_trace is None:
             raise ValueError("MCMC trace is not available.")
 
         from celeri.solve_mcmc import _state_vector_from_draw
 
-        draw = self.mcmc_trace.sel(draw=draw, chain=chain)
-        state_vector = _state_vector_from_draw(self.model, self.operators, draw)
-        return replace(self, state_vector=state_vector)
+        selector: dict[str, Any] = {}
+        if draw is not None:
+            selector["draw"] = draw
+        if chain is not None:
+            selector["chain"] = chain
+
+        subsetted_trace = self.mcmc_trace.sel(**selector)
+
+        dims_to_mean = [
+            dim for dim in ("draw", "chain") if dim in subsetted_trace.posterior.dims
+        ]
+
+        trace_for_state = subsetted_trace.mean(dims_to_mean)
+        state_vector = _state_vector_from_draw(
+            self.model, self.operators, trace_for_state
+        )
+        return replace(self, state_vector=state_vector, mcmc_trace=subsetted_trace)
 
     def to_disk(self, output_dir: str | Path, *, save_operators: bool = True) -> None:
         """Save the estimation to disk.
