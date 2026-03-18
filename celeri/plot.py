@@ -683,7 +683,7 @@ def plot_matrix_abs_log(matrix):
 def plot_mesh(
     mesh: Mesh,
     fill_value: np.ndarray,
-    ax,
+    ax=None,
     *,
     vmin=None,
     vmax=None,
