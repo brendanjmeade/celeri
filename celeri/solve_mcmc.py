@@ -1741,7 +1741,13 @@ def solve_mcmc(
     if "los_velocity" in pymc_model.named_vars:
         ll_vars.append("los_velocity")
     logger.info(f"Computing pointwise log-likelihoods for {ll_vars}")
-    pm.compute_log_likelihood(trace, model=pymc_model, var_names=ll_vars)
+    backend_mode = model.config.mcmc_backend.upper()
+    pm.compute_log_likelihood(
+        trace,
+        model=pymc_model,
+        var_names=ll_vars,
+        compile_kwargs={"mode": backend_mode},
+    )
 
     state_vector = _state_vector_from_draw(
         model, operators, trace.mean(["chain", "draw"])

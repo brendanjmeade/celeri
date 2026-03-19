@@ -210,7 +210,7 @@ class Config(RelativePathSerializerMixin, BaseModel):
     mcmc_chains: int = 1
     """Number of parallel MCMC chains to run."""
 
-    mcmc_backend: Literal["numba", "jax"] = "numba"
+    mcmc_backend: Literal["numba", "jax"] = "jax"
     """Backend to use for MCMC computations."""
 
     mesh_default_eigenvector_algorithm: EigenvectorAlgorithm = "eigh"
