@@ -1083,6 +1083,7 @@ class Mesh:
             sys.stdout.close()
             sys.stdout = old_stdout
         points = cast(np.ndarray, meshobj.points)
+        points[:, 0] = np.where(points[:, 0] < 0, points[:, 0] + 360, points[:, 0])
         mesh["points"] = points
         verts = meshio.CellBlock("triangle", meshobj.get_cells_type("triangle")).data
         verts = cast(np.ndarray, verts)
