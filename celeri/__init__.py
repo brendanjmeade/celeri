@@ -74,6 +74,11 @@ from celeri.plot import (
     plot_vel_arrows_elements,
     plot_vels,
 )
+from celeri.plot_informed_meshes import (
+    mesh_posterior_stds,
+    plot_resolved_meshes,
+    resolved_mesh_indices,
+)
 from celeri.solve import (
     Estimation,
     assemble_and_solve_dense,
@@ -142,6 +147,7 @@ __all__ = [
     "interleave2",
     "interleave3",
     "lsqlin_qp",
+    "mesh_posterior_stds",
     "parse_args",
     "plot_coastlines",
     "plot_common_elements",
@@ -156,6 +162,7 @@ __all__ = [
     "plot_mesh",
     "plot_mesh_mode",
     "plot_residuals",
+    "plot_resolved_meshes",
     "plot_rotation_components",
     "plot_segment_displacements",
     "plot_segment_rates",
@@ -168,6 +175,7 @@ __all__ = [
     "process_segment",
     "process_station",
     "read_data",
+    "resolved_mesh_indices",
     "select_chains",
     "solve_mcmc",
     "solve_sqp",
