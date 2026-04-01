@@ -169,14 +169,9 @@ def plot_resolved_meshes(
     if True:
         plot_vel_arrows_elements(
             p,
-            est.model.station,
-            # estimation.model.station.east_vel,
-            # estimation.model.station.north_vel,
+            est.model.station.lon,
+            est.model.station.lat,
             est.station.model_east_vel_residual,
             est.station.model_north_vel_residual,
-            # estimation.station.model_east_vel_rotation,
-            # estimation.station.model_north_vel_rotation,
-            # estimation.station.model_east_vel,
-            # estimation.station.model_north_vel,
             arrow_scale=1,
         )
