@@ -35,7 +35,7 @@ def resolved_mesh_indices(
     std_cutoff: float = 0.1,
 ) -> pd.Index:
     stds = mesh_posterior_stds(estimation, kind=kind)
-    return stds.iloc[stds < std_cutoff].index
+    return stds[stds < std_cutoff].index
 
 
 def plot_resolved_meshes(
@@ -53,11 +53,11 @@ def plot_resolved_meshes(
     stds = mesh_posterior_stds(estimation, kind=kind)
     mesh_lat = [
         estimation.model.meshes[idx].lat_centroid.mean()
-        for idx in stds.iloc[stds < std_cutoff].index
+        for idx in stds[stds < std_cutoff].index
     ]
     mesh_lon = [
         estimation.model.meshes[idx].lon_centroid.mean()
-        for idx in stds.iloc[stds < std_cutoff].index
+        for idx in stds[stds < std_cutoff].index
     ]
 
     # Posterior draw, or `None` for the posterior mean
