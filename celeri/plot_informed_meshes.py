@@ -8,6 +8,7 @@ enough information to constrain their coupling.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Literal
 
 import matplotlib.figure
@@ -187,8 +188,9 @@ def plot_resolved_meshes(
             plt.annotate(str(idx), xy=(lons_360[i], mesh_lats[i]), zorder=2000)
 
     if plot_residuals:
+        p_arrows = _position_arrow_key(p, lon_range, lat_range)
         plot_vel_arrows_elements(
-            p,
+            p_arrows,
             est.model.station.lon,
             est.model.station.lat,
             est.station.model_east_vel_residual,
@@ -197,6 +199,29 @@ def plot_resolved_meshes(
         )
 
     return fig
+
+
+def _position_arrow_key(
+    p: PlotParams,
+    lon_range: tuple[float, float],
+    lat_range: tuple[float, float],
+) -> PlotParams:
+    """Return a copy of *p* with the arrow key positioned in the lower-right."""
+    lon_span = lon_range[1] - lon_range[0]
+    lat_span = lat_range[1] - lat_range[0]
+    return replace(
+        p,
+        key_rectangle_anchor=np.array(
+            [
+                lon_range[1] - 0.35 * lon_span,
+                lat_range[0] + 0.01 * lat_span,
+            ]
+        ),
+        key_rectangle_width=0.32 * lon_span,
+        key_rectangle_height=0.12 * lat_span,
+        key_arrow_lon=lon_range[1] - 0.19 * lon_span,
+        key_arrow_lat=lat_range[0] + 0.05 * lat_span,
+    )
 
 
 def _plot_strike_slip_rates(
