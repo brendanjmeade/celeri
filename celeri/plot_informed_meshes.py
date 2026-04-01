@@ -89,7 +89,7 @@ def plot_resolved_meshes(
                     [est.model.segment.lat1[i], est.model.segment.lat2[i]],
                     "-",
                     color="tab:orange",
-                    linewidth=slip_rate_width_scale * slip,
+                    linewidth=slip_rate_width_scale * abs(slip),
                     # linewidth=slip_rate_width_scale * grad.values[i],
                 )
             else:
@@ -99,7 +99,7 @@ def plot_resolved_meshes(
                     "-",
                     color="tab:blue",
                     # linewidth=slip_rate_width_scale * grad.values[i],
-                    linewidth=slip_rate_width_scale * slip,
+                    linewidth=slip_rate_width_scale * abs(slip),
                 )
 
         # Legend
