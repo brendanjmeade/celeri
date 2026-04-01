@@ -45,8 +45,6 @@ def plot_resolved_meshes(
     std_cutoff: float = 0.1,
     draw: int | None = None,
 ) -> None:
-    mesh = estimation.model.meshes[0]  # noqa: F841
-
     low_std_mesh_idxs = resolved_mesh_indices(
         estimation, kind=kind, std_cutoff=std_cutoff
     )
@@ -77,80 +75,52 @@ def plot_resolved_meshes(
         p.lon_range[0], p.lat_range[0], p.lon_range[1], p.lat_range[1]
     )
 
-    if True:
-        slip_rate_width_scale = 0.25
-        # slip_rate_width_scale = 300
-        for i in range(len(est.model.segment)):
-            slip = est.strike_slip_rates[i]
-            if slip < 0:
-                # if grad.values[i] > 0:
-                plt.plot(
-                    [est.model.segment.lon1[i], est.model.segment.lon2[i]],
-                    [est.model.segment.lat1[i], est.model.segment.lat2[i]],
-                    "-",
-                    color="tab:orange",
-                    linewidth=slip_rate_width_scale * abs(slip),
-                    # linewidth=slip_rate_width_scale * grad.values[i],
-                )
-            else:
-                plt.plot(
-                    [est.model.segment.lon1[i], est.model.segment.lon2[i]],
-                    [est.model.segment.lat1[i], est.model.segment.lat2[i]],
-                    "-",
-                    color="tab:blue",
-                    # linewidth=slip_rate_width_scale * grad.values[i],
-                    linewidth=slip_rate_width_scale * abs(slip),
-                )
+    slip_rate_width_scale = 0.25
+    for i in range(len(est.model.segment)):
+        slip = est.strike_slip_rates[i]
+        if slip < 0:
+            plt.plot(
+                [est.model.segment.lon1[i], est.model.segment.lon2[i]],
+                [est.model.segment.lat1[i], est.model.segment.lat2[i]],
+                "-",
+                color="tab:orange",
+                linewidth=slip_rate_width_scale * abs(slip),
+            )
+        else:
+            plt.plot(
+                [est.model.segment.lon1[i], est.model.segment.lon2[i]],
+                [est.model.segment.lat1[i], est.model.segment.lat2[i]],
+                "-",
+                color="tab:blue",
+                linewidth=slip_rate_width_scale * abs(slip),
+            )
 
-        # Legend
-        blue_segments = mlines.Line2D(
-            [],
-            [],
-            color="tab:orange",
-            marker="s",
-            linestyle="None",
-            markersize=10,
-            label="right-lateral (10 mm/yr)",
-        )
-        red_segments = mlines.Line2D(
-            [],
-            [],
-            color="tab:blue",
-            marker="s",
-            linestyle="None",
-            markersize=10,
-            label="left-lateral (10 mm/yr)",
-        )
-        plt.legend(
-            handles=[blue_segments, red_segments],
-            loc="lower left",
-            fontsize=p.fontsize,
-            framealpha=1.0,
-            edgecolor="k",
-        ).get_frame().set_boxstyle("Square")  # type: ignore[union-attr]
-
-    if False:
-        plt.scatter(
-            est.model.station.lon,
-            est.model.station.lat,
-            c=0,  # was: grad.values.sum(1)
-            cmap="seismic",
-        )
-        plt.clim(-0.1, 0.1)
-
-    plt.xlim(236, 246)
-    plt.ylim(31.5, 41)
-
-    # plt.xlim(230, 250)
-    # plt.ylim(31, 45)
-
-    # plt.xlim(230, 250)
-    # plt.ylim(31, 45)
-    # plt.xlim(240, 243)
-    # plt.ylim(33, 36)
-
-    # plt.ylim(31, 40)
-    # plt.xlim(237, 247)
+    # Legend
+    blue_segments = mlines.Line2D(
+        [],
+        [],
+        color="tab:orange",
+        marker="s",
+        linestyle="None",
+        markersize=10,
+        label="right-lateral (10 mm/yr)",
+    )
+    red_segments = mlines.Line2D(
+        [],
+        [],
+        color="tab:blue",
+        marker="s",
+        linestyle="None",
+        markersize=10,
+        label="left-lateral (10 mm/yr)",
+    )
+    plt.legend(
+        handles=[blue_segments, red_segments],
+        loc="lower left",
+        fontsize=p.fontsize,
+        framealpha=1.0,
+        edgecolor="k",
+    ).get_frame().set_boxstyle("Square")  # type: ignore[union-attr]
 
     plt.xlim(242, 246)
     plt.ylim(31.5, 35)
@@ -166,12 +136,11 @@ def plot_resolved_meshes(
     for i, idx in enumerate(low_std_mesh_idxs):
         plt.annotate(f"{idx}", xy=(mesh_lon[i] % 360, mesh_lat[i]), zorder=2000)
 
-    if True:
-        plot_vel_arrows_elements(
-            p,
-            est.model.station.lon,
-            est.model.station.lat,
-            est.station.model_east_vel_residual,
-            est.station.model_north_vel_residual,
-            arrow_scale=1,
-        )
+    plot_vel_arrows_elements(
+        p,
+        est.model.station.lon,
+        est.model.station.lat,
+        est.station.model_east_vel_residual,
+        est.station.model_north_vel_residual,
+        arrow_scale=1,
+    )
