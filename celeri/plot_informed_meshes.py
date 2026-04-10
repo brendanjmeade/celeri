@@ -213,8 +213,8 @@ def plot_resolved_meshes(
             mesh_lats,
             marker="D",
             zorder=1000,
-            color="red",
-            s=100,
+            color="green",
+            s=300,
             label="Resolved meshes",
         )
         for i, idx in enumerate(resolved_idxs):
