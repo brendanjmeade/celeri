@@ -34,14 +34,16 @@ from celeri.solve import Estimation
 def mesh_posterior_stds(
     estimation: Estimation,
     kind: Literal["ss", "ds"],
+    *,
+    reduce: Literal["min", "median", "max"] = "min",
 ) -> pd.Series:
     """Minimum posterior std of each mesh's coupling fraction.
 
     For each mesh that has a ``coupling_{mesh_idx}_{kind}`` variable in the
     MCMC posterior, computes the standard deviation of the dimensionless
     coupling fraction across chains and draws, then takes the **minimum**
-    across triangular elements.  A low value indicates that at least one
-    element on the mesh is well-constrained by the data.
+    across triangular elements.  A low value means the data can resolve at
+    least part of that mesh's coupling field.
 
     Meshes parameterized with elastic slip rates (mm/yr) rather than coupling
     fractions do not have a ``coupling_*`` posterior variable and are silently
@@ -53,6 +55,9 @@ def mesh_posterior_stds(
         A solved estimation with an MCMC trace.
     kind
         Slip direction: ``"ss"`` (strike-slip) or ``"ds"`` (dip-slip).
+    reduce
+        Element-wise aggregation: ``"min"`` (default), ``"median"``, or
+        ``"max"``.
 
     Returns
     -------
@@ -67,12 +72,8 @@ def mesh_posterior_stds(
     for mesh_idx in range(len(estimation.model.meshes)):
         name = f"coupling_{mesh_idx}_{kind}"
         if name in estimation.mcmc_trace.posterior:
-            stds[mesh_idx] = float(
-                estimation.mcmc_trace.posterior[name]
-                .std(["chain", "draw"])
-                .min()
-                .values
-            )
+            element_stds = estimation.mcmc_trace.posterior[name].std(["chain", "draw"])
+            stds[mesh_idx] = float(getattr(element_stds, reduce)().values)
 
     return pd.Series(stds, dtype=float).sort_values()
 
@@ -81,8 +82,10 @@ def resolved_mesh_indices(
     estimation: Estimation,
     kind: Literal["ss", "ds"],
     std_cutoff: float,
+    *,
+    reduce: Literal["min", "median", "max"] = "min",
 ) -> list[int]:
-    """Return indices of meshes whose minimum element-wise posterior std is below the cutoff.
+    """Return indices of meshes whose posterior std is below the cutoff.
 
     See :func:`mesh_posterior_stds` for details on what is measured and which
     meshes are included.
@@ -96,13 +99,15 @@ def resolved_mesh_indices(
     std_cutoff
         Maximum posterior standard deviation (dimensionless coupling fraction)
         to consider a mesh "resolved".
+    reduce
+        Passed to :func:`mesh_posterior_stds`.
 
     Returns
     -------
     list[int]
         Mesh indices (into ``estimation.model.meshes``) that are resolved.
     """
-    stds = mesh_posterior_stds(estimation, kind=kind)
+    stds = mesh_posterior_stds(estimation, kind=kind, reduce=reduce)
     return list(stds[stds < std_cutoff].index)
 
 
@@ -112,6 +117,7 @@ def plot_resolved_meshes(
     *,
     kind: Literal["ss", "ds"],
     std_cutoff: float,
+    reduce: Literal["min", "median", "max"] = "min",
     draw: int | None = None,
     chain: int | None = None,
     lon_range: tuple[float, float] | None = None,
@@ -144,6 +150,8 @@ def plot_resolved_meshes(
     std_cutoff
         Maximum posterior std (dimensionless coupling fraction) to consider a
         mesh "resolved".
+    reduce
+        Passed to :func:`mesh_posterior_stds`.
     draw
         If given, use this specific MCMC draw; otherwise use the posterior
         mean.
@@ -175,7 +183,9 @@ def plot_resolved_meshes(
         estimation.mcmc_draw(draw=draw, chain=chain) if draw is not None else estimation
     )
 
-    resolved_idxs = resolved_mesh_indices(estimation, kind=kind, std_cutoff=std_cutoff)
+    resolved_idxs = resolved_mesh_indices(
+        estimation, kind=kind, std_cutoff=std_cutoff, reduce=reduce
+    )
     meshes = estimation.model.meshes
     mesh_lats = [meshes[idx].lat_centroid.mean() for idx in resolved_idxs]
     mesh_lons = [meshes[idx].lon_centroid.mean() for idx in resolved_idxs]
