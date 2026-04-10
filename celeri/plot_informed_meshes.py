@@ -221,7 +221,7 @@ def plot_resolved_meshes(
             plt.annotate(str(idx), xy=(lons_360[i], mesh_lats[i]), zorder=2000)
 
     if plot_residuals:
-        p_arrows = _position_arrow_key(plot_params, lon_range, lat_range)
+        p_arrows = _residual_arrow_params(plot_params, est, lon_range, lat_range)
         plot_vel_arrows_elements(
             p_arrows,
             est.model.station.lon,
@@ -234,16 +234,26 @@ def plot_resolved_meshes(
     return fig
 
 
-def _position_arrow_key(
+def _residual_arrow_params(
     p: PlotParams,
+    est: Estimation,
     lon_range: tuple[float, float],
     lat_range: tuple[float, float],
 ) -> PlotParams:
-    """Return a copy of *p* with the arrow key positioned in the lower-right."""
+    """Return a copy of *p* with arrow key scaled to residual velocities."""
+    east_res = est.station.model_east_vel_residual
+    north_res = est.station.model_north_vel_residual
+    max_residual = float(np.max(np.sqrt(east_res**2 + north_res**2)))
+    key_magnitude = max(1, round(0.6 * max_residual))
+
     lon_span = lon_range[1] - lon_range[0]
     lat_span = lat_range[1] - lat_range[0]
     return replace(
         p,
+        key_arrow_magnitude=key_magnitude,
+        key_arrow_text=f"{key_magnitude:g} mm/yr",
+        arrow_magnitude_max=0.35 * key_magnitude,
+        arrow_scale_default=key_magnitude,
         key_rectangle_anchor=np.array(
             [
                 lon_range[1] - 0.35 * lon_span,
