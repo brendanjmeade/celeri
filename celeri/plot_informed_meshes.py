@@ -80,7 +80,7 @@ def mesh_posterior_stds(
 def resolved_mesh_indices(
     estimation: Estimation,
     kind: Literal["ss", "ds"],
-    std_cutoff: float = 0.1,
+    std_cutoff: float,
 ) -> list[int]:
     """Return indices of meshes whose minimum element-wise posterior std is below the cutoff.
 
@@ -111,7 +111,7 @@ def plot_resolved_meshes(
     p: PlotParams,
     *,
     kind: Literal["ss", "ds"],
-    std_cutoff: float = 0.1,
+    std_cutoff: float,
     draw: int | None = None,
     chain: int = 0,
     lon_range: tuple[float, float] | None = None,
