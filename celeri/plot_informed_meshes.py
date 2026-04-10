@@ -108,7 +108,7 @@ def resolved_mesh_indices(
 
 def plot_resolved_meshes(
     estimation: Estimation,
-    p: PlotParams,
+    plot_params: PlotParams,
     *,
     kind: Literal["ss", "ds"],
     std_cutoff: float,
@@ -137,7 +137,7 @@ def plot_resolved_meshes(
     ----------
     estimation
         A solved estimation with an MCMC trace.
-    p
+    plot_params
         Plotting parameters (``PlotParams`` instance).
     kind
         Slip direction: ``"ss"`` (strike-slip) or ``"ds"`` (dip-slip).
@@ -151,9 +151,11 @@ def plot_resolved_meshes(
         Chain index when selecting a specific MCMC draw.  ``None`` (the
         default) uses all chains.
     lon_range
-        Override for the longitude plot range.  Falls back to ``p.lon_range``.
+        Override for the longitude plot range.  Falls back to
+        ``plot_params.lon_range``.
     lat_range
-        Override for the latitude plot range.  Falls back to ``p.lat_range``.
+        Override for the latitude plot range.  Falls back to
+        ``plot_params.lat_range``.
     slip_rate_width_scale
         Line width scaling factor for segment slip rates.
     arrow_scale
@@ -163,7 +165,7 @@ def plot_resolved_meshes(
     plot_residuals
         Whether to plot station velocity residual arrows.
     figsize
-        Figure size override; defaults to ``p.figsize_vectors``.
+        Figure size override; defaults to ``plot_params.figsize_vectors``.
 
     Returns
     -------
@@ -178,18 +180,18 @@ def plot_resolved_meshes(
     mesh_lats = [meshes[idx].lat_centroid.mean() for idx in resolved_idxs]
     mesh_lons = [meshes[idx].lon_centroid.mean() for idx in resolved_idxs]
 
-    lon_range = lon_range or p.lon_range
-    lat_range = lat_range or p.lat_range
-    figsize = figsize or p.figsize_vectors
+    lon_range = lon_range or plot_params.lon_range
+    lat_range = lat_range or plot_params.lat_range
+    figsize = figsize or plot_params.figsize_vectors
 
     fig = plt.figure(figsize=figsize)
 
-    plot_common_elements(p, est.model.segment, lon_range, lat_range)
+    plot_common_elements(plot_params, est.model.segment, lon_range, lat_range)
     plot_land(lon_range[0], lat_range[0], lon_range[1], lat_range[1])
     plot_coastlines(lon_range[0], lat_range[0], lon_range[1], lat_range[1])
 
     if plot_slip_rates:
-        _plot_strike_slip_rates(est, slip_rate_width_scale, p.fontsize)
+        _plot_strike_slip_rates(est, slip_rate_width_scale, plot_params.fontsize)
 
     plt.xlim(*lon_range)
     plt.ylim(*lat_range)
@@ -209,7 +211,7 @@ def plot_resolved_meshes(
             plt.annotate(str(idx), xy=(lons_360[i], mesh_lats[i]), zorder=2000)
 
     if plot_residuals:
-        p_arrows = _position_arrow_key(p, lon_range, lat_range)
+        p_arrows = _position_arrow_key(plot_params, lon_range, lat_range)
         plot_vel_arrows_elements(
             p_arrows,
             est.model.station.lon,
