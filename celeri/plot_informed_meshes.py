@@ -1,9 +1,13 @@
 """Identify and plot meshes that cross a posterior resolvability threshold.
 
 Given an MCMC estimation, computes the minimum posterior standard deviation
-across triangular elements for each mesh's coupling field. Meshes with
-posterior std below a cutoff are considered "resolved" — the data contain
-enough information to constrain their coupling.
+across triangular elements for each mesh's coupling field (a dimensionless
+fraction, typically bounded to [0, 1]).  Meshes whose minimum element-wise
+std falls below a cutoff are considered "resolved" — the data contain enough
+information to constrain at least part of their coupling.
+
+Only meshes with a ``coupling_{mesh_idx}_{ss|ds}`` variable in the MCMC
+posterior are considered; elastic-only meshes are silently skipped.
 """
 
 from __future__ import annotations
@@ -28,24 +32,30 @@ def mesh_posterior_stds(
     estimation: Estimation,
     kind: CouplingKind = "ss",
 ) -> pd.Series:
-    """Minimum posterior std of each mesh's coupling field.
+    """Minimum posterior std of each mesh's coupling fraction.
 
-    For each mesh that has a coupling posterior in the MCMC trace, computes the
-    standard deviation across chains and draws, then takes the minimum across
-    triangular elements. A low value indicates the mesh is well-resolved.
+    For each mesh that has a ``coupling_{mesh_idx}_{kind}`` variable in the
+    MCMC posterior, computes the standard deviation of the dimensionless
+    coupling fraction across chains and draws, then takes the **minimum**
+    across triangular elements.  A low value indicates that at least one
+    element on the mesh is well-constrained by the data.
+
+    Meshes parameterized with elastic slip rates (mm/yr) rather than coupling
+    fractions do not have a ``coupling_*`` posterior variable and are silently
+    skipped.
 
     Parameters
     ----------
     estimation
         A solved estimation with an MCMC trace.
     kind
-        Coupling component: ``"ss"`` (strike-slip) or ``"ds"`` (dip-slip).
+        Slip direction: ``"ss"`` (strike-slip) or ``"ds"`` (dip-slip).
 
     Returns
     -------
     pd.Series
-        Indexed by mesh index, values are minimum posterior std, sorted
-        ascending.
+        Indexed by mesh index, values are minimum posterior std of the
+        dimensionless coupling fraction, sorted ascending.
     """
     if estimation.mcmc_trace is None:
         raise ValueError("Estimation has no MCMC trace.")
@@ -69,16 +79,20 @@ def resolved_mesh_indices(
     kind: CouplingKind = "ss",
     std_cutoff: float = 0.1,
 ) -> list[int]:
-    """Return indices of meshes whose posterior std is below the cutoff.
+    """Return indices of meshes whose minimum element-wise posterior std is below the cutoff.
+
+    See :func:`mesh_posterior_stds` for details on what is measured and which
+    meshes are included.
 
     Parameters
     ----------
     estimation
         A solved estimation with an MCMC trace.
     kind
-        Coupling component: ``"ss"`` (strike-slip) or ``"ds"`` (dip-slip).
+        Slip direction: ``"ss"`` (strike-slip) or ``"ds"`` (dip-slip).
     std_cutoff
-        Maximum posterior standard deviation to consider a mesh "resolved".
+        Maximum posterior standard deviation (dimensionless coupling fraction)
+        to consider a mesh "resolved".
 
     Returns
     -------
@@ -114,6 +128,8 @@ def plot_resolved_meshes(
     - Diamond markers at the centroids of resolved meshes
     - Velocity residual arrows (optional)
 
+    See :func:`mesh_posterior_stds` for details on the resolvability criterion.
+
     Parameters
     ----------
     estimation
@@ -121,9 +137,10 @@ def plot_resolved_meshes(
     p
         Plotting parameters (``PlotParams`` instance).
     kind
-        Coupling component: ``"ss"`` (strike-slip) or ``"ds"`` (dip-slip).
+        Slip direction: ``"ss"`` (strike-slip) or ``"ds"`` (dip-slip).
     std_cutoff
-        Maximum posterior std to consider a mesh "resolved".
+        Maximum posterior std (dimensionless coupling fraction) to consider a
+        mesh "resolved".
     draw
         If given, use this specific MCMC draw; otherwise use the posterior
         mean.
