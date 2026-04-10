@@ -25,12 +25,10 @@ import celeri
 from celeri.plot import PlotParams, plot_common_elements, plot_vel_arrows_elements
 from celeri.solve import Estimation
 
-CouplingKind = Literal["ss", "ds"]
-
 
 def mesh_posterior_stds(
     estimation: Estimation,
-    kind: CouplingKind = "ss",
+    kind: Literal["ss", "ds"] = "ss",
 ) -> pd.Series:
     """Minimum posterior std of each mesh's coupling fraction.
 
@@ -76,7 +74,7 @@ def mesh_posterior_stds(
 
 def resolved_mesh_indices(
     estimation: Estimation,
-    kind: CouplingKind = "ss",
+    kind: Literal["ss", "ds"] = "ss",
     std_cutoff: float = 0.1,
 ) -> list[int]:
     """Return indices of meshes whose minimum element-wise posterior std is below the cutoff.
@@ -107,7 +105,7 @@ def plot_resolved_meshes(
     estimation: Estimation,
     p: PlotParams,
     *,
-    kind: CouplingKind = "ss",
+    kind: Literal["ss", "ds"] = "ss",
     std_cutoff: float = 0.1,
     draw: int | None = None,
     chain: int = 0,
