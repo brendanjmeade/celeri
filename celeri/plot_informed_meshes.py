@@ -113,7 +113,7 @@ def plot_resolved_meshes(
     kind: Literal["ss", "ds"],
     std_cutoff: float,
     draw: int | None = None,
-    chain: int = 0,
+    chain: int | None = None,
     lon_range: tuple[float, float] | None = None,
     lat_range: tuple[float, float] | None = None,
     slip_rate_width_scale: float = 0.25,
@@ -148,7 +148,8 @@ def plot_resolved_meshes(
         If given, use this specific MCMC draw; otherwise use the posterior
         mean.
     chain
-        Chain index when selecting a specific MCMC draw.
+        Chain index when selecting a specific MCMC draw.  ``None`` (the
+        default) uses all chains.
     lon_range
         Override for the longitude plot range.  Falls back to ``p.lon_range``.
     lat_range
