@@ -21,8 +21,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-import celeri
-from celeri.plot import PlotParams, plot_common_elements, plot_vel_arrows_elements
+from celeri.plot import (
+    PlotParams,
+    plot_coastlines,
+    plot_common_elements,
+    plot_land,
+    plot_vel_arrows_elements,
+)
 from celeri.solve import Estimation
 
 
@@ -179,8 +184,8 @@ def plot_resolved_meshes(
     fig = plt.figure(figsize=figsize)
 
     plot_common_elements(p, est.model.segment, lon_range, lat_range)
-    celeri.plot_land(lon_range[0], lat_range[0], lon_range[1], lat_range[1])
-    celeri.plot_coastlines(lon_range[0], lat_range[0], lon_range[1], lat_range[1])
+    plot_land(lon_range[0], lat_range[0], lon_range[1], lat_range[1])
+    plot_coastlines(lon_range[0], lat_range[0], lon_range[1], lat_range[1])
 
     if plot_slip_rates:
         _plot_strike_slip_rates(est, slip_rate_width_scale, p.fontsize)
