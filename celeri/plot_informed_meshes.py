@@ -301,4 +301,5 @@ def _plot_strike_slip_rates(
         fontsize=fontsize,
         framealpha=1.0,
         edgecolor="k",
-    ).get_frame().set_boxstyle("Square")  # type: ignore[union-attr]
+        fancybox=False,
+    )
