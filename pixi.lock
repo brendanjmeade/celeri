@@ -4909,7 +4909,7 @@ packages:
   timestamp: 1772019026855
 - pypi: ./
   name: celeri
-  version: 0.0.post1.dev1+g973f88f23
+  version: 0.0.4.post1.dev601+g50adfd924
   sha256: ba70ab40c643588ae311325e5558e8a73656a0576aa7f0245dd8778eb0a7b80c
   requires_dist:
   - cartopy
@@ -10448,7 +10448,7 @@ packages:
   license: BSD-3-Clause
   license_family: BSD
   purls:
-  - pkg:pypi/kiwisolver?source=compressed-mapping
+  - pkg:pypi/kiwisolver?source=hash-mapping
   size: 76911
   timestamp: 1773067054809
 - conda: https://conda.anaconda.org/conda-forge/osx-64/kiwisolver-1.5.0-py313h224b87c_0.conda
@@ -10462,7 +10462,7 @@ packages:
   license: BSD-3-Clause
   license_family: BSD
   purls:
-  - pkg:pypi/kiwisolver?source=compressed-mapping
+  - pkg:pypi/kiwisolver?source=hash-mapping
   size: 70017
   timestamp: 1773067266534
 - conda: https://conda.anaconda.org/conda-forge/osx-arm64/kiwisolver-1.5.0-py313h2af2deb_0.conda
@@ -10492,7 +10492,7 @@ packages:
   license: BSD-3-Clause
   license_family: BSD
   purls:
-  - pkg:pypi/kiwisolver?source=compressed-mapping
+  - pkg:pypi/kiwisolver?source=hash-mapping
   size: 73548
   timestamp: 1773067061126
 - conda: https://conda.anaconda.org/conda-forge/linux-64/krb5-1.22.2-ha1258a1_0.conda
