@@ -65,6 +65,7 @@ pyarrow-stubs = ">=20.0.0.20251215"
 types-tqdm = ">=4.67.0.20250809"
 python = "3.13.*"
 zstandard = ">=0.25.0"
+kiwisolver = ">=1.5.0,<2"
 
 [target.linux-64.dependencies]
 libblas = { version = "*", build = "*_mkl" }
