@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -r \"coordinate\\\\|convention\\\\|0.*360\\\\|-180.*180\" /Users/meade/Desktop/celeri-org/celeri/celeri/*.py)",
+      "Bash(python3:*)",
+      "Bash(head -5 /Users/meade/Desktop/wna/data/*station*.csv)",
+      "Bash(ls /Users/meade/Desktop/wna/data/*station*)",
+      "Bash(find /Users/meade/Desktop/celeri-org/celeri/tests -name *.py -type f)",
+      "Bash(git stash:*)",
+      "Bash(git -C /Users/meade/Desktop/celeri-org/celeri status)",
+      "Bash(git -C /Users/meade/Desktop/celeri-org/celeri stash list)"
+    ]
+  }
+}
