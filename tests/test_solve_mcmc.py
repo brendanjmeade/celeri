@@ -129,6 +129,48 @@ class TestConstrainFieldProperties:
         assert_allclose(constrained, [large_negative], rtol=1e-3)
 
 
+class TestSigmoidSlope:
+    """Test that sigmoid_slope controls the two-sided sigmoid sharpness."""
+
+    @pytest.mark.parametrize("sigmoid_slope", [1.0, 2.0, 4.0, 8.0])
+    def test_slope_at_midpoint_equals_slope_over_four(self, sigmoid_slope):
+        """Derivative at the midpoint equals sigmoid_slope / 4 for two-bounded case."""
+        lower, upper = 0.0, 10.0
+        midpoint = (lower + upper) / 2
+        eps = 1e-6
+        values = np.array([midpoint - eps, midpoint + eps])
+        constrained = _eval_if_tensor(
+            _constrain_field(values, lower, upper, sigmoid_slope=sigmoid_slope)
+        )
+        slope = (constrained[1] - constrained[0]) / (2 * eps)
+        assert_allclose(slope, sigmoid_slope / 4, rtol=1e-4)
+
+    @pytest.mark.parametrize("sigmoid_slope", [0.5, 1.0, 4.0, 10.0])
+    def test_two_bounds_roundtrip_with_slope(self, sigmoid_slope):
+        """Roundtrip works for arbitrary sigmoid_slope."""
+        lower, upper = 0.0, 1.0
+        values = np.array([-3.0, -1.0, 0.0, 1.0, 3.0])
+        constrained = _eval_if_tensor(
+            _constrain_field(values, lower, upper, sigmoid_slope=sigmoid_slope)
+        )
+        assert np.all(constrained > lower)
+        assert np.all(constrained < upper)
+        unconstrained = _unconstrain_field(
+            constrained, lower, upper, sigmoid_slope=sigmoid_slope
+        )
+        assert_allclose(unconstrained, values, rtol=1e-6, atol=1e-12)
+
+    def test_default_slope_matches_unit_slope_behavior(self):
+        """Default sigmoid_slope=4.0 preserves the historical unit-slope behavior."""
+        lower, upper = 0.0, 1.0
+        values = np.array([-2.0, -0.5, 0.0, 0.5, 2.0])
+        explicit = _eval_if_tensor(
+            _constrain_field(values, lower, upper, sigmoid_slope=4.0)
+        )
+        default = _eval_if_tensor(_constrain_field(values, lower, upper))
+        assert_allclose(default, explicit)
+
+
 class TestUnconstrainFieldErrors:
     """Test error handling in _unconstrain_field."""
 

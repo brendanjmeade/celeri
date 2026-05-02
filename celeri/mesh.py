@@ -289,6 +289,20 @@ class MeshConfig(RelativePathSerializerMixin, BaseModel):
     UNITS: [mm/yr] for elastic constraints, [dimensionless] for coupling
     """
 
+    sigmoid_slope: float | None = None
+    """Slope factor for the two-sided sigmoid constraint transform.
+
+    When None, uses default from Config.mcmc_default_mesh_sigmoid_slope.
+    Controls how sharply the unconstrained latent field is squashed into the
+    bounded interval (e.g. coupling in [0, 1]). The derivative of the
+    constraining transform at the midpoint of the interval equals
+    ``sigmoid_slope / 4``. Smaller values widen the transition zone (more
+    intermediate values); larger values produce sharper, more step-like
+    transitions.
+
+    UNITS: [dimensionless]
+    """
+
     # When None, uses the default from the top-level Config
     # (propagated by Config.apply_mesh_defaults).
     gp_parameterization: Literal["centered", "non_centered"] | None = None

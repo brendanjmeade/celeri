@@ -348,6 +348,25 @@ class Config(RelativePathSerializerMixin, BaseModel):
     in the per-mesh configuration.
     """
 
+    mcmc_default_mesh_sigmoid_slope: float = 4.0
+    """Default slope factor for the two-sided sigmoid constraint transform.
+
+    Controls how sharply the unconstrained latent field is squashed into the
+    bounded interval ``[lower, upper]`` (e.g. coupling in [0, 1]). The
+    transform is ``sigmoid(slope * (x - midpoint) / scale) * scale + lower``,
+    so the derivative at the midpoint equals ``slope / 4``.
+
+    - ``4.0`` (default) gives unit slope at the midpoint, preserving the
+      historical behavior — modest excursions saturate near the bounds,
+      tending to produce near-binary coupling fields.
+    - Smaller values (e.g. ``1.0``) widen the transition zone in latent
+      space, allowing more intermediate constrained values.
+    - Larger values produce sharper, more step-like transitions.
+
+    Propagated to each mesh's ``sigmoid_slope`` unless overridden in the
+    per-mesh configuration.
+    """
+
     mcmc_default_mesh_top_elastic_constraint_sigma: float = 0.5
     """Default sigma for the artificial observed 0s on elastic velocities at
     the top boundary, used in MCMC when ``top_slip_rate_constraint == 1``.
@@ -572,6 +591,7 @@ class Config(RelativePathSerializerMixin, BaseModel):
             # Other MCMC parameters
             "gp_parameterization": self.mcmc_default_mesh_gp_parameterization,
             "softplus_lengthscale": self.mcmc_default_mesh_softplus_lengthscale,
+            "sigmoid_slope": self.mcmc_default_mesh_sigmoid_slope,
             # Boundary constraint sigmas
             "top_elastic_constraint_sigma": self.mcmc_default_mesh_top_elastic_constraint_sigma,
             "bottom_elastic_constraint_sigma": self.mcmc_default_mesh_bottom_elastic_constraint_sigma,
