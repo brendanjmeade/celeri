@@ -104,6 +104,7 @@ def _constrain_field(
     lower: float | None,
     upper: float | None,
     softplus_lengthscale: float | None = None,
+    sigmoid_slope: float = 4.0,
 ):
     """Optionally transform values to satisfy bounds, using sigmoid or softplus.
 
@@ -120,7 +121,8 @@ def _constrain_field(
     while large negative values satisfy output ≈ input.
 
     Two bounds: A sigmoid scaled to the range [lower, upper] is used.
-    The midpoint of the range maps to itself with unit slope (f'(midpoint) = 1).
+    The midpoint of the range maps to itself with slope ``sigmoid_slope / 4``
+    (so the default ``sigmoid_slope = 4.0`` gives unit slope at the midpoint).
 
     Parameters
     ----------
@@ -133,13 +135,22 @@ def _constrain_field(
     softplus_lengthscale : float | None
         Length scale for softplus operations when only one bound is present.
         Required when exactly one of lower/upper is set.
+    sigmoid_slope : float
+        Slope factor for the two-sided sigmoid transform. Larger values
+        produce sharper transitions; smaller values widen the transition
+        zone, allowing more intermediate constrained values. Defaults to
+        4.0, which gives unit slope at the midpoint (the historical
+        behavior). Only used when both bounds are set.
     """
     import pymc as pm
 
     if lower is not None and upper is not None:
         scale = upper - lower
         midpoint = (lower + upper) / 2
-        return pm.math.sigmoid(4 * (values - midpoint) / scale) * scale + lower  # type: ignore[attr-defined]
+        return (
+            pm.math.sigmoid(sigmoid_slope * (values - midpoint) / scale) * scale  # type: ignore[attr-defined]
+            + lower
+        )
 
     if lower is not None:
         if softplus_lengthscale is None:
@@ -197,6 +208,7 @@ def _unconstrain_field(
     lower: float | None,
     upper: float | None,
     softplus_lengthscale: float | None = None,
+    sigmoid_slope: float = 4.0,
 ) -> np.ndarray:
     """Inverse of _constrain_field: map constrained values to unconstrained space.
 
@@ -216,6 +228,10 @@ def _unconstrain_field(
     softplus_lengthscale : float | None
         Length scale for softplus operations when only one bound is present.
         Required when exactly one of lower/upper is set.
+    sigmoid_slope : float
+        Slope factor for the two-sided sigmoid transform. Must match the
+        value used in the corresponding ``_constrain_field`` call. Defaults
+        to 4.0. Only used when both bounds are set.
 
     Returns
     -------
@@ -227,10 +243,10 @@ def _unconstrain_field(
     if lower is not None and upper is not None:
         scale = upper - lower
         midpoint = (lower + upper) / 2
-        # y = sigmoid(4 * (x - midpoint) / scale) * scale + lower
-        # => x = midpoint + scale * logit((y - lower) / scale) / 4
+        # y = sigmoid(sigmoid_slope * (x - midpoint) / scale) * scale + lower
+        # => x = midpoint + scale * logit((y - lower) / scale) / sigmoid_slope
         normalized = (values - lower) / scale
-        return midpoint + scale * logit(normalized) / 4
+        return midpoint + scale * logit(normalized) / sigmoid_slope
 
     if lower is not None:
         if softplus_lengthscale is None:
@@ -264,6 +280,7 @@ def _get_unconstrained_mean(
     upper: float | None,
     softplus_lengthscale: float | None,
     field_name: str,
+    sigmoid_slope: float = 4.0,
 ) -> float:
     """Convert a prior mean to unconstrained space.
 
@@ -310,7 +327,7 @@ def _get_unconstrained_mean(
         )
 
     return _unconstrain_field(
-        np.array([mean]), lower, upper, softplus_lengthscale
+        np.array([mean]), lower, upper, softplus_lengthscale, sigmoid_slope
     ).item()
 
 
@@ -570,6 +587,10 @@ def _coupling_component(
     )
     n_eigs = variances.size
     softplus_lengthscale = model.meshes[mesh_idx].config.softplus_lengthscale
+    sigmoid_slope = model.meshes[mesh_idx].config.sigmoid_slope
+    assert sigmoid_slope is not None, (
+        "MeshConfig.sigmoid_slope must be set (propagated by Config.apply_mesh_defaults)"
+    )
 
     if model.meshes[mesh_idx].config.gp_parameterization == "non_centered":
         # Non-centered: sample white noise, then mollify via eigenvalue scaling
@@ -594,7 +615,7 @@ def _coupling_component(
     # Add mean offset in unconstrained space before constraining
     coupling_field = _operator_mult(eigenvectors, coefs) + mu_unconstrained
     coupling_field = _constrain_field(
-        coupling_field, lower, upper, softplus_lengthscale
+        coupling_field, lower, upper, softplus_lengthscale, sigmoid_slope
     )
     pm.Deterministic(f"coupling_{mesh_idx}_{kind_short}", coupling_field)
     elastic_tde = kinematic * coupling_field
@@ -681,6 +702,10 @@ def _elastic_component(
     )
     n_eigs = variances.size
     softplus_lengthscale = model.meshes[mesh_idx].config.softplus_lengthscale
+    sigmoid_slope = model.meshes[mesh_idx].config.sigmoid_slope
+    assert sigmoid_slope is not None, (
+        "MeshConfig.sigmoid_slope must be set (propagated by Config.apply_mesh_defaults)"
+    )
 
     if model.meshes[mesh_idx].config.gp_parameterization == "non_centered":
         # Non-centered: sample white noise, then mollify via eigenvalue scaling
@@ -706,6 +731,7 @@ def _elastic_component(
         lower,
         upper,
         softplus_lengthscale,
+        sigmoid_slope,
     )
     pm.Deterministic(f"elastic_{mesh_idx}_{kind_short}", elastic_tde)
 
@@ -823,6 +849,8 @@ def _mesh_component(
     assert config.coupling_mean is not None
     assert config.elastic_sigma is not None
     assert config.elastic_mean is not None
+    assert config.sigmoid_slope is not None
+    sigmoid_slope = config.sigmoid_slope
 
     for kind in kinds:
         kind_short = {"strike_slip": "ss", "dip_slip": "ds"}[kind]
@@ -847,6 +875,7 @@ def _mesh_component(
                 coupling_limit.upper,
                 config.softplus_lengthscale,
                 f"coupling_{kind_short} mesh {mesh_idx}",
+                sigmoid_slope=sigmoid_slope,
             )
             elastic_tde, station_vels, los_vels = _coupling_component(
                 model,
@@ -869,6 +898,7 @@ def _mesh_component(
                 rate_limit.upper,
                 config.softplus_lengthscale,
                 f"elastic_{kind_short} mesh {mesh_idx}",
+                sigmoid_slope=sigmoid_slope,
             )
             elastic_tde, station_vels, los_vels = _elastic_component(
                 model,
