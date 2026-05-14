@@ -16,6 +16,7 @@ CELERI_HATCH_VCS_RUNTIME_VERSION = "1"
 pixi-global-install-shim-hack = "python -m celeri.scripts.pixi_global_install_shim_hack"
 
 [dependencies]
+arviz = "<1.0.0"
 colorcet = ">=3.1.0"
 compilers = ">=1.9.0"
 cutde = ">=25.7.24"
