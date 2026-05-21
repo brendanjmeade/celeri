@@ -565,7 +565,7 @@ def _compute_mesh_edge_elements(mesh: dict):
     depth_bin_min = depth_bins[0:-1]
     depth_bin_max = depth_bins[1:]
     zero_idx = np.where(depth_count == 0)[0]
-    if len(zero_idx) > 1:
+    if len(zero_idx) > 0 & len(depth_count) > 1:
         if np.abs(depth_bin_max[zero_idx[0]] - depth_bin_min[zero_idx[-1] + 1]) > 10:
             tops[centroid_depths < depth_bins[zero_idx[0]]] = False
     # Assign in to meshes dict
@@ -593,7 +593,7 @@ def _compute_mesh_edge_elements(mesh: dict):
     depth_bin_min = depth_bins[0:-1]
     depth_bin_max = depth_bins[1:]
     zero_idx = np.where(depth_count == 0)[0]
-    if len(zero_idx) > 1:
+    if len(zero_idx) > 0 & len(depth_count) > 1:
         if abs(depth_bin_min[zero_idx[-1]] - depth_bin_max[zero_idx[0] - 1]) > 10:
             bots[centroid_depths > depth_bin_min[zero_idx[-1]]] = False
     # Assign in to meshes dict
