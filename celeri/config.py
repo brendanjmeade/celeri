@@ -636,6 +636,27 @@ def _get_output_path(base: Path) -> Path:
         )
 
 
+def load_mesh_params(
+    mesh_parameters_file_name: Path | str | None,
+    base_dir: Path,
+) -> list[MeshConfig]:
+    """Load the per-mesh parameter list from a mesh-parameters JSON file.
+
+    Relative paths are resolved against ``base_dir`` (the config-file directory
+    when called from ``get_config``, or the current working directory when
+    re-loading after a command-line override in ``process_args``). Returns an
+    empty list when ``mesh_parameters_file_name`` is None.
+
+    Note: the returned configs still have ``None`` for every field that inherits
+    from the top-level Config; those are filled in later by
+    ``Config.propagate_mesh_defaults`` (deferred until ``read_data`` so that CLI
+    overrides take effect first).
+    """
+    if mesh_parameters_file_name is None:
+        return []
+    return MeshConfig.from_file(base_dir / mesh_parameters_file_name)
+
+
 def get_config(file_name: Path | str) -> Config:
     """Read config from a JSON file and return a Config instance.
 
@@ -656,10 +677,7 @@ def get_config(file_name: Path | str) -> Config:
     config_data["output_path"] = _get_output_path(base_runs_folder)
 
     mesh_parameters_file_name = config_data.get("mesh_parameters_file_name", None)
-    if mesh_parameters_file_name is None:
-        mesh_params = []
-    else:
-        mesh_params = MeshConfig.from_file(file_path.parent / mesh_parameters_file_name)
+    mesh_params = load_mesh_params(mesh_parameters_file_name, file_path.parent)
 
     # Top-level defaults are propagated to mesh configs by Config.apply_mesh_defaults
     config_data["mesh_params"] = mesh_params

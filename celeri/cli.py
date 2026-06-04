@@ -1,8 +1,9 @@
 import argparse
+from pathlib import Path
 
 from loguru import logger
 
-from celeri.config import Config
+from celeri.config import Config, load_mesh_params
 
 
 def str2bool(v):
@@ -327,3 +328,16 @@ def process_args(config: Config, args: argparse.Namespace):
                     logger.warning(f"ORIGINAL: config.{key}: {original_val}")
                     setattr(config, key, args_val)
                     logger.warning(f"REPLACED: config.{key}: {args_val}")
+
+    # The per-mesh parameter list (config.mesh_params) is loaded eagerly in
+    # get_config from the original config file, so overriding only the path
+    # above would be silently ignored by build_model (issue #462). Re-load the
+    # list whenever --mesh_parameters_file_name is supplied. CLI paths are
+    # resolved relative to the cwd, matching how other --*_file_name overrides
+    # are consumed (e.g. station/segment/block files are read by path at build
+    # time). propagate_mesh_defaults still runs later in read_data, so inherited
+    # defaults are filled in from the (already overridden) top-level config.
+    mesh_params_path = getattr(args, "mesh_parameters_file_name", None)
+    if mesh_params_path is not None:
+        config.mesh_params = load_mesh_params(Path(mesh_params_path), Path.cwd())
+        logger.success(f"Read: {mesh_params_path}")
