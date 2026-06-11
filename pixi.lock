@@ -574,7 +574,6 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/46/65/70f86faca2a5226b03e4b1d325f177cab967723b967a3e730f97afedd5f1/jax_cuda12_plugin-0.8.3-cp313-cp313-manylinux_2_27_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/6b/c3/0e45ff4dce8401f6ea7c25d80d75738813a47f5ae2691e2478f2fd1e5e93/nvidia_nccl_cu12-2.30.4-py3-none-manylinux_2_18_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/95/f4/61e6996dd20481ee834f57a8e9dca28b1869366a135e0d42e2aa8493bdd4/nvidia_cufft_cu12-11.4.1.4-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
-      - pypi: https://files.pythonhosted.org/packages/9a/c9/010fa37a6b83e6fd6afb9434d9b71d454ad3d420d35205aeb333f0227e65/okada_wrapper-24.6.15.tar.gz
       - pypi: https://files.pythonhosted.org/packages/9e/da/36fa8307cc40889307fed415d70b67d35ec330ffce889a9c03cf8f616cfa/nvidia_nvshmem_cu12-3.6.5-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/a0/8f/2ede6b758b7524608472010f632bdd3370ea271d715d1d66044614b84cdc/nvidia_cudnn_cu12-9.22.0.52-py3-none-manylinux_2_27_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/a9/6d/5ff3e39112d4dafd77be7ea12ef4f29c3accb10f3b70ab1ce7d523be5ae7/tfp_nightly-0.26.0.dev20260521-py2.py3-none-any.whl
@@ -1098,7 +1097,6 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-64/zstd-1.5.7-h3eecb57_6.conda
       - pypi: .
       - pypi: https://files.pythonhosted.org/packages/3f/ee/8c483b9384f269a14f62fa9760d0021273d1786128273ee14962468d9114/scikit_learn_stubs-0.0.3-py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/9a/c9/010fa37a6b83e6fd6afb9434d9b71d454ad3d420d35205aeb333f0227e65/okada_wrapper-24.6.15.tar.gz
       - pypi: https://files.pythonhosted.org/packages/bc/a0/3c59bf2e80ea7abe90517003d74fca2798fd3a87729bc86f0a11cee63d97/types_shapely-2.1.0.20260518-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/f9/52/b8eea98dd5e9167ed9162a700cdb3040dfcf52e285bd33c548a6fb5f6a8c/h5py_stubs-0.1.2-py3-none-any.whl
       osx-arm64:
@@ -1609,7 +1607,6 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/1d/33/f1c6a276de27b7d7339a34749cc33fa87f077f921969c47185d34a887ae2/gast-0.7.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/3f/ee/8c483b9384f269a14f62fa9760d0021273d1786128273ee14962468d9114/scikit_learn_stubs-0.0.3-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/5c/6e/5087e0347188f6970aba1ffbd0018754d23c3f3461e9f21785f2f27a02c2/jax-0.10.1-py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/9a/c9/010fa37a6b83e6fd6afb9434d9b71d454ad3d420d35205aeb333f0227e65/okada_wrapper-24.6.15.tar.gz
       - pypi: https://files.pythonhosted.org/packages/a9/6d/5ff3e39112d4dafd77be7ea12ef4f29c3accb10f3b70ab1ce7d523be5ae7/tfp_nightly-0.26.0.dev20260521-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/bc/a0/3c59bf2e80ea7abe90517003d74fca2798fd3a87729bc86f0a11cee63d97/types_shapely-2.1.0.20260518-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/cf/76/3b637d4def229015a3035a7b44fac0dcf2536ae337540cdbffc651334d4e/jaxlib-0.10.1-cp313-cp313-macosx_11_0_arm64.whl
@@ -2101,7 +2098,6 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/win-64/zstd-1.5.7-h534d264_6.conda
       - pypi: .
       - pypi: https://files.pythonhosted.org/packages/3f/ee/8c483b9384f269a14f62fa9760d0021273d1786128273ee14962468d9114/scikit_learn_stubs-0.0.3-py3-none-any.whl
-      - pypi: https://files.pythonhosted.org/packages/9a/c9/010fa37a6b83e6fd6afb9434d9b71d454ad3d420d35205aeb333f0227e65/okada_wrapper-24.6.15.tar.gz
       - pypi: https://files.pythonhosted.org/packages/bc/a0/3c59bf2e80ea7abe90517003d74fca2798fd3a87729bc86f0a11cee63d97/types_shapely-2.1.0.20260518-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/f9/52/b8eea98dd5e9167ed9162a700cdb3040dfcf52e285bd33c548a6fb5f6a8c/h5py_stubs-0.1.2-py3-none-any.whl
 packages:
@@ -23983,13 +23979,6 @@ packages:
   requires_dist:
   - nvidia-nvjitlink-cu12
   requires_python: '>=3'
-- pypi: https://files.pythonhosted.org/packages/9a/c9/010fa37a6b83e6fd6afb9434d9b71d454ad3d420d35205aeb333f0227e65/okada_wrapper-24.6.15.tar.gz
-  name: okada-wrapper
-  version: 24.6.15
-  sha256: c19bacfc4336c59d94e3ece3ed378fe2ae3496a165412c47e08164fe8b66f307
-  requires_dist:
-  - numpy
-  requires_python: '>=3.8'
 - pypi: https://files.pythonhosted.org/packages/9e/da/36fa8307cc40889307fed415d70b67d35ec330ffce889a9c03cf8f616cfa/nvidia_nvshmem_cu12-3.6.5-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
   name: nvidia-nvshmem-cu12
   version: 3.6.5

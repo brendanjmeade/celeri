@@ -2,7 +2,11 @@ import warnings
 
 import cutde.halfspace as cutde_halfspace
 import numpy as np
-import okada_wrapper
+import pytest
+
+okada_wrapper = pytest.importorskip(
+    "okada_wrapper", reason="optional okada_wrapper package is not installed"
+)
 
 
 def test_okada_equals_cutde():

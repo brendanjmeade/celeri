@@ -259,7 +259,14 @@ def dc3dwrapper_cutde_disp(
         return np.zeros(3) if originally_1d else np.zeros((0, 3))
 
     if triangulation == "okada":
-        from okada_wrapper import dc3dwrapper
+        try:
+            from okada_wrapper import dc3dwrapper
+        except ImportError as e:
+            raise ImportError(
+                "triangulation='okada' requires the optional okada_wrapper "
+                "package, which is no longer installed by default. "
+                "Install it with: pip install okada-wrapper"
+            ) from e
 
         raw_result = np.array(
             [
