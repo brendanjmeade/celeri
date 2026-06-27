@@ -111,14 +111,19 @@ jobs:
           /tmp/sdist-env/bin/python -m pip install --no-deps dist/*.tar.gz
 
   functional-test:
-    # Install the built wheel with its full dependency set and run a couple of
-    # quick checks beyond `--help`. This verifies the declared dependencies are
-    # actually installable and sufficient: importing celeri alone exercises
-    # cartopy, pymc, numba, pyproj, shapely and the rest of the stack, so a
-    # missing or under-constrained runtime dependency fails here.
+    # Install the built wheel with its full dependency set and run a real, small
+    # end-to-end MCMC solve. This proves the declared dependencies are installable
+    # AND sufficient: build_model + solve_mcmc exercise cutde, pymc, pytensor,
+    # nutpie + jax (the default mcmc_backend), numba, h5py, meshio, scipy and the
+    # rest of the stack — far more than an import or `--help` would.
     needs: build-package
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        # The example model data lives in data/, which is intentionally excluded
+        # from the sdist/wheel, so the checkout is what lets us drive a real solve.
+        with:
+          persist-credentials: false
       - name: Download Distribution Artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -129,39 +134,30 @@ jobs:
         with:
           python-version: "3.13"
       - name: Install built wheel with full dependencies
-        # No repository checkout in this job, so the working directory has no
-        # celeri source to shadow the installed package on import.
         run: python -m pip install dist/*.whl
-      - name: Functional smoke test
+      - name: Run a small end-to-end MCMC solve
+        # Run from a scratch dir so the checked-out celeri/ source can't shadow the
+        # installed wheel on import. The config is passed as an absolute path, and
+        # celeri resolves the model's data files relative to the config location.
+        # Building the operators for this model is the bulk of the wall time
+        # (~5-6 min, uncached); the sampling itself is a tiny smoke run.
+        working-directory: ${{ runner.temp }}
         run: |
-          # Importing celeri pulls in the heavy scientific stack, so a missing or
-          # insufficient runtime dependency surfaces here.
-          python -c "import celeri; from importlib.metadata import version; print('celeri', version('celeri'))"
-          # Exercise a real code path end to end via a console script: build a
-          # MeshConfig (pydantic) and write a template file.
-          celeri-create-mesh-params-template "${RUNNER_TEMP}/mesh_params.json"
           python - <<'PY'
-          import json
           import os
 
-          import numpy as np
+          import celeri
 
-          from celeri.celeri_util import cart2sph, sph2cart
-
-          # Spherical <-> cartesian round trip. Note the unit mismatch: sph2cart
-          # takes degrees, cart2sph returns radians.
-          lon, lat, radius = 30.0, 45.0, 6371.0
-          x, y, z = sph2cart(lon, lat, radius)
-          azimuth, elevation, r = cart2sph(x, y, z)
-          assert np.allclose(
-              [np.rad2deg(azimuth), np.rad2deg(elevation), r], [lon, lat, radius]
-          ), (azimuth, elevation, r)
-
-          # The console script above produced a valid, non-trivial template.
-          with open(os.path.join(os.environ["RUNNER_TEMP"], "mesh_params.json")) as f:
-              data = json.load(f)
-          assert isinstance(data, list) and len(data) == 1 and data[0].get("file_name"), data
-          print("functional checks passed")
+          config_path = os.path.join(
+              os.environ["GITHUB_WORKSPACE"], "data", "config", "wna_config.json"
+          )
+          model = celeri.build_model(celeri.get_config(config_path))
+          estimation = celeri.solve_mcmc(
+              model, sample_kwargs={"tune": 10, "draws": 10, "chains": 2}
+          )
+          posterior = estimation.mcmc_trace.posterior
+          assert len(posterior.coords["draw"]) == 10, posterior.coords["draw"]
+          print("MCMC solve OK; posterior sizes:", dict(posterior.sizes))
           PY
 
   publish-package:
