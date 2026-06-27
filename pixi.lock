@@ -27117,6 +27117,7 @@ packages:
 - pypi: .
   name: celeri
   requires_dist:
+  - arviz
   - cartopy
   - colorcet
   - cutde>=25.7.24
@@ -27126,6 +27127,7 @@ packages:
   - h5py
   - ipykernel
   - ipython
+  - jax ; (platform_machine == 'arm64' and sys_platform == 'darwin') or sys_platform == 'linux'
   - loguru
   - matplotlib
   - meshio
@@ -27138,7 +27140,9 @@ packages:
   - pydantic
   - pymc
   - pyproj
+  - pytensor
   - pytest
+  - rich
   - scikit-learn
   - scipy
   - shapely
