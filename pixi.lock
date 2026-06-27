@@ -27113,7 +27113,7 @@ packages:
 - pypi: .
   name: celeri
   requires_dist:
-  - arviz
+  - arviz<1.0.0
   - cartopy
   - colorcet
   - cutde>=25.7.24
