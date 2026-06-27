@@ -12,6 +12,7 @@ authors = [
 ]
 requires-python = ">=3.13"
 dependencies = [
+    "arviz",
     "cartopy",
     "colorcet",
     "cutde>=25.7.24",
@@ -21,6 +22,7 @@ dependencies = [
     "h5py",
     "ipykernel",
     "ipython",
+    "jax; platform_system == 'Linux' or (platform_system == 'Darwin' and platform_machine == 'arm64')",
     "loguru",
     "matplotlib",
     "meshio",
@@ -33,7 +35,9 @@ dependencies = [
     "pydantic",
     "pymc",
     "pyproj",
+    "pytensor",
     "pytest",
+    "rich",
     "scikit-learn",
     "scipy",
     "shapely",
