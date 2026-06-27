@@ -12,7 +12,10 @@ authors = [
 ]
 requires-python = ">=3.13"
 dependencies = [
-    "arviz",
+    # celeri is not yet compatible with the ArviZ 1.x refactor; match the
+    # ceiling already set for the conda env in pixi.toml so wheel installs
+    # (pip) resolve the same supported major as the tested environment.
+    "arviz<1.0.0",
     "cartopy",
     "colorcet",
     "cutde>=25.7.24",
