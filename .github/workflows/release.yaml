@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-  # Also run (build + smoke-test, but not publish) when packaging metadata that can
+  # Also run (build + verify, but not publish) when packaging metadata that can
   # break installation changes. This catches e.g. a malformed entry point before it
   # is tagged and published to PyPI.
   pull_request:
@@ -34,94 +34,21 @@ jobs:
           # the id-token needed, and we never publish from a PR anyway.
           attest-build-provenance-github: ${{ github.event_name != 'pull_request' }}
 
-  smoke-test-package:
-    # Gate publishing on actually installing the built artifacts. build-and-inspect
-    # only *builds and inspects* the package; it never installs it, so a wheel with
-    # a malformed entry point (which pip rejects only at install time) can otherwise
-    # sail through to PyPI.
-    needs: build-package
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download Distribution Artifacts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          # The build-and-inspect-python-package action invokes upload-artifact.
-          name: Packages
-          path: dist
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
-        with:
-          python-version: "3.13"
-      - name: Install built wheel and verify entry points
-        run: |
-          # --no-deps keeps this fast and reliable (skips heavy/geo deps), but pip
-          # still creates the console scripts, so a malformed [project.scripts]
-          # entry point fails the install right here.
-          python -m venv /tmp/wheel-env
-          /tmp/wheel-env/bin/python -m pip install --no-deps dist/*.whl
-          # Resolve every declared console script against the installed sources
-          # without importing celeri (which would require the full dependency set).
-          # Catches both a bad module path and a missing target callable.
-          /tmp/wheel-env/bin/python - <<'PY'
-          import ast
-          import sys
-          import sysconfig
-          from importlib.metadata import distribution
-          from pathlib import Path
-
-          site = Path(sysconfig.get_path("purelib"))
-          bindir = Path(sys.executable).parent
-          eps = [
-              ep
-              for ep in distribution("celeri").entry_points
-              if ep.group == "console_scripts"
-          ]
-          print(f"Found {len(eps)} console_scripts entry points")
-
-          errors = []
-          for ep in sorted(eps, key=lambda e: e.name):
-              module, _, attr = ep.value.partition(":")
-              if not (bindir / ep.name).exists():
-                  errors.append(f"{ep.name}: console script was not installed")
-              module_file = site.joinpath(*module.split(".")).with_suffix(".py")
-              if not module_file.exists():
-                  errors.append(f"{ep.name}: module file {module_file} not found")
-                  continue
-              defined = set()
-              for node in ast.parse(module_file.read_text()).body:
-                  if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
-                      defined.add(node.name)
-                  elif isinstance(node, ast.Assign):
-                      defined.update(
-                          t.id for t in node.targets if isinstance(t, ast.Name)
-                      )
-              if attr and attr not in defined:
-                  errors.append(f"{ep.name}: {module} has no top-level '{attr}'")
-
-          for error in errors:
-              print(f"ERROR: {error}")
-          if errors:
-              sys.exit(1)
-          print(f"OK: all {len(eps)} entry points resolve to a defined callable")
-          PY
-      - name: Install built sdist
-        run: |
-          # Mirror how conda-forge consumes celeri (it builds and installs from the
-          # sdist), so an sdist-only packaging break is caught too.
-          python -m venv /tmp/sdist-env
-          /tmp/sdist-env/bin/python -m pip install --no-deps dist/*.tar.gz
-
-  functional-test:
-    # Install the built wheel with its full dependency set and run a real, small
-    # end-to-end MCMC solve. This proves the declared dependencies are installable
-    # AND sufficient: build_model + solve_mcmc exercise cutde, pymc, pytensor,
-    # nutpie + jax (the default mcmc_backend), numba, h5py, meshio, scipy and the
-    # rest of the stack — far more than an import or `--help` would.
+  verify-wheel:
+    # Gate publishing on actually installing and running the built wheel.
+    # build-and-inspect only *builds and inspects* the package; it never installs
+    # it, so a wheel with a malformed entry point (which pip rejects only at install
+    # time), a missing target callable, or an installable-but-insufficient
+    # dependency set can otherwise sail through to PyPI. scripts/verify_wheel.py
+    # loads every console-script entry point and runs a small end-to-end MCMC solve;
+    # keeping the logic in a committed script means it is linted, type-checked and
+    # runnable locally rather than buried in this YAML.
     needs: build-package
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        # The example model data lives in data/, which is intentionally excluded
-        # from the sdist/wheel, so the checkout is what lets us drive a real solve.
+        # For scripts/verify_wheel.py and the example model data in data/, which is
+        # intentionally excluded from the sdist/wheel so we need the checkout.
         with:
           persist-credentials: false
       - name: Download Distribution Artifacts
@@ -133,32 +60,20 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.13"
+      - name: Verify the sdist installs (mirrors conda-forge)
+        run: |
+          # conda-forge builds and installs from the sdist, so check it installs at
+          # all; --no-deps keeps this quick since the wheel run below covers deps.
+          python -m venv "${RUNNER_TEMP}/sdist-env"
+          "${RUNNER_TEMP}/sdist-env/bin/python" -m pip install --no-deps dist/*.tar.gz
       - name: Install built wheel with full dependencies
         run: python -m pip install dist/*.whl
-      - name: Run a small end-to-end MCMC solve
+      - name: Verify the installed wheel
         # Run from a scratch dir so the checked-out celeri/ source can't shadow the
-        # installed wheel on import. The config is passed as an absolute path, and
-        # celeri resolves the model's data files relative to the config location.
-        # Building the operators for this model is the bulk of the wall time
-        # (~5-6 min, uncached); the sampling itself is a tiny smoke run.
+        # installed wheel on import. Building the operators for this model is the
+        # bulk of the wall time (~5-6 min, uncached); the sampling is a tiny run.
         working-directory: ${{ runner.temp }}
-        run: |
-          python - <<'PY'
-          import os
-
-          import celeri
-
-          config_path = os.path.join(
-              os.environ["GITHUB_WORKSPACE"], "data", "config", "wna_config.json"
-          )
-          model = celeri.build_model(celeri.get_config(config_path))
-          estimation = celeri.solve_mcmc(
-              model, sample_kwargs={"tune": 10, "draws": 10, "chains": 2}
-          )
-          posterior = estimation.mcmc_trace.posterior
-          assert len(posterior.coords["draw"]) == 10, posterior.coords["draw"]
-          print("MCMC solve OK; posterior sizes:", dict(posterior.sizes))
-          PY
+        run: python "${GITHUB_WORKSPACE}/scripts/verify_wheel.py" --data-root "${GITHUB_WORKSPACE}"
 
   publish-package:
     # Don't publish from forks
@@ -166,7 +81,7 @@ jobs:
     # Use the `release` GitHub environment to protect the Trusted Publishing (OIDC)
     # workflow by requiring signoff from a maintainer.
     environment: release
-    needs: [build-package, smoke-test-package, functional-test]
+    needs: [build-package, verify-wheel]
     runs-on: ubuntu-latest
     permissions:
       # write id-token is necessary for trusted publishing (OIDC)
