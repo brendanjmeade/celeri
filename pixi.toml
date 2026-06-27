@@ -88,7 +88,6 @@ hatch-vcs = "*"
 hatch-fancy-pypi-readme = "*"
 
 [pypi-dependencies]
-okada-wrapper = ">=24.6.15"
 celeri = { path = ".", editable = true }
 types-shapely = ">=2.1.0.20250917"
 h5py-stubs = ">=0.1.2"

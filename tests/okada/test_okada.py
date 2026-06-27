@@ -3,6 +3,14 @@ import warnings
 import numpy as np
 import pytest
 
+import importlib.util
+
+HAS_OKADA_WRAPPER = importlib.util.find_spec("okada_wrapper") is not None
+requires_okada_wrapper = pytest.mark.skipif(
+    not HAS_OKADA_WRAPPER,
+    reason="optional okada_wrapper package is not installed",
+)
+
 from celeri.okada.cutde_okada import (
     _determine_auto_triangulation,
     _preprocess_obs_pts,
@@ -47,7 +55,7 @@ TRIANGULATION_TEST_CASES = [
     "\\",
     "V",
     "L",
-    "okada",
+    pytest.param("okada", marks=requires_okada_wrapper),
 ]
 
 TRIANGULATION_TEST_IDS = [
@@ -64,7 +72,7 @@ TRIANGULATION_TEST_CASES_WITH_AUTO = [
     "\\",
     "V",
     "L",
-    "okada",
+    pytest.param("okada", marks=requires_okada_wrapper),
     "auto",
 ]
 
