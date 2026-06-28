@@ -3,7 +3,6 @@
 # confusing.
 from __future__ import annotations
 
-import importlib.util
 import timeit
 from dataclasses import dataclass, replace
 from functools import cached_property
@@ -774,7 +773,9 @@ class Estimation:
         self.operators.to_disk(output_dir / "operators", save_arrays=save_operators)
 
         if self.mcmc_trace is not None:
-            self.mcmc_trace.to_datatree().to_zarr(
+            from celeri._arviz_compat import trace_to_datatree
+
+            trace_to_datatree(self.mcmc_trace).to_zarr(
                 output_dir / "mcmc_trace.zarr", consolidated=False
             )
         # We skip saving the trace, it shouldn't be needed later
@@ -788,18 +789,13 @@ class Estimation:
         operators = Operators.from_disk(output_dir / "operators")
 
         if (output_dir / "mcmc_trace.zarr").exists():
-            if importlib.util.find_spec("arviz") is None:
-                raise ImportError(
-                    "arviz is required to load MCMC traces. "
-                    "Please install it with `pip install arviz`."
-                )
-            import arviz
             import xarray as xr
 
-            mcmc_trace = xr.open_datatree(
-                output_dir / "mcmc_trace.zarr", consolidated=False
+            from celeri._arviz_compat import trace_from_datatree
+
+            mcmc_trace = trace_from_datatree(
+                xr.open_datatree(output_dir / "mcmc_trace.zarr", consolidated=False)
             )
-            mcmc_trace = arviz.from_datatree(mcmc_trace)
         else:
             mcmc_trace = None
 

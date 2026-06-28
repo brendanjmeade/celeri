@@ -7,13 +7,18 @@ and excludes chains whose WAIC deficit relative to the leader exceeds a
 z-score threshold calibrated by Monte Carlo noise.
 """
 
+from __future__ import annotations
+
 import warnings
 from dataclasses import dataclass
 
 import arviz as az
 import numpy as np
+import xarray as xr
 from loguru import logger
 from scipy.special import logsumexp
+
+from celeri._arviz_compat import loo_elpd
 
 
 @dataclass
@@ -48,9 +53,10 @@ class WaicSummary:
     shape ``(S,)``.  Then ``mc_sd = sqrt(S · Var_s(h_s))`` — uncertainty
     in the total due to having finitely many draws.
 
-    ``lppd``, ``p_waic``, and ``se`` match ``arviz.waic()`` (``ddof=0``
-    convention).  ``mc_sd`` is computed via the infinitesimal jackknife
-    and is not provided by ArviZ.
+    The pointwise score is ``elpd_waic_i = lppd_i - p_waic_i`` and the
+    reported standard error is ``sqrt(N * Var_i(elpd_waic_i))``.  All
+    variances use ``ddof=0``.  ``mc_sd`` is computed via the infinitesimal
+    jackknife and is not provided by ArviZ.
 
     LOO-based ELPD has more powerful diagnostics (Pareto k), but the
     z-scores produced by WAIC and LOO are indistinguishable for chain
@@ -144,7 +150,10 @@ def waic_summary(ll: np.ndarray) -> WaicSummary:
 
 
 def select_chains(
-    trace: az.InferenceData,
+    # Legacy ArviZ < 1 passes an ``arviz.InferenceData``; the accessed
+    # attributes (``.sel``, ``.sample_stats``, ``.posterior``) are common to
+    # both types, so we annotate the current type only.
+    trace: xr.DataTree,
     *,
     z_threshold: float = 6.0,
     ll_var: str = "station_velocity",
@@ -250,7 +259,7 @@ def select_chains(
 
     Parameters
     ----------
-    trace : arviz.InferenceData
+    trace : xarray.DataTree (or, on ArviZ < 1, arviz.InferenceData)
         Must contain a ``log_likelihood`` group with variable ``ll_var``.
         The log-likelihood array has shape ``(n_chains, S, ...)``, where S is
         the number of posterior samples.  It is reshaped to ``(S, N)`` per
@@ -291,15 +300,18 @@ def select_chains(
     with warnings.catch_warnings():
         warnings.filterwarnings(
             "ignore",
-            message="Estimated shape parameter of Pareto distribution",
+            message=".*Pareto.*",
             category=UserWarning,
         )
-        loo = {c: az.loo(trace.sel(chain=[c]), var_name=ll_var) for c in chains}
+        loo = {
+            c: az.loo(trace.sel(chain=[c]), var_name=ll_var, pointwise=True)
+            for c in chains
+        }
 
     leader = max(chains, key=lambda c: summaries[c].elpd_waic)
 
     leader_waic = summaries[leader].elpd_waic
-    leader_loo = loo[leader].elpd_loo
+    leader_loo = loo_elpd(loo[leader])
 
     diverging = trace.sample_stats.diverging.values  # type: ignore[attr-defined]  # (n_chains, S)
 
@@ -317,7 +329,7 @@ def select_chains(
         n_high_k = int((lo.pareto_k.values.ravel() > 0.7).sum())
         d_waic = ws.elpd_waic - leader_waic
         assert d_waic <= 0, f"Chain {c} has higher WAIC than leader {leader}"
-        d_loo = lo.elpd_loo - leader_loo
+        d_loo = loo_elpd(lo) - leader_loo
         noise_sd = np.sqrt(ws.mc_sd**2 + summaries[leader].mc_sd ** 2)
         z = d_waic / noise_sd if c != leader else 0.0
         keep = z >= -z_threshold or c == leader

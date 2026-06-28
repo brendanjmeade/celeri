@@ -28,6 +28,10 @@ from pymc import Model as PymcModel
 from pymc.distributions.transforms import Transform
 from scipy import linalg, spatial
 
+from celeri._arviz_compat import (
+    compute_log_likelihood_backend_kwargs,
+    nutpie_mass_matrix_kwargs,
+)
 from celeri.celeri_util import get_keep_index_12
 from celeri.constants import RADIUS_EARTH
 from celeri.model import Model
@@ -1750,7 +1754,7 @@ def solve_mcmc(
         backend=model.config.mcmc_backend,
     )
     kwargs = {
-        "low_rank_modified_mass_matrix": True,
+        **nutpie_mass_matrix_kwargs(),
         "mass_matrix_eigval_cutoff": 1.5,
         "mass_matrix_gamma": 1e-6,
         "chains": model.config.mcmc_chains,
@@ -1772,12 +1776,11 @@ def solve_mcmc(
     if "los_velocity" in pymc_model.named_vars:
         ll_vars.append("los_velocity")
     logger.info(f"Computing pointwise log-likelihoods for {ll_vars}")
-    backend_mode = model.config.mcmc_backend.upper()
     pm.compute_log_likelihood(
         trace,
         model=pymc_model,
         var_names=ll_vars,
-        compile_kwargs={"mode": backend_mode},
+        **compute_log_likelihood_backend_kwargs(model.config.mcmc_backend),
     )
 
     posterior_point = trace.posterior.mean(["chain", "draw"])

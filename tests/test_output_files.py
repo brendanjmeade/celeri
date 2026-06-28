@@ -79,3 +79,8 @@ def test_celeri_solve_mcmc_creates_output_files(config_file):
         assert "segment" in hdf, "HDF5 file missing 'segment' Dataset"
         assert "station" in hdf, "HDF5 file missing 'station' Dataset"
         assert "station_names" in hdf, "HDF5 file missing 'station_names' Dataset"
+
+    loaded = celeri.Estimation.from_disk(run_dir)
+    assert loaded.mcmc_trace is not None
+    assert "posterior" in loaded.mcmc_trace.children
+    assert "log_likelihood" in loaded.mcmc_trace.children
