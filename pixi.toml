@@ -16,7 +16,10 @@ CELERI_HATCH_VCS_RUNTIME_VERSION = "1"
 pixi-global-install-shim-hack = "python -m celeri.scripts.pixi_global_install_shim_hack"
 
 [dependencies]
-arviz = "<1.0.0"
+# ArviZ/PyMC span a major-version boundary; celeri supports both via
+# celeri/_arviz_compat.py. The lockfile resolves to the newest (ArviZ>=1 +
+# PyMC>=6), which is what CI exercises.
+arviz = ">=0.18"
 colorcet = ">=3.1.0"
 compilers = ">=1.9.0"
 cutde = ">=25.7.24"
@@ -48,7 +51,7 @@ polars = ">=1.27.1"
 ipykernel = ">=6.29.5"
 seaborn = ">=0.13.2"
 nutpie = ">=0.15.2"
-pymc = ">5.27.0"
+pymc = ">=5.27,<7"
 numba = ">=0.61.2"
 papermill = ">=2.6.0"
 python-gmsh = ">=4.13.1"
