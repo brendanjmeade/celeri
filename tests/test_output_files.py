@@ -82,5 +82,9 @@ def test_celeri_solve_mcmc_creates_output_files(config_file):
 
     loaded = celeri.Estimation.from_disk(run_dir)
     assert loaded.mcmc_trace is not None
-    assert "posterior" in loaded.mcmc_trace.children
-    assert "log_likelihood" in loaded.mcmc_trace.children
+    # Group names live in ``.children`` on an xarray.DataTree (ArviZ>=1) and
+    # in ``.groups()`` on an arviz.InferenceData (ArviZ<1).
+    trace = loaded.mcmc_trace
+    groups = trace.children if hasattr(trace, "children") else trace.groups()
+    assert "posterior" in groups
+    assert "log_likelihood" in groups

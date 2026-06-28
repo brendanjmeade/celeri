@@ -1,7 +1,6 @@
 import arviz as az
 import numpy as np
 import pytest
-import xarray as xr
 from numpy.testing import assert_allclose
 
 from celeri.filter_mcmc_chains_by_waic import select_chains, waic_summary
@@ -53,23 +52,32 @@ def _make_trace(
     ll_per_chain: dict[int, np.ndarray],
     *,
     ll_var: str = "y",
-) -> xr.DataTree:
-    """Build a minimal DataTree with posterior, log_likelihood, and sample_stats."""
+):
+    """Build a minimal trace with posterior, log_likelihood, and sample_stats.
+
+    Returns an ``xarray.DataTree`` on ArviZ>=1 and an ``arviz.InferenceData``
+    on ArviZ<1 -- whichever ``select_chains`` consumes on that stack.
+    """
     chains = sorted(ll_per_chain)
     S = ll_per_chain[chains[0]].shape[0]
     N = ll_per_chain[chains[0]].shape[1]
     n_chains = len(chains)
 
     ll_data = np.stack([ll_per_chain[c] for c in chains], axis=0)
-    return az.from_dict(
-        {
-            "posterior": {"dummy": np.zeros((n_chains, S))},
-            "log_likelihood": {ll_var: ll_data},
-            "sample_stats": {"diverging": np.zeros((n_chains, S), dtype=bool)},
-        },
-        coords={"chain": chains, "draw": np.arange(S), "obs": np.arange(N)},
-        dims={ll_var: ["obs"]},
-    )
+    groups = {
+        "posterior": {"dummy": np.zeros((n_chains, S))},
+        "log_likelihood": {ll_var: ll_data},
+        "sample_stats": {"diverging": np.zeros((n_chains, S), dtype=bool)},
+    }
+    coords = {"chain": chains, "draw": np.arange(S), "obs": np.arange(N)}
+    dims = {ll_var: ["obs"]}
+
+    # ArviZ<1's ``from_dict`` takes groups as keyword arguments; ArviZ>=1's
+    # takes a single mapping of group name -> variables. (``from_datatree``
+    # only exists on ArviZ<1, so it flags the legacy stack.)
+    if hasattr(az, "from_datatree"):
+        return az.from_dict(**groups, coords=coords, dims=dims)
+    return az.from_dict(groups, coords=coords, dims=dims)
 
 
 class TestSelectChains:
