@@ -754,9 +754,9 @@ class Estimation:
             dim for dim in ("draw", "chain") if dim in subsetted_trace.posterior.dims
         ]
 
-        trace_for_state = subsetted_trace.mean(dims_to_mean)
+        posterior_point = subsetted_trace.posterior.mean(dims_to_mean)
         state_vector = _state_vector_from_draw(
-            self.model, self.operators, trace_for_state
+            self.model, self.operators, posterior_point
         )
         return replace(self, state_vector=state_vector, mcmc_trace=subsetted_trace)
 

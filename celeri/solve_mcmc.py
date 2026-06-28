@@ -1780,9 +1780,8 @@ def solve_mcmc(
         compile_kwargs={"mode": backend_mode},
     )
 
-    state_vector = _state_vector_from_draw(
-        model, operators, trace.mean(["chain", "draw"])
-    )
+    posterior_point = trace.posterior.mean(["chain", "draw"])
+    state_vector = _state_vector_from_draw(model, operators, posterior_point)
     estimation = build_estimation(model, operators, state_vector)
     estimation.mcmc_trace = trace
     estimation.mcmc_start_time = mcmc_start_time.isoformat()
@@ -1795,9 +1794,14 @@ def solve_mcmc(
 def _state_vector_from_draw(
     model: Model,
     operators: Operators,
-    trace,
+    posterior_point,
 ):
-    """Build a state vector from MCMC trace using eigen coefficients.
+    """Build a state vector from a single posterior point using eigen coefficients.
+
+    ``posterior_point`` is the ``posterior`` group of an MCMC trace (an xarray
+    ``Dataset``) reduced to a single point over ``draw``/``chain`` by the
+    caller: the mean of the selected draws/chains, or one sample when a single
+    draw and chain are chosen.
 
     The state vector uses eigen coefficients (not TDE values) so that
     Estimation.predictions uses eigen_to_velocities for forward predictions.
@@ -1814,15 +1818,15 @@ def _state_vector_from_draw(
 
     start = operators.index.start_block_strain_col
     end = operators.index.end_block_strain_col
-    state_vector[start:end] = trace.posterior.block_strain_rate.values
+    state_vector[start:end] = posterior_point.block_strain_rate.values
 
     start = operators.index.start_mogi_col
     end = operators.index.end_mogi_col
-    state_vector[start:end] = trace.posterior.mogi.values
+    state_vector[start:end] = posterior_point.mogi.values
 
     start = operators.index.start_block_col
     end = operators.index.end_block_col
-    state_vector[start:end] = trace.posterior.rotation.values
+    state_vector[start:end] = posterior_point.rotation.values
 
     # Extract eigen coefficients for each mesh
     for mesh_idx in range(len(model.meshes)):
@@ -1841,12 +1845,12 @@ def _state_vector_from_draw(
             elastic_eigen_var = f"elastic_eigen_{mesh_idx}_{kind_short}"
             elastic_tde_var = f"elastic_{mesh_idx}_{kind_short}"
 
-            if elastic_eigen_var in trace.posterior:
-                coefs[coef_start : coef_start + n_modes] = trace.posterior[
+            if elastic_eigen_var in posterior_point:
+                coefs[coef_start : coef_start + n_modes] = posterior_point[
                     elastic_eigen_var
                 ].values
-            elif elastic_tde_var in trace.posterior:
-                elastic_tde = trace.posterior[elastic_tde_var].values
+            elif elastic_tde_var in posterior_point:
+                elastic_tde = posterior_point[elastic_tde_var].values
                 eigenvectors = _get_eigenmodes(model, mesh_idx, kind)
                 coefs[coef_start : coef_start + n_modes] = eigenvectors.T @ elastic_tde
 
