@@ -1,3 +1,11 @@
+# Continuously exercise the LEGACY branches of celeri/_arviz_compat.py against
+# a real, frozen old stack (ArviZ<1 / PyMC<6 / nutpie<0.16.9).
+#
+# The default test matrix only ever installs the current ArviZ>=1 / PyMC>=6
+# stack, so without this job the legacy code paths the shim carries would rot
+# untested. The `legacy-mcmc` pixi environment is pinned to exact versions in
+# pixi.toml and excluded from the scheduled relock job, so this stack stays
+# reproducible and the committed lockfile is authoritative.
 name: Test Legacy MCMC Stack
 
 on:
@@ -10,9 +18,6 @@ jobs:
   legacy-mcmc:
     name: Test legacy MCMC stack
     runs-on: ubuntu-latest
-    env:
-      MPLCONFIGDIR: ${{ runner.temp }}/matplotlib
-      PYTENSOR_FLAGS: base_compiledir=${{ runner.temp }}/pytensor
     defaults:
       run:
         shell: bash -l {0}
@@ -24,37 +29,35 @@ jobs:
         with:
           cache: true
           environments: legacy-mcmc
-          # The lockfile is allowed to be a lie
-          locked: false
-          # If the lockfile is a lie, then defer to pixi.toml as the source of truth
-          # over the lockfile, and locally overwrite the lockfile accordingly.
-          frozen: false
-      - name: Check legacy stack versions
+          # The legacy stack is frozen (exact pins + excluded from relocks), so
+          # the committed lockfile is authoritative for this environment.
+          locked: true
+      # NOTE: `runner.*` is only available in step-level `env`, not job-level.
+      - name: Confirm we are on the legacy side of the boundary
+        env:
+          MPLCONFIGDIR: ${{ runner.temp }}/matplotlib
+          PYTENSOR_FLAGS: base_compiledir=${{ runner.temp }}/pytensor
         run: |
           pixi run -e legacy-mcmc python - <<'PY'
-          import arviz as az
           import inspect
-          import matplotlib
-          import nutpie
-          import numpy
-          import pandas
-          import pymc as pm
-          import pytensor
-          import xarray
-          import zarr
 
-          assert az.__version__ == "0.23.4", az.__version__
-          assert matplotlib.__version__ == "3.10.8", matplotlib.__version__
-          assert numpy.__version__ == "2.4.3", numpy.__version__
-          assert nutpie.__version__ == "0.16.8", nutpie.__version__
-          assert pandas.__version__ == "3.0.2", pandas.__version__
-          assert pm.__version__ == "5.28.4", pm.__version__
-          assert pytensor.__version__ == "2.38.2", pytensor.__version__
-          assert xarray.__version__ == "2026.4.0", xarray.__version__
-          assert zarr.__version__ == "3.1.6", zarr.__version__
-          assert "adaptation" not in inspect.signature(nutpie.sample).parameters
+          import arviz as az
+          import nutpie
+          import pymc as pm
+
+          # The whole point of this job is to run the *legacy* compat branches.
+          assert int(az.__version__.split(".")[0]) < 1, az.__version__
+          assert int(pm.__version__.split(".")[0]) < 6, pm.__version__
+          assert "adaptation" not in inspect.signature(nutpie.sample).parameters, (
+              "nutpie exposes `adaptation`; the legacy "
+              "low_rank_modified_mass_matrix branch will not be exercised"
+          )
+          print(f"arviz={az.__version__} pymc={pm.__version__} nutpie={nutpie.__version__}")
           PY
-      - name: Test compatibility layer
+      - name: Run the MCMC suite on the legacy stack
+        env:
+          MPLCONFIGDIR: ${{ runner.temp }}/matplotlib
+          PYTENSOR_FLAGS: base_compiledir=${{ runner.temp }}/pytensor
         run: |
           pixi run -e legacy-mcmc pytest -q \
             tests/test_arviz_compat.py \
