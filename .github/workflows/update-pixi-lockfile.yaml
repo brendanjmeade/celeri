@@ -22,12 +22,16 @@ jobs:
       with:
         run-install: false
     - name: Update lockfiles
+      # Update only the `default` environment. The `legacy-mcmc` environment is
+      # a deliberately frozen ArviZ<1 / PyMC<6 stack (see pixi.toml) and must
+      # NOT be relocked automatically, or it would silently drift. Any new
+      # environment that *should* track upstream must be added to this list.
       run: |
         set -o pipefail
         echo "This pull request relocks the pixi dependencies." >> diff.md
         echo "It is triggered by [update-pixi-lockfile](https://github.com/brendanjmeade/celeri/blob/main/.github/workflows/update-pixi-lockfile.yaml)." >> diff.md
         echo "" >> diff.md
-        pixi update --json | pixi exec pixi-diff-to-markdown >> diff.md
+        pixi update --json --environment default | pixi exec pixi-diff-to-markdown >> diff.md
     - name: Open a pull request
       uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
       id: create-pr

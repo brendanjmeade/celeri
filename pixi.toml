@@ -90,13 +90,22 @@ ruff = "*"
 hatch-vcs = "*"
 hatch-fancy-pypi-readme = "*"
 
+# Frozen "legacy MCMC" stack: the pre-upgrade ArviZ<1 / PyMC<6 / nutpie<0.16.9
+# world that celeri/_arviz_compat.py must keep supporting. The
+# `test-legacy-mcmc` CI workflow runs the MCMC suite in this environment to
+# exercise the shim's legacy branches against a real old stack (the default
+# test matrix only ever installs the current ArviZ>=1 / PyMC>=6 stack).
+#
+# These packages are pinned to EXACT versions, not just upper-bounded, so that
+# `pixi update` cannot drift the stack out from under the legacy code paths.
+# The scheduled relock job (update-pixi-lockfile.yaml) additionally skips this
+# environment. To deliberately refresh the stack, bump these pins by hand and
+# run `pixi lock`.
 [feature.legacy-mcmc.dependencies]
-# Escape-hatch environment for the paper-era MCMC stack. pixi.lock seeds this
-# environment from the default lockfile immediately before PR #461; these
-# constraints keep it on the intended side of the ArviZ/PyMC/nutpie boundary.
-arviz = "<1"
-nutpie = "<0.16.9"
-pymc = "<6"
+arviz = "==0.23.4"
+pymc = "==5.28.4"
+nutpie = "==0.16.8"
+pytensor = "==2.38.2"
 
 [pypi-dependencies]
 celeri = { path = ".", editable = true }
