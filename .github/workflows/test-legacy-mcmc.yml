@@ -1,0 +1,63 @@
+name: Test Legacy MCMC Stack
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  legacy-mcmc:
+    name: Test legacy MCMC stack
+    runs-on: ubuntu-latest
+    env:
+      MPLCONFIGDIR: ${{ runner.temp }}/matplotlib
+      PYTENSOR_FLAGS: base_compiledir=${{ runner.temp }}/pytensor
+    defaults:
+      run:
+        shell: bash -l {0}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+      - uses: prefix-dev/setup-pixi@5185adfbffb4bd703da3010310260805d89ebb11 # v0.9.6
+        with:
+          cache: true
+          environments: legacy-mcmc
+          # The lockfile is allowed to be a lie
+          locked: false
+          # If the lockfile is a lie, then defer to pixi.toml as the source of truth
+          # over the lockfile, and locally overwrite the lockfile accordingly.
+          frozen: false
+      - name: Check legacy stack versions
+        run: |
+          pixi run -e legacy-mcmc python - <<'PY'
+          import arviz as az
+          import inspect
+          import matplotlib
+          import nutpie
+          import numpy
+          import pandas
+          import pymc as pm
+          import pytensor
+          import xarray
+          import zarr
+
+          assert az.__version__ == "0.23.4", az.__version__
+          assert matplotlib.__version__ == "3.10.8", matplotlib.__version__
+          assert numpy.__version__ == "2.4.3", numpy.__version__
+          assert nutpie.__version__ == "0.16.8", nutpie.__version__
+          assert pandas.__version__ == "3.0.2", pandas.__version__
+          assert pm.__version__ == "5.28.4", pm.__version__
+          assert pytensor.__version__ == "2.38.2", pytensor.__version__
+          assert xarray.__version__ == "2026.4.0", xarray.__version__
+          assert zarr.__version__ == "3.1.6", zarr.__version__
+          assert "adaptation" not in inspect.signature(nutpie.sample).parameters
+          PY
+      - name: Test compatibility layer
+        run: |
+          pixi run -e legacy-mcmc pytest -q \
+            tests/test_arviz_compat.py \
+            tests/test_filter_mcmc_chains_by_waic.py \
+            tests/test_solve_mcmc.py::test_mcmc_selection \
+            tests/test_output_files.py::test_celeri_solve_mcmc_creates_output_files
