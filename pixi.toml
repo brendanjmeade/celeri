@@ -90,6 +90,14 @@ ruff = "*"
 hatch-vcs = "*"
 hatch-fancy-pypi-readme = "*"
 
+[feature.legacy-mcmc.dependencies]
+# Escape-hatch environment for the paper-era MCMC stack. pixi.lock seeds this
+# environment from the default lockfile immediately before PR #461; these
+# constraints keep it on the intended side of the ArviZ/PyMC/nutpie boundary.
+arviz = "<1"
+nutpie = "<0.16.9"
+pymc = "<6"
+
 [pypi-dependencies]
 celeri = { path = ".", editable = true }
 types-shapely = ">=2.1.0.20250917"
@@ -98,6 +106,7 @@ scikit-learn-stubs = ">=0.0.3"
 
 [environments]
 default = ["dev"]
+legacy-mcmc = ["dev", "legacy-mcmc"]
 
 [system-requirements]
 macos = "13.3"
