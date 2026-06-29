@@ -1,9 +1,8 @@
+import importlib.util
 import warnings
 
 import numpy as np
 import pytest
-
-import importlib.util
 
 HAS_OKADA_WRAPPER = importlib.util.find_spec("okada_wrapper") is not None
 requires_okada_wrapper = pytest.mark.skipif(
