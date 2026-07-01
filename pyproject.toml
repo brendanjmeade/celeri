@@ -12,7 +12,10 @@ authors = [
 ]
 requires-python = ">=3.13"
 dependencies = [
-    "arviz",
+    # LEGACY-MCMC: ArviZ/PyMC span a major-version boundary; celeri supports
+    # both via celeri/_arviz_compat.py (ArviZ<1+PyMC<6 and ArviZ>=1+PyMC>=6).
+    # On cleanup, tighten these floors to arviz>=1 / nutpie>=0.16.10 / pymc>=6,<7.
+    "arviz>=0.18",
     "cartopy",
     "colorcet",
     "cutde>=25.7.24",
@@ -28,12 +31,12 @@ dependencies = [
     "meshio",
     "numba",
     "numpy",
-    "nutpie",
+    "nutpie>=0.15.2",
     "pandas",
     "papermill",
     "pyarrow",
     "pydantic",
-    "pymc",
+    "pymc>=5.27,<7",
     "pyproj",
     "pytensor",
     "pytest",
@@ -226,6 +229,7 @@ python_version = "3.13"
 
 [[tool.mypy.overrides]]
 module = [
+    "arviz.*",
     "cartopy.*",
     "colorcet",
     "cutde.*",

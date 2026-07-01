@@ -1,14 +1,13 @@
 import arviz as az
 import numpy as np
 import pytest
-import xarray as xr
 from numpy.testing import assert_allclose
 
 from celeri.filter_mcmc_chains_by_waic import select_chains, waic_summary
 
 
 class TestWaicSummary:
-    """Verify waic_summary matches arviz.waic on synthetic log-likelihood data."""
+    """Verify waic_summary on synthetic log-likelihood data."""
 
     @pytest.mark.parametrize(
         "S, N, loc, scale, seed",
@@ -18,18 +17,23 @@ class TestWaicSummary:
         ],
         ids=["small", "medium"],
     )
-    def test_matches_arviz(self, S: int, N: int, loc: float, scale: float, seed: int):
+    def test_matches_waic_definition(
+        self, S: int, N: int, loc: float, scale: float, seed: int
+    ):
         rng = np.random.default_rng(seed)
         ll = rng.normal(loc, scale, size=(S, N))
 
         ws = waic_summary(ll)
 
-        idata = az.from_dict(log_likelihood={"y": ll[np.newaxis, :, :]})
-        aw = az.waic(idata, var_name="y")
+        # This direct formula is intentionally less stable than the production
+        # logsumexp implementation, but should agree for well-scaled inputs.
+        log_mean_likelihood = np.log(np.exp(ll).mean(axis=0))
+        var_log_likelihood = ((ll - ll.mean(axis=0)) ** 2).mean(axis=0)
+        elpd_i = log_mean_likelihood - var_log_likelihood
 
-        assert_allclose(ws.elpd_waic, aw.elpd_waic, rtol=1e-10)
-        assert_allclose(ws.p_waic, aw.p_waic, rtol=1e-10)
-        assert_allclose(ws.se, aw.se, rtol=1e-10)
+        assert_allclose(ws.elpd_waic, elpd_i.sum(), rtol=1e-10)
+        assert_allclose(ws.p_waic, var_log_likelihood.sum(), rtol=1e-10)
+        assert_allclose(ws.se, np.sqrt(N * np.var(elpd_i)), rtol=1e-10)
 
     def test_elpd_equals_lppd_minus_p(self):
         rng = np.random.default_rng(99)
@@ -48,37 +52,33 @@ def _make_trace(
     ll_per_chain: dict[int, np.ndarray],
     *,
     ll_var: str = "y",
-) -> az.InferenceData:
-    """Build a minimal InferenceData with posterior, log_likelihood, and sample_stats."""
+):
+    """Build a minimal trace with posterior, log_likelihood, and sample_stats.
+
+    Returns an ``xarray.DataTree`` on ArviZ>=1 and an ``arviz.InferenceData``
+    on ArviZ<1 -- whichever ``select_chains`` consumes on that stack.
+    """
     chains = sorted(ll_per_chain)
     S = ll_per_chain[chains[0]].shape[0]
     N = ll_per_chain[chains[0]].shape[1]
     n_chains = len(chains)
 
-    coords = {"chain": chains, "draw": np.arange(S), "obs": np.arange(N)}
-
     ll_data = np.stack([ll_per_chain[c] for c in chains], axis=0)
-    log_likelihood = xr.Dataset(
-        {ll_var: (["chain", "draw", "obs"], ll_data)},
-        coords=coords,
-    )
+    groups = {
+        "posterior": {"dummy": np.zeros((n_chains, S))},
+        "log_likelihood": {ll_var: ll_data},
+        "sample_stats": {"diverging": np.zeros((n_chains, S), dtype=bool)},
+    }
+    coords = {"chain": chains, "draw": np.arange(S), "obs": np.arange(N)}
+    dims = {ll_var: ["obs"]}
 
-    # Dummy posterior (select_chains only reads chain/draw dims from it)
-    posterior = xr.Dataset(
-        {"dummy": (["chain", "draw"], np.zeros((n_chains, S)))},
-        coords={"chain": chains, "draw": np.arange(S)},
-    )
-
-    sample_stats = xr.Dataset(
-        {"diverging": (["chain", "draw"], np.zeros((n_chains, S), dtype=bool))},
-        coords={"chain": chains, "draw": np.arange(S)},
-    )
-
-    return az.InferenceData(
-        posterior=posterior,
-        log_likelihood=log_likelihood,
-        sample_stats=sample_stats,
-    )
+    # LEGACY-MCMC: ArviZ<1's ``from_dict`` takes groups as keyword arguments;
+    # ArviZ>=1's takes a single mapping of group name -> variables.
+    # (``from_datatree`` only exists on ArviZ<1, so it flags the legacy stack.)
+    # On cleanup, keep only the ArviZ>=1 branch below.
+    if hasattr(az, "from_datatree"):
+        return az.from_dict(**groups, coords=coords, dims=dims)
+    return az.from_dict(groups, coords=coords, dims=dims)
 
 
 class TestSelectChains:
@@ -132,3 +132,18 @@ class TestSelectChains:
         # Very tight threshold should exclude chain 0
         kept_tight = select_chains(trace, ll_var="y", z_threshold=0.01)
         assert 0 not in kept_tight
+
+    def test_select_chains_forces_pointwise_loo(self):
+        """select_chains should work even if ArviZ pointwise output is disabled globally."""
+        rng = np.random.default_rng(42)
+        S, N = 500, 100
+        trace = _make_trace(
+            {c: rng.normal(-3.0, 0.5, size=(S, N)) for c in range(2)},
+            ll_var="y",
+        )
+        old_pointwise = az.rcParams["stats.ic_pointwise"]
+        try:
+            az.rcParams["stats.ic_pointwise"] = False
+            assert select_chains(trace, ll_var="y") == [0, 1]
+        finally:
+            az.rcParams["stats.ic_pointwise"] = old_pointwise

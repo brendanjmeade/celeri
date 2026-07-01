@@ -16,7 +16,11 @@ CELERI_HATCH_VCS_RUNTIME_VERSION = "1"
 pixi-global-install-shim-hack = "python -m celeri.scripts.pixi_global_install_shim_hack"
 
 [dependencies]
-arviz = "<1.0.0"
+# LEGACY-MCMC: ArviZ/PyMC span a major-version boundary; celeri supports both
+# via celeri/_arviz_compat.py. The lockfile resolves to the newest (ArviZ>=1 +
+# PyMC>=6), which is what CI exercises. On cleanup, tighten these floors to
+# arviz>=1 / nutpie>=0.16.10 / pymc>=6,<7.
+arviz = ">=0.18"
 colorcet = ">=3.1.0"
 compilers = ">=1.9.0"
 cutde = ">=25.7.24"
@@ -48,7 +52,7 @@ polars = ">=1.27.1"
 ipykernel = ">=6.29.5"
 seaborn = ">=0.13.2"
 nutpie = ">=0.15.2"
-pymc = ">5.27.0"
+pymc = ">=5.27,<7"
 numba = ">=0.61.2"
 papermill = ">=2.6.0"
 python-gmsh = ">=4.13.1"
@@ -87,6 +91,18 @@ ruff = "*"
 hatch-vcs = "*"
 hatch-fancy-pypi-readme = "*"
 
+# LEGACY-MCMC: frozen pre-upgrade MCMC stack that exercises the legacy branches
+# of celeri/_arviz_compat.py. arviz<1 transitively forces pymc<6 (pymc 6 requires
+# arviz>=1), but nutpie is independent -- 0.16.11 resolves fine against arviz<1 --
+# so nutpie<0.16.9 must be pinned explicitly to keep exercising the legacy
+# low_rank_modified_mass_matrix branch. The exact stack is otherwise frozen by
+# the lockfile and guarded against drift by tests/test_legacy_env_frozen.py. On
+# cleanup, delete this feature block and the legacy-mcmc entry under
+# [environments].
+[feature.legacy-mcmc.dependencies]
+arviz = "<1"
+nutpie = "<0.16.9"  # 0.16.9 renamed the low_rank mass-matrix kwarg
+
 [pypi-dependencies]
 celeri = { path = ".", editable = true }
 types-shapely = ">=2.1.0.20250917"
@@ -95,6 +111,7 @@ scikit-learn-stubs = ">=0.0.3"
 
 [environments]
 default = ["dev"]
+legacy-mcmc = ["dev", "legacy-mcmc"]  # LEGACY-MCMC: delete on cleanup
 
 [system-requirements]
 macos = "13.3"

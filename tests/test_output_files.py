@@ -79,3 +79,13 @@ def test_celeri_solve_mcmc_creates_output_files(config_file):
         assert "segment" in hdf, "HDF5 file missing 'segment' Dataset"
         assert "station" in hdf, "HDF5 file missing 'station' Dataset"
         assert "station_names" in hdf, "HDF5 file missing 'station_names' Dataset"
+
+    loaded = celeri.Estimation.from_disk(run_dir)
+    assert loaded.mcmc_trace is not None
+    # LEGACY-MCMC: group names live in ``.children`` on an xarray.DataTree
+    # (ArviZ>=1) and in ``.groups()`` on an arviz.InferenceData (ArviZ<1).
+    # On cleanup, assert on ``trace.children`` directly.
+    trace = loaded.mcmc_trace
+    groups = trace.children if hasattr(trace, "children") else trace.groups()
+    assert "posterior" in groups
+    assert "log_likelihood" in groups
