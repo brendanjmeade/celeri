@@ -3,9 +3,10 @@
 #
 # The default test matrix only ever installs the current ArviZ>=1 / PyMC>=6
 # stack, so without this job the legacy code paths the shim carries would rot
-# untested. The `legacy-mcmc` pixi environment is pinned to exact versions in
-# pixi.toml and excluded from the scheduled relock job, so this stack stays
-# reproducible and the committed lockfile is authoritative.
+# untested. The `legacy-mcmc` pixi environment is frozen by the committed
+# lockfile (excluded from the scheduled relock job), and tests/
+# test_legacy_env_frozen.py is a canary that fails this job if the stack ever
+# drifts, so it stays reproducible.
 name: Test Legacy MCMC Stack
 
 on:
@@ -60,6 +61,7 @@ jobs:
           PYTENSOR_FLAGS: base_compiledir=${{ runner.temp }}/pytensor
         run: |
           pixi run -e legacy-mcmc pytest -q \
+            tests/test_legacy_env_frozen.py \
             tests/test_arviz_compat.py \
             tests/test_filter_mcmc_chains_by_waic.py \
             tests/test_solve_mcmc.py::test_mcmc_selection \

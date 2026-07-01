@@ -22,10 +22,12 @@ jobs:
       with:
         run-install: false
     - name: Update lockfiles
-      # Update only the `default` environment. The `legacy-mcmc` environment is
-      # a deliberately frozen ArviZ<1 / PyMC<6 stack (see pixi.toml) and must
-      # NOT be relocked automatically, or it would silently drift. Any new
-      # environment that *should* track upstream must be added to this list.
+      # `pixi update` has no "exclude environment" flag, so we allow-list the
+      # environments to relock with `--environment`. Omitting `legacy-mcmc`
+      # keeps that frozen ArviZ<1 stack out of the update (see pixi.toml);
+      # tests/test_legacy_env_frozen.py is the backstop if it is ever relocked
+      # by mistake. Add `--environment <name>` for each new env that should
+      # track upstream.
       run: |
         set -o pipefail
         echo "This pull request relocks the pixi dependencies." >> diff.md
