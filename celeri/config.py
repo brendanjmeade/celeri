@@ -299,7 +299,7 @@ class Config(RelativePathSerializerMixin, BaseModel):
     # unconstrained space. For coupling with bounds [0, 1], constrained mean 0.5
     # is at the center. For elastic with one-sided bounds, unconstrained mean 0
     # places the constrained mean at ±softplus_lengthscale.
-    mcmc_default_mesh_coupling_mean: float = 0.9
+    mcmc_default_mesh_coupling_mean: float = 0.5
     """Default prior mean for coupling field (dimensionless, in (0, 1))."""
 
     mcmc_default_mesh_coupling_mean_parameterization: McmcMeanParameterization = (
