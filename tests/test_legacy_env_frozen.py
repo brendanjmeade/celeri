@@ -9,6 +9,9 @@ legacy branches of :mod:`celeri._arviz_compat`.
 When intentionally refreshing the stack, update ``EXPECTED_VERSIONS`` to match
 ``pixi list -e legacy-mcmc --locked``. Outside the legacy environment this test
 is skipped.
+
+LEGACY-MCMC: delete this whole file when legacy ArviZ<1/PyMC<6 support is
+dropped (see celeri/_arviz_compat.py for the full cleanup checklist).
 """
 
 from importlib.metadata import PackageNotFoundError, version

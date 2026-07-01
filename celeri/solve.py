@@ -773,7 +773,7 @@ class Estimation:
         self.operators.to_disk(output_dir / "operators", save_arrays=save_operators)
 
         if self.mcmc_trace is not None:
-            from celeri._arviz_compat import trace_to_datatree
+            from celeri._arviz_compat import trace_to_datatree  # LEGACY-MCMC
 
             trace_to_datatree(self.mcmc_trace).to_zarr(
                 output_dir / "mcmc_trace.zarr", consolidated=False
@@ -791,7 +791,7 @@ class Estimation:
         if (output_dir / "mcmc_trace.zarr").exists():
             import xarray as xr
 
-            from celeri._arviz_compat import trace_from_datatree
+            from celeri._arviz_compat import trace_from_datatree  # LEGACY-MCMC
 
             mcmc_trace = trace_from_datatree(
                 xr.open_datatree(output_dir / "mcmc_trace.zarr", consolidated=False)

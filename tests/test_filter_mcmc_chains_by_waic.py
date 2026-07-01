@@ -72,9 +72,10 @@ def _make_trace(
     coords = {"chain": chains, "draw": np.arange(S), "obs": np.arange(N)}
     dims = {ll_var: ["obs"]}
 
-    # ArviZ<1's ``from_dict`` takes groups as keyword arguments; ArviZ>=1's
-    # takes a single mapping of group name -> variables. (``from_datatree``
-    # only exists on ArviZ<1, so it flags the legacy stack.)
+    # LEGACY-MCMC: ArviZ<1's ``from_dict`` takes groups as keyword arguments;
+    # ArviZ>=1's takes a single mapping of group name -> variables.
+    # (``from_datatree`` only exists on ArviZ<1, so it flags the legacy stack.)
+    # On cleanup, keep only the ArviZ>=1 branch below.
     if hasattr(az, "from_datatree"):
         return az.from_dict(**groups, coords=coords, dims=dims)
     return az.from_dict(groups, coords=coords, dims=dims)

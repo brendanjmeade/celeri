@@ -13,28 +13,40 @@ parsing version strings, so it keeps working across point releases.
 
 DEPRECATION PATHWAY
 -------------------
-This whole module exists only to keep the legacy stack alive.  Everything
-that needs to change when dropping it is reachable from a single grep --
-no Git archaeology required::
+This module and all its supporting scaffolding (the legacy pixi environment,
+its canary test, the legacy CI job, and the version-agnostic branches in two
+other test files) exist only to keep the legacy stack alive.  Every such spot
+is tagged with a ``LEGACY-MCMC`` marker, so the entire cleanup surface is
+reachable from a single command -- no Git archaeology required::
 
-    git grep -n _arviz_compat        # module + every call site + manifest pins
+    git grep -n LEGACY-MCMC
 
-Cleanup checklist, once ArviZ < 1 / PyMC < 6 support is no longer interesting:
+Cleanup checklist, once ArviZ < 1 / PyMC < 6 support is no longer interesting.
 
-1. Tighten the version floors back to the current-only stack (these lines
-   carry a ``celeri/_arviz_compat.py`` comment, so the grep above finds them):
-   ``pyproject.toml`` -> ``arviz>=1``, ``nutpie>=0.16.10``, ``pymc>=6,<7``;
-   ``pixi.toml`` -> the same.
-2. At each call site the grep reports, inline the "current" branch of the
-   helper and drop the import:
-     * ``solve_mcmc.py``  -> ``adaptation="low_rank"`` and
-       ``backend=model.config.mcmc_backend``
-     * ``solve.py`` save  -> ``self.mcmc_trace.to_zarr(...)`` directly
-     * ``solve.py`` load  -> use the ``xarray.DataTree`` from
-       ``xr.open_datatree(...)`` directly
-     * ``filter_mcmc_chains_by_waic.py`` -> ``float(loo[...].elpd)``
-3. Delete this module and ``tests/test_arviz_compat.py``.
-4. Re-run ``pixi lock`` and the test suite.
+Delete outright:
+  * this module (``celeri/_arviz_compat.py``)
+  * ``tests/test_arviz_compat.py``
+  * ``tests/test_legacy_env_frozen.py``      (the frozen-stack canary)
+  * ``.github/workflows/test-legacy-mcmc.yml``   (the legacy CI job)
+
+Edit in place (each carries a ``LEGACY-MCMC`` marker at the exact spot):
+  * ``solve_mcmc.py``  -> inline ``adaptation="low_rank"`` and
+    ``backend=model.config.mcmc_backend``; drop the import
+  * ``solve.py`` save  -> ``self.mcmc_trace.to_zarr(...)`` directly
+  * ``solve.py`` load  -> use the ``xarray.DataTree`` from
+    ``xr.open_datatree(...)`` directly; drop the import
+  * ``filter_mcmc_chains_by_waic.py``  -> ``float(loo[...].elpd)``; drop import
+  * ``tests/test_filter_mcmc_chains_by_waic.py``  -> keep only the ArviZ>=1
+    ``from_dict`` branch of ``_make_trace``
+  * ``tests/test_output_files.py``  -> assert on ``trace.children`` directly
+  * ``pyproject.toml`` / ``pixi.toml``  -> tighten floors to ``arviz>=1``,
+    ``nutpie>=0.16.10``, ``pymc>=6,<7``
+  * ``pixi.toml``  -> delete ``[feature.legacy-mcmc.dependencies]`` and the
+    ``legacy-mcmc`` entry under ``[environments]``
+  * ``.github/workflows/update-pixi-lockfile.yaml``  -> drop
+    ``--environment default`` so every environment is relocked again
+
+Then re-run ``pixi lock`` and the test suite.
 """
 
 from __future__ import annotations

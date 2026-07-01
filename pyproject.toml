@@ -12,8 +12,9 @@ authors = [
 ]
 requires-python = ">=3.13"
 dependencies = [
-    # ArviZ/PyMC span a major-version boundary; celeri supports both via
-    # celeri/_arviz_compat.py (ArviZ<1+PyMC<6 and ArviZ>=1+PyMC>=6).
+    # LEGACY-MCMC: ArviZ/PyMC span a major-version boundary; celeri supports
+    # both via celeri/_arviz_compat.py (ArviZ<1+PyMC<6 and ArviZ>=1+PyMC>=6).
+    # On cleanup, tighten these floors to arviz>=1 / nutpie>=0.16.10 / pymc>=6,<7.
     "arviz>=0.18",
     "cartopy",
     "colorcet",

@@ -4,6 +4,9 @@ The helpers feature-detect at runtime, so both the legacy (ArviZ<1/PyMC<6)
 and current (ArviZ>=1/PyMC>=6) branches can be exercised here regardless of
 which stack is actually installed -- the legacy branches are driven with
 stubs/monkeypatching.
+
+LEGACY-MCMC: delete this whole file when legacy ArviZ<1/PyMC<6 support is
+dropped (see celeri/_arviz_compat.py for the full cleanup checklist).
 """
 
 from types import SimpleNamespace

@@ -1,3 +1,6 @@
+# LEGACY-MCMC: delete this whole workflow when legacy ArviZ<1/PyMC<6 support is
+# dropped (see celeri/_arviz_compat.py for the full cleanup checklist).
+#
 # Continuously exercise the LEGACY branches of celeri/_arviz_compat.py against
 # a real, frozen old stack (ArviZ<1 / PyMC<6 / nutpie<0.16.9).
 #

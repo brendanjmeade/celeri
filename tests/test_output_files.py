@@ -82,8 +82,9 @@ def test_celeri_solve_mcmc_creates_output_files(config_file):
 
     loaded = celeri.Estimation.from_disk(run_dir)
     assert loaded.mcmc_trace is not None
-    # Group names live in ``.children`` on an xarray.DataTree (ArviZ>=1) and
-    # in ``.groups()`` on an arviz.InferenceData (ArviZ<1).
+    # LEGACY-MCMC: group names live in ``.children`` on an xarray.DataTree
+    # (ArviZ>=1) and in ``.groups()`` on an arviz.InferenceData (ArviZ<1).
+    # On cleanup, assert on ``trace.children`` directly.
     trace = loaded.mcmc_trace
     groups = trace.children if hasattr(trace, "children") else trace.groups()
     assert "posterior" in groups

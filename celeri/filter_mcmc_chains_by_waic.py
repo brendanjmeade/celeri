@@ -18,7 +18,7 @@ import xarray as xr
 from loguru import logger
 from scipy.special import logsumexp
 
-from celeri._arviz_compat import loo_elpd
+from celeri._arviz_compat import loo_elpd  # LEGACY-MCMC
 
 
 @dataclass

@@ -28,7 +28,7 @@ from pymc import Model as PymcModel
 from pymc.distributions.transforms import Transform
 from scipy import linalg, spatial
 
-from celeri._arviz_compat import (
+from celeri._arviz_compat import (  # LEGACY-MCMC
     compute_log_likelihood_backend_kwargs,
     nutpie_mass_matrix_kwargs,
 )
