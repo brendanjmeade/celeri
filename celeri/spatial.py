@@ -475,62 +475,21 @@ def get_tde_to_velocities(meshes, station, config):
         n_tris = meshes[0].lon1.size
         if not station.empty:
             tri_operator = np.zeros((3 * len(station), 3 * n_tris))
+            obs_lon = station.lon.to_numpy()
+            obs_lat = station.lat.to_numpy()
 
             for i in track(range(n_tris), description="Meshed surface elastic     "):
-                (
-                    vel_east_strike_slip,
-                    vel_north_strike_slip,
-                    vel_up_strike_slip,
-                ) = get_tri_displacements(
-                    station.lon.to_numpy(),
-                    station.lat.to_numpy(),
+                get_tde_displacement_slab_single_mesh(
+                    obs_lon,
+                    obs_lat,
                     meshes,
                     config.material_lambda,
                     config.material_mu,
-                    tri_idx=i,
-                    strike_slip=1,
-                    dip_slip=0,
-                    tensile_slip=0,
+                    mesh_idx=0,
+                    tri_start=i,
+                    tri_stop=i + 1,
+                    out=tri_operator[:, 3 * i : 3 * i + 3],
                 )
-                (
-                    vel_east_dip_slip,
-                    vel_north_dip_slip,
-                    vel_up_dip_slip,
-                ) = get_tri_displacements(
-                    station.lon.to_numpy(),
-                    station.lat.to_numpy(),
-                    meshes,
-                    config.material_lambda,
-                    config.material_mu,
-                    tri_idx=i,
-                    strike_slip=0,
-                    dip_slip=1,
-                    tensile_slip=0,
-                )
-                (
-                    vel_east_tensile_slip,
-                    vel_north_tensile_slip,
-                    vel_up_tensile_slip,
-                ) = get_tri_displacements(
-                    station.lon.to_numpy(),
-                    station.lat.to_numpy(),
-                    meshes,
-                    config.material_lambda,
-                    config.material_mu,
-                    tri_idx=i,
-                    strike_slip=0,
-                    dip_slip=0,
-                    tensile_slip=1,
-                )
-                tri_operator[0::3, 3 * i] = np.squeeze(vel_east_strike_slip)
-                tri_operator[1::3, 3 * i] = np.squeeze(vel_north_strike_slip)
-                tri_operator[2::3, 3 * i] = np.squeeze(vel_up_strike_slip)
-                tri_operator[0::3, 3 * i + 1] = np.squeeze(vel_east_dip_slip)
-                tri_operator[1::3, 3 * i + 1] = np.squeeze(vel_north_dip_slip)
-                tri_operator[2::3, 3 * i + 1] = np.squeeze(vel_up_dip_slip)
-                tri_operator[0::3, 3 * i + 2] = np.squeeze(vel_east_tensile_slip)
-                tri_operator[1::3, 3 * i + 2] = np.squeeze(vel_north_tensile_slip)
-                tri_operator[2::3, 3 * i + 2] = np.squeeze(vel_up_tensile_slip)
         else:
             tri_operator = np.empty(0)
     else:
@@ -562,66 +521,23 @@ def get_tde_to_velocities_single_mesh(meshes, station, config, mesh_idx):
         n_tris = meshes[mesh_idx].lon1.size
         if not station.empty:
             tri_operator = np.zeros((3 * len(station), 3 * n_tris))
+            obs_lon = station.lon.to_numpy()
+            obs_lat = station.lat.to_numpy()
 
-            # Loop through each segment and calculate displacements for each slip component
+            # Loop through each triangle and calculate displacements for all
+            # three slip components with a single cutde call
             for i in track(range(n_tris), description="Meshed surface elastic     "):
-                (
-                    vel_east_strike_slip,
-                    vel_north_strike_slip,
-                    vel_up_strike_slip,
-                ) = get_tri_displacements_single_mesh(
-                    station.lon.to_numpy(),
-                    station.lat.to_numpy(),
+                get_tde_displacement_slab_single_mesh(
+                    obs_lon,
+                    obs_lat,
                     meshes,
                     config.material_lambda,
                     config.material_mu,
-                    tri_idx=i,
-                    strike_slip=1,
-                    dip_slip=0,
-                    tensile_slip=0,
                     mesh_idx=mesh_idx,
+                    tri_start=i,
+                    tri_stop=i + 1,
+                    out=tri_operator[:, 3 * i : 3 * i + 3],
                 )
-                (
-                    vel_east_dip_slip,
-                    vel_north_dip_slip,
-                    vel_up_dip_slip,
-                ) = get_tri_displacements_single_mesh(
-                    station.lon.to_numpy(),
-                    station.lat.to_numpy(),
-                    meshes,
-                    config.material_lambda,
-                    config.material_mu,
-                    tri_idx=i,
-                    strike_slip=0,
-                    dip_slip=1,
-                    tensile_slip=0,
-                    mesh_idx=mesh_idx,
-                )
-                (
-                    vel_east_tensile_slip,
-                    vel_north_tensile_slip,
-                    vel_up_tensile_slip,
-                ) = get_tri_displacements_single_mesh(
-                    station.lon.to_numpy(),
-                    station.lat.to_numpy(),
-                    meshes,
-                    config.material_lambda,
-                    config.material_mu,
-                    tri_idx=i,
-                    strike_slip=0,
-                    dip_slip=0,
-                    tensile_slip=1,
-                    mesh_idx=mesh_idx,
-                )
-                tri_operator[0::3, 3 * i] = np.squeeze(vel_east_strike_slip)
-                tri_operator[1::3, 3 * i] = np.squeeze(vel_north_strike_slip)
-                tri_operator[2::3, 3 * i] = np.squeeze(vel_up_strike_slip)
-                tri_operator[0::3, 3 * i + 1] = np.squeeze(vel_east_dip_slip)
-                tri_operator[1::3, 3 * i + 1] = np.squeeze(vel_north_dip_slip)
-                tri_operator[2::3, 3 * i + 1] = np.squeeze(vel_up_dip_slip)
-                tri_operator[0::3, 3 * i + 2] = np.squeeze(vel_east_tensile_slip)
-                tri_operator[1::3, 3 * i + 2] = np.squeeze(vel_north_tensile_slip)
-                tri_operator[2::3, 3 * i + 2] = np.squeeze(vel_up_tensile_slip)
         else:
             tri_operator = np.empty(0)
     else:
@@ -644,34 +560,18 @@ def get_tri_displacements(
     element in a half space.  Includes projection from longitude and
     latitude to locally tangent planar coordinate system.
     """
-    poissons_ratio = material_mu / (2 * (material_mu + material_lambda))
-
-    # Project coordinates
-    tri_centroid_lon = meshes[0].centroids[tri_idx, 0]
-    tri_centroid_lat = meshes[0].centroids[tri_idx, 1]
-    projection = get_transverse_projection(tri_centroid_lon, tri_centroid_lat)
-    obs_x, obs_y = projection(obs_lon, obs_lat)
-    tri_x1, tri_y1 = projection(meshes[0].lon1[tri_idx], meshes[0].lat1[tri_idx])
-    tri_x2, tri_y2 = projection(meshes[0].lon2[tri_idx], meshes[0].lat2[tri_idx])
-    tri_x3, tri_y3 = projection(meshes[0].lon3[tri_idx], meshes[0].lat3[tri_idx])
-    tri_z1 = KM2M * meshes[0].dep1[tri_idx]
-    tri_z2 = KM2M * meshes[0].dep2[tri_idx]
-    tri_z3 = KM2M * meshes[0].dep3[tri_idx]
-
-    # Package coordinates for cutde call
-    obs_coords = np.vstack((obs_x, obs_y, np.zeros_like(obs_x))).T
-    tri_coords = np.array(
-        [[tri_x1, tri_y1, tri_z1], [tri_x2, tri_y2, tri_z2], [tri_x3, tri_y3, tri_z3]]
+    block = get_tde_displacement_slab_single_mesh(
+        obs_lon,
+        obs_lat,
+        meshes,
+        material_lambda,
+        material_mu,
+        mesh_idx=0,
+        tri_start=tri_idx,
+        tri_stop=tri_idx + 1,
     )
-
-    # Call cutde, multiply by displacements, and package for the return
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        disp_mat = cutde_halfspace.disp_matrix(
-            obs_pts=obs_coords, tris=np.array([tri_coords]), nu=poissons_ratio
-        )
-    slip = np.array([[strike_slip, dip_slip, tensile_slip]])
-    disp = disp_mat.reshape((-1, 3)).dot(slip.flatten())
+    slip = np.array([strike_slip, dip_slip, tensile_slip], dtype=np.float64)
+    disp = block @ slip
     vel_east = disp[0::3]
     vel_north = disp[1::3]
     vel_up = disp[2::3]
@@ -694,44 +594,91 @@ def get_tri_displacements_single_mesh(
     element in a half space.  Includes projection from longitude and
     latitude to locally tangent planar coordinate system.
     """
-    poissons_ratio = material_mu / (2 * (material_mu + material_lambda))
-
-    # Project coordinates
-    tri_centroid_lon = meshes[mesh_idx].centroids[tri_idx, 0]
-    tri_centroid_lat = meshes[mesh_idx].centroids[tri_idx, 1]
-    projection = get_transverse_projection(tri_centroid_lon, tri_centroid_lat)
-    obs_x, obs_y = projection(obs_lon, obs_lat)
-    tri_x1, tri_y1 = projection(
-        meshes[mesh_idx].lon1[tri_idx], meshes[mesh_idx].lat1[tri_idx]
+    block = get_tde_displacement_slab_single_mesh(
+        obs_lon,
+        obs_lat,
+        meshes,
+        material_lambda,
+        material_mu,
+        mesh_idx=mesh_idx,
+        tri_start=tri_idx,
+        tri_stop=tri_idx + 1,
     )
-    tri_x2, tri_y2 = projection(
-        meshes[mesh_idx].lon2[tri_idx], meshes[mesh_idx].lat2[tri_idx]
-    )
-    tri_x3, tri_y3 = projection(
-        meshes[mesh_idx].lon3[tri_idx], meshes[mesh_idx].lat3[tri_idx]
-    )
-    tri_z1 = KM2M * meshes[mesh_idx].dep1[tri_idx]
-    tri_z2 = KM2M * meshes[mesh_idx].dep2[tri_idx]
-    tri_z3 = KM2M * meshes[mesh_idx].dep3[tri_idx]
-
-    # Package coordinates for cutde call
-    obs_coords = np.vstack((obs_x, obs_y, np.zeros_like(obs_x))).T
-    tri_coords = np.array(
-        [[tri_x1, tri_y1, tri_z1], [tri_x2, tri_y2, tri_z2], [tri_x3, tri_y3, tri_z3]]
-    )
-
-    # Call cutde, multiply by displacements, and package for the return
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        disp_mat = cutde_halfspace.disp_matrix(
-            obs_pts=obs_coords, tris=np.array([tri_coords]), nu=poissons_ratio
-        )
-    slip = np.array([[strike_slip, dip_slip, tensile_slip]])
-    disp = disp_mat.reshape((-1, 3)).dot(slip.flatten())
+    slip = np.array([strike_slip, dip_slip, tensile_slip], dtype=np.float64)
+    disp = block @ slip
     vel_east = disp[0::3]
     vel_north = disp[1::3]
     vel_up = disp[2::3]
     return vel_east, vel_north, vel_up
+
+
+def get_tde_displacement_slab_single_mesh(
+    obs_lon,
+    obs_lat,
+    meshes,
+    material_lambda,
+    material_mu,
+    mesh_idx,
+    tri_start,
+    tri_stop,
+    out=None,
+):
+    """Dense displacement columns for triangles [tri_start, tri_stop) of one mesh.
+
+    Returns a (3 * n_obs, 3 * (tri_stop - tri_start)) float64 array. For local
+    triangle j = t - tri_start, column 3*j is the response to unit strike-slip,
+    3*j + 1 to unit dip-slip, and 3*j + 2 to unit tensile slip. Rows interleave
+    (east, north, up) per observation point, matching the layout documented in
+    get_tde_to_velocities_single_mesh.
+
+    Each triangle is evaluated with a single cutde disp_matrix call that yields
+    all three slip components at once. If out is given, the columns are written
+    into it (it must have shape (3 * n_obs, 3 * (tri_stop - tri_start))) and it
+    is returned.
+    """
+    poissons_ratio = material_mu / (2 * (material_mu + material_lambda))
+    mesh = meshes[mesh_idx]
+    obs_lon = np.asarray(obs_lon)
+    obs_lat = np.asarray(obs_lat)
+    n_obs = obs_lon.size
+    if out is None:
+        out = np.empty((3 * n_obs, 3 * (tri_stop - tri_start)))
+    else:
+        assert out.shape == (3 * n_obs, 3 * (tri_stop - tri_start))
+
+    for j, t in enumerate(range(tri_start, tri_stop)):
+        # Project coordinates into a plane locally tangent at the triangle centroid
+        projection = get_transverse_projection(
+            mesh.centroids[t, 0], mesh.centroids[t, 1]
+        )
+        obs_x, obs_y = projection(obs_lon, obs_lat)
+        tri_x1, tri_y1 = projection(mesh.lon1[t], mesh.lat1[t])
+        tri_x2, tri_y2 = projection(mesh.lon2[t], mesh.lat2[t])
+        tri_x3, tri_y3 = projection(mesh.lon3[t], mesh.lat3[t])
+        tri_z1 = KM2M * mesh.dep1[t]
+        tri_z2 = KM2M * mesh.dep2[t]
+        tri_z3 = KM2M * mesh.dep3[t]
+
+        # Package coordinates for cutde call
+        obs_coords = np.vstack((obs_x, obs_y, np.zeros_like(obs_x))).T
+        tri_coords = np.array(
+            [
+                [tri_x1, tri_y1, tri_z1],
+                [tri_x2, tri_y2, tri_z2],
+                [tri_x3, tri_y3, tri_z3],
+            ]
+        )
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            disp_mat = cutde_halfspace.disp_matrix(
+                obs_pts=obs_coords, tris=np.array([tri_coords]), nu=poissons_ratio
+            )
+        # disp_mat has shape (n_obs, 3 displacement components, 1, 3 slip
+        # components); the reshape gives rows interleaved (east, north, up) per
+        # observation point and columns (strike-slip, dip-slip, tensile slip)
+        out[:, 3 * j : 3 * j + 3] = disp_mat.reshape(3 * n_obs, 3)
+    return out
 
 
 def get_tri_smoothing_matrix_simple(share, n_dim) -> csr_matrix:

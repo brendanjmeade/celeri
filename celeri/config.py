@@ -91,6 +91,17 @@ class Config(RelativePathSerializerMixin, BaseModel):
     force_recompute: bool = False
     """When True, recomputes all operators even if cached versions are present."""
 
+    tde_operator_memory_gb: float = 1.0
+    """Approximate memory budget in gigabytes for transient blocks of the dense
+    TDE elastic operator during operator construction.
+
+    In streaming MCMC mode (mcmc_station_velocity_method="project_to_eigen") the
+    per-mesh (3 * n_stations, 3 * n_triangles) TDE matrix is never fully
+    materialized; triangle-column and station-row slabs of roughly this size are
+    processed one at a time. Peak transient memory is about 1.7x this value.
+    Larger values are faster; results are unchanged up to floating-point
+    round-off."""
+
     # Weights for various constraints and parameters in penalized linear inversion
     block_constraint_weight: float = 1e24
     slip_constraint_weight: float = 100000
