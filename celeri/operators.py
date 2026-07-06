@@ -70,6 +70,7 @@ from celeri.spatial import (
     get_rotation_to_slip_rate_partials,
     get_rotation_to_velocities_partials,
     get_segment_station_operator_okada,
+    get_tde_displacement_slab_single_mesh,
     get_tde_to_velocities_single_mesh,
     get_tri_smoothing_matrix,
 )
@@ -1110,29 +1111,74 @@ def build_los_operators(
     # TDE operators at LOS locations
     tde_to_los: dict[int, np.ndarray] = {}
     eigen_to_los: dict[int, np.ndarray] = {}
-    tde_n_cols: dict[int, int] = {}
 
     if operators.tde is not None:
+        obs_lon = los.lon.to_numpy()
+        obs_lat = los.lat.to_numpy()
+        target_bytes = int(model.config.tde_operator_memory_gb * 2**30)
+        # When tde_to_los would be discarded anyway, accumulate eigen_to_los
+        # per triangle chunk and never hold a mesh's full tde_to_los
+        stream_only_eigen = discard_tde_to_los and operators.eigen is not None
         for mesh_idx in range(len(model.meshes)):
-            tde_to_velocities = get_tde_to_velocities_single_mesh(
-                model.meshes, los, model.config, mesh_idx
-            )
-            tde_to_los[mesh_idx] = _project_operator_to_los(
-                tde_to_velocities, look_vectors
-            )
-            tde_n_cols[mesh_idx] = tde_to_velocities.shape[1]
-
-        if operators.eigen is not None:
-            for mesh_idx in range(len(model.meshes)):
-                # eigen_to_los = tde_to_los @ eigenvectors
-                # The eigenvectors map from eigenmode coefficients to TDE slip rates
-                tde_los_op = tde_to_los[mesh_idx]
-                # Slice columns to keep only strike-slip and dip-slip (exclude tensile)
-                tde_keep_col_index = get_keep_index_12(tde_n_cols[mesh_idx])
-                tde_los_ss_ds = tde_los_op[:, tde_keep_col_index]
+            n_tris = model.meshes[mesh_idx].lon1.size
+            tri_batch_size = _tde_tri_batch_size(target_bytes, n_los, n_tris)
+            if stream_only_eigen:
+                assert operators.eigen is not None
                 eigenvectors = operators.eigen.eigenvectors_to_tde_slip[mesh_idx]
-                # Note: negative sign because elastic velocity is opposite to slip
-                eigen_to_los[mesh_idx] = -tde_los_ss_ds @ eigenvectors
+                assert eigenvectors.shape[0] == 2 * n_tris
+                # eigen_to_los = -tde_to_los[:, keep_12] @ eigenvectors
+                # The eigenvectors map from eigenmode coefficients to TDE slip
+                # rates; negative sign because elastic velocity is opposite to
+                # slip
+                out = np.zeros((n_los, eigenvectors.shape[1]))
+                for t0 in track(
+                    range(0, n_tris, tri_batch_size),
+                    description="LOS surface elastic        ",
+                ):
+                    t1 = min(t0 + tri_batch_size, n_tris)
+                    slab = get_tde_displacement_slab_single_mesh(
+                        obs_lon,
+                        obs_lat,
+                        model.meshes,
+                        model.config.material_lambda,
+                        model.config.material_mu,
+                        mesh_idx=mesh_idx,
+                        tri_start=t0,
+                        tri_stop=t1,
+                    )
+                    slab_los = _project_operator_to_los(slab, look_vectors)
+                    keep_local = get_keep_index_12(slab_los.shape[1])
+                    out -= slab_los[:, keep_local] @ eigenvectors[2 * t0 : 2 * t1, :]
+                eigen_to_los[mesh_idx] = out
+            else:
+                tde_los = np.empty((n_los, 3 * n_tris))
+                for t0 in track(
+                    range(0, n_tris, tri_batch_size),
+                    description="LOS surface elastic        ",
+                ):
+                    t1 = min(t0 + tri_batch_size, n_tris)
+                    slab = get_tde_displacement_slab_single_mesh(
+                        obs_lon,
+                        obs_lat,
+                        model.meshes,
+                        model.config.material_lambda,
+                        model.config.material_mu,
+                        mesh_idx=mesh_idx,
+                        tri_start=t0,
+                        tri_stop=t1,
+                    )
+                    tde_los[:, 3 * t0 : 3 * t1] = _project_operator_to_los(
+                        slab, look_vectors
+                    )
+                tde_to_los[mesh_idx] = tde_los
+                if operators.eigen is not None:
+                    # Note: negative sign because elastic velocity is opposite
+                    # to slip
+                    eigen_to_los[mesh_idx] = _project_tde_rows_to_eigen(
+                        tde_los,
+                        operators.eigen.eigenvectors_to_tde_slip[mesh_idx],
+                        target_bytes,
+                    )
 
     los_data = np.asarray(los.los_val.values)
 
@@ -1352,6 +1398,73 @@ def _compare_segments(
     return changed_indices
 
 
+def _compute_and_cache_tde_to_velocities(
+    meshes: list[Mesh],
+    station: DataFrame,
+    config: Config,
+    operators: _OperatorBuilder,
+    cache: Path | None,
+):
+    """Compute dense tde_to_velocities for every mesh and optionally append the
+    datasets to an existing cache file (preserving its other datasets).
+    """
+    for i in range(len(meshes)):
+        logger.info(
+            f"Start: TDE slip to velocity calculation for mesh: {meshes[i].file_name}"
+        )
+        operators.tde_to_velocities[i] = get_tde_to_velocities_single_mesh(
+            meshes, station, config, mesh_idx=i
+        )
+        logger.success(
+            f"Finish: TDE slip to velocity calculation for mesh: {meshes[i].file_name}"
+        )
+    if cache is not None:
+        logger.info("Adding tde_to_velocities to cache")
+        with h5py.File(str(cache), "a") as hdf5_file:
+            for i in range(len(meshes)):
+                key = "tde_to_velocities_" + str(i)
+                if key in hdf5_file:
+                    del hdf5_file[key]
+                hdf5_file.create_dataset(key, data=operators.tde_to_velocities[i])
+
+
+def _write_elastic_operator_cache(
+    cache: Path,
+    operators: _OperatorBuilder,
+    segment: DataFrame,
+    meshes: list[Mesh],
+    *,
+    write_tde: bool,
+    preserve_existing_tde: bool,
+):
+    """Write the okada operator and segment metadata (and optionally the dense
+    TDE matrices) to the cache file.
+
+    When preserve_existing_tde is True the file is updated in place so that
+    tde_to_velocities_<i> datasets written by other (non-streaming) runs
+    survive a rewrite triggered while streaming — those datasets stay valid
+    because the cache hash covers stations, meshes, and material parameters
+    but not segments. HDF5 does not reclaim the space of replaced datasets;
+    use h5repack to compact a cache file if it grows.
+    """
+    mode = "a" if preserve_existing_tde and cache.exists() else "w"
+    with h5py.File(str(cache), mode) as hdf5_file:
+        for key in ("slip_rate_to_okada_to_velocities", "segments", "segments_names"):
+            if key in hdf5_file:
+                del hdf5_file[key]
+        hdf5_file.create_dataset(
+            "slip_rate_to_okada_to_velocities",
+            data=operators.slip_rate_to_okada_to_velocities,
+        )
+        if write_tde:
+            for i in range(len(meshes)):
+                key = "tde_to_velocities_" + str(i)
+                if key in hdf5_file:
+                    del hdf5_file[key]
+                hdf5_file.create_dataset(key, data=operators.tde_to_velocities[i])
+        _save_segments_to_hdf5(segment, hdf5_file)
+
+
 def _store_elastic_operators(
     model: Model,
     operators: _OperatorBuilder,
@@ -1439,11 +1552,16 @@ def _store_elastic_operators(
                                 hdf5_file.close()
                                 return
                             hdf5_file.close()
+                            # Streaming runs cache the okada operator but not
+                            # the dense TDE matrices, so a later non-streaming
+                            # run lands here and must compute them
                             logger.info(
                                 "Cache missing tde_to_velocities. Computing from scratch."
                             )
-                        else:
-                            return
+                            _compute_and_cache_tde_to_velocities(
+                                meshes, station, config, operators, cache
+                            )
+                        return
 
                     logger.info(f"Recomputing {len(changed_segment_indices)} segments")
 
@@ -1476,22 +1594,24 @@ def _store_elastic_operators(
                                 )
                             tde_loaded_from_cache = True
                         hdf5_file.close()
+                        if not tde_loaded_from_cache:
+                            logger.info(
+                                "Cache missing tde_to_velocities. Computing from scratch."
+                            )
+                            _compute_and_cache_tde_to_velocities(
+                                meshes, station, config, operators, cache=None
+                            )
 
                     logger.info("Caching updated elastic operators")
                     cache.parent.mkdir(parents=True, exist_ok=True)
-                    hdf5_file = h5py.File(str(cache), "w")
-                    hdf5_file.create_dataset(
-                        "slip_rate_to_okada_to_velocities",
-                        data=operators.slip_rate_to_okada_to_velocities,
+                    _write_elastic_operator_cache(
+                        cache,
+                        operators,
+                        segment,
+                        meshes,
+                        write_tde=tde and not skip_tde_to_velocities,
+                        preserve_existing_tde=skip_tde_to_velocities,
                     )
-                    if tde and tde_loaded_from_cache:
-                        for i in range(len(meshes)):
-                            hdf5_file.create_dataset(
-                                "tde_to_velocities_" + str(i),
-                                data=operators.tde_to_velocities[i],
-                            )
-                    _save_segments_to_hdf5(segment, hdf5_file)
-                    hdf5_file.close()
 
                     return
 
@@ -1527,20 +1647,14 @@ def _store_elastic_operators(
         return
     logger.info("Saving elastic operators in cache")
     cache.parent.mkdir(parents=True, exist_ok=True)
-    hdf5_file = h5py.File(str(cache), "w")
-
-    hdf5_file.create_dataset(
-        "slip_rate_to_okada_to_velocities",
-        data=operators.slip_rate_to_okada_to_velocities,
+    _write_elastic_operator_cache(
+        cache,
+        operators,
+        segment,
+        meshes,
+        write_tde=tde and not skip_tde_to_velocities,
+        preserve_existing_tde=skip_tde_to_velocities,
     )
-    if tde and not skip_tde_to_velocities:
-        for i in range(len(meshes)):
-            hdf5_file.create_dataset(
-                "tde_to_velocities_" + str(i),
-                data=operators.tde_to_velocities[i],
-            )
-    _save_segments_to_hdf5(segment, hdf5_file)
-    hdf5_file.close()
 
 
 def _store_all_mesh_smoothing_matrices(model: Model, operators: _OperatorBuilder):
@@ -2638,25 +2752,121 @@ def _store_eigenvectors_to_tde_slip(model: Model, operators: _OperatorBuilder):
         logger.success(f"Finish: Eigenvectors to TDE slip for mesh: {mesh.file_name}")
 
 
+def _tde_tri_batch_size(target_bytes: int, n_obs: int, n_tris: int) -> int:
+    """Triangles per slab chunk: one column-triple costs 3 * n_obs rows *
+    3 columns * 8 bytes.
+    """
+    return max(1, min(n_tris, target_bytes // (72 * max(1, n_obs))))
+
+
+def _project_tde_rows_to_eigen(
+    tde_to_velocities, eigenvectors_to_tde_slip: np.ndarray, target_bytes: int
+) -> np.ndarray:
+    """Compute -tde_to_velocities[:, keep_12] @ eigenvectors_to_tde_slip in row batches.
+
+    tde_to_velocities may be an np.ndarray or an open h5py.Dataset of shape
+    (3 * n_stations, 3 * n_tris). Processing station-row slabs of at most
+    target_bytes avoids materializing the (3 * n_stations, 2 * n_tris)
+    kept-column copy that a direct fancy-index would create (and, for an
+    h5py.Dataset, avoids loading the full matrix at all).
+    """
+    n_rows, n_cols = tde_to_velocities.shape
+    assert eigenvectors_to_tde_slip.shape[0] == 2 * (n_cols // 3)
+    # Slice columns to only strike-slip and dip-slip (exclude tensile)
+    tde_keep_col_index = get_keep_index_12(n_cols)
+    out = np.empty((n_rows, eigenvectors_to_tde_slip.shape[1]))
+    rows_per_batch = max(1, target_bytes // max(1, 8 * n_cols))
+    for r0 in range(0, n_rows, rows_per_batch):
+        r1 = min(r0 + rows_per_batch, n_rows)
+        # Contiguous row read (cheap for h5py, a view for ndarray); only the
+        # small in-memory slab is fancy-indexed
+        slab = np.asarray(tde_to_velocities[r0:r1, :])
+        out[r0:r1, :] = -(slab[:, tde_keep_col_index] @ eigenvectors_to_tde_slip)
+    return out
+
+
+def _accumulate_eigen_to_velocities_streaming(
+    meshes: list[Mesh],
+    station: DataFrame,
+    config: Config,
+    mesh_idx: int,
+    eigenvectors_to_tde_slip: np.ndarray,
+    target_bytes: int,
+    tri_batch_size: int | None = None,
+) -> np.ndarray:
+    """Accumulate -tde_to_velocities[:, keep_12] @ eigenvectors_to_tde_slip over
+    triangle chunks without ever materializing the dense TDE matrix.
+
+    For each chunk of triangles [t0, t1), the displacement slab
+    (3 * n_stations, 3 * (t1 - t0)) pairs with rows [2*t0, 2*t1) of
+    eigenvectors_to_tde_slip: kept slab column 2*j is strike slip of triangle
+    t0 + j and matches row 2*j of the slice, kept column 2*j + 1 is dip slip
+    and matches row 2*j + 1. Tensile columns are computed in each slab (they
+    come for free from cutde) but are not projected, matching the dense path.
+    """
+    assert not station.empty
+    n_tris = meshes[mesh_idx].lon1.size
+    n_obs = len(station)
+    assert eigenvectors_to_tde_slip.shape[0] == 2 * n_tris
+    out = np.zeros((3 * n_obs, eigenvectors_to_tde_slip.shape[1]))
+    if tri_batch_size is None:
+        tri_batch_size = _tde_tri_batch_size(target_bytes, n_obs, n_tris)
+    tri_batch_size = max(1, min(n_tris, tri_batch_size))
+    obs_lon = station.lon.to_numpy()
+    obs_lat = station.lat.to_numpy()
+    slab_buffer = np.empty((3 * n_obs, 3 * tri_batch_size))
+    keep_full = get_keep_index_12(slab_buffer.shape[1])
+    for t0 in track(
+        range(0, n_tris, tri_batch_size), description="Meshed surface elastic     "
+    ):
+        t1 = min(t0 + tri_batch_size, n_tris)
+        slab = get_tde_displacement_slab_single_mesh(
+            obs_lon,
+            obs_lat,
+            meshes,
+            config.material_lambda,
+            config.material_mu,
+            mesh_idx=mesh_idx,
+            tri_start=t0,
+            tri_stop=t1,
+            out=slab_buffer[:, : 3 * (t1 - t0)],
+        )
+        keep_local = (
+            keep_full if t1 - t0 == tri_batch_size else get_keep_index_12(slab.shape[1])
+        )
+        out -= slab[:, keep_local] @ eigenvectors_to_tde_slip[2 * t0 : 2 * t1, :]
+    return out
+
+
 def _compute_eigen_to_velocities(
     model: Model, operators: _OperatorBuilder, index: Index, streaming: bool
 ) -> dict[int, np.ndarray]:
     """Compute eigen_to_velocities for all meshes.
 
     Args:
-        streaming: If True, processes one mesh at a time by loading/computing
-            tde_to_velocities on demand, adding the result to the cache file, then
-            discarding it before moving to the next mesh. This reduces peak memory
-            usage from O(n_meshes * tde_matrix_size) to O(tde_matrix_size).
-            If False, uses the pre-computed operators.tde_to_velocities.
+        streaming: If True, processes one mesh at a time without ever
+            materializing the dense per-mesh TDE matrix. If the elastic
+            operator cache holds tde_to_velocities for a mesh, it is projected
+            in station-row slabs read directly from the HDF5 dataset;
+            otherwise the projection is accumulated over triangle chunks
+            computed on the fly. Peak transient memory is
+            O(config.tde_operator_memory_gb) instead of O(tde_matrix_size).
+            Streaming mode does not write dense TDE matrices to the cache
+            file.
+            If False, uses the pre-computed operators.tde_to_velocities
+            (projected in row batches to avoid a full kept-column copy).
 
     Returns:
         Dictionary mapping mesh index to eigen_to_velocities operator.
-        Each operator has shape (2 * n_stations, n_modes_ss + n_modes_ds).
+        Each operator has shape (3 * n_stations, n_modes_ss + n_modes_ds).
+        All 3 velocity components are kept; station_row_keep_index handles the
+        vertical flag when the operator is inserted into the full operator.
     """
     config = model.config
     meshes = model.meshes
     station = model.station
+
+    target_bytes = int(config.tde_operator_memory_gb * 2**30)
 
     cache = None
     if streaming and config.elastic_operator_cache_dir is not None:
@@ -2670,48 +2880,34 @@ def _compute_eigen_to_velocities(
     eigen_to_velocities: dict[int, np.ndarray] = {}
 
     for i in range(index.n_meshes):
-        tde_computed = False
+        eigenvectors_to_tde_slip = operators.eigenvectors_to_tde_slip[i]
+        result = None
         if streaming:
-            logger.info(f"Loading tde_to_velocities for mesh: {meshes[i].file_name}")
-
-            tde_to_velocities = None
             if cache is not None and cache.exists():
-                hdf5_file = h5py.File(str(cache), "r")
-                cached_data = hdf5_file.get("tde_to_velocities_" + str(i))
-                if cached_data is not None:
-                    tde_to_velocities = np.array(cached_data)
-                hdf5_file.close()
-
-            if tde_to_velocities is None:
-                tde_to_velocities = get_tde_to_velocities_single_mesh(
-                    meshes, station, config, mesh_idx=i
+                with h5py.File(str(cache), "r") as hdf5_file:
+                    cached_data = hdf5_file.get("tde_to_velocities_" + str(i))
+                    if cached_data is not None:
+                        logger.info(
+                            "Projecting cached tde_to_velocities for mesh: "
+                            f"{meshes[i].file_name}"
+                        )
+                        result = _project_tde_rows_to_eigen(
+                            cached_data, eigenvectors_to_tde_slip, target_bytes
+                        )
+            if result is None:
+                logger.info(
+                    f"Computing eigen_to_velocities for mesh: {meshes[i].file_name}"
                 )
-                tde_computed = True
+                result = _accumulate_eigen_to_velocities_streaming(
+                    meshes, station, config, i, eigenvectors_to_tde_slip, target_bytes
+                )
         else:
             tde_to_velocities = operators.tde_to_velocities[i]
-
-        assert tde_to_velocities is not None and tde_to_velocities.ndim == 2
-        # Slice columns to only strike-slip and dip-slip (exclude tensile)
-        tde_keep_col_index = get_keep_index_12(tde_to_velocities.shape[1])  # type: ignore[index]
-
-        # Create eigenvector to velocities operator
-        # Keep all 3 velocity components; use station_row_keep_index when
-        # inserting into the full operator to handle vertical flag
-        eigen_to_velocities[i] = (
-            -tde_to_velocities[:, tde_keep_col_index]
-            @ operators.eigenvectors_to_tde_slip[i]
-        )
-
-        if streaming:
-            if tde_computed and cache is not None:
-                logger.info(f"Saving tde_to_velocities to cache: {cache}")
-                cache.parent.mkdir(parents=True, exist_ok=True)
-                hdf5_file = h5py.File(str(cache), "a")
-                key = "tde_to_velocities_" + str(i)
-                if hdf5_file.get(key) is None:
-                    hdf5_file.create_dataset(key, data=tde_to_velocities)
-                hdf5_file.close()
-            del tde_to_velocities
+            assert tde_to_velocities is not None and tde_to_velocities.ndim == 2
+            result = _project_tde_rows_to_eigen(
+                tde_to_velocities, eigenvectors_to_tde_slip, target_bytes
+            )
+        eigen_to_velocities[i] = result
 
     return eigen_to_velocities
 
