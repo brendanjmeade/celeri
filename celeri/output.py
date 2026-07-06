@@ -326,12 +326,19 @@ def dataclass_from_disk(
     store = zarr.open_group(str(data_file), mode="r")
     data: dict[str, Any] = {}
     for name in store.array_keys():
+        if name in skip:
+            # Skipped keys must not be materialized at all: skipped arrays can
+            # be large (e.g. dense operators in run folders written by older
+            # versions)
+            continue
         if name in extra:
             raise ValueError(f"Duplicate key '{name}' found in extra data.")
         values = store[name]
         assert isinstance(values, zarr.Array)
         data[name] = values[...]
     for name in store.group_keys():
+        if name in skip:
+            continue
         values = store[name]
         assert isinstance(values, zarr.Group)
         arrays = {}

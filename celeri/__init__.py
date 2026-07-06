@@ -40,7 +40,6 @@ from celeri.operators import (
     get_rotation_to_slip_rate_partials,
     get_rotation_to_tri_slip_rate_partials,
     get_rotation_to_velocities_partials,
-    get_segment_station_operator_okada,
     get_slip_rate_bounds,
     get_slip_rate_constraints,
     get_tde_to_velocities_single_mesh,
@@ -89,7 +88,9 @@ from celeri.solve import (
 )
 from celeri.solve_mcmc import solve_mcmc
 from celeri.spatial import (
+    get_okada_displacement_slab,
     get_okada_displacements,
+    get_segment_station_operator_okada,
     get_shared_sides,
     get_tde_to_velocities,
     get_tri_displacements,
@@ -127,6 +128,7 @@ __all__ = [
     "get_logger",
     "get_mogi_to_velocities_partials",
     "get_newest_run_folder",
+    "get_okada_displacement_slab",
     "get_okada_displacements",
     "get_qp_all_inequality_operator_and_data_vector",
     "get_qp_slip_rate_inequality_operator_and_data_vector",

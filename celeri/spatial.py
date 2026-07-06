@@ -158,10 +158,7 @@ def get_segment_station_operator_okada(segment, station, config, *, progress_bar
 
     """
     if station.empty:
-        # TODO: Shouldn't this return an array of shape (0, 3 * n_segments)?
-        # Currently this returns an array of shape (1,) with an uninitialized value,
-        # so this seems wrong.
-        return np.empty(1)
+        return np.zeros((0, 3 * len(segment)))
     n_segments = len(segment)
     n_stations = len(station)
     okada_segment_operator = np.full((3 * n_stations, 3 * n_segments), np.nan)
@@ -172,7 +169,39 @@ def get_segment_station_operator_okada(segment, station, config, *, progress_bar
         else track(range(len(segment)), description="Rectangular segment elastic")
     )
     for i in segment_iter:
-        for slip_type in ["strike", "dip", "tensile"]:
+        get_okada_displacement_slab(
+            segment,
+            station,
+            config,
+            seg_start=i,
+            seg_stop=i + 1,
+            out=okada_segment_operator[:, 3 * i : 3 * i + 3],
+        )
+    return okada_segment_operator
+
+
+def get_okada_displacement_slab(
+    segment, station, config, *, seg_start, seg_stop, out=None
+):
+    """Dense displacement columns for segments [seg_start, seg_stop).
+
+    Returns a (3 * n_stations, 3 * (seg_stop - seg_start)) float64 array. For
+    local segment j = i - seg_start, column 3*j is the response to unit strike
+    slip, 3*j + 1 to unit dip slip, and 3*j + 2 to unit tensile slip. Rows
+    interleave (east, north, up) per station, matching the layout documented
+    in get_segment_station_operator_okada. If out is given, the columns are
+    written into it (it must have the shape above) and it is returned.
+    """
+    n_stations = len(station)
+    if out is None:
+        out = np.empty((3 * n_stations, 3 * (seg_stop - seg_start)))
+    else:
+        assert out.shape == (3 * n_stations, 3 * (seg_stop - seg_start))
+    # seg_start/seg_stop are positional; the column reads below are label-based
+    if not segment.index.equals(pd.RangeIndex(len(segment))):
+        segment = segment.reset_index(drop=True)
+    for j, i in enumerate(range(seg_start, seg_stop)):
+        for k, slip_type in enumerate(["strike", "dip", "tensile"]):
             # Each `u` has shape (n_stations, )
             u_east, u_north, u_up = get_okada_displacements(
                 segment.lon1[i],
@@ -190,20 +219,13 @@ def get_segment_station_operator_okada(segment, station, config, *, progress_bar
                 station.lon,
                 station.lat,
             )
-            if slip_type == "strike":
-                col_idx = 3 * i
-            elif slip_type == "dip":
-                col_idx = 3 * i + 1
-            elif slip_type == "tensile":
-                col_idx = 3 * i + 2
-            else:
-                raise ValueError(f"Invalid slip type: {slip_type}")
+            col_idx = 3 * j + k
             # The i::3 notation sets an offset of i and a skip of 3 so that
             # east/north/up displacements are interleaved.
-            okada_segment_operator[0::3, col_idx] = np.squeeze(u_east)
-            okada_segment_operator[1::3, col_idx] = np.squeeze(u_north)
-            okada_segment_operator[2::3, col_idx] = np.squeeze(u_up)
-    return okada_segment_operator
+            out[0::3, col_idx] = np.squeeze(u_east)
+            out[1::3, col_idx] = np.squeeze(u_north)
+            out[2::3, col_idx] = np.squeeze(u_up)
+    return out
 
 
 def get_okada_displacements(
