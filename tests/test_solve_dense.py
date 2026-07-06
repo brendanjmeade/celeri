@@ -94,9 +94,23 @@ def test_operator_slip_rate_to_okada_to_velocities(config_name):
 
     estimation = celeri.assemble_and_solve_dense(model, eigen=True, tde=True)
 
-    assert estimation.operators.slip_rate_to_okada_to_velocities is not None
+    # The dense okada operator is no longer kept on the Operators object; the
+    # solve consumes only the composed rotation product. Rebuild the dense
+    # matrix with the (unchanged) assembler to compare against the same
+    # baseline, and tie the streamed composed operator back to it.
+    assert estimation.operators.slip_rate_to_okada_to_velocities is None
+    operator = celeri.get_segment_station_operator_okada(
+        model.segment, model.station, model.config, progress_bar=False
+    )
+    composed_reference = operator @ estimation.operators.rotation_to_slip_rate
+    composed = estimation.operators.rotation_to_slip_rate_to_okada_to_velocities
+    np.testing.assert_allclose(
+        composed,
+        composed_reference,
+        rtol=1e-10,
+        atol=1e-12 * np.abs(composed_reference).max(),
+    )
 
-    operator = estimation.operators.slip_rate_to_okada_to_velocities
     rng = np.random.default_rng(seed=0)
     size = min(min(len(operator), len(operator[0])), 50)
     idx_rows = rng.choice(len(operator), size=size, replace=False)

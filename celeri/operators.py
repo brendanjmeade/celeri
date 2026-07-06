@@ -28,7 +28,7 @@ import hashlib
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
-from typing import Any, overload
+from typing import overload
 
 import h5py
 import numpy as np
@@ -67,9 +67,10 @@ from celeri.spatial import (
     get_block_strain_rate_to_velocities_partials,
     get_global_float_block_rotation_partials,
     get_mogi_to_velocities_partials,
+    get_okada_displacement_slab,
     get_rotation_to_slip_rate_partials,
     get_rotation_to_velocities_partials,
-    get_segment_station_operator_okada,
+    get_segment_station_operator_okada,  # noqa: F401  (re-exported for backward compatibility)
     get_tde_displacement_slab_single_mesh,
     get_tde_to_velocities_single_mesh,
     get_tri_smoothing_matrix,
@@ -409,10 +410,6 @@ class LosOperators:
     """Maps Mogi sources to LOS velocities; shape (n_los, n_mogis).
 
     UNITS: [dimensionless] - maps Mogi parameters → [mm/yr] LOS velocity."""
-    okada_to_los: np.ndarray
-    """Maps segment slip rates to LOS velocities via Okada; shape (n_los, 3 * n_segments).
-
-    UNITS: [dimensionless] - maps slip rates [mm/yr] → [mm/yr] LOS velocity."""
     rotation_to_okada_los: np.ndarray
     """Composed operator rotation -> slip rate -> Okada -> LOS; shape (n_los, 3 * n_blocks).
 
@@ -431,6 +428,14 @@ class LosOperators:
     Can be None if discarded after building eigen_to_los to save memory.
 
     UNITS: [dimensionless] - maps TDE slip rates [mm/yr] → [mm/yr] LOS velocity."""
+    okada_to_los: np.ndarray | None = None
+    """Maps segment slip rates to LOS velocities via Okada; shape (n_los, 3 * n_segments).
+
+    UNITS: [dimensionless] - maps slip rates [mm/yr] → [mm/yr] LOS velocity.
+
+    No longer built (always None): only the composed rotation_to_okada_los is
+    consumed anywhere, so the dense per-segment LOS operator is never
+    materialized. The field is retained for backward compatibility."""
 
     @property
     def n_los(self) -> int:
@@ -442,13 +447,15 @@ class LosOperators:
         skip = set()
         if self.tde_to_los is None:
             skip.add("tde_to_los")
+        if self.okada_to_los is None:
+            skip.add("okada_to_los")
         dataclass_to_disk(self, path, skip=skip)
 
     @classmethod
     def from_disk(cls, input_dir: str | Path) -> "LosOperators":
         """Load LOS operators from disk."""
         path = Path(input_dir)
-        return dataclass_from_disk(cls, path, skip={"los_err"})
+        return dataclass_from_disk(cls, path, skip={"los_err", "okada_to_los"})
 
 
 @dataclass
@@ -501,15 +508,6 @@ class Operators:
 
     Has shape (3 * n_stations, n_mogis).
     """
-    slip_rate_to_okada_to_velocities: np.ndarray
-    """Okada model slip rate to velocity mapping.
-
-    UNITS: [dimensionless] - Maps slip rates [mm/yr] to velocities [mm/yr].
-    The Okada Green's functions provide the geometric relationship between
-    slip on a fault and surface velocities.
-
-    Has shape (3 * n_stations, 3 * n_segments).
-    """
     rotation_to_tri_slip_rate: dict[int, np.ndarray]
     """Rotation to triangular slip rate mapping.
 
@@ -546,6 +544,21 @@ class Operators:
     """Spherical areas for each block (dimensionless, on unit sphere).
 
     Maps block index to area. Multiply by EARTH_RADIUS^2 to get physical area.
+    """
+    slip_rate_to_okada_to_velocities: np.ndarray | None = None
+    """Okada model slip rate to velocity mapping.
+
+    UNITS: [dimensionless] - Maps slip rates [mm/yr] to velocities [mm/yr].
+    The Okada Green's functions provide the geometric relationship between
+    slip on a fault and surface velocities.
+
+    Has shape (3 * n_stations, 3 * n_segments). Since the streaming refactor
+    this dense matrix is no longer kept in memory (only the composed
+    rotation_to_slip_rate_to_okada_to_velocities is); it lives in the elastic
+    operator cache file when a cache dir is configured. The field is retained
+    (always None) for backward compatibility. To obtain columns, call
+    get_okada_displacement_slab for a segment range or read the
+    "slip_rate_to_okada_to_velocities" dataset from the cache file.
     """
 
     @overload
@@ -667,6 +680,8 @@ class Operators:
             scipy.sparse.save_npz(matrix_path, smoothing_matrix)
 
         skip = {"tde", "eigen", "los", "index", "model", "smoothing_matrix"}
+        if self.slip_rate_to_okada_to_velocities is None:
+            skip.add("slip_rate_to_okada_to_velocities")
 
         dataclass_to_disk(self, path, skip=skip)
 
@@ -741,7 +756,11 @@ class Operators:
             "smoothing_matrix": smoothing_matrix,
         }
 
-        return dataclass_from_disk(cls, path, extra=extra)
+        # Skip the dense okada operator that run folders written by older
+        # versions may contain; it is no longer kept in memory
+        return dataclass_from_disk(
+            cls, path, extra=extra, skip={"slip_rate_to_okada_to_velocities"}
+        )
 
 
 @dataclass
@@ -754,7 +773,6 @@ class _OperatorBuilder:
     rotation_to_slip_rate: np.ndarray | None = None
     block_strain_rate_to_velocities: np.ndarray | None = None
     mogi_to_velocities: np.ndarray | None = None
-    slip_rate_to_okada_to_velocities: np.ndarray | None = None
     eigenvectors_to_tde_slip: dict[int, np.ndarray] = field(default_factory=dict)
     eigenvalues: dict[int, np.ndarray] = field(default_factory=dict)
     rotation_to_tri_slip_rate: dict[int, np.ndarray] = field(default_factory=dict)
@@ -777,7 +795,6 @@ class _OperatorBuilder:
         assert self.rotation_to_slip_rate is not None
         assert self.block_strain_rate_to_velocities is not None
         assert self.mogi_to_velocities is not None
-        assert self.slip_rate_to_okada_to_velocities is not None
         assert self.rotation_to_tri_slip_rate is not None
         assert self.smoothing_matrix is not None
         assert self.tde_slip_rate_constraints is not None
@@ -795,7 +812,6 @@ class _OperatorBuilder:
             rotation_to_slip_rate=self.rotation_to_slip_rate,
             block_strain_rate_to_velocities=self.block_strain_rate_to_velocities,
             mogi_to_velocities=self.mogi_to_velocities,
-            slip_rate_to_okada_to_velocities=self.slip_rate_to_okada_to_velocities,
             rotation_to_tri_slip_rate=self.rotation_to_tri_slip_rate,
             smoothing_matrix=self.smoothing_matrix,
             global_float_block_rotation=self.global_float_block_rotation,
@@ -927,6 +943,12 @@ def build_operators(
 
     operators = _OperatorBuilder(model)
 
+    # Rotation vectors to slip rate operator (needed by the elastic operator
+    # step below to compose the okada operator without materializing it)
+    operators.rotation_to_slip_rate = get_rotation_to_slip_rate_partials(
+        model.segment, model.block
+    )
+
     # Get all elastic operators for segments and TDEs
     # When discard_tde_to_velocities is True, skip loading tde_to_velocities
     # as we'll compute eigen_to_velocities in streaming mode later
@@ -951,11 +973,6 @@ def build_operators(
 
     # Soft slip rate constraints
     operators.slip_rate_constraints = get_slip_rate_constraints(model)
-
-    # Rotation vectors to slip rate operator
-    operators.rotation_to_slip_rate = get_rotation_to_slip_rate_partials(
-        model.segment, model.block
-    )
 
     # Internal block strain rate operator
     (
@@ -989,11 +1006,10 @@ def build_operators(
     # Get rotation to TDE kinematic slip rate operator for all meshes tied to segments
     _store_tde_coupling_constraints(model, operators)
 
-    # Insert block rotations and elastic velocities from fully locked segments
-    assert operators.slip_rate_to_okada_to_velocities is not None
-    operators.rotation_to_slip_rate_to_okada_to_velocities = (
-        operators.slip_rate_to_okada_to_velocities @ operators.rotation_to_slip_rate
-    )
+    # Block rotations and elastic velocities from fully locked segments: the
+    # composed operator was built by _store_elastic_operators without ever
+    # materializing the dense okada matrix
+    assert operators.rotation_to_slip_rate_to_okada_to_velocities is not None
 
     if eigen:
         operators.eigen_to_velocities = _compute_eigen_to_velocities(
@@ -1096,17 +1112,25 @@ def build_los_operators(
     mogi_to_velocities = get_mogi_to_velocities_partials(model.mogi, los, model.config)
     mogi_to_los = _project_operator_to_los(mogi_to_velocities, look_vectors)
 
-    # Segment slip rate to Okada velocity at LOS locations
-    okada_to_velocities = get_segment_station_operator_okada(
-        model.segment, los, model.config
-    )
-    okada_to_los = _project_operator_to_los(okada_to_velocities, look_vectors)
-
-    # Composed rotation -> slip rate -> Okada operator
-    rotation_to_okada_velocities = okada_to_velocities @ operators.rotation_to_slip_rate
-    rotation_to_okada_los = _project_operator_to_los(
-        rotation_to_okada_velocities, look_vectors
-    )
+    # Composed rotation -> slip rate -> Okada -> LOS operator, accumulated per
+    # segment chunk: the dense (3 * n_los, 3 * n_segments) okada operator is
+    # never materialized (raw okada_to_los has no consumers)
+    n_segments = len(model.segment)
+    target_bytes = int(model.config.tde_operator_memory_gb * 2**30)
+    rotation_to_okada_los = np.zeros((n_los, operators.rotation_to_slip_rate.shape[1]))
+    seg_batch_size = _column_triple_batch_size(target_bytes, n_los, n_segments)
+    for s0 in track(
+        range(0, n_segments, seg_batch_size),
+        description="LOS segment elastic        ",
+    ):
+        s1 = min(s0 + seg_batch_size, n_segments)
+        slab = get_okada_displacement_slab(
+            model.segment, los, model.config, seg_start=s0, seg_stop=s1
+        )
+        rotation_to_okada_los += (
+            _project_operator_to_los(slab, look_vectors)
+            @ operators.rotation_to_slip_rate[3 * s0 : 3 * s1, :]
+        )
 
     # TDE operators at LOS locations
     tde_to_los: dict[int, np.ndarray] = {}
@@ -1115,13 +1139,12 @@ def build_los_operators(
     if operators.tde is not None:
         obs_lon = los.lon.to_numpy()
         obs_lat = los.lat.to_numpy()
-        target_bytes = int(model.config.tde_operator_memory_gb * 2**30)
         # When tde_to_los would be discarded anyway, accumulate eigen_to_los
         # per triangle chunk and never hold a mesh's full tde_to_los
         stream_only_eigen = discard_tde_to_los and operators.eigen is not None
         for mesh_idx in range(len(model.meshes)):
             n_tris = model.meshes[mesh_idx].lon1.size
-            tri_batch_size = _tde_tri_batch_size(target_bytes, n_los, n_tris)
+            tri_batch_size = _column_triple_batch_size(target_bytes, n_los, n_tris)
             if stream_only_eigen:
                 assert operators.eigen is not None
                 eigenvectors = operators.eigen.eigenvectors_to_tde_slip[mesh_idx]
@@ -1191,7 +1214,6 @@ def build_los_operators(
         rotation_to_los=rotation_to_los,
         block_strain_rate_to_los=block_strain_rate_to_los,
         mogi_to_los=mogi_to_los,
-        okada_to_los=okada_to_los,
         rotation_to_okada_los=rotation_to_okada_los,
         eigen_to_los=eigen_to_los,
         los_data=los_data,
@@ -1420,49 +1442,127 @@ def _compute_and_cache_tde_to_velocities(
         )
     if cache is not None:
         logger.info("Adding tde_to_velocities to cache")
-        with h5py.File(str(cache), "a") as hdf5_file:
-            for i in range(len(meshes)):
-                key = "tde_to_velocities_" + str(i)
-                if key in hdf5_file:
-                    del hdf5_file[key]
-                hdf5_file.create_dataset(key, data=operators.tde_to_velocities[i])
+        try:
+            with h5py.File(str(cache), "a") as hdf5_file:
+                for i in range(len(meshes)):
+                    key = "tde_to_velocities_" + str(i)
+                    if key in hdf5_file:
+                        del hdf5_file[key]
+                    hdf5_file.create_dataset(key, data=operators.tde_to_velocities[i])
+        except OSError:
+            # Do not lose hours of computation to an unwritable cache file
+            logger.warning(
+                f"Cannot write tde_to_velocities to cache file {cache} "
+                "(locked by a concurrent run?). Continuing without caching."
+            )
 
 
-def _write_elastic_operator_cache(
-    cache: Path,
-    operators: _OperatorBuilder,
-    segment: DataFrame,
-    meshes: list[Mesh],
-    *,
-    write_tde: bool,
-    preserve_existing_tde: bool,
-):
-    """Write the okada operator and segment metadata (and optionally the dense
-    TDE matrices) to the cache file.
+def _open_cache_for_writing(
+    cache: Path, *, preserve_existing: bool
+) -> h5py.File | None:
+    """Open the cache file for writing, tolerating corrupt or locked files.
 
-    When preserve_existing_tde is True the file is updated in place so that
-    tde_to_velocities_<i> datasets written by other (non-streaming) runs
-    survive a rewrite triggered while streaming — those datasets stay valid
-    because the cache hash covers stations, meshes, and material parameters
-    but not segments. HDF5 does not reclaim the space of replaced datasets;
-    use h5repack to compact a cache file if it grows.
+    preserve_existing opens in append mode so that tde_to_velocities_<i>
+    datasets written by other runs survive — they stay valid because the
+    cache hash covers stations, meshes, and material parameters but not
+    segments. Otherwise the file is truncated (HDF5 never reclaims the space
+    of deleted datasets, so append-mode rewrites would grow the file).
+
+    A corrupt/truncated file (e.g. left behind by a killed run) fails to open
+    in append mode and is recreated. A file locked by a concurrent process
+    fails both opens, in which case None is returned and the caller computes
+    without caching.
     """
-    mode = "a" if preserve_existing_tde and cache.exists() else "w"
-    with h5py.File(str(cache), mode) as hdf5_file:
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    mode = "a" if preserve_existing and cache.exists() else "w"
+    try:
+        return h5py.File(str(cache), mode)
+    except OSError:
+        try:
+            return h5py.File(str(cache), "w")
+        except OSError:
+            logger.warning(
+                f"Cannot open cache file {cache} for writing (locked by a "
+                "concurrent run?). Computing without caching."
+            )
+            return None
+
+
+def _compute_okada_composed_and_cache(
+    segment: DataFrame,
+    station: DataFrame,
+    config: Config,
+    rotation_to_slip_rate: np.ndarray,
+    cache: Path | None,
+    target_bytes: int,
+    *,
+    preserve_existing: bool = False,
+) -> np.ndarray:
+    """Build rotation_to_slip_rate_to_okada_to_velocities without ever holding
+    the dense (3 * n_stations, 3 * n_segments) okada operator in memory.
+
+    With a cache configured, the dense operator is written to the cache file
+    slab by slab and the composed product is then streamed back from the
+    completed dataset — the identical code path as a cache hit, so cache-miss
+    and cache-hit results are bitwise equal. Without a cache the composed
+    product is accumulated per segment chunk.
+    """
+    n_segments = len(segment)
+    n_stations = len(station)
+    if n_stations == 0 or n_segments == 0:
+        return np.zeros((3 * n_stations, rotation_to_slip_rate.shape[1]))
+    seg_batch_size = _column_triple_batch_size(target_bytes, n_stations, n_segments)
+    slab_buffer = np.empty((3 * n_stations, 3 * seg_batch_size))
+
+    hdf5_file = None
+    dataset = None
+    if cache is not None:
+        hdf5_file = _open_cache_for_writing(cache, preserve_existing=preserve_existing)
+    if hdf5_file is not None:
         for key in ("slip_rate_to_okada_to_velocities", "segments", "segments_names"):
             if key in hdf5_file:
                 del hdf5_file[key]
-        hdf5_file.create_dataset(
+        # Chunked layout keeps both the column-slab writes here and the later
+        # row-slab reads bounded to whole chunks
+        dataset = hdf5_file.create_dataset(
             "slip_rate_to_okada_to_velocities",
-            data=operators.slip_rate_to_okada_to_velocities,
+            shape=(3 * n_stations, 3 * n_segments),
+            dtype="f8",
+            chunks=True,
         )
-        if write_tde:
-            for i in range(len(meshes)):
-                key = "tde_to_velocities_" + str(i)
-                if key in hdf5_file:
-                    del hdf5_file[key]
-                hdf5_file.create_dataset(key, data=operators.tde_to_velocities[i])
-        _save_segments_to_hdf5(segment, hdf5_file)
+    composed = None
+    if dataset is None:
+        composed = np.zeros((3 * n_stations, rotation_to_slip_rate.shape[1]))
+    try:
+        for s0 in track(
+            range(0, n_segments, seg_batch_size),
+            description="Rectangular segment elastic",
+        ):
+            s1 = min(s0 + seg_batch_size, n_segments)
+            slab = get_okada_displacement_slab(
+                segment,
+                station,
+                config,
+                seg_start=s0,
+                seg_stop=s1,
+                out=slab_buffer[:, : 3 * (s1 - s0)],
+            )
+            if dataset is not None:
+                dataset[:, 3 * s0 : 3 * s1] = slab
+            else:
+                composed += slab @ rotation_to_slip_rate[3 * s0 : 3 * s1, :]
+        if hdf5_file is not None:
+            # Segment metadata is written last so that a crash mid-fill leaves
+            # a cache without metadata, which reads as old-format and triggers
+            # a clean recompute instead of trusting a half-filled dataset
+            _save_segments_to_hdf5(segment, hdf5_file)
+            del slab_buffer
+            composed = _stream_matmul_rows(dataset, rotation_to_slip_rate, target_bytes)
+    finally:
+        if hdf5_file is not None:
+            hdf5_file.close()
+    assert composed is not None
+    return composed
 
 
 def _store_elastic_operators(
@@ -1475,12 +1575,16 @@ def _store_elastic_operators(
     """Calculate (or load previously calculated) elastic operators from
     both fully locked segments and TDE-parameterized surfaces.
 
-    Supports selective recomputation when only some source segment geometries
-    change, in place. If the segment file has changed, rows have been added or removed,
-    or `force_recompute` is True, the operators will be recomputed from scratch.
+    The dense (3 * n_stations, 3 * n_segments) okada operator is never held in
+    memory: only the composed rotation_to_slip_rate_to_okada_to_velocities is
+    produced, either by streaming row slabs from the cached HDF5 dataset or by
+    accumulating segment-chunk slabs as they are computed. The dense operator
+    lives in the cache file (when a cache dir is configured), where selective
+    recomputation updates changed segment columns in place.
 
     Args:
-        operators (_OperatorBuilder): Data structure which the elastic operators will be added to
+        operators (_OperatorBuilder): Data structure which the elastic operators will be added to.
+            rotation_to_slip_rate is built here if not already present.
         model (Model): Model instance
         tde (bool): Whether to compute TDE operators
         skip_tde_to_velocities (bool): If True, skip loading/computing tde_to_velocities.
@@ -1490,6 +1594,14 @@ def _store_elastic_operators(
     meshes = model.meshes
     segment = model.segment
     station = model.station
+
+    if operators.rotation_to_slip_rate is None:
+        # build_operators pre-populates this; standalone/test callers may not
+        operators.rotation_to_slip_rate = get_rotation_to_slip_rate_partials(
+            segment, model.block
+        )
+    rotation_to_slip_rate = operators.rotation_to_slip_rate
+    target_bytes = int(config.tde_operator_memory_gb * 2**30)
 
     cache = None
 
@@ -1512,108 +1624,110 @@ def _store_elastic_operators(
 
         if cache.exists() and not config.force_recompute:
             logger.info(f"Found cached elastic operators at {cache}")
-            hdf5_file = h5py.File(str(cache), "r")
-            cached_operator: np.ndarray[Any, Any] | None = np.array(
-                hdf5_file.get("slip_rate_to_okada_to_velocities")
-            )
-            cached_segments = _load_segments_from_hdf5(hdf5_file)
-            hdf5_file.close()
+            # Read only the small segment metadata for validation; the okada
+            # dataset itself is never loaded whole
+            cached_segments = None
+            okada_dataset_ok = False
+            cache_readable = True
+            try:
+                with h5py.File(str(cache), "r") as hdf5_file:
+                    cached_segments = _load_segments_from_hdf5(hdf5_file)
+                    okada_dataset_ok = (
+                        "slip_rate_to_okada_to_velocities" in hdf5_file
+                        and hdf5_file["slip_rate_to_okada_to_velocities"].shape
+                        == (3 * len(station), 3 * len(segment))
+                    )
+            except OSError:
+                cache_readable = False
+                logger.warning(
+                    "Cache file unreadable (corrupt, truncated, or locked by a "
+                    "concurrent run). Recomputing operators."
+                )
 
-            if cached_segments is None:
+            if not cache_readable:
+                pass
+            elif cached_segments is None or "name" not in cached_segments.columns:
                 logger.info(
                     "Metadata files not found (old cache format). Recomputing operators."
                 )
-                cached_operator = None
+            elif cached_segments["name"].tolist() != segment["name"].tolist():
+                logger.info(
+                    "Segments have been added or removed since last computation. Recomputing operators."
+                )
+            elif not okada_dataset_ok:
+                logger.info(
+                    "Cache missing or mismatched okada operator. Recomputing operators."
+                )
             else:
-                # Check if segments have been added or removed
-                if cached_segments["name"].tolist() != segment["name"].tolist():
-                    logger.info(
-                        "Segments have been added or removed since last computation. Recomputing operators."
-                    )
-                    cached_operator = None
-                elif cached_operator is not None:
-                    changed_segment_indices = _compare_segments(
-                        cached_segments, segment
-                    )
-                    if len(changed_segment_indices) == 0:
-                        logger.info(
-                            "No source geometry changed since last computation. Using cached operator."
-                        )
-                        operators.slip_rate_to_okada_to_velocities = cached_operator
-
-                        if tde and not skip_tde_to_velocities:
-                            hdf5_file = h5py.File(str(cache), "r")
-                            tde_data = hdf5_file.get("tde_to_velocities_0")
-                            if tde_data is not None:
-                                for i in range(len(meshes)):
-                                    operators.tde_to_velocities[i] = np.array(
-                                        hdf5_file.get("tde_to_velocities_" + str(i))
-                                    )
-                                hdf5_file.close()
-                                return
-                            hdf5_file.close()
-                            # Streaming runs cache the okada operator but not
-                            # the dense TDE matrices, so a later non-streaming
-                            # run lands here and must compute them
-                            logger.info(
-                                "Cache missing tde_to_velocities. Computing from scratch."
-                            )
-                            _compute_and_cache_tde_to_velocities(
-                                meshes, station, config, operators, cache
-                            )
-                        return
-
+                changed_segment_indices = _compare_segments(cached_segments, segment)
+                if len(changed_segment_indices) > 0:
                     logger.info(f"Recomputing {len(changed_segment_indices)} segments")
-
-                    operators.slip_rate_to_okada_to_velocities = cached_operator.copy()
-
-                    if len(changed_segment_indices) > 0:
+                    with h5py.File(str(cache), "r+") as hdf5_file:
+                        # Invalidate the segment metadata BEFORE touching the
+                        # dataset: an interrupted update then reads as
+                        # old-format and triggers a clean recompute, instead
+                        # of stale metadata blessing half-updated columns
+                        for key in ("segments", "segments_names"):
+                            if key in hdf5_file:
+                                del hdf5_file[key]
+                        dataset = hdf5_file["slip_rate_to_okada_to_velocities"]
                         for seg_idx in track(
                             changed_segment_indices,
                             description="Recomputing changed segments",
                         ):
-                            single_segment = segment.iloc[
-                                seg_idx : seg_idx + 1
-                            ].reset_index(drop=True)
-                            new_columns = get_segment_station_operator_okada(
-                                single_segment, station, config, progress_bar=False
+                            dataset[:, 3 * seg_idx : 3 * seg_idx + 3] = (
+                                get_okada_displacement_slab(
+                                    segment,
+                                    station,
+                                    config,
+                                    seg_start=seg_idx,
+                                    seg_stop=seg_idx + 1,
+                                )
                             )
-                            col_start = 3 * seg_idx
-                            col_end = col_start + 3
-                            operators.slip_rate_to_okada_to_velocities[
-                                :, col_start:col_end
-                            ] = new_columns
+                        _save_segments_to_hdf5(segment, hdf5_file)
+                else:
+                    logger.info(
+                        "No source geometry changed since last computation. Using cached operator."
+                    )
 
+                # Stream the composed product from the (possibly updated)
+                # dataset in row slabs
+                with h5py.File(str(cache), "r") as hdf5_file:
+                    operators.rotation_to_slip_rate_to_okada_to_velocities = (
+                        _stream_matmul_rows(
+                            hdf5_file["slip_rate_to_okada_to_velocities"],
+                            rotation_to_slip_rate,
+                            target_bytes,
+                        )
+                    )
+
+                if tde and not skip_tde_to_velocities:
                     tde_loaded_from_cache = False
-                    if tde and not skip_tde_to_velocities:
-                        hdf5_file = h5py.File(str(cache), "r")
-                        if hdf5_file.get("tde_to_velocities_0") is not None:
+                    with h5py.File(str(cache), "r") as hdf5_file:
+                        # All per-mesh datasets must be present: a partial set
+                        # (crash during a previous multi-mesh cache write)
+                        # must trigger a recompute, not a half-load
+                        tde_keys_ok = all(
+                            ("tde_to_velocities_" + str(i)) in hdf5_file
+                            for i in range(len(meshes))
+                        )
+                        if tde_keys_ok:
                             for i in range(len(meshes)):
                                 operators.tde_to_velocities[i] = np.array(
                                     hdf5_file.get("tde_to_velocities_" + str(i))
                                 )
                             tde_loaded_from_cache = True
-                        hdf5_file.close()
-                        if not tde_loaded_from_cache:
-                            logger.info(
-                                "Cache missing tde_to_velocities. Computing from scratch."
-                            )
-                            _compute_and_cache_tde_to_velocities(
-                                meshes, station, config, operators, cache=None
-                            )
-
-                    logger.info("Caching updated elastic operators")
-                    cache.parent.mkdir(parents=True, exist_ok=True)
-                    _write_elastic_operator_cache(
-                        cache,
-                        operators,
-                        segment,
-                        meshes,
-                        write_tde=tde and not skip_tde_to_velocities,
-                        preserve_existing_tde=skip_tde_to_velocities,
-                    )
-
-                    return
+                    if not tde_loaded_from_cache:
+                        # Streaming runs cache the okada operator but not the
+                        # dense TDE matrices, so a later non-streaming run
+                        # lands here and must compute them
+                        logger.info(
+                            "Cache missing tde_to_velocities. Computing from scratch."
+                        )
+                        _compute_and_cache_tde_to_velocities(
+                            meshes, station, config, operators, cache
+                        )
+                return
 
         else:
             if not config.force_recompute:
@@ -1626,35 +1740,23 @@ def _store_elastic_operators(
             "No precomputed elastic operator file specified in config. Computing operators."
         )
 
-    operators.slip_rate_to_okada_to_velocities = get_segment_station_operator_okada(
-        segment, station, config
+    operators.rotation_to_slip_rate_to_okada_to_velocities = (
+        _compute_okada_composed_and_cache(
+            segment,
+            station,
+            config,
+            rotation_to_slip_rate,
+            cache,
+            target_bytes,
+            # Streaming runs must not truncate TDE datasets they will not
+            # rebuild; non-streaming recomputes rewrite them anyway, and
+            # truncating avoids unbounded HDF5 file growth
+            preserve_existing=skip_tde_to_velocities,
+        )
     )
 
     if tde and not skip_tde_to_velocities:
-        for i in range(len(meshes)):
-            logger.info(
-                f"Start: TDE slip to velocity calculation for mesh: {meshes[i].file_name}"
-            )
-            operators.tde_to_velocities[i] = get_tde_to_velocities_single_mesh(
-                meshes, station, config, mesh_idx=i
-            )
-            logger.success(
-                f"Finish: TDE slip to velocity calculation for mesh: {meshes[i].file_name}"
-            )
-
-    # Save elastic to velocity matrices
-    if cache is None:
-        return
-    logger.info("Saving elastic operators in cache")
-    cache.parent.mkdir(parents=True, exist_ok=True)
-    _write_elastic_operator_cache(
-        cache,
-        operators,
-        segment,
-        meshes,
-        write_tde=tde and not skip_tde_to_velocities,
-        preserve_existing_tde=skip_tde_to_velocities,
-    )
+        _compute_and_cache_tde_to_velocities(meshes, station, config, operators, cache)
 
 
 def _store_all_mesh_smoothing_matrices(model: Model, operators: _OperatorBuilder):
@@ -2752,11 +2854,40 @@ def _store_eigenvectors_to_tde_slip(model: Model, operators: _OperatorBuilder):
         logger.success(f"Finish: Eigenvectors to TDE slip for mesh: {mesh.file_name}")
 
 
-def _tde_tri_batch_size(target_bytes: int, n_obs: int, n_tris: int) -> int:
-    """Triangles per slab chunk: one column-triple costs 3 * n_obs rows *
-    3 columns * 8 bytes.
+def _column_triple_batch_size(target_bytes: int, n_obs: int, n_sources: int) -> int:
+    """Sources (triangles or segments) per slab chunk: one column-triple costs
+    3 * n_obs rows * 3 columns * 8 bytes.
     """
-    return max(1, min(n_tris, target_bytes // (72 * max(1, n_obs))))
+    return max(1, min(n_sources, target_bytes // (72 * max(1, n_obs))))
+
+
+def _stream_matmul_rows(
+    left,
+    right: np.ndarray,
+    target_bytes: int,
+    *,
+    negate: bool = False,
+    keep_cols: np.ndarray | None = None,
+) -> np.ndarray:
+    """Compute (-)left[:, keep_cols] @ right in row batches of at most target_bytes.
+
+    left may be an np.ndarray or an open h5py.Dataset. Processing contiguous
+    row slabs avoids materializing a kept-column copy of the full matrix (and,
+    for an h5py.Dataset, avoids loading the full matrix at all).
+    """
+    n_rows, n_cols = left.shape
+    out = np.empty((n_rows, right.shape[1]))
+    rows_per_batch = max(1, target_bytes // max(1, 8 * n_cols))
+    for r0 in range(0, n_rows, rows_per_batch):
+        r1 = min(r0 + rows_per_batch, n_rows)
+        # Contiguous row read (cheap for h5py, a view for ndarray); only the
+        # small in-memory slab is fancy-indexed
+        slab = np.asarray(left[r0:r1, :])
+        if keep_cols is not None:
+            slab = slab[:, keep_cols]
+        block = slab @ right
+        out[r0:r1, :] = -block if negate else block
+    return out
 
 
 def _project_tde_rows_to_eigen(
@@ -2765,24 +2896,18 @@ def _project_tde_rows_to_eigen(
     """Compute -tde_to_velocities[:, keep_12] @ eigenvectors_to_tde_slip in row batches.
 
     tde_to_velocities may be an np.ndarray or an open h5py.Dataset of shape
-    (3 * n_stations, 3 * n_tris). Processing station-row slabs of at most
-    target_bytes avoids materializing the (3 * n_stations, 2 * n_tris)
-    kept-column copy that a direct fancy-index would create (and, for an
-    h5py.Dataset, avoids loading the full matrix at all).
+    (3 * n_stations, 3 * n_tris).
     """
-    n_rows, n_cols = tde_to_velocities.shape
+    n_cols = tde_to_velocities.shape[1]
     assert eigenvectors_to_tde_slip.shape[0] == 2 * (n_cols // 3)
     # Slice columns to only strike-slip and dip-slip (exclude tensile)
-    tde_keep_col_index = get_keep_index_12(n_cols)
-    out = np.empty((n_rows, eigenvectors_to_tde_slip.shape[1]))
-    rows_per_batch = max(1, target_bytes // max(1, 8 * n_cols))
-    for r0 in range(0, n_rows, rows_per_batch):
-        r1 = min(r0 + rows_per_batch, n_rows)
-        # Contiguous row read (cheap for h5py, a view for ndarray); only the
-        # small in-memory slab is fancy-indexed
-        slab = np.asarray(tde_to_velocities[r0:r1, :])
-        out[r0:r1, :] = -(slab[:, tde_keep_col_index] @ eigenvectors_to_tde_slip)
-    return out
+    return _stream_matmul_rows(
+        tde_to_velocities,
+        eigenvectors_to_tde_slip,
+        target_bytes,
+        negate=True,
+        keep_cols=get_keep_index_12(n_cols),
+    )
 
 
 def _accumulate_eigen_to_velocities_streaming(
@@ -2810,7 +2935,7 @@ def _accumulate_eigen_to_velocities_streaming(
     assert eigenvectors_to_tde_slip.shape[0] == 2 * n_tris
     out = np.zeros((3 * n_obs, eigenvectors_to_tde_slip.shape[1]))
     if tri_batch_size is None:
-        tri_batch_size = _tde_tri_batch_size(target_bytes, n_obs, n_tris)
+        tri_batch_size = _column_triple_batch_size(target_bytes, n_obs, n_tris)
     tri_batch_size = max(1, min(n_tris, tri_batch_size))
     obs_lon = station.lon.to_numpy()
     obs_lat = station.lat.to_numpy()
@@ -2884,16 +3009,22 @@ def _compute_eigen_to_velocities(
         result = None
         if streaming:
             if cache is not None and cache.exists():
-                with h5py.File(str(cache), "r") as hdf5_file:
-                    cached_data = hdf5_file.get("tde_to_velocities_" + str(i))
-                    if cached_data is not None:
-                        logger.info(
-                            "Projecting cached tde_to_velocities for mesh: "
-                            f"{meshes[i].file_name}"
-                        )
-                        result = _project_tde_rows_to_eigen(
-                            cached_data, eigenvectors_to_tde_slip, target_bytes
-                        )
+                try:
+                    with h5py.File(str(cache), "r") as hdf5_file:
+                        cached_data = hdf5_file.get("tde_to_velocities_" + str(i))
+                        if cached_data is not None:
+                            logger.info(
+                                "Projecting cached tde_to_velocities for mesh: "
+                                f"{meshes[i].file_name}"
+                            )
+                            result = _project_tde_rows_to_eigen(
+                                cached_data, eigenvectors_to_tde_slip, target_bytes
+                            )
+                except OSError:
+                    logger.warning(
+                        "Cache file unreadable (corrupt or locked by a "
+                        "concurrent run). Computing eigen_to_velocities."
+                    )
             if result is None:
                 logger.info(
                     f"Computing eigen_to_velocities for mesh: {meshes[i].file_name}"
