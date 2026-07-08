@@ -323,6 +323,10 @@ def process_args(config: Config, args: argparse.Namespace):
                 if isinstance(args_val, bool) and isinstance(original_val, int | float):
                     original_val = bool(original_val)
 
+                # Convert CLI filenames from cwd-relative str to absolute Path
+                if key[-10:] == "_file_name":
+                    args_val = Path(args_val).absolute()
+
                 # Only log if the value is actually being changed
                 if original_val != args_val:
                     logger.warning(f"ORIGINAL: config.{key}: {original_val}")
