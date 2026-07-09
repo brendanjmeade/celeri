@@ -23,6 +23,21 @@ jobs:
       attestations: write
       id-token: write
     steps:
+      - name: Validate release tag format
+        # hatch-vcs derives the package version from the git tag via
+        # tag-pattern='^v(\d+\.\d+\.\d+)$' (see pyproject.toml). A tag that doesn't
+        # match (e.g. `0.06`) otherwise fails deep inside the sdist build with a
+        # cryptic "Can't parse version from tag" ValueError. Fail fast, up front,
+        # with an actionable message instead.
+        if: github.event_name == 'release'
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          if [[ ! "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Release tag '${RELEASE_TAG}' is not of the form vX.Y.Z (e.g. v0.0.6). hatch-vcs cannot derive the package version from it. Delete this release/tag and re-cut it with a vX.Y.Z tag."
+            exit 1
+          fi
+          echo "Release tag '${RELEASE_TAG}' matches vX.Y.Z."
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
