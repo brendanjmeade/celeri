@@ -44,7 +44,8 @@ def test_mesh_parameters_file_name_override_reloads_mesh_params(tmp_path):
     process_args(config, args)
 
     # Both the path field AND the actual loaded parameters must reflect the alt file.
-    assert config.mesh_parameters_file_name == str(alt)
+    # Assertion of filename now removes str(alt) because CLI filenames get converted to Path (PR #490)
+    assert config.mesh_parameters_file_name == alt
     assert config.mesh_params, "mesh_params should be non-empty"
     for mesh_param in config.mesh_params:
         assert mesh_param.n_modes_strike_slip == 7
