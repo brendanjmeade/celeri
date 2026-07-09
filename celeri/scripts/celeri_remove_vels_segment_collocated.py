@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -9,17 +10,27 @@ from shapely.geometry import LineString, Point
 
 
 def main():
-    # Check if correct number of arguments provided
-    if len(sys.argv) < 3 or len(sys.argv) > 4:
-        print(
-            "Usage: python process_csv.py <station.csv> <segment.csv> [buffer_distance]"
+    parser = argparse.ArgumentParser(
+        description=(
+            "Remove GPS stations collocated with fault segments: find stations "
+            "within a buffer distance of any segment and write a filtered "
+            "station CSV."
         )
-        print("Default buffer distance: 0.002")
-        sys.exit(1)
+    )
+    parser.add_argument("station_file", type=str, help="Path to input station CSV file")
+    parser.add_argument("segment_file", type=str, help="Path to input segment CSV file")
+    parser.add_argument(
+        "--buffer-distance",
+        type=float,
+        default=0.002,
+        help="Buffer distance around each segment (default: 0.002)",
+    )
 
-    station_file = sys.argv[1]
-    segment_file = sys.argv[2]
-    buffer_distance = float(sys.argv[3]) if len(sys.argv) == 4 else 0.002
+    args = parser.parse_args()
+
+    station_file = args.station_file
+    segment_file = args.segment_file
+    buffer_distance = args.buffer_distance
 
     # Read CSV files into pandas dataframes
     try:
