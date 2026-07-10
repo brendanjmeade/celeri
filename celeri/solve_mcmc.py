@@ -34,6 +34,7 @@ from celeri._arviz_compat import (  # LEGACY-MCMC
 )
 from celeri.celeri_util import get_keep_index_12
 from celeri.constants import RADIUS_EARTH
+from celeri.mcmc_watchdog import sample_with_watchdog
 from celeri.model import Model
 from celeri.operators import (
     LosOperators,
@@ -1767,8 +1768,16 @@ def solve_mcmc(
     }
     kwargs.update(sample_kwargs or {})
 
+    dropped_chains: list[int] | None = None
     mcmc_start_time = datetime.now(UTC)
-    trace = nutpie.sample(compiled, **kwargs)  # type: ignore
+    if model.config.mcmc_drop_stalled_chains:
+        trace, dropped_chains = sample_with_watchdog(
+            compiled,
+            n_tune=kwargs["tune"],
+            **kwargs,
+        )
+    else:
+        trace = nutpie.sample(compiled, **kwargs)  # type: ignore
     mcmc_end_time = datetime.now(UTC)
     mcmc_duration = (mcmc_end_time - mcmc_start_time).total_seconds()
 
@@ -1791,6 +1800,7 @@ def solve_mcmc(
     estimation.mcmc_end_time = mcmc_end_time.isoformat()
     estimation.mcmc_duration = mcmc_duration
     estimation.mcmc_num_divergences = int(trace.sample_stats.diverging.sum())
+    estimation.mcmc_dropped_chains = dropped_chains
     return estimation
 
 
