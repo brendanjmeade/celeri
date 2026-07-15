@@ -232,6 +232,24 @@ class Config(RelativePathSerializerMixin, BaseModel):
     mcmc_backend: Literal["numba", "jax"] = "jax"
     """Backend to use for MCMC computations."""
 
+    mcmc_drop_stalled_chains: bool = False
+    """Abort and drop stalled MCMC chains once the other chains finish.
+
+    Once at least one chain has finished all its draws, a running chain is
+    considered stalled when the time-weighted median of its draw durations
+    (counting the time since its last completed draw) exceeds five times
+    the time-weighted 90th percentile of the slowest finished chain's
+    draw durations in the chain's current phase (warmup or sampling). When
+    only stalled chains are left running, sampling is aborted and the
+    estimation continues with the finished chains at their full draw
+    count; the dropped chains are recorded on
+    ``Estimation.mcmc_dropped_chains``. Note that a dropped chain may be
+    slow because it wandered into a difficult region of the posterior.
+    Intended for long multi-chain runs on non-interactive services where a
+    stalled chain would otherwise hold up the run indefinitely. ``False``
+    (the default) uses the plain blocking sampling call.
+    """
+
     mesh_default_eigenvector_algorithm: EigenvectorAlgorithm = "eigh"
     """Default algorithm for computing eigenvectors in mesh processing.
 

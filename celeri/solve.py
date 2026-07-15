@@ -63,6 +63,12 @@ class Estimation:
     """Duration of MCMC sampling."""
     mcmc_num_divergences: int | None = None
     """Number of divergent transitions in MCMC sampling."""
+    mcmc_dropped_chains: list[int] | None = None
+    """Chain labels dropped by the stalled-chain watchdog.
+
+    ``None`` when the watchdog was not enabled; an empty list when it ran
+    and dropped nothing.
+    """
     celeri_version: str | None = None
     """Version of celeri used to create this estimation."""
 
