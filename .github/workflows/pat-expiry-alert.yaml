@@ -111,15 +111,16 @@ jobs:
 
           // --- 3. Open or refresh the alert issue ---------------------------
           // Ensure the label exists first: creating an issue with an unknown label
-          // is not guaranteed to auto-create it, and we filter/close by it.
+          // is not guaranteed to auto-create it, and we filter/close by it. Just
+          // create it and ignore 422 (already exists) so two overlapping runs
+          // can't race each other into a failure.
           try {
-            await github.rest.issues.getLabel({ owner, repo, name: LABEL });
-          } catch (error) {
-            if (error.status !== 404) throw error;
             await github.rest.issues.createLabel({
               owner, repo, name: LABEL, color: 'B60205',
               description: 'GH_PAT_FOR_PR rotation alerts',
             });
+          } catch (error) {
+            if (error.status !== 422) throw error;
           }
 
           const summary =
@@ -154,10 +155,19 @@ jobs:
             'ping @brendanjmeade',
           ].join('\n');
 
-          const [existing] = await findOpen();
-          if (existing) {
+          const [canonical, ...duplicates] = await findOpen();
+          if (canonical) {
             // Refresh the body in place; no new comment, to avoid weekly spam.
-            await github.rest.issues.update({ owner, repo, issue_number: existing.number, body });
+            await github.rest.issues.update({ owner, repo, issue_number: canonical.number, body });
+            // Collapse any stray duplicates (from a race or a manual run) onto the
+            // canonical one so the "single alert issue" intent holds.
+            for (const dup of duplicates) {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: dup.number,
+                body: `Duplicate of #${canonical.number} — closing.`,
+              });
+              await github.rest.issues.update({ owner, repo, issue_number: dup.number, state: 'closed' });
+            }
           } else {
             await github.rest.issues.create({
               owner, repo, title: '🔑 GH_PAT_FOR_PR needs rotation', body, labels: [LABEL],
