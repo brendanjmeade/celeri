@@ -101,9 +101,12 @@ jobs:
           core.info(`PAT status=${status} expiry='${expiry}' daysLeft=${daysLeft} shouldAlert=${shouldAlert}`);
 
           // --- 2. Find the existing alert issue (if any) ---------------------
-          const findOpen = () => github.paginate(github.rest.issues.listForRepo, {
-            owner, repo, state: 'open', labels: LABEL, per_page: 100,
-          });
+          // listForRepo also returns pull requests; drop them so a mislabeled PR
+          // can never be commented on or closed by this job.
+          const findOpen = async () =>
+            (await github.paginate(github.rest.issues.listForRepo, {
+              owner, repo, state: 'open', labels: LABEL, per_page: 100,
+            })).filter((item) => !item.pull_request);
 
           if (!shouldAlert) {
             for (const issue of await findOpen()) {
