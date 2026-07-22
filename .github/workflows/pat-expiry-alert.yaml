@@ -101,12 +101,14 @@ jobs:
           core.info(`PAT status=${status} expiry='${expiry}' daysLeft=${daysLeft} shouldAlert=${shouldAlert}`);
 
           // --- 2. Find the existing alert issue (if any) ---------------------
-          // listForRepo also returns pull requests; drop them so a mislabeled PR
-          // can never be commented on or closed by this job.
+          // Only manage issues this workflow actually created: drop pull requests
+          // (which listForRepo also returns) and anything whose body doesn't start
+          // with our marker, so a human hand-applying the label to some other
+          // issue or PR can't get it rewritten or closed.
           const findOpen = async () =>
             (await github.paginate(github.rest.issues.listForRepo, {
               owner, repo, state: 'open', labels: LABEL, per_page: 100,
-            })).filter((item) => !item.pull_request);
+            })).filter((item) => !item.pull_request && item.body?.startsWith(MARKER));
 
           if (!shouldAlert) {
             for (const issue of await findOpen()) {
