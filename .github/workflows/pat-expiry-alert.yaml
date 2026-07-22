@@ -1,0 +1,156 @@
+name: Alert before GH_PAT_FOR_PR expires
+
+# The create-pull-request workflows (update-pixi-lockfile.yaml,
+# pre-commit-janitor.yaml) authenticate with the GH_PAT_FOR_PR fine-grained PAT.
+# Fine-grained PATs expire after at most a year, and when this one lapses those
+# workflows fail in ways that are easy to miss. This job checks the token's
+# remaining lifetime weekly and opens/updates a single issue pinging
+# @brendanjmeade while there is still time to rotate it, closing that issue
+# automatically once the token is healthy again.
+#
+# The whole thing runs in one actions/github-script step: the runner already has
+# Node, github-script hands us an authenticated Octokit client, and JavaScript's
+# try/catch and native Date math avoid the fail-open footguns of a shell script.
+
+permissions:
+  issues: write
+
+on:
+  workflow_dispatch:
+  schedule:
+  # At 07:00 UTC every Monday
+  - cron: 0 7 * * 1
+
+jobs:
+  pat-expiry-alert:
+    runs-on: ubuntu-latest
+    environment: create-pr # where the GH_PAT_FOR_PR secret lives
+    steps:
+    - name: Check expiry and manage the alert issue
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+      env:
+        # The token to inspect. github-token (below) stays the default GITHUB_TOKEN
+        # so the @mention actually notifies. Ref: <https://stackoverflow.com/a/78238780>
+        PAT: ${{ secrets.GH_PAT_FOR_PR }}
+        THRESHOLD_DAYS: '30'
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        script: |
+          const { PAT, THRESHOLD_DAYS } = process.env;
+          const thresholdDays = Number(THRESHOLD_DAYS) || 30;
+          const { owner, repo } = context.repo;
+          const LABEL = 'pat-expiry-alert';
+          const MARKER = '<!-- pat-expiry-alert -->';
+
+          // --- 1. Classify the token -----------------------------------------
+          // status is one of: ok | expiring | expired | no_expiry | unknown.
+          // Anything other than ok/no_expiry raises the alert, so every failure
+          // path (missing secret, rejection, transport error) fails loud.
+          let status = 'unknown';
+          let expiry = '';
+          let daysLeft = null;
+
+          if (!PAT) {
+            core.warning('GH_PAT_FOR_PR is empty; reporting as unknown.');
+          } else {
+            try {
+              // /rate_limit is cheap and works regardless of the PAT's scope. GitHub
+              // returns the token's expiry in a response header on any authed request.
+              const res = await fetch('https://api.github.com/rate_limit', {
+                headers: {
+                  authorization: `Bearer ${PAT}`,
+                  accept: 'application/vnd.github+json',
+                  'x-github-api-version': '2022-11-28',
+                },
+                signal: AbortSignal.timeout(30000),
+              });
+              if (res.status === 401) {
+                status = 'expired'; // a rejected token carries no expiry header
+              } else if (!res.ok) {
+                core.warning(`Unexpected HTTP ${res.status} while checking the PAT.`);
+              } else {
+                const header = res.headers.get('github-authentication-token-expiration');
+                if (!header) {
+                  status = 'no_expiry'; // classic PAT with no expiration set
+                } else {
+                  expiry = header.trim();
+                  // Header looks like "2026-07-24 15:23:49 UTC"; make it ISO-8601.
+                  const expMs = Date.parse(expiry.replace(' UTC', 'Z').replace(' ', 'T'));
+                  if (Number.isNaN(expMs)) {
+                    core.warning(`Could not parse expiration '${expiry}'.`);
+                  } else {
+                    const now = Date.now();
+                    daysLeft = Math.floor((expMs - now) / 86400000);
+                    status = expMs <= now ? 'expired' : daysLeft < thresholdDays ? 'expiring' : 'ok';
+                  }
+                }
+              }
+            } catch (error) {
+              core.warning(`Request failed while checking the PAT: ${error.message}`);
+            }
+          }
+
+          const shouldAlert = status !== 'ok' && status !== 'no_expiry';
+          core.info(`PAT status=${status} expiry='${expiry}' daysLeft=${daysLeft} shouldAlert=${shouldAlert}`);
+
+          // --- 2. Find the existing alert issue (if any) ---------------------
+          const findOpen = () => github.paginate(github.rest.issues.listForRepo, {
+            owner, repo, state: 'open', labels: LABEL, per_page: 100,
+          });
+
+          if (!shouldAlert) {
+            for (const issue of await findOpen()) {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: issue.number,
+                body: 'The `GH_PAT_FOR_PR` token looks healthy again — closing.',
+              });
+              await github.rest.issues.update({ owner, repo, issue_number: issue.number, state: 'closed' });
+            }
+            return;
+          }
+
+          // --- 3. Open or refresh the alert issue ---------------------------
+          // Ensure the label exists first: creating an issue with an unknown label
+          // is not guaranteed to auto-create it, and we filter/close by it.
+          try {
+            await github.rest.issues.getLabel({ owner, repo, name: LABEL });
+          } catch (error) {
+            if (error.status !== 404) throw error;
+            await github.rest.issues.createLabel({
+              owner, repo, name: LABEL, color: 'B60205',
+              description: 'GH_PAT_FOR_PR rotation alerts',
+            });
+          }
+
+          const summary =
+            status === 'expired'
+              ? 'The `GH_PAT_FOR_PR` token is **expired or invalid** — the automated pull-request workflows are already failing.'
+              : status === 'unknown'
+                ? 'Could not determine the `GH_PAT_FOR_PR` expiration date (missing secret or a failed check). Please verify it manually.'
+                : `The \`GH_PAT_FOR_PR\` token expires in **${daysLeft} day(s)** (${expiry}).`;
+          const body = [
+            MARKER,
+            '',
+            summary,
+            '',
+            'This token is used to push branches and open PRs from:',
+            '- `.github/workflows/update-pixi-lockfile.yaml`',
+            '- `.github/workflows/pre-commit-janitor.yaml`',
+            '',
+            '### How to rotate',
+            '1. Create a new fine-grained PAT scoped to `brendanjmeade/celeri` with **Contents: Read and write** and **Pull requests: Read and write**.',
+            '2. Update the secret: `gh secret set GH_PAT_FOR_PR --repo brendanjmeade/celeri --env create-pr` (or Settings → Environments → `create-pr`).',
+            '3. Verify: `gh workflow run pat-expiry-alert.yaml --repo brendanjmeade/celeri`. Once the new token has more than 30 days left, the next run closes this issue automatically.',
+            '',
+            'ping @brendanjmeade',
+          ].join('\n');
+
+          const [existing] = await findOpen();
+          if (existing) {
+            // Refresh the body in place; no new comment, to avoid weekly spam.
+            await github.rest.issues.update({ owner, repo, issue_number: existing.number, body });
+          } else {
+            await github.rest.issues.create({
+              owner, repo, title: '🔑 GH_PAT_FOR_PR needs rotation', body, labels: [LABEL],
+            });
+          }
