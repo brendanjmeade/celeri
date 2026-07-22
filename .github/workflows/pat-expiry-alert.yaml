@@ -49,6 +49,18 @@ jobs:
           const LABEL = 'pat-expiry-alert';
           const MARKER = '<!-- pat-expiry-alert -->';
 
+          // Pin the REST API version on every github.rest.* call. Under the
+          // default 2022-11-28 version GitHub now attaches a Deprecation/Sunset
+          // header to the issue endpoints (the singular `assignee` field and a
+          // few repo properties are removed in 2026-03-10) which Octokit surfaces
+          // as a "deprecated ... scheduled to be removed" log line. We send none
+          // of the affected fields, so opting in to 2026-03-10 is safe and clears
+          // the warning. Ref: <https://docs.github.com/en/rest/about-the-rest-api/breaking-changes?apiVersion=2026-03-10>
+          const API_VERSION = '2026-03-10';
+          github.hook.before('request', (options) => {
+            options.headers['x-github-api-version'] = API_VERSION;
+          });
+
           // --- 1. Classify the token -----------------------------------------
           // status is one of: ok | expiring | expired | no_expiry | unknown.
           // Anything other than ok/no_expiry raises the alert, so every failure
@@ -71,6 +83,7 @@ jobs:
                 },
                 signal: AbortSignal.timeout(30000),
               });
+              core.info(`GET /rate_limit with the PAT → HTTP ${res.status}.`);
               if (res.status === 401) {
                 status = 'expired'; // a rejected token carries no expiry header
               } else if (!res.ok) {
@@ -79,8 +92,10 @@ jobs:
                 const header = res.headers.get('github-authentication-token-expiration');
                 if (!header) {
                   status = 'no_expiry'; // classic PAT with no expiration set
+                  core.info('No github-authentication-token-expiration header; treating as a non-expiring token.');
                 } else {
                   expiry = header.trim();
+                  core.info(`Token expiration header: '${expiry}'.`);
                   // Header looks like "2026-07-24 15:23:49 UTC"; make it ISO-8601.
                   const expMs = Date.parse(expiry.replace(' UTC', 'Z').replace(' ', 'T'));
                   if (Number.isNaN(expMs)) {
@@ -111,13 +126,17 @@ jobs:
             })).filter((item) => !item.pull_request && item.body?.startsWith(MARKER));
 
           if (!shouldAlert) {
-            for (const issue of await findOpen()) {
+            const open = await findOpen();
+            core.info(`Token is healthy (${status}); ${open.length} open alert issue(s) to close.`);
+            for (const issue of open) {
               await github.rest.issues.createComment({
                 owner, repo, issue_number: issue.number,
                 body: 'The `GH_PAT_FOR_PR` token looks healthy again — closing.',
               });
               await github.rest.issues.update({ owner, repo, issue_number: issue.number, state: 'closed' });
+              core.info(`Closed alert issue #${issue.number}.`);
             }
+            if (open.length === 0) core.info('Nothing to do.');
             return;
           }
 
@@ -128,12 +147,14 @@ jobs:
           // race-free and we can let any other error status propagate.
           try {
             await github.rest.issues.getLabel({ owner, repo, name: LABEL });
+            core.info(`Label '${LABEL}' already exists.`);
           } catch (error) {
             if (error.status !== 404) throw error;
             await github.rest.issues.createLabel({
               owner, repo, name: LABEL, color: 'B60205',
               description: 'GH_PAT_FOR_PR rotation alerts',
             });
+            core.info(`Created label '${LABEL}'.`);
           }
 
           const summary =
@@ -172,6 +193,7 @@ jobs:
           if (canonical) {
             // Refresh the body in place; no new comment, to avoid weekly spam.
             await github.rest.issues.update({ owner, repo, issue_number: canonical.number, body });
+            core.info(`Refreshed existing alert issue #${canonical.number}.`);
             // Collapse any stray duplicates (from a race or a manual run) onto the
             // canonical one so the "single alert issue" intent holds.
             for (const dup of duplicates) {
@@ -180,9 +202,11 @@ jobs:
                 body: `Duplicate of #${canonical.number} — closing.`,
               });
               await github.rest.issues.update({ owner, repo, issue_number: dup.number, state: 'closed' });
+              core.info(`Closed duplicate alert issue #${dup.number} (canonical #${canonical.number}).`);
             }
           } else {
-            await github.rest.issues.create({
+            const created = await github.rest.issues.create({
               owner, repo, title: '🔑 GH_PAT_FOR_PR needs rotation', body, labels: [LABEL],
             });
+            core.info(`Opened new alert issue #${created.data.number}.`);
           }
