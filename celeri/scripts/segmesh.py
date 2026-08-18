@@ -342,7 +342,17 @@ def main():
             filename = mesh_dir / f"{seg_file_stem}_segmesh{mesh_idx}.msh"
 
             # Combined coordinates making a continuous perimeter loop
-            all_coords = np.vstack((top_coords, np.flipud(bottom_coords)))
+            # Check here for circulation direction. We want a positive z-component for the cross product of corners
+            vec1 = top_coords[-1, :] - top_coords[0, :]
+            vec2 = bottom_coords[-1, :] - top_coords[-1, :]
+            normal_vector = np.cross(vec1, vec2)
+            if (
+                normal_vector[2] < -1e-10
+            ):  # Negative cross-product; we're not worried about vertical faults
+                print("neg circulation")
+                all_coords = np.vstack((np.flipud(top_coords), bottom_coords))
+            else:
+                all_coords = np.vstack((top_coords, np.flipud(bottom_coords)))
             # Number of geometric objects
             n_coords = np.shape(all_coords)[0]
             n_surf = int((n_coords - 2) / 2)
