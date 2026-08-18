@@ -349,7 +349,7 @@ def main():
             if (
                 normal_vector[2] < -1e-10
             ):  # Negative cross-product; we're not worried about vertical faults
-                print("neg circulation")
+                print(f"Perimeter circulation corrected for *_segmesh{mesh_idx}")
                 all_coords = np.vstack((np.flipud(top_coords), bottom_coords))
             else:
                 all_coords = np.vstack((top_coords, np.flipud(bottom_coords)))
