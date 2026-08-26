@@ -164,69 +164,124 @@ class Estimation:
         return mogi
 
     @cached_property
+    def _mcmc_posterior_mean(self):
+        """The MCMC posterior averaged over whatever sample dimensions it has."""
+        assert self.mcmc_trace is not None
+        posterior = self.mcmc_trace.posterior
+        sample_dims = [dim for dim in ("chain", "draw") if dim in posterior.dims]
+        return posterior.mean(sample_dims) if sample_dims else posterior
+
+    def mesh_slip_fields(self, mesh_idx: int) -> dict[str, np.ndarray | None]:
+        """The estimated slip fields of one mesh, as written to the output files.
+
+        Returns the elastic slip rates, kinematic slip rates and couplings for
+        strike slip and dip slip on mesh ``mesh_idx``. An entry is ``None``
+        when it is not defined for this estimation (no TDEs, or kinematic
+        rates for a mesh that is not tied to any segment). Both
+        ``mesh_estimate`` (``model_meshes.csv``) and the HDF5 writer read
+        from here so that the two outputs agree.
+
+        For MCMC estimations the elastic rates and couplings are the
+        posterior means of the sampled ``elastic_*`` and ``coupling_*``
+        fields, and the kinematic rates are the unsmoothed rates the sampler
+        used, evaluated at the posterior mean rotation (which is the
+        posterior mean kinematic rate, since the map is linear). Note that
+        ``tde_strike_slip_rates``/``tde_dip_slip_rates`` differ from these
+        for MCMC: they hold the projection of the posterior mean elastic
+        field onto the truncated eigenmode basis, i.e. the part of the field
+        that the sampler's forward model sees. When coupling was not sampled
+        (elastic-mode meshes) the coupling is the ratio elastic / kinematic.
+
+        For other solvers the elastic rates come from the state vector, the
+        kinematic rates are Gaussian smoothed when eigenmodes are in use,
+        and the coupling is the ratio elastic / kinematic.
+        """
+        fields: dict[str, np.ndarray | None] = {
+            "strike_slip_rate": None,
+            "dip_slip_rate": None,
+            "strike_slip_rate_kinematic": None,
+            "dip_slip_rate_kinematic": None,
+            "strike_slip_coupling": None,
+            "dip_slip_coupling": None,
+        }
+        if self.operators.tde is None:
+            return fields
+        strike_slip_rates = self.tde_strike_slip_rates
+        dip_slip_rates = self.tde_dip_slip_rates
+        if strike_slip_rates is None or dip_slip_rates is None:
+            return fields
+        fields["strike_slip_rate"] = strike_slip_rates[mesh_idx]
+        fields["dip_slip_rate"] = dip_slip_rates[mesh_idx]
+
+        if self.mcmc_trace is not None:
+            posterior_mean = self._mcmc_posterior_mean
+            kinematic = self.tde_kinematic.get(mesh_idx, None)
+            for kind, key, component in (
+                ("ss", "strike_slip", 0),
+                ("ds", "dip_slip", 1),
+            ):
+                elastic_var = f"elastic_{mesh_idx}_{kind}"
+                if elastic_var in posterior_mean:
+                    fields[f"{key}_rate"] = np.asarray(
+                        posterior_mean[elastic_var].values, dtype=float
+                    )
+                if kinematic is not None:
+                    fields[f"{key}_rate_kinematic"] = kinematic[component::2]
+                coupling_var = f"coupling_{mesh_idx}_{kind}"
+                if coupling_var in posterior_mean:
+                    fields[f"{key}_coupling"] = np.asarray(
+                        posterior_mean[coupling_var].values, dtype=float
+                    )
+                elif kinematic is not None:
+                    rate = fields[f"{key}_rate"]
+                    assert rate is not None
+                    with np.errstate(divide="ignore", invalid="ignore"):
+                        fields[f"{key}_coupling"] = rate / kinematic[component::2]
+            return fields
+
+        if self.operators.eigen is not None:
+            fields["strike_slip_rate_kinematic"] = (
+                self.tde_strike_slip_rates_kinematic_smooth.get(mesh_idx, None)
+            )
+            fields["dip_slip_rate_kinematic"] = (
+                self.tde_dip_slip_rates_kinematic_smooth.get(mesh_idx, None)
+            )
+            if (coupling := self.tde_strike_slip_rates_coupling_smooth) is not None:
+                fields["strike_slip_coupling"] = coupling.get(mesh_idx, None)
+            if (coupling := self.tde_dip_slip_rates_coupling_smooth) is not None:
+                fields["dip_slip_coupling"] = coupling.get(mesh_idx, None)
+        else:
+            fields["strike_slip_rate_kinematic"] = (
+                self.tde_strike_slip_rates_kinematic.get(mesh_idx, None)
+            )
+            fields["dip_slip_rate_kinematic"] = self.tde_dip_slip_rates_kinematic.get(
+                mesh_idx, None
+            )
+            if (coupling := self.tde_strike_slip_rates_coupling) is not None:
+                fields["strike_slip_coupling"] = coupling.get(mesh_idx, None)
+            if (coupling := self.tde_dip_slip_rates_coupling) is not None:
+                fields["dip_slip_coupling"] = coupling.get(mesh_idx, None)
+        return fields
+
+    @cached_property
     def mesh_estimate(self) -> pd.DataFrame | None:
-        """A dataframe containing the estimated slip rates and couplings for each mesh."""
+        """A dataframe containing the estimated slip rates and couplings for each mesh.
+
+        The slip columns come from `mesh_slip_fields`; fields that are not
+        defined for a mesh are written as zeros.
+        """
         if self.operators.tde is None:
             return None
         if self.tde_strike_slip_rates is None or self.tde_dip_slip_rates is None:
             return None
         meshes = self.model.meshes
         mesh_outputs_list: list[pd.DataFrame] = []
-        use_smooth = self.operators.eigen is not None
-        use_mcmc_coupling = self.mcmc_trace is not None
         for i in range(len(meshes)):
-            if use_smooth:
-                strike_slip_rate_kinematic = (
-                    self.tde_strike_slip_rates_kinematic_smooth.get(i, None)
-                )
-                dip_slip_rate_kinematic = self.tde_dip_slip_rates_kinematic_smooth.get(
-                    i, None
-                )
-            else:
-                strike_slip_rate_kinematic = self.tde_strike_slip_rates_kinematic.get(
-                    i, None
-                )
-                dip_slip_rate_kinematic = self.tde_dip_slip_rates_kinematic.get(i, None)
-
-            strike_slip_coupling = None
-            dip_slip_coupling = None
-
-            if use_mcmc_coupling:
-                trace_mean = self.mcmc_trace.posterior.mean(["chain", "draw"])  # type: ignore
-                ss_var = f"coupling_{i}_ss"
-                ds_var = f"coupling_{i}_ds"
-                if ss_var in trace_mean:
-                    strike_slip_coupling = trace_mean[ss_var].values
-                if ds_var in trace_mean:
-                    dip_slip_coupling = trace_mean[ds_var].values
-            elif use_smooth:
-                if self.tde_strike_slip_rates_coupling_smooth is not None:
-                    strike_slip_coupling = (
-                        self.tde_strike_slip_rates_coupling_smooth.get(i, None)
-                    )
-                if self.tde_dip_slip_rates_coupling_smooth is not None:
-                    dip_slip_coupling = self.tde_dip_slip_rates_coupling_smooth.get(
-                        i, None
-                    )
-            else:
-                if self.tde_strike_slip_rates_coupling is not None:
-                    strike_slip_coupling = self.tde_strike_slip_rates_coupling.get(
-                        i, None
-                    )
-                if self.tde_dip_slip_rates_coupling is not None:
-                    dip_slip_coupling = self.tde_dip_slip_rates_coupling.get(i, None)
-
-            # Create arrays of zeros with appropriate length if values are None
             n_elements = len(meshes[i].lon1)
-            if strike_slip_rate_kinematic is None:
-                strike_slip_rate_kinematic = np.zeros(n_elements)
-            if dip_slip_rate_kinematic is None:
-                dip_slip_rate_kinematic = np.zeros(n_elements)
-            if strike_slip_coupling is None:
-                strike_slip_coupling = np.zeros(n_elements)
-            if dip_slip_coupling is None:
-                dip_slip_coupling = np.zeros(n_elements)
-
+            slip_fields = {
+                key: np.zeros(n_elements) if value is None else value
+                for key, value in self.mesh_slip_fields(i).items()
+            }
             this_mesh_data = {
                 "lon1": meshes[i].lon1,
                 "lat1": meshes[i].lat1,
@@ -238,12 +293,7 @@ class Estimation:
                 "lat3": meshes[i].lat3,
                 "dep3": meshes[i].dep3,
                 "mesh_idx": i * np.ones_like(meshes[i].lon1).astype(int),
-                "strike_slip_rate": self.tde_strike_slip_rates[i],
-                "dip_slip_rate": self.tde_dip_slip_rates[i],
-                "strike_slip_rate_kinematic": strike_slip_rate_kinematic,
-                "dip_slip_rate_kinematic": dip_slip_rate_kinematic,
-                "strike_slip_coupling": strike_slip_coupling,
-                "dip_slip_coupling": dip_slip_coupling,
+                **slip_fields,
             }
 
             mesh_outputs_list.append(pd.DataFrame(this_mesh_data))
@@ -318,7 +368,12 @@ class Estimation:
 
     @cached_property
     def slip_rate_sigma(self) -> np.ndarray | None:
-        """The standard deviation of the estimated strike, dip, and tensile slip rates for each segment; propagated from `self.state_covariance_matrix`. Shape: (3 * n_segments,)."""
+        """The standard deviation of the estimated strike, dip, and tensile slip rates for each segment. Shape: (3 * n_segments,).
+
+        Propagated from `self.state_covariance_matrix` when it is available.
+        For MCMC estimations it is the posterior standard deviation of the
+        sampled ``segment_slip_rate`` variable.
+        """
         if self.state_covariance_matrix is not None:
             return np.sqrt(
                 np.diag(
@@ -329,6 +384,19 @@ class Estimation:
                     @ self.operators.rotation_to_slip_rate.T
                 )
             )
+        if self.mcmc_trace is not None:
+            posterior = self.mcmc_trace.posterior
+            if "segment_slip_rate" in posterior:
+                rates = posterior["segment_slip_rate"]
+                sample_dims = [dim for dim in ("chain", "draw") if dim in rates.dims]
+                if sample_dims:
+                    sigma = rates.std(sample_dims).values
+                else:
+                    # A single draw: no spread to report
+                    sigma = np.zeros(rates.shape)
+                # (n_segments, 3) with components (strike, dip, tensile)
+                # -> interleaved like `slip_rates`
+                return np.asarray(sigma, dtype=float).ravel()
         return None
 
     @property
@@ -641,14 +709,14 @@ class Estimation:
             return None
         return vel[2::3]
 
-    @property
+    @cached_property
     def tde_kinematic_smooth(self) -> dict[int, np.ndarray]:
         """Dictionary mapping mesh indices to smoothed kinematic slip rate arrays."""
         return self.operators.kinematic_slip_rate(
             self.state_vector, mesh_idx=None, smooth=True
         )
 
-    @property
+    @cached_property
     def tde_kinematic(self) -> dict[int, np.ndarray]:
         """Dictionary mapping mesh indices to kinematic slip rate arrays."""
         return self.operators.kinematic_slip_rate(
