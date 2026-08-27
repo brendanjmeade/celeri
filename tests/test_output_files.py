@@ -1,14 +1,102 @@
 from pathlib import Path
 
 import h5py
+import numpy as np
+import pandas as pd
 import pytest
 from loguru import logger
+from numpy.testing import assert_allclose
 
 import celeri
 from celeri.celeri_util import get_newest_run_folder
 from celeri.mesh import ScalarBound
 
 test_logger = logger.bind(name="test_output_files")
+
+
+def _assert_mcmc_outputs_consistent(estimation, run_dir):
+    """model_meshes.csv, the HDF5 file and model_segment.csv of an MCMC run all
+    report the posterior mean (and std) of the sampled fields, and agree with
+    each other.
+    """
+    posterior = estimation.mcmc_trace.posterior
+    posterior_mean = posterior.mean(["chain", "draw"])
+    meshes = pd.read_csv(run_dir / "model_meshes.csv")
+    segment = pd.read_csv(run_dir / "model_segment.csv")
+
+    with h5py.File(run_dir / f"model_{run_dir.name}.hdf5", "r") as hdf:
+        for i in range(len(estimation.model.meshes)):
+            rows = meshes[meshes["mesh_idx"] == i]
+            grp = hdf[f"meshes/mesh_{i:05}"]
+            # What the sampler used: unsmoothed, linear in the rotation, so
+            # the rate at the posterior mean rotation is the posterior mean.
+            kinematic = estimation.operators.kinematic_slip_rate(
+                estimation.state_vector, i, smooth=False
+            )
+            for kind, key, component in (
+                ("ss", "strike_slip", 0),
+                ("ds", "dip_slip", 1),
+            ):
+                rate = rows[f"{key}_rate"].to_numpy()
+                assert_allclose(
+                    rate, posterior_mean[f"elastic_{i}_{kind}"].values, rtol=1e-6
+                )
+                kinematic_rate = rows[f"{key}_rate_kinematic"].to_numpy()
+                assert_allclose(kinematic_rate, kinematic[component::2], rtol=1e-6)
+                kinematic_var = f"kinematic_{i}_{kind}"
+                if kinematic_var in posterior_mean:
+                    # The sampler evaluates its operators in float32
+                    assert_allclose(
+                        kinematic_rate,
+                        posterior_mean[kinematic_var].values,
+                        rtol=1e-4,
+                        atol=1e-4,
+                    )
+                coupling_var = f"coupling_{i}_{kind}"
+                if coupling_var in posterior_mean:
+                    expected_coupling = posterior_mean[coupling_var].values
+                else:
+                    with np.errstate(divide="ignore", invalid="ignore"):
+                        expected_coupling = rate / kinematic[component::2]
+                assert_allclose(
+                    rows[f"{key}_coupling"],
+                    expected_coupling,
+                    rtol=1e-6,
+                    equal_nan=True,
+                )
+                # The HDF5 file carries the same arrays as the CSV
+                for suffix, column in (
+                    ("", f"{key}_rate"),
+                    ("_kinematic", f"{key}_rate_kinematic"),
+                    ("_coupling", f"{key}_coupling"),
+                ):
+                    assert_allclose(
+                        grp[f"{key}{suffix}/{0:012}"][...],
+                        rows[column],
+                        rtol=1e-12,
+                        equal_nan=True,
+                    )
+
+    # Segment rates are the posterior mean and their uncertainties the
+    # posterior std (the CSV is written with 4 decimals)
+    segment_mean = posterior_mean["segment_slip_rate"].values
+    segment_std = posterior["segment_slip_rate"].std(["chain", "draw"]).values
+    for component, name in enumerate(("strike", "dip", "tensile")):
+        assert_allclose(
+            segment[f"model_{name}_slip_rate"], segment_mean[:, component], atol=5e-4
+        )
+        uncertainty = segment[f"model_{name}_slip_rate_uncertainty"]
+        assert np.isfinite(uncertainty).all()
+        assert_allclose(uncertainty, segment_std[:, component], atol=1e-4)
+
+    # Station predictions from the state vector match the sampler's forward model
+    mu = posterior_mean["mu"].values
+    assert_allclose(
+        estimation.station["model_east_vel"], mu[:, 0], rtol=1e-4, atol=1e-3
+    )
+    assert_allclose(
+        estimation.station["model_north_vel"], mu[:, 1], rtol=1e-4, atol=1e-3
+    )
 
 
 @pytest.mark.parametrize(
@@ -89,3 +177,35 @@ def test_celeri_solve_mcmc_creates_output_files(config_file):
     groups = trace.children if hasattr(trace, "children") else trace.groups()
     assert "posterior" in groups
     assert "log_likelihood" in groups
+
+    # Coupling mode: the coupling field itself is sampled
+    assert "coupling_0_ds" in estimation.mcmc_trace.posterior
+    _assert_mcmc_outputs_consistent(estimation, run_dir)
+
+
+@pytest.mark.parametrize(
+    "config_file",
+    [
+        "data/config/wna_config.json",
+    ],
+)
+def test_celeri_solve_mcmc_elastic_mode_output_files(config_file):
+    """Elastic mode with bounded rates: the bound transform makes the sampled
+    elastic field nonlinear in the eigen coefficients, and the outputs must
+    still report its posterior mean and match the sampler's predictions.
+    """
+    config = celeri.get_config(config_file)
+    config.solve_type = "mcmc"
+    model = celeri.build_model(config)
+    for mesh in model.meshes:
+        mesh.config.coupling_constraints_ss = ScalarBound(lower=None, upper=None)
+        mesh.config.coupling_constraints_ds = ScalarBound(lower=None, upper=None)
+        assert mesh.config.elastic_constraints_ds.upper is not None
+    estimation = celeri.solve_mcmc(model, sample_kwargs={"tune": 2, "draws": 2})
+    celeri.write_output(estimation)
+    run_dir = get_newest_run_folder(base=Path(__file__).parent.parent / "runs")
+
+    posterior = estimation.mcmc_trace.posterior
+    assert "coupling_0_ds" not in posterior
+    assert "elastic_eigen_0_ds" in posterior
+    _assert_mcmc_outputs_consistent(estimation, run_dir)

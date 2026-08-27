@@ -1819,10 +1819,14 @@ def _state_vector_from_draw(
     The state vector uses eigen coefficients (not TDE values) so that
     Estimation.predictions uses eigen_to_velocities for forward predictions.
 
-    For elastic mode, we use the elastic_eigen_* coefficients directly.
-    For coupling mode, we project the elastic TDE values onto eigenvectors
-    to get equivalent elastic eigen coefficients, since coupling coefficients
-    parameterize the coupling field rather than elastic slip directly.
+    The eigen coefficients are the projection of the sampled elastic TDE
+    field (``elastic_*``) onto the eigenvectors, for both the coupling and
+    the elastic parameterization. This is what the sampler's forward model
+    sees (with ``project_to_eigen`` the velocities are ``T @ V.T @ elastic``),
+    and for the elastic parameterization it includes the prior mean offset
+    and any bound transform, which the raw ``elastic_eigen_*`` coefficients
+    do not. Those coefficients are only used as a fallback when the elastic
+    field is not in the trace.
     """
     assert operators.eigen is not None
     assert operators.index.eigen is not None
@@ -1858,14 +1862,14 @@ def _state_vector_from_draw(
             elastic_eigen_var = f"elastic_eigen_{mesh_idx}_{kind_short}"
             elastic_tde_var = f"elastic_{mesh_idx}_{kind_short}"
 
-            if elastic_eigen_var in posterior_point:
-                coefs[coef_start : coef_start + n_modes] = posterior_point[
-                    elastic_eigen_var
-                ].values
-            elif elastic_tde_var in posterior_point:
+            if elastic_tde_var in posterior_point:
                 elastic_tde = posterior_point[elastic_tde_var].values
                 eigenvectors = _get_eigenmodes(model, mesh_idx, kind)
                 coefs[coef_start : coef_start + n_modes] = eigenvectors.T @ elastic_tde
+            elif elastic_eigen_var in posterior_point:
+                coefs[coef_start : coef_start + n_modes] = posterior_point[
+                    elastic_eigen_var
+                ].values
 
         state_vector[start:end] = coefs
 
