@@ -271,7 +271,9 @@ def compute_forward_velocities_batch(estimation, batch_operators):
         vel_tde = np.zeros(2 * n_stations_batch)
 
     # Compute total velocities
-    vel_total = vel_rotation + vel_elastic_segment
+    vel_total = (
+        vel_rotation - vel_elastic_segment + vel_tde + vel_block_strain_rate + vel_mogi
+    )
 
     # Compute residuals (forward model - observed, but observed is zero for forward stations)
     vel_residual = vel_total
