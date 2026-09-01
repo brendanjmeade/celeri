@@ -217,8 +217,9 @@ def compute_forward_velocities_batch(estimation, batch_operators):
                 # TDE slip is stored as [strike_slip, dip_slip] pairs, so we need the 2-component index
                 tde_keep_col_index = get_keep_index_12(tde_op.shape[1])
 
+                # Negation of this operator is for consistency with the eigen case
                 tde_contribution = (
-                    tde_op[tde_keep_row_index, :][:, tde_keep_col_index]
+                    -tde_op[tde_keep_row_index, :][:, tde_keep_col_index]
                     @ state_vector[
                         index.tde.start_tde_col[mesh_idx] : index.tde.end_tde_col[
                             mesh_idx
@@ -271,7 +272,9 @@ def compute_forward_velocities_batch(estimation, batch_operators):
         vel_tde = np.zeros(2 * n_stations_batch)
 
     # Compute total velocities
-    vel_total = vel_rotation + vel_elastic_segment
+    vel_total = (
+        vel_rotation - vel_elastic_segment + vel_tde + vel_block_strain_rate + vel_mogi
+    )
 
     # Compute residuals (forward model - observed, but observed is zero for forward stations)
     vel_residual = vel_total
