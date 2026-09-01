@@ -78,12 +78,19 @@ def _assert_mcmc_outputs_consistent(estimation, run_dir):
                     )
 
     # Segment rates are the posterior mean and their uncertainties the
-    # posterior std (the CSV is written with 4 decimals)
+    # posterior std (the CSV is written with 4 decimals). The sampler
+    # evaluates segment_slip_rate in float32 while the CSV reports the
+    # float64 rate at the posterior mean rotation, so the float32
+    # round-off scales with the rate magnitude and needs a relative term
+    # on top of the rounding atol.
     segment_mean = posterior_mean["segment_slip_rate"].values
     segment_std = posterior["segment_slip_rate"].std(["chain", "draw"]).values
     for component, name in enumerate(("strike", "dip", "tensile")):
         assert_allclose(
-            segment[f"model_{name}_slip_rate"], segment_mean[:, component], atol=5e-4
+            segment[f"model_{name}_slip_rate"],
+            segment_mean[:, component],
+            rtol=2e-4,
+            atol=5e-4,
         )
         uncertainty = segment[f"model_{name}_slip_rate_uncertainty"]
         assert np.isfinite(uncertainty).all()
