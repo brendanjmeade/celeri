@@ -108,6 +108,14 @@ hatch-fancy-pypi-readme = "*"
 arviz = "<1"
 nutpie = "<0.16.9"  # 0.16.9 renamed the low_rank mass-matrix kwarg
 
+# CURRENT-MCMC: keep the default environment on the post-upgrade stack
+# (pymc>=6 -> pytensor>=3 -> numba<=0.66). Without this pin the solver can pair
+# pymc 5.28.0 (whose conda-forge metadata is missing the arviz<1 cap that
+# 5.28.1+ have) with arviz>=1, which breaks `import pymc`. On LEGACY-MCMC
+# cleanup, delete this feature and move the pin into [dependencies].
+[feature.current-mcmc.dependencies]
+pymc = ">=6,<7"
+
 [pypi-dependencies]
 celeri = { path = ".", editable = true }
 types-shapely = ">=2.1.0.20250917"
@@ -115,5 +123,5 @@ h5py-stubs = ">=0.1.2"
 scikit-learn-stubs = ">=0.0.3"
 
 [environments]
-default = ["dev"]
+default = ["dev", "current-mcmc"]
 legacy-mcmc = ["dev", "legacy-mcmc"]  # LEGACY-MCMC: delete on cleanup
