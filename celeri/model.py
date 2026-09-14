@@ -431,7 +431,7 @@ def zero_mesh_segment_locking_depth(segment, meshes):
     toggle_off = np.where(
         (segment.mesh_flag != 0)
         & (segment.mesh_file_index >= 0)
-        & (segment.mesh_file_index <= len(meshes))
+        & (segment.mesh_file_index < len(meshes))
     )[0]
     return segment.assign(
         locking_depth=segment.locking_depth.where(~segment.index.isin(toggle_off), 0)
