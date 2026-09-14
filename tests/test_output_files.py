@@ -228,3 +228,70 @@ def test_celeri_solve_mcmc_elastic_mode_output_files(config_file):
     assert "coupling_0_ds" not in posterior
     assert "elastic_eigen_0_ds" in posterior
     _assert_mcmc_outputs_consistent(estimation, run_dir)
+
+
+def test_build_and_solve_dense_does_not_write_outputs():
+    """The dense drivers solve only; celeri_solve.main owns writing and plotting."""
+    config = celeri.get_config("./tests/configs/test_wna_config.json")
+    config.repl = False
+    config.plot_estimation_summary = False
+    model = celeri.build_model(config)
+
+    estimation = celeri.build_and_solve_dense(model)
+
+    hdf5_file = config.output_path / f"model_{config.run_name}.hdf5"
+    assert not hdf5_file.exists()
+    assert not (config.output_path / "arrays.zarr").exists()
+    assert not (config.output_path / "model_station.csv").exists()
+
+    celeri.write_output(estimation)
+    assert hdf5_file.exists()
+    assert (config.output_path / "model_station.csv").exists()
+
+
+def test_celeri_solve_main_writes_once_and_plots(monkeypatch):
+    """celeri_solve.main writes the outputs exactly once and then plots."""
+    from celeri.scripts.celeri_solve import main
+
+    calls = {"write": 0, "plot": 0}
+    real_write_output = celeri.write_output
+
+    def counting_write_output(estimation):
+        calls["write"] += 1
+        real_write_output(estimation)
+
+    def counting_plot(estimation, *args, **kwargs):
+        calls["plot"] += 1
+
+    monkeypatch.setattr(celeri, "write_output", counting_write_output)
+    monkeypatch.setattr(celeri, "plot_estimation_summary", counting_plot)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "celeri-solve",
+            "./tests/configs/test_wna_config.json",
+            "--repl",
+            "0",
+            "--plot_estimation_summary",
+            "1",
+        ],
+    )
+    main()
+
+    assert calls == {"write": 1, "plot": 1}
+
+
+@pytest.mark.parametrize("eigen, tde", [(False, False), (False, True), (True, True)])
+def test_plot_estimation_summary_handles_every_layout(eigen, tde):
+    """The summary figure follows the estimation's structure, not config.solve_type."""
+    config = celeri.get_config("./tests/configs/test_wna_config.json")
+    config.repl = False
+    # A label that does not describe the estimation must not matter
+    config.solve_type = "dense"
+    model = celeri.build_model(config)
+    estimation = celeri.assemble_and_solve_dense(model, eigen=eigen, tde=tde)
+
+    celeri.plot_estimation_summary(estimation)
+
+    assert (config.output_path / "plot_estimation_summary.png").exists()
+    assert (config.output_path / "plot_estimation_summary.pdf").exists()

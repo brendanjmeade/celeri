@@ -501,7 +501,7 @@ def plot_estimation_summary(
         color="magenta",
     )
 
-    if model.config.solve_type != "dense_no_meshes":
+    if estimation.operators.tde is not None:
         if len(meshes) > 0:
             subplot_index += 1
             plt.subplot(
@@ -519,7 +519,7 @@ def plot_estimation_summary(
                 color="black",
             )
 
-    if model.config.solve_type != "dense_no_meshes":
+    if estimation.operators.tde is not None:
         if len(meshes) > 0:
             tde_strike_slip_dict = estimation.tde_strike_slip_rates
             tde_dip_slip_dict = estimation.tde_dip_slip_rates
@@ -582,7 +582,7 @@ def plot_estimation_summary(
             cbar.set_ticks(ticks.tolist())
 
     # Plot strike-slip and dip-slip coupling
-    if model.config.solve_type != "dense_no_meshes":
+    if estimation.operators.tde is not None:
         if len(meshes) > 0 and estimation.mesh_estimate is not None:
             mesh_estimate = estimation.mesh_estimate
 

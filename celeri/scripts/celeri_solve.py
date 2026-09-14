@@ -51,6 +51,10 @@ def main():
     # Write output
     celeri.write_output(estimation)
 
+    # Summary figure of the estimation, for every solve type
+    if config.plot_estimation_summary:
+        celeri.plot_estimation_summary(estimation)
+
     # Drop into ipython REPL
     if config.repl:
         import IPython

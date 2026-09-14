@@ -31,7 +31,7 @@ from celeri.operators import (
     rotation_vector_err_to_euler_pole_err,
     rotation_vectors_to_euler_poles,
 )
-from celeri.output import dataclass_from_disk, dataclass_to_disk, write_output
+from celeri.output import dataclass_from_disk, dataclass_to_disk
 from celeri.version import __version__ as celeri_version
 
 
@@ -1138,14 +1138,6 @@ def _build_and_solve(name: str, model: Model, *, tde: bool, eigen: bool):
     logger.success(
         f"Finish: Dense assemble and solve: {end_solve_time - start_solve_time:0.2f} seconds for solve"
     )
-
-    write_output(estimation)
-
-    if model.config.plot_estimation_summary:
-        from celeri.plot import plot_estimation_summary
-
-        plot_estimation_summary(estimation)
-
     return estimation
 
 
