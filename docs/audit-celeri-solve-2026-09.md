@@ -89,7 +89,7 @@ Severity: **W** wrong results, **C** crash, **S** silent misbehaviour, **K** con
 | D10 | K | Constrain solve_type to the supported solvers | Default `"hmatrix"` was not a solver; no validation. |
 | D11 | K | Remove dead CLI options and validate CLI overrides | Five options silently dropped; overrides bypassed validation. |
 | D12 | W | Count only segment-tied meshes in the SQP convergence criterion | Denominator counted every mesh → optimistic early exit. |
-| D13 | S | Keep both slip components in the out-of-bounds trace | `qp2` trace kept strike-slip counts only. |
+| D13 | S | Keep both slip components in the out-of-bounds trace; Pack per-element out-of-bounds counts as (strike, dip) before the totals | `qp2` trace kept strike-slip counts only, and `SlipRateLimitItem.out_of_bounds_detailed` returned (count, total) pairs, so the dip-slip entry was the element total at every iteration (found when the summed trace read count + total on the reference Japan model). The convergence decision uses `out_of_bounds()` and was never affected. |
 | D14 | C | Save diagnostic block-closure figures instead of calling plt.show | Blocking GUI calls inside non-interactive solves (multi-hour hangs on macOS). |
 | D15 | S | Keep Cartesian segment endpoints consistent with ordered endpoints | `x1..z2` pointed at the opposite ends of reordered segments. |
 | D17 | S | Compute eigen_to_tde_bcs when operators are built | Built only as a side effect of the dense-operator getter; MCMC runs serialised an empty dict. |
@@ -138,6 +138,8 @@ Commit series on `vet` (oldest first):
 - `69e0e55` Write the whole config to the HDF5 output and NaN for undefined mesh fields
 - `25ed9e4` Validate cached TDE operators against the mesh geometry
 - `1d1453a` Regenerate the WNA eigen and TDE solution baselines for the normalised winding
+- `59b7874` Add the September 2026 correctness audit report of the celeri-solve path
+- `bd3af79` Pack per-element out-of-bounds counts as (strike, dip) before the totals
 
 Baselines regenerated: `test_dense_sol_test_japan_config-{False-False,False-True,True-True}.txt`
 (no-mesh columns and the strain-rate operator), `test_operator_rotation_to_tri_slip_rate_*.txt`
