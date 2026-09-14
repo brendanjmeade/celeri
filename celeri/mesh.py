@@ -617,8 +617,7 @@ def _compute_n_tde_constraints(
 ) -> int:
     """Compute the total number of TDE constraints.
 
-    Builds a constraint matrix and counts rows with at least one constraint,
-    replicating the logic from operators._store_tde_slip_rate_constraints.
+    Matches the number of rows built by operators._store_tde_slip_rate_constraints.
 
     Args:
         n_tde: Number of triangular elements
@@ -629,30 +628,11 @@ def _compute_n_tde_constraints(
     Returns:
         Total number of constraint rows
     """
-    tde_slip_rate_constraints = np.zeros((2 * n_tde, 2 * n_tde))
-    end_row = 0
-
-    boundary_slip_indices = [top_slip_idx, bottom_slip_idx, side_slip_idx]
-
-    for slip_idx in boundary_slip_indices:
-        if len(slip_idx) > 0:
-            start_row = end_row
-            end_row = start_row + len(slip_idx)
-            tde_slip_rate_constraints[start_row:end_row, slip_idx] = np.eye(
-                len(slip_idx)
-            )
-
-    # Count rows with at least one constraint
-    # Total number of slip constraints:
-    # 2 for each element that has coupling constrained (top, bottom, side, specified indices)
-    # 1 for each additional slip component that is constrained (specified indices)
-
-    # TODO: Number of total constraints is determined by just finding 1 in the
-    # constraint array. This could cause an error when the index Dict is constructed,
-    # if an individual element has a constraint imposed, but that element is also
-    # a constrained edge element. Need to build in some uniqueness tests.
-    sum_constraint_columns = np.sum(tde_slip_rate_constraints, 1)
-    return int(np.sum(sum_constraint_columns > 0))
+    # One constraint row per constrained slip component. The boundary index
+    # arrays are disjoint by construction (each element belongs to at most one
+    # of top, bottom, side), so the count is simply their total length.
+    del n_tde
+    return int(len(top_slip_idx) + len(bottom_slip_idx) + len(side_slip_idx))
 
 
 def _compute_mesh_perimeter(mesh: dict):

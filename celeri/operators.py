@@ -1794,32 +1794,16 @@ def _store_tde_slip_rate_constraints(model: Model, operators: _OperatorBuilder):
     """
     meshes = model.meshes
     for i in range(len(meshes)):
-        # Empty constraint matrix
-        tde_slip_rate_constraints = np.zeros((2 * meshes[i].n_tde, 2 * meshes[i].n_tde))
-        # Counting index
-        start_row = 0
-        end_row = 0
-
-        # Process boundary constraints (top, bottom, side)
-        boundary_constraints = [
-            meshes[i].top_slip_idx,
-            meshes[i].bottom_slip_idx,
-            meshes[i].side_slip_idx,
-        ]
-
-        for slip_idx in boundary_constraints:
-            if len(slip_idx) > 0:
-                start_row = end_row
-                end_row = start_row + len(slip_idx)
-                tde_slip_rate_constraints[start_row:end_row, slip_idx] = np.eye(
-                    len(slip_idx)
-                )
-
-        # Eliminate blank rows
-        sum_constraint_columns = np.sum(tde_slip_rate_constraints, 1)
-        tde_slip_rate_constraints = tde_slip_rate_constraints[
-            sum_constraint_columns > 0, :
-        ]
+        # One row per constrained slip component: top, then bottom, then side
+        slip_idx = np.concatenate(
+            [
+                np.asarray(meshes[i].top_slip_idx, dtype=int),
+                np.asarray(meshes[i].bottom_slip_idx, dtype=int),
+                np.asarray(meshes[i].side_slip_idx, dtype=int),
+            ]
+        )
+        tde_slip_rate_constraints = np.zeros((len(slip_idx), 2 * meshes[i].n_tde))
+        tde_slip_rate_constraints[np.arange(len(slip_idx)), slip_idx] = 1.0
         operators.tde_slip_rate_constraints[i] = tde_slip_rate_constraints
 
 

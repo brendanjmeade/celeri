@@ -471,3 +471,27 @@ def test_eigen_to_tde_bcs_available_before_full_operator():
         index.eigen.start_col_eigen[0] : index.eigen.end_col_eigen[0],
     ]
     np.testing.assert_array_equal(rows, operators.eigen.eigen_to_tde_bcs[0])
+
+
+@pytest.mark.parametrize("config_name", ["test_japan_config", "test_wna_config"])
+def test_tde_slip_rate_constraints_match_dense_construction(config_name):
+    """The direct constraint-row construction equals the former dense one."""
+    config = celeri.get_config(f"./tests/configs/{config_name}.json")
+    model = celeri.build_model(config)
+    operators = celeri.build_operators(model, eigen=False, tde=True)
+    assert operators.tde is not None
+
+    for i, mesh in enumerate(model.meshes):
+        dense = np.zeros((2 * mesh.n_tde, 2 * mesh.n_tde))
+        end_row = 0
+        for slip_idx in (mesh.top_slip_idx, mesh.bottom_slip_idx, mesh.side_slip_idx):
+            if len(slip_idx) > 0:
+                start_row, end_row = end_row, end_row + len(slip_idx)
+                dense[start_row:end_row, slip_idx] = np.eye(len(slip_idx))
+        dense = dense[np.sum(dense, 1) > 0, :]
+
+        np.testing.assert_array_equal(operators.tde.tde_slip_rate_constraints[i], dense)
+        assert mesh.n_tde_constraints == len(dense)
+        assert mesh.n_tde_constraints == len(mesh.top_slip_idx) + len(
+            mesh.bottom_slip_idx
+        ) + len(mesh.side_slip_idx)
