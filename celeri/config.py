@@ -175,6 +175,11 @@ class Config(RelativePathSerializerMixin, BaseModel):
     locking_depth_flag4: int = 10
     locking_depth_flag5: int = 5
     locking_depth_override_flag: int = 0
+    """When non-zero, every segment's locking depth is replaced by
+    ``locking_depth_override_value``."""
+    locking_depth_override_value: float | None = None
+    """Locking depth (km) applied to all segments when
+    ``locking_depth_override_flag`` is set."""
 
     # Plotting defaults
     lat_range: tuple[float, float] = (30, 45)
@@ -563,6 +568,19 @@ class Config(RelativePathSerializerMixin, BaseModel):
                 if isinstance(value, Path):
                     setattr(self, name, (base_dir / value).resolve())
 
+        return self
+
+    @model_validator(mode="after")
+    def validate_locking_depth_override(self) -> Self:
+        """Require a value when the global locking depth override is on."""
+        if (
+            self.locking_depth_override_flag
+            and self.locking_depth_override_value is None
+        ):
+            raise ValueError(
+                "locking_depth_override_value must be set when "
+                "locking_depth_override_flag is non-zero."
+            )
         return self
 
     @model_validator(mode="after")
