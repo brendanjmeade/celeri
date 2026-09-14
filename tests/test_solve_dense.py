@@ -308,3 +308,56 @@ def test_end_row_eigen_consistency(config_name, include_vertical):
             f"Mesh {i}: end_row_eigen[{i}]={estimation.index.eigen.end_row_eigen[i]} "
             f"doesn't match index.end_station_row={estimation.index.end_station_row}"
         )
+
+
+@pytest.mark.parametrize("config_name", ["test_japan_config", "test_wna_config"])
+def test_dense_no_meshes_state_layout(config_name):
+    """The no-mesh dense system has strain and Mogi columns and config weights."""
+    config = celeri.get_config(f"./tests/configs/{config_name}.json")
+    model = celeri.build_model(config)
+
+    estimation = celeri.assemble_and_solve_dense(model, eigen=False, tde=False)
+    index = estimation.index
+    operators = estimation.operators
+
+    assert operators.tde is None
+    assert index.tde is None
+    assert estimation.operator.shape[1] == index.n_operator_cols
+    assert estimation.state_vector.shape == (index.n_operator_cols,)
+
+    # Column blocks: rotations | block strain rates | Mogi volume change rates
+    assert index.end_block_col == 3 * index.n_blocks
+    assert index.start_block_strain_col == index.end_block_col
+    assert (
+        index.end_block_strain_col - index.start_block_strain_col
+        == 3 * index.n_strain_blocks
+    )
+    assert index.start_mogi_col == index.end_block_strain_col
+    assert index.end_mogi_col == index.n_operator_cols
+    assert estimation.block_strain_rates.shape == (3 * index.n_strain_blocks,)
+    assert estimation.mogi_volume_change_rates.shape == (index.n_mogis,)
+    np.testing.assert_array_equal(
+        estimation.operator[
+            index.start_station_row : index.end_station_row,
+            index.start_block_strain_col : index.end_block_strain_col,
+        ],
+        operators.block_strain_rate_to_velocities,
+    )
+    np.testing.assert_array_equal(
+        estimation.operator[
+            index.start_station_row : index.end_station_row,
+            index.start_mogi_col : index.end_mogi_col,
+        ],
+        operators.mogi_to_velocities,
+    )
+
+    # Every derived station column must be computable from the state vector
+    station = estimation.station
+    assert len(station) == index.n_stations
+
+    # Block rotation constraints use the configured weight, as in the mesh paths
+    weights = estimation.weighting_vector[
+        index.start_block_constraints_row : index.end_block_constraints_row
+    ]
+    assert weights.shape == (3 * index.n_block_constraints,)
+    np.testing.assert_array_equal(weights, config.block_constraint_weight)

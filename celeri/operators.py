@@ -247,9 +247,6 @@ class Index:
 
     @property
     def n_operator_cols(self) -> int:
-        # TODO(Brendan): should there be the mogi/strain block terms here?
-        # They were missing in one of the originial functions. I think in
-        # most nodebooks those are zero.
         base = 3 * self.n_blocks + 3 * self.n_strain_blocks + self.n_mogis
         if self.tde is not None:
             base += 2 * self.tde.n_tde_total
@@ -2265,7 +2262,7 @@ def _get_weighting_vector_no_meshes(model: Model, index: Index) -> np.ndarray:
     )
     weighting_vector[
         index.start_block_constraints_row : index.end_block_constraints_row
-    ] = 1.0
+    ] = model.config.block_constraint_weight
     weighting_vector[
         index.start_slip_rate_constraints_row : index.end_slip_rate_constraints_row
     ] = model.config.slip_constraint_weight * np.ones(index.n_slip_rate_constraints)
@@ -2387,7 +2384,7 @@ def _insert_block_strain_and_mogi(
 ) -> None:
     """Insert block strain and Mogi source operators.
 
-    This is common to tde and eigen operator types.
+    This is common to all operator types (no-mesh, tde and eigen).
     """
     # Insert block strain operator
     operator[
@@ -2403,17 +2400,24 @@ def _insert_block_strain_and_mogi(
 
 
 def _get_full_dense_operator_block_only(operators: Operators) -> np.ndarray:
+    """Build full dense operator for the no-mesh case.
+
+    Columns are block rotations, block strain rates and Mogi volume change
+    rates, matching ``Index.n_operator_cols`` and the column ranges used by
+    ``Estimation``.
+    """
     index = operators.index
     operator = np.zeros(
         (
             index.end_station_row
             + 3 * index.n_block_constraints
             + index.n_slip_rate_constraints,
-            3 * index.n_blocks,
+            index.n_operator_cols,
         )
     )
 
     _insert_common_block_operators(operator, operators, index)
+    _insert_block_strain_and_mogi(operator, operators, index)
     return operator
 
 
@@ -3318,9 +3322,9 @@ def _get_index_no_meshes(model: Model):
         ),
         n_slip_rate_constraints=n_slip_rate_constraints,
         start_block_strain_col=3 * n_blocks,
-        end_block_strain_col=3 * n_blocks + n_slip_rate_constraints,
-        start_mogi_col=3 * n_blocks + n_slip_rate_constraints,
-        end_mogi_col=3 * n_blocks + n_slip_rate_constraints + n_mogi,
+        end_block_strain_col=3 * n_blocks + 3 * n_strain_blocks,
+        start_mogi_col=3 * n_blocks + 3 * n_strain_blocks,
+        end_mogi_col=3 * n_blocks + 3 * n_strain_blocks + n_mogi,
         slip_rate_bounds=np.where(
             interleave3(
                 model.segment.ss_rate_bound_flag,
