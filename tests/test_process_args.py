@@ -81,3 +81,28 @@ def test_solve_type_choices_are_enforced(monkeypatch):
         "sys.argv", ["celeri-solve", str(CONFIG), "--solve_type", "qp2"]
     )
     assert parse_args().solve_type == "qp2"
+
+
+def test_removed_options_are_rejected(monkeypatch):
+    import pytest
+
+    from celeri import parse_args
+
+    for option in ("--atol", "--btol", "--save_elastic", "--reuse_elastic"):
+        monkeypatch.setattr("sys.argv", ["celeri-solve", str(CONFIG), option, "1"])
+        with pytest.raises(SystemExit):
+            parse_args()
+
+
+def test_override_values_are_validated():
+    import pytest
+    from pydantic import ValidationError
+
+    config = get_config(CONFIG)
+    args = argparse.Namespace(config_file_name=str(CONFIG), mcmc_chains="three")
+    with pytest.raises(ValidationError):
+        process_args(config, args)
+
+    args = argparse.Namespace(config_file_name=str(CONFIG), mcmc_chains=3)
+    process_args(config, args)
+    assert config.mcmc_chains == 3

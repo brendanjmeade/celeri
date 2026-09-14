@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import get_args
 
 from loguru import logger
+from pydantic import TypeAdapter
 
 from celeri.config import Config, SolveType, load_mesh_params
 
@@ -105,48 +106,6 @@ def parse_args() -> argparse.Namespace:
         default=None,
         required=False,
         help="Flag for saving summary plot of model results (0 | 1)",
-    )
-    parser.add_argument(
-        "--save_elastic",
-        type=str2bool,
-        default=None,
-        required=False,
-        help="Flag for saving elastic calculations (0 | 1)",
-    )
-    parser.add_argument(
-        "--reuse_elastic",
-        type=str2bool,
-        default=None,
-        required=False,
-        help="Flag for reusing elastic calculations (0 | 1)",
-    )
-    parser.add_argument(
-        "--snap_segments",
-        type=str2bool,
-        default=None,
-        required=False,
-        help="Flag for snapping segments (0 | 1)",
-    )
-    parser.add_argument(
-        "--atol",
-        type=int,
-        default=None,
-        required=False,
-        help="Primary tolerance for H-matrix solve",
-    )
-    parser.add_argument(
-        "--btol",
-        type=int,
-        default=None,
-        required=False,
-        help="Secondary tolerance for H-matrix solve",
-    )
-    parser.add_argument(
-        "--iterative_solver",
-        type=str,
-        default=None,
-        required=False,
-        help="Interative solver type (lsqr | lsmr)",
     )
     parser.add_argument(
         "--mcmc-tune",
@@ -328,6 +287,12 @@ def process_args(config: Config, args: argparse.Namespace):
                 # Convert CLI filenames from cwd-relative str to absolute Path
                 if key[-10:] == "_file_name":
                     args_val = Path(args_val).absolute()
+
+                # Config does not validate on assignment; validate the override
+                # against the field's declared type here
+                args_val = TypeAdapter(
+                    Config.model_fields[key].annotation
+                ).validate_python(args_val)
 
                 # Only log if the value is actually being changed
                 if original_val != args_val:
