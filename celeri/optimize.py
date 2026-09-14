@@ -14,6 +14,7 @@ import numpy as np
 from loguru import logger
 from scipy import linalg, sparse
 
+from celeri.celeri_util import interleave3
 from celeri.config import Sqp2Objective
 from celeri.mesh import ScalarBound
 from celeri.model import Model
@@ -682,6 +683,18 @@ class Minimizer:
         return loss
 
 
+def _regularized_slip_rate_mask(segment) -> np.ndarray:
+    """Mask over the interleaved (strike, dip, tensile) segment slip-rate
+    vector selecting the components whose ``*_rate_flag`` is 2, i.e. the
+    ones regularised towards zero.
+    """
+    return interleave3(
+        segment.ss_rate_flag.to_numpy() == 2,
+        segment.ds_rate_flag.to_numpy() == 2,
+        segment.ts_rate_flag.to_numpy() == 2,
+    ).astype(bool)
+
+
 def build_cvxpy_problem(
     model: Model,
     *,
@@ -895,13 +908,7 @@ def build_cvxpy_problem(
     )
     gamma = model.config.segment_slip_rate_regularization
     if gamma != 0.0:
-        subset = np.concatenate(
-            [
-                model.segment.ss_rate_flag == 2,
-                model.segment.ds_rate_flag == 2,
-                model.segment.ts_rate_flag == 2,
-            ]
-        )
+        subset = _regularized_slip_rate_mask(model.segment)
         objective_val = objective_val + gamma * cp.sum_squares(
             segment_slip_rate[subset]
         )

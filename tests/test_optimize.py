@@ -182,3 +182,23 @@ def test_minimizer_trace_out_of_bounds_trace_sums_components():
         estimation.n_out_of_bounds_trace, np.array([[3, 5], [7, 6]])
     )
     assert estimation.trace is trace
+
+
+def test_regularized_slip_rate_mask_is_interleaved():
+    import pandas as pd
+
+    from celeri.optimize import _regularized_slip_rate_mask
+
+    segment = pd.DataFrame(
+        {
+            "ss_rate_flag": [0, 2, 0],
+            "ds_rate_flag": [0, 0, 0],
+            "ts_rate_flag": [0, 0, 2],
+        }
+    )
+
+    mask = _regularized_slip_rate_mask(segment)
+
+    # Segment 1 strike slip (3*1 + 0) and segment 2 tensile slip (3*2 + 2)
+    assert mask.dtype == bool
+    assert np.flatnonzero(mask).tolist() == [3, 8]
