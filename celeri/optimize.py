@@ -154,7 +154,9 @@ class SlipRate:
             tol=tol,
             coupling_bounds=limits.dip_slip.coupling_bounds,
         )
-        return (oob1, total1), (oob2, total2)
+        # (strike, dip) out-of-bounds counts, then (strike, dip) totals: the
+        # layout Minimizer.out_of_bounds_detailed unpacks into its two arrays
+        return (oob1, oob2), (total1, total2)
 
     def constraint_loss(
         self, *, smooth_kinematic: bool, limits: SlipRateLimit

@@ -111,6 +111,19 @@ def test_minimize(model):
         assert len(trace.objective_norm2) > 0
         assert len(trace.iter_time) > 0
 
+        # The detailed (strike, dip) out-of-bounds counts must add up to the
+        # totals the convergence test uses, and the run must end in bounds
+        detailed = np.array(trace.out_of_bounds_detailed)  # (iter, mesh, 2)
+        np.testing.assert_array_equal(
+            detailed.sum(axis=(1, 2)), np.array(trace.out_of_bounds)
+        )
+        estimation = trace.to_estimation()
+        np.testing.assert_array_equal(
+            estimation.n_out_of_bounds_trace.sum(axis=0),
+            np.array(trace.out_of_bounds),
+        )
+        assert trace.out_of_bounds[-1] == 0
+
     except Exception as e:
         # If the solve fails due to solver not available, skip the test
         if "solver not available" in str(e).lower():
