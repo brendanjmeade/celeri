@@ -64,3 +64,20 @@ def test_no_mesh_override_leaves_mesh_params_untouched():
     process_args(config, args)
 
     assert [m.n_modes_strike_slip for m in config.mesh_params] == expected
+
+
+def test_solve_type_choices_are_enforced(monkeypatch):
+    import pytest
+
+    from celeri import parse_args
+
+    monkeypatch.setattr(
+        "sys.argv", ["celeri-solve", str(CONFIG), "--solve_type", "hmatrix"]
+    )
+    with pytest.raises(SystemExit):
+        parse_args()
+
+    monkeypatch.setattr(
+        "sys.argv", ["celeri-solve", str(CONFIG), "--solve_type", "qp2"]
+    )
+    assert parse_args().solve_type == "qp2"

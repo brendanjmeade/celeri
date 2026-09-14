@@ -21,6 +21,8 @@ Sqp2Objective = Literal[
 
 EigenvectorAlgorithm = Literal["eigh", "eigsh"]
 
+SolveType = Literal["dense", "dense_no_meshes", "qp", "qp2", "mcmc"]
+
 McmcStationVelocityMethod = Literal[
     "direct",
     "low_rank",
@@ -204,7 +206,8 @@ class Config(RelativePathSerializerMixin, BaseModel):
     """
 
     snap_segments: int = 0
-    solve_type: str = "hmatrix"
+    solve_type: SolveType = "dense"
+    """Which solver celeri-solve runs."""
     tri_con_weight: int = 1000000
 
     unit_sigmas: bool = False

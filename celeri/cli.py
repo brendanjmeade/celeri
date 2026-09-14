@@ -1,9 +1,10 @@
 import argparse
 from pathlib import Path
+from typing import get_args
 
 from loguru import logger
 
-from celeri.config import Config, load_mesh_params
+from celeri.config import Config, SolveType, load_mesh_params
 
 
 def str2bool(v):
@@ -66,7 +67,8 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default=None,
         required=False,
-        help="Solution type (dense | hmatrix)",
+        choices=list(get_args(SolveType)),
+        help="Solution type (" + " | ".join(get_args(SolveType)) + ")",
     )
     parser.add_argument(
         "--repl",

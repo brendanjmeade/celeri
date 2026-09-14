@@ -42,3 +42,12 @@ def test_locking_depth_override_applies_to_every_segment(tmp_path):
     )
     overridden = locking_depth_manager(segment, config)
     assert overridden.locking_depth.tolist() == [12.0, 12.0, 12.0]
+
+
+def test_solve_type_is_constrained(tmp_path):
+    data = _config_data(tmp_path)
+    data.pop("solve_type")
+    assert Config.model_validate(data).solve_type == "dense"
+
+    with pytest.raises(ValidationError, match="solve_type"):
+        Config.model_validate(_config_data(tmp_path, solve_type="hmatrix"))
