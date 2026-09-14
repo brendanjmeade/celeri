@@ -443,3 +443,31 @@ def test_euler_pole_errors_from_covariance():
 
     no_covariance = replace(estimation, state_covariance_matrix=None)
     assert np.isnan(no_covariance.block.euler_rate_err.to_numpy()).all()
+
+
+def test_eigen_to_tde_bcs_available_before_full_operator():
+    """The eigen boundary-condition operator is built with the other operators."""
+    config = celeri.get_config("./tests/configs/test_wna_config.json")
+    model = celeri.build_model(config)
+    operators = celeri.build_operators(model, eigen=True, tde=True)
+    assert operators.eigen is not None and operators.tde is not None
+
+    # Available before the full dense operator is ever assembled
+    assert set(operators.eigen.eigen_to_tde_bcs) == set(range(len(model.meshes)))
+    for i, mesh in enumerate(model.meshes):
+        expected = (
+            mesh.config.eigenmode_slip_rate_constraint_weight
+            * operators.tde.tde_slip_rate_constraints[i]
+            @ operators.eigen.eigenvectors_to_tde_slip[i]
+        )
+        np.testing.assert_array_equal(operators.eigen.eigen_to_tde_bcs[i], expected)
+
+    index = operators.index
+    assert index.eigen is not None
+    rows = operators.full_dense_operator[
+        index.eigen.start_tde_constraint_row_eigen[
+            0
+        ] : index.eigen.end_tde_constraint_row_eigen[0],
+        index.eigen.start_col_eigen[0] : index.eigen.end_col_eigen[0],
+    ]
+    np.testing.assert_array_equal(rows, operators.eigen.eigen_to_tde_bcs[0])

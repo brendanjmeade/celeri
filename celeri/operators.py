@@ -993,6 +993,14 @@ def build_operators(
 
         # Get KL modes for each mesh
         _store_eigenvectors_to_tde_slip(model, operators)
+
+        # Eigenmode to TDE boundary-condition rows, weighted per mesh
+        for i in range(len(model.meshes)):
+            operators.eigen_to_tde_bcs[i] = (
+                model.meshes[i].config.eigenmode_slip_rate_constraint_weight
+                * operators.tde_slip_rate_constraints[i]
+                @ operators.eigenvectors_to_tde_slip[i]
+            )
     elif tde:
         index = _get_index(model)
         operators.index = index
@@ -2550,12 +2558,13 @@ def _get_full_dense_operator_eigen(operators: Operators) -> np.ndarray:
 
     # EIGEN Eigenvector to TDE boundary conditions matrix
     for i in range(index.n_meshes):
-        # Create eigenvector to TDE boundary conditions matrix
-        operators.eigen.eigen_to_tde_bcs[i] = (
-            model.meshes[i].config.eigenmode_slip_rate_constraint_weight
-            * operators.tde.tde_slip_rate_constraints[i]
-            @ operators.eigen.eigenvectors_to_tde_slip[i]
-        )
+        if i not in operators.eigen.eigen_to_tde_bcs:
+            # Operators built before this matrix was stored at build time
+            operators.eigen.eigen_to_tde_bcs[i] = (
+                model.meshes[i].config.eigenmode_slip_rate_constraint_weight
+                * operators.tde.tde_slip_rate_constraints[i]
+                @ operators.eigen.eigenvectors_to_tde_slip[i]
+            )
 
         # Insert eigenvector to TDE boundary conditions matrix
         operator[
