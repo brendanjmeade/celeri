@@ -397,12 +397,20 @@ def order_endpoints_sphere(segment):
     endpoints1 = np.transpose(np.array([segment.x1, segment.y1, segment.z1]))
     endpoints2 = np.transpose(np.array([segment.x2, segment.y2, segment.z2]))
     cross_product = np.cross(endpoints1, endpoints2)
+    swap = cross_product[:, 2] < 0
 
+    # Swap the Cartesian endpoint columns together with the geographic ones
     return segment.assign(
-        lon1=np.where(cross_product[:, 2] < 0, segment.lon2, segment.lon1),
-        lat1=np.where(cross_product[:, 2] < 0, segment.lat2, segment.lat1),
-        lon2=np.where(cross_product[:, 2] < 0, segment.lon1, segment.lon2),
-        lat2=np.where(cross_product[:, 2] < 0, segment.lat1, segment.lat2),
+        lon1=np.where(swap, segment.lon2, segment.lon1),
+        lat1=np.where(swap, segment.lat2, segment.lat1),
+        lon2=np.where(swap, segment.lon1, segment.lon2),
+        lat2=np.where(swap, segment.lat1, segment.lat2),
+        x1=np.where(swap, segment.x2, segment.x1),
+        y1=np.where(swap, segment.y2, segment.y1),
+        z1=np.where(swap, segment.z2, segment.z1),
+        x2=np.where(swap, segment.x1, segment.x2),
+        y2=np.where(swap, segment.y1, segment.y2),
+        z2=np.where(swap, segment.z1, segment.z2),
     )
 
 

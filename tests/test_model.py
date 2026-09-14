@@ -77,3 +77,37 @@ def test_assign_block_labels_never_shows(monkeypatch, tmp_path):
     )
 
     assert list(tmp_path.glob("block_interior_points_polygon_*.png"))
+
+
+def test_cartesian_endpoints_follow_ordering():
+    """Reordering endpoints west-first keeps x/y/z consistent with lon/lat."""
+    import celeri
+
+    config = celeri.get_config("./tests/configs/test_wna_config.json")
+    segment = pd.DataFrame(
+        {
+            "name": ["swapped", "kept"],
+            "lon1": [240.0, 238.0],
+            "lat1": [40.0, 41.0],
+            "lon2": [238.5, 239.0],
+            "lat2": [41.0, 40.5],
+            "dip": [90.0, 90.0],
+            "locking_depth": [15.0, 15.0],
+            "locking_depth_flag": [0, 0],
+            "mesh_flag": [0, 0],
+            "mesh_file_index": [-1, -1],
+        }
+    )
+
+    processed = celeri.process_segment(segment, config, meshes=[])
+
+    assert processed.lon1.tolist() == [238.5, 238.0]
+    for end in ("1", "2"):
+        x, y, z = sph2cart(
+            processed[f"lon{end}"].to_numpy(),
+            processed[f"lat{end}"].to_numpy(),
+            RADIUS_EARTH,
+        )
+        np.testing.assert_allclose(processed[f"x{end}"].to_numpy(), x)
+        np.testing.assert_allclose(processed[f"y{end}"].to_numpy(), y)
+        np.testing.assert_allclose(processed[f"z{end}"].to_numpy(), z)
