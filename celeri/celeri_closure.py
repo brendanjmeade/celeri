@@ -435,47 +435,51 @@ class Polygon:
         x, y, z = sph2cart(vs[:, 0], vs[:, 1], 1.0)
         xyz = np.hstack((x[:, None], y[:, None], z[:, None]))
 
+        interior_pt = None
         for i in range(vs.shape[0] - 1):
             dx = vs[i + 1, 0] - vs[i, 0]
 
             # Make sure we skip any meridian crossing edges.
-            if -180 < dx < 180:
-                midpt = (vs[i + 1, :] + vs[i, :]) / 2
-                edge_vector = vs[i + 1, :] - vs[i, :]
-                edge_right_normal = np.array([edge_vector[1], -edge_vector[0]])
+            if not (-180 < dx < 180):
+                continue
 
-                # Offset into the interior. Note that edge_right_normal is not
-                # normalized so this scales the distance with respect to the
-                # length of the current edge.
-                interior_pt = midpt + edge_right_normal / 4
+            midpt = (vs[i + 1, :] + vs[i, :]) / 2
+            edge_vector = vs[i + 1, :] - vs[i, :]
+            edge_right_normal = np.array([edge_vector[1], -edge_vector[0]])
 
-                # Check to make sure the arc from midpt to interior_pt does not
-                # intersect any other edges of this polygon
-                has_intersection = False
-                for j in range(vs.shape[0] - 1):
-                    if i == j:
-                        continue
-                    Ipt = intersection(
-                        sph2cart(*midpt, 1.0),
-                        sph2cart(*interior_pt, 1.0),
-                        sph2cart(*vs[j], 1.0),
-                        sph2cart(*vs[j + 1], 1.0),
-                    )
-                    # intersection returns nans if the two great circles do not
-                    # intersect
-                    if not np.all(np.isnan(Ipt)):
-                        has_intersection = True
+            # Offset into the interior. Note that edge_right_normal is not
+            # normalized so this scales the distance with respect to the
+            # length of the current edge.
+            candidate = midpt + edge_right_normal / 4
 
-                if has_intersection:
-                    # Look at the next potential interior point.
+            # Check to make sure the arc from midpt to the candidate does not
+            # intersect any other edges of this polygon
+            has_intersection = False
+            for j in range(vs.shape[0] - 1):
+                if i == j:
                     continue
-                else:
-                    # Stop after we've found an acceptable interior point.
-                    if i == vs.shape[0] - 2:
-                        raise ValueError(
-                            "Failed to find a valid interior point for this polygon."
-                        )
+                Ipt = intersection(
+                    sph2cart(*midpt, 1.0),
+                    sph2cart(*candidate, 1.0),
+                    sph2cart(*vs[j], 1.0),
+                    sph2cart(*vs[j + 1], 1.0),
+                )
+                # intersection returns nans if the two great circles do not
+                # intersect
+                if not np.all(np.isnan(Ipt)):
+                    has_intersection = True
                     break
+
+            if has_intersection:
+                # Look at the next potential interior point.
+                continue
+
+            # Stop after we've found an acceptable interior point.
+            interior_pt = candidate
+            break
+
+        if interior_pt is None:
+            raise ValueError("Failed to find a valid interior point for this polygon.")
 
         x, y, z = sph2cart(interior_pt[0], interior_pt[1], 1.0)
 
