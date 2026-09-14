@@ -361,3 +361,27 @@ def test_dense_no_meshes_state_layout(config_name):
     ]
     assert weights.shape == (3 * index.n_block_constraints,)
     np.testing.assert_array_equal(weights, config.block_constraint_weight)
+
+
+def test_build_and_solve_dense_variants_honor_mesh_flags():
+    """build_and_solve_dense keeps the TDEs; build_and_solve_dense_no_meshes drops them."""
+    config = celeri.get_config("./tests/configs/test_japan_config.json")
+    config.plot_estimation_summary = False
+    config.repl = False
+    model = celeri.build_model(config)
+
+    with_meshes = celeri.build_and_solve_dense(model)
+    assert with_meshes.operators.tde is not None
+    assert with_meshes.index.tde is not None
+    assert with_meshes.mesh_estimate is not None
+
+    without_meshes = celeri.build_and_solve_dense_no_meshes(model)
+    assert without_meshes.operators.tde is None
+    assert without_meshes.index.tde is None
+    assert without_meshes.mesh_estimate is None
+    assert without_meshes.state_vector.shape == (without_meshes.index.n_operator_cols,)
+    assert without_meshes.state_vector.size < with_meshes.state_vector.size
+    # Every derived output table must be computable for the no-mesh estimation
+    assert len(without_meshes.station) == without_meshes.index.n_stations
+    assert len(without_meshes.segment) == without_meshes.index.n_segments
+    assert len(without_meshes.mogi) == without_meshes.index.n_mogis

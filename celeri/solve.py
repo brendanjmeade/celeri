@@ -1133,7 +1133,7 @@ def _build_and_solve(name: str, model: Model, *, tde: bool, eigen: bool):
     # Direct solve dense linear system
     logger.info("Start: Dense assemble and solve")
     start_solve_time = timeit.default_timer()
-    estimation = assemble_and_solve_dense(model, tde=True, eigen=False)
+    estimation = assemble_and_solve_dense(model, tde=tde, eigen=eigen)
     end_solve_time = timeit.default_timer()
     logger.success(
         f"Finish: Dense assemble and solve: {end_solve_time - start_solve_time:0.2f} seconds for solve"
