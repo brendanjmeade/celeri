@@ -161,3 +161,24 @@ def test_minimize_coupling():
             pytest.skip(f"Solver not available: {e}")
         else:
             raise
+
+
+def test_minimizer_trace_out_of_bounds_trace_sums_components():
+    from types import SimpleNamespace
+
+    from celeri.optimize import MinimizerTrace
+
+    trace = MinimizerTrace.__new__(MinimizerTrace)
+    # Two iterations, two meshes, (strike-slip, dip-slip) counts
+    trace.out_of_bounds_detailed = [
+        np.array([[1, 2], [3, 4]]),
+        np.array([[0, 5], [6, 0]]),
+    ]
+    trace.minimizer = SimpleNamespace(to_estimation=lambda: SimpleNamespace())
+
+    estimation = trace.to_estimation()
+
+    np.testing.assert_array_equal(
+        estimation.n_out_of_bounds_trace, np.array([[3, 5], [7, 6]])
+    )
+    assert estimation.trace is trace

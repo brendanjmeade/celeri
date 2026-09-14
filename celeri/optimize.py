@@ -1347,9 +1347,10 @@ class MinimizerTrace:
     def to_estimation(self) -> Estimation:
         """Convert the minimizer trace to an estimation object."""
         estimation = self.minimizer.to_estimation()
-        estimation.n_out_of_bounds_trace = np.array(self.out_of_bounds_detailed)[
-            :, :, 0
-        ].T
+        # (n_iterations, n_meshes, 2) strike/dip counts -> (n_meshes, n_iterations)
+        estimation.n_out_of_bounds_trace = (
+            np.array(self.out_of_bounds_detailed).sum(axis=2).T
+        )
         estimation.trace = self
         return estimation
 
