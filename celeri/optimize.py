@@ -435,7 +435,7 @@ class SlipRateLimitItem:
             "upper-bound line",
         ]
 
-        for i in range(4):
+        for i in range(len(kin_coefs)):
             # Skip if coefficients are zero (no constraint)
             if abs(kin_coefs[i]) < 1e-10 and abs(est_coefs[i]) < 1e-10:
                 continue
@@ -455,7 +455,7 @@ class SlipRateLimitItem:
         )
         feasible = np.ones_like(xx, dtype=bool)
 
-        for i in range(4):
+        for i in range(len(kin_coefs)):
             if abs(est_coefs[i]) < 1e-10 and abs(kin_coefs[i]) < 1e-10:
                 continue
 
@@ -683,6 +683,17 @@ class Minimizer:
         return loss
 
 
+def _column_scale(C: np.ndarray) -> np.ndarray:
+    """Largest absolute entry of every column, with 1 for all-zero columns.
+
+    All-zero columns (a strain block or Mogi source that no station sees)
+    must not turn the rescaled problem into NaNs.
+    """
+    scale = np.abs(C).max(0)
+    scale[scale == 0] = 1.0
+    return scale
+
+
 def _regularized_slip_rate_mask(segment) -> np.ndarray:
     """Mask over the interleaved (strike, dip, tensile) segment slip-rate
     vector selecting the components whose ``*_rate_flag`` is 2, i.e. the
@@ -723,7 +734,7 @@ def build_cvxpy_problem(
     d = data_vector_eigen * np.sqrt(weighting_vector_eigen)
 
     if rescale_parameters:
-        scale = np.abs(C).max(0)
+        scale = _column_scale(C)
     else:
         scale = np.ones(C.shape[1])
 

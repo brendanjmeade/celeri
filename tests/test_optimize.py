@@ -202,3 +202,12 @@ def test_regularized_slip_rate_mask_is_interleaved():
     # Segment 1 strike slip (3*1 + 0) and segment 2 tensile slip (3*2 + 2)
     assert mask.dtype == bool
     assert np.flatnonzero(mask).tolist() == [3, 8]
+
+
+def test_column_scale_leaves_zero_columns_alone():
+    from celeri.optimize import _column_scale
+
+    C = np.array([[1.0, 0.0, -3.0], [-2.0, 0.0, 0.5]])
+
+    np.testing.assert_array_equal(_column_scale(C), [2.0, 1.0, 3.0])
+    assert np.all(np.isfinite(C / _column_scale(C)))
