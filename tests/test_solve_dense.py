@@ -385,3 +385,61 @@ def test_build_and_solve_dense_variants_honor_mesh_flags():
     assert len(without_meshes.station) == without_meshes.index.n_stations
     assert len(without_meshes.segment) == without_meshes.index.n_segments
     assert len(without_meshes.mogi) == without_meshes.index.n_mogis
+
+
+def test_mogi_volume_change_sigma():
+    """The Mogi sigma column is propagated from the state covariance, not the rates."""
+    from dataclasses import replace
+
+    config = celeri.get_config("./tests/configs/test_japan_config.json")
+    model = celeri.build_model(config)
+    estimation = celeri.assemble_and_solve_dense(model, eigen=True, tde=True)
+    index = estimation.index
+    assert index.n_mogis > 0
+
+    expected = np.sqrt(
+        np.diag(estimation.state_covariance_matrix)[
+            index.start_mogi_col : index.end_mogi_col
+        ]
+    )
+    sigma = estimation.mogi.volume_change_sig.to_numpy()
+    np.testing.assert_allclose(sigma, expected)
+    assert np.all(np.isfinite(sigma)) and np.all(sigma > 0)
+    assert not np.allclose(sigma, estimation.mogi.volume_change.to_numpy())
+
+    no_covariance = replace(estimation, state_covariance_matrix=None)
+    assert np.isnan(no_covariance.mogi.volume_change_sig.to_numpy()).all()
+
+
+def test_euler_pole_errors_from_covariance():
+    """Euler pole uncertainties propagate the rotation-vector covariance."""
+    from dataclasses import replace
+
+    from celeri.operators import rotation_vector_err_to_euler_pole_err
+
+    config = celeri.get_config("./tests/configs/test_wna_config.json")
+    model = celeri.build_model(config)
+    estimation = celeri.assemble_and_solve_dense(model, eigen=True, tde=True)
+    n_rotation = 3 * estimation.index.n_blocks
+
+    covariance = estimation.state_covariance_matrix[0:n_rotation, 0:n_rotation]
+    with np.errstate(divide="ignore", invalid="ignore"):
+        expected = np.array(
+            rotation_vector_err_to_euler_pole_err(
+                estimation.rotation_vector_x,
+                estimation.rotation_vector_y,
+                estimation.rotation_vector_z,
+                covariance,
+            )
+        )
+    np.testing.assert_allclose(estimation.euler_err, expected, equal_nan=True)
+
+    block = estimation.block
+    rotating = block.euler_rate.to_numpy() > 1e-6
+    assert rotating.any()
+    for column in ("euler_lon_err", "euler_lat_err", "euler_rate_err"):
+        values = block[column].to_numpy()[rotating]
+        assert np.all(np.isfinite(values)) and np.all(values > 0)
+
+    no_covariance = replace(estimation, state_covariance_matrix=None)
+    assert np.isnan(no_covariance.block.euler_rate_err.to_numpy()).all()
