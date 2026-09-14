@@ -295,3 +295,41 @@ def test_plot_estimation_summary_handles_every_layout(eigen, tde):
 
     assert (config.output_path / "plot_estimation_summary.png").exists()
     assert (config.output_path / "plot_estimation_summary.pdf").exists()
+
+
+def test_hdf5_table_column_attributes():
+    """The positional segment and station tables carry their own column names."""
+    config = celeri.get_config("./tests/configs/test_wna_config.json")
+    config.repl = False
+    model = celeri.build_model(config)
+    estimation = celeri.assemble_and_solve_dense(model, eigen=True, tde=True)
+    celeri.write_output(estimation)
+
+    segment_columns = list(estimation.model.segment.drop("name", axis=1).columns)
+    station_columns = list(estimation.model.station.drop("name", axis=1).columns)
+
+    def names(attr):
+        return [c.decode() if isinstance(c, bytes) else str(c) for c in attr]
+
+    with h5py.File(config.output_path / f"model_{config.run_name}.hdf5", "r") as hdf:
+        assert names(hdf.attrs["segment_columns"]) == segment_columns
+        assert names(hdf.attrs["station_columns"]) == station_columns
+        assert hdf["segment"].shape == (
+            len(estimation.model.segment),
+            len(segment_columns),
+        )
+        assert hdf["station"].shape == (
+            len(estimation.model.station),
+            len(station_columns),
+        )
+        np.testing.assert_array_equal(
+            hdf.attrs["segment_index"], estimation.model.segment.index.to_numpy()
+        )
+        np.testing.assert_array_equal(
+            hdf.attrs["station_index"], estimation.model.station.index.to_numpy()
+        )
+        # Legacy attributes keep their historical contents
+        assert names(hdf.attrs["columns"]) == station_columns
+        np.testing.assert_array_equal(
+            hdf.attrs["index"], estimation.model.segment.index.to_numpy()
+        )

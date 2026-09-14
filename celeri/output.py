@@ -160,10 +160,12 @@ def write_output(
             dtype=string_dtype,
         )
 
-        hdf.attrs["columns"] = np.array(
+        # Column names of the positional "segment" table. The legacy "index"
+        # attribute (segment row index) is kept for existing readers.
+        hdf.attrs["segment_columns"] = np.array(
             segment_no_name.columns, dtype=h5py.string_dtype()
         )
-
+        hdf.attrs["segment_index"] = segment_no_name.index.to_numpy()
         hdf.attrs["index"] = segment_no_name.index.to_numpy()
 
         station_no_name = station.drop("name", axis=1)
@@ -178,6 +180,12 @@ def write_output(
             dtype=string_dtype,
         )
 
+        # Column names of the positional "station" table. The legacy "columns"
+        # attribute has always ended up holding the station columns; keep it.
+        hdf.attrs["station_columns"] = np.array(
+            station_no_name.columns, dtype=h5py.string_dtype()
+        )
+        hdf.attrs["station_index"] = station_no_name.index.to_numpy()
         hdf.attrs["columns"] = np.array(
             station_no_name.columns, dtype=h5py.string_dtype()
         )
