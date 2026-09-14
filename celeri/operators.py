@@ -1261,6 +1261,34 @@ def _store_gaussian_smoothing_operator(
         operators.linear_gaussian_smoothing[i] = W
 
 
+MESH_GEOMETRY_ATTR = "mesh_geometry"
+
+
+def _mesh_geometry_digest(mesh: Mesh) -> str:
+    """Digest of a mesh's vertex coordinates and (oriented) element table.
+
+    The elastic-operator cache key only sees the mesh *file name*; this digest,
+    stored on each cached tde_to_velocities dataset, detects a mesh whose
+    geometry or vertex order changed at an unchanged path.
+    """
+    digest = hashlib.blake2b()
+    points = np.ascontiguousarray(mesh.points, dtype=np.float64)
+    verts = np.ascontiguousarray(mesh.verts, dtype=np.int64)
+    for array in (points, verts):
+        digest.update(np.asarray(array.shape, dtype=np.int64).tobytes())
+        digest.update(array.tobytes())
+    return digest.hexdigest()[:16]
+
+
+def _tde_dataset_is_current(dataset, mesh: Mesh) -> bool:
+    """Whether a cached tde_to_velocities dataset matches the mesh geometry.
+
+    Datasets written before geometry validation existed carry no digest and
+    are treated as stale.
+    """
+    return dataset.attrs.get(MESH_GEOMETRY_ATTR) == _mesh_geometry_digest(mesh)
+
+
 def _hash_elastic_operator_input(
     meshes: list[MeshConfig], station: DataFrame, config: Config
 ):
@@ -1440,11 +1468,15 @@ def _compute_and_cache_tde_to_velocities(
     config: Config,
     operators: _OperatorBuilder,
     cache: Path | None,
+    mesh_indices: list[int] | None = None,
 ):
-    """Compute dense tde_to_velocities for every mesh and optionally append the
-    datasets to an existing cache file (preserving its other datasets).
+    """Compute dense tde_to_velocities for the given meshes (default: all) and
+    optionally append the datasets to an existing cache file (preserving its
+    other datasets). Each dataset is stamped with the mesh geometry digest.
     """
-    for i in range(len(meshes)):
+    if mesh_indices is None:
+        mesh_indices = list(range(len(meshes)))
+    for i in mesh_indices:
         logger.info(
             f"Start: TDE slip to velocity calculation for mesh: {meshes[i].file_name}"
         )
@@ -1458,11 +1490,14 @@ def _compute_and_cache_tde_to_velocities(
         logger.info("Adding tde_to_velocities to cache")
         try:
             with h5py.File(str(cache), "a") as hdf5_file:
-                for i in range(len(meshes)):
+                for i in mesh_indices:
                     key = "tde_to_velocities_" + str(i)
                     if key in hdf5_file:
                         del hdf5_file[key]
-                    hdf5_file.create_dataset(key, data=operators.tde_to_velocities[i])
+                    dataset = hdf5_file.create_dataset(
+                        key, data=operators.tde_to_velocities[i]
+                    )
+                    dataset.attrs[MESH_GEOMETRY_ATTR] = _mesh_geometry_digest(meshes[i])
         except OSError:
             # Do not lose hours of computation to an unwritable cache file
             logger.warning(
@@ -1716,30 +1751,29 @@ def _store_elastic_operators(
                     )
 
                 if tde and not skip_tde_to_velocities:
-                    tde_loaded_from_cache = False
+                    # Load every per-mesh dataset whose stored geometry digest
+                    # matches the mesh; missing datasets (streaming runs never
+                    # write them, a crash may leave a partial set), datasets
+                    # for a mesh that changed at the same path, and datasets
+                    # written before geometry validation are recomputed
+                    stale: list[int] = []
                     with h5py.File(str(cache), "r") as hdf5_file:
-                        # All per-mesh datasets must be present: a partial set
-                        # (crash during a previous multi-mesh cache write)
-                        # must trigger a recompute, not a half-load
-                        tde_keys_ok = all(
-                            ("tde_to_velocities_" + str(i)) in hdf5_file
-                            for i in range(len(meshes))
-                        )
-                        if tde_keys_ok:
-                            for i in range(len(meshes)):
-                                operators.tde_to_velocities[i] = np.array(
-                                    hdf5_file.get("tde_to_velocities_" + str(i))
-                                )
-                            tde_loaded_from_cache = True
-                    if not tde_loaded_from_cache:
-                        # Streaming runs cache the okada operator but not the
-                        # dense TDE matrices, so a later non-streaming run
-                        # lands here and must compute them
+                        for i in range(len(meshes)):
+                            dataset = hdf5_file.get("tde_to_velocities_" + str(i))
+                            if dataset is None or not _tde_dataset_is_current(
+                                dataset, meshes[i]
+                            ):
+                                stale.append(i)
+                            else:
+                                operators.tde_to_velocities[i] = np.array(dataset)
+                    if stale:
                         logger.info(
-                            "Cache missing tde_to_velocities. Computing from scratch."
+                            "Cache has no current tde_to_velocities for meshes "
+                            f"{stale} (missing, changed geometry, or written "
+                            "before geometry validation). Computing them."
                         )
                         _compute_and_cache_tde_to_velocities(
-                            meshes, station, config, operators, cache
+                            meshes, station, config, operators, cache, stale
                         )
                 return
 
@@ -3026,10 +3060,19 @@ def _compute_eigen_to_velocities(
         eigenvectors_to_tde_slip = operators.eigenvectors_to_tde_slip[i]
         result = None
         if streaming:
-            if cache is not None and cache.exists():
+            if cache is not None and cache.exists() and not config.force_recompute:
                 try:
                     with h5py.File(str(cache), "r") as hdf5_file:
                         cached_data = hdf5_file.get("tde_to_velocities_" + str(i))
+                        if cached_data is not None and not _tde_dataset_is_current(
+                            cached_data, meshes[i]
+                        ):
+                            logger.info(
+                                "Cached tde_to_velocities does not match the "
+                                f"current geometry of mesh {meshes[i].file_name}; "
+                                "ignoring it"
+                            )
+                            cached_data = None
                         if cached_data is not None:
                             logger.info(
                                 "Projecting cached tde_to_velocities for mesh: "

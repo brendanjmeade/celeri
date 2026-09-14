@@ -30,8 +30,10 @@ import celeri
 from celeri.celeri_util import get_keep_index_12, get_transverse_projection
 from celeri.constants import KM2M
 from celeri.operators import (
+    MESH_GEOMETRY_ATTR,
     _accumulate_eigen_to_velocities_streaming,
     _hash_elastic_operator_input,
+    _mesh_geometry_digest,
     _OperatorBuilder,
     _project_operator_to_los,
     _project_tde_rows_to_eigen,
@@ -259,11 +261,13 @@ def test_streaming_build_matches_dense_build(tmp_path):
         )
 
 
-def test_streaming_reads_legacy_full_tde_cache(tmp_path):
+def test_streaming_reads_full_tde_cache_with_matching_geometry(tmp_path):
     """Format compatibility: a full dense tde_to_velocities_<i> dataset written
-    by pre-#485 code must still be consumed by the streaming path. The cached
-    matrix is scaled by 2 so the test proves the cache (not a recompute) was
-    the source of the result.
+    by a non-streaming run must be consumed by the streaming path when its
+    geometry digest matches the mesh. The cached matrix is scaled by 2 so the
+    test proves the cache (not a recompute) was the source of the result. A
+    dataset without the digest (written before geometry validation existed)
+    must be ignored instead.
     """
     model = _wna_model(25, cache_dir=tmp_path)
     dense = get_tde_to_velocities_single_mesh(
@@ -271,23 +275,35 @@ def test_streaming_reads_legacy_full_tde_cache(tmp_path):
     )
     assert dense.ndim == 2
     # Let _store_elastic_operators establish the cache file first (it would
-    # rebuild a file it does not recognize), then inject the legacy dataset
+    # rebuild a file it does not recognize), then inject the dataset
     build_operators(model, eigen=True, tde=True, discard_tde_to_velocities=True)
     input_hash = _hash_elastic_operator_input(
         [mesh.config for mesh in model.meshes], model.station, model.config
     )
-    with h5py.File(tmp_path / f"{input_hash}.hdf5", "a") as hdf5_file:
-        hdf5_file.create_dataset("tde_to_velocities_0", data=2.0 * dense)
+    cache_file = tmp_path / f"{input_hash}.hdf5"
+    with h5py.File(cache_file, "a") as hdf5_file:
+        dataset = hdf5_file.create_dataset("tde_to_velocities_0", data=2.0 * dense)
+        dataset.attrs[MESH_GEOMETRY_ATTR] = _mesh_geometry_digest(model.meshes[0])
 
     ops = build_operators(model, eigen=True, tde=True, discard_tde_to_velocities=True)
     assert ops.eigen is not None
-    expected = (
-        -2.0
-        * dense[:, get_keep_index_12(dense.shape[1])]
-        @ ops.eigen.eigenvectors_to_tde_slip[0]
-    )
+    kept = dense[:, get_keep_index_12(dense.shape[1])]
+    expected = -2.0 * kept @ ops.eigen.eigenvectors_to_tde_slip[0]
     np.testing.assert_allclose(
         ops.eigen.eigen_to_velocities[0], expected, rtol=1e-10, atol=1e-10
+    )
+
+    # Without the digest the dataset is not trusted and the projection is
+    # accumulated from a fresh computation
+    with h5py.File(cache_file, "a") as hdf5_file:
+        del hdf5_file["tde_to_velocities_0"].attrs[MESH_GEOMETRY_ATTR]
+    ops = build_operators(model, eigen=True, tde=True, discard_tde_to_velocities=True)
+    assert ops.eigen is not None
+    np.testing.assert_allclose(
+        ops.eigen.eigen_to_velocities[0],
+        -kept @ ops.eigen.eigenvectors_to_tde_slip[0],
+        rtol=1e-10,
+        atol=1e-10,
     )
 
 

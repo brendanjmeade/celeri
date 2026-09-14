@@ -104,3 +104,60 @@ def test_smart_segment_recompute(config_file):
                     f"[{name}] Arrays should be equal (within tolerance). "
                     f"Max difference: {max_diff}"
                 )
+
+
+def test_tde_cache_tracks_mesh_geometry(tmp_path):
+    """A mesh edited at an unchanged path must not be served from the cache."""
+    import shutil
+
+    import meshio
+
+    from celeri.mesh import Mesh
+
+    config = get_config("tests/configs/test_japan_config.json")
+    config.repl = False
+    config.elastic_operator_cache_dir = tmp_path / "cache"
+    config.propagate_mesh_defaults()
+    mesh_file = tmp_path / "sagami.msh"
+    shutil.copy("tests/data/mesh/test_japan_sagami.msh", mesh_file)
+    mesh_config = config.mesh_params[2].model_copy(update={"mesh_filename": mesh_file})
+
+    def build():
+        model = celeri.build_model(
+            config, override_meshes=[Mesh.from_params(mesh_config)]
+        )
+        operators = _OperatorBuilder(model)
+        _store_elastic_operators(model, operators)
+        return model, operators.tde_to_velocities[0].copy()
+
+    model, first = build()
+    cache_file = config.elastic_operator_cache_dir / (
+        _hash_elastic_operator_input(
+            [model.meshes[0].config], model.station, model.config
+        )
+        + ".hdf5"
+    )
+    assert cache_file.exists()
+
+    # Deepen every node by 1 km, at the same path
+    mesh = meshio.read(mesh_file)
+    mesh.points[:, 2] -= 1.0
+    meshio.write(mesh_file, mesh, file_format="gmsh22", binary=False)
+    _, edited = build()
+    assert not np.allclose(first, edited)
+
+    # The recomputed operator equals a computation with no cache at all
+    config.elastic_operator_cache_dir = tmp_path / "empty_cache"
+    _, fresh = build()
+    np.testing.assert_array_equal(edited, fresh)
+
+    # A dataset written before geometry validation (no digest) is recomputed
+    config.elastic_operator_cache_dir = tmp_path / "cache"
+    with h5py.File(cache_file, "r+") as hdf5_file:
+        dataset = hdf5_file["tde_to_velocities_0"]
+        dataset[...] = 0.0
+        del dataset.attrs["mesh_geometry"]
+    _, restored = build()
+    np.testing.assert_array_equal(restored, fresh)
+    with h5py.File(cache_file, "r") as hdf5_file:
+        assert "mesh_geometry" in hdf5_file["tde_to_velocities_0"].attrs
