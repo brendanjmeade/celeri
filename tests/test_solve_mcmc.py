@@ -209,3 +209,79 @@ def test_mcmc_selection():
     assert len(sliced.mcmc_trace.posterior.coords["chain"]) == len(
         estimation.mcmc_trace.posterior.coords["chain"]
     )
+
+
+def test_weighted_likelihoods_are_pointwise_and_drawable():
+    import pytensor.tensor as pt
+
+    from celeri.solve_mcmc import (
+        _weighted_normal_logp,
+        _weighted_normal_random,
+        _weighted_studentt_logp,
+        _weighted_studentt_random,
+    )
+
+    value = np.array([[0.5, -1.0], [2.0, 0.0], [1.0, 1.0]])
+    weight = np.array([[1.0], [0.5], [0.25]])
+    mu = np.zeros((3, 2))
+
+    station_logp = _weighted_studentt_logp(pt.as_tensor(value), weight, mu, 1.0).eval()
+    assert station_logp.shape == (3, 2)
+    los_logp = _weighted_normal_logp(
+        pt.as_tensor(value[:, 0]), weight[:, 0], mu[:, 0], 1.0
+    ).eval()
+    assert los_logp.shape == (3,)
+    # Weighting scales each observation's log-density
+    unweighted = _weighted_normal_logp(
+        pt.as_tensor(value[:, 0]), 1.0, mu[:, 0], 1.0
+    ).eval()
+    assert_allclose(los_logp, weight[:, 0] * unweighted)
+
+    rng = np.random.default_rng(0)
+    draws = _weighted_studentt_random(weight, mu, 1.0, rng=rng)
+    assert draws.shape == (3, 2) and np.all(np.isfinite(draws))
+    draws = _weighted_normal_random(weight[:, 0], mu[:, 0], 1.0, rng=rng, size=(3,))
+    assert draws.shape == (3,) and np.all(np.isfinite(draws))
+
+
+@pytest.fixture(scope="module")
+def coupling_model():
+    from celeri.mesh import ScalarBound
+
+    config = celeri.get_config("data/config/wna_config.json")
+    config.repl = False
+    config.solve_type = "mcmc"
+    model = celeri.build_model(config)
+    for mesh in model.meshes:
+        mesh.config.elastic_constraints_ss = ScalarBound(lower=None, upper=None)
+        mesh.config.elastic_constraints_ds = ScalarBound(lower=None, upper=None)
+    operators = celeri.build_operators(model, eigen=True, tde=True)
+    return model, operators
+
+
+def test_mcmc_rejects_nonpositive_constraint_sigma(coupling_model):
+    from celeri.solve_mcmc import _build_pymc_model
+
+    model, operators = coupling_model
+    flagged = np.flatnonzero(model.segment.ss_rate_flag.to_numpy() == 1)
+    assert flagged.size > 0
+    sigma = model.segment.loc[flagged[0], "ss_rate_sig"]
+    model.segment.loc[flagged[0], "ss_rate_sig"] = 0.0
+    try:
+        with pytest.raises(ValueError, match="ss_rate_sig"):
+            _build_pymc_model(model, operators)
+    finally:
+        model.segment.loc[flagged[0], "ss_rate_sig"] = sigma
+
+
+def test_mcmc_rejects_kinematic_boundary_constraints(coupling_model):
+    from celeri.solve_mcmc import _build_pymc_model
+
+    model, operators = coupling_model
+    original = model.meshes[0].config.top_slip_rate_constraint
+    model.meshes[0].config.top_slip_rate_constraint = 2
+    try:
+        with pytest.raises(ValueError, match="only implemented by the dense solver"):
+            _build_pymc_model(model, operators)
+    finally:
+        model.meshes[0].config.top_slip_rate_constraint = original

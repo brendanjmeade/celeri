@@ -334,8 +334,10 @@ class Config(RelativePathSerializerMixin, BaseModel):
     # These are defaults; mesh-specific values can override.
     # The "parameterization" determines whether the mean is in constrained or
     # unconstrained space. For coupling with bounds [0, 1], constrained mean 0.5
-    # is at the center. For elastic with one-sided bounds, unconstrained mean 0
-    # places the constrained mean at ±softplus_lengthscale.
+    # is at the center. For elastic fields an unconstrained mean of 0 maps to a
+    # constrained prior mean of softplus_lengthscale * ln(2) (about 0.69 times
+    # the length scale, with the sign of the bound) for one-sided bounds and to
+    # the midpoint of the interval for two-sided bounds.
     mcmc_default_mesh_coupling_mean: float = 0.5
     """Default prior mean for coupling field (dimensionless, in (0, 1))."""
 
