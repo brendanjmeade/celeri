@@ -194,6 +194,10 @@ def read_data(config: Config):
         sar = pd.read_csv(config.sar_file_name)
         sar = sar.loc[:, ~sar.columns.str.match("Unnamed")]
         logger.success(f"Read: {config.sar_file_name}")
+        logger.warning(
+            "SAR data are read and labeled but not used by any solver; "
+            "use los_file_name for line-of-sight observations"
+        )
 
     los = None
     if config.los_file_name is not None:
@@ -288,17 +292,16 @@ def process_station(station, config):
 
 
 def process_sar(sar, config):
-    """Preprocessing of SAR data."""
-    if sar.empty:
-        sar["depth"] = np.zeros_like(sar.lon)
-        sar["x"], sar["y"], sar["z"] = sph2cart(sar.lon, sar.lat, RADIUS_EARTH)
-        sar["block_label"] = -1 * np.ones_like(sar.x)
-    else:
-        sar["dep"] = []
-        sar["x"] = []
-        sar["y"] = []
-        sar["x"] = []
-        sar["block_label"] = []
+    """Preprocessing of SAR data.
+
+    Adds Cartesian coordinates, depth and a block label placeholder, for an
+    empty or a populated SAR frame.
+    """
+    sar["depth"] = np.zeros(len(sar))
+    sar["x"], sar["y"], sar["z"] = sph2cart(
+        sar.lon.to_numpy(dtype=float), sar.lat.to_numpy(dtype=float), RADIUS_EARTH
+    )
+    sar["block_label"] = -1 * np.ones(len(sar), dtype=int)
     return sar
 
 
