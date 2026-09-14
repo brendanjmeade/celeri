@@ -33,7 +33,7 @@ ByMesh = dict[int, T]
 
 
 class ScalarBound(BaseModel):
-    model_config = ConfigDict(validate_assignment=True)
+    model_config = ConfigDict(validate_assignment=True, extra="forbid")
 
     lower: float | None
     upper: float | None
@@ -47,6 +47,18 @@ class ScalarBound(BaseModel):
             lower, upper = data
             return {"lower": lower, "upper": upper}
         return data
+
+    @model_validator(mode="after")
+    def ordered(self) -> ScalarBound:
+        if (
+            self.lower is not None
+            and self.upper is not None
+            and self.lower > self.upper
+        ):
+            raise ValueError(
+                f"ScalarBound lower ({self.lower}) exceeds upper ({self.upper})"
+            )
+        return self
 
 
 class MeshConfig(RelativePathSerializerMixin, BaseModel):
@@ -1078,6 +1090,11 @@ class Mesh:
             sys.stdout = old_stdout
         points = cast(np.ndarray, meshobj.points)
         points[:, 0] = np.where(points[:, 0] < 0, points[:, 0] + 360, points[:, 0])
+        if points[:, 2].min() >= 0.0 and points[:, 2].max() > 0.0:
+            raise ValueError(
+                f"Mesh {config.mesh_filename} has only non-negative depths; celeri "
+                "expects mesh depths in km, negative below the surface"
+            )
         mesh["points"] = points
         verts = meshio.CellBlock("triangle", meshobj.get_cells_type("triangle")).data
         verts = cast(np.ndarray, verts)
@@ -1169,6 +1186,11 @@ class Mesh:
                 config.n_modes_dip_slip,
             ]
         )
+        if mesh["n_modes"] > mesh["n_tde"]:
+            raise ValueError(
+                f"Mesh {config.mesh_filename} has {mesh['n_tde']} elements but "
+                f"{mesh['n_modes']} eigenmodes were requested"
+            )
         mesh["n_modes_total"] = config.n_modes_strike_slip + config.n_modes_dip_slip
         mesh["config"] = config
 

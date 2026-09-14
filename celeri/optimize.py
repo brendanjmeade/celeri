@@ -725,7 +725,11 @@ def build_cvxpy_problem(
     if velocity_limits is None:
         velocity_limits = SlipRateLimit.from_model(model)
 
-    assert operators.eigen is not None
+    if operators.eigen is None:
+        raise ValueError(
+            "solve_sqp2 needs eigenmode operators, which require at least one "
+            "mesh; use the dense solver for a mesh-free model"
+        )
 
     data_vector_eigen = operators.data_vector
     weighting_vector_eigen = operators.weighting_vector

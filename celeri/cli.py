@@ -285,7 +285,7 @@ def process_args(config: Config, args: argparse.Namespace):
                     original_val = bool(original_val)
 
                 # Convert CLI filenames from cwd-relative str to absolute Path
-                if key[-10:] == "_file_name":
+                if key[-10:] == "_file_name" and args_val is not None:
                     args_val = Path(args_val).absolute()
 
                 # Config does not validate on assignment; validate the override
@@ -312,3 +312,7 @@ def process_args(config: Config, args: argparse.Namespace):
     if mesh_params_path is not None:
         config.mesh_params = load_mesh_params(Path(mesh_params_path), Path.cwd())
         logger.success(f"Read: {mesh_params_path}")
+
+    # Field-level validation above cannot see cross-field rules (for example
+    # the MCMC mixed-constraint check keyed on solve_type); re-run them
+    Config.model_validate(config.model_dump())

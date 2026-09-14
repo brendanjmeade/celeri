@@ -933,6 +933,15 @@ def build_operators(
             (the default). Set to False if you need the raw TDE operators for
             methods like "direct" or "low_rank".
     """
+    if (tde or eigen) and len(model.meshes) == 0:
+        logger.warning(
+            "No meshes in the model: building block-only operators "
+            "(tde and eigen operators require at least one mesh)"
+        )
+        tde = False
+        eigen = False
+        discard_tde_to_velocities = False
+
     if eigen and not tde:
         raise ValueError("eigen operators require tde")
     if discard_tde_to_velocities and not eigen:
@@ -2038,6 +2047,18 @@ def get_slip_rate_constraints(model: Model) -> np.ndarray:
     slip_rate_constraint_partials = slip_rate_constraint_partials[
         slip_rate_constraints_idx, :
     ]
+
+    # A constraint on a component that block motion can never produce
+    # (dip slip on a vertical segment, tensile slip on a dipping one) has an
+    # identically zero row: it adds a constant residual and no information
+    zero_rows = np.where(~np.any(slip_rate_constraint_partials != 0, axis=1))[0]
+    for row in zero_rows:
+        component = ("strike", "dip", "tensile")[slip_rate_constraints_idx[row] % 3]
+        name = segment.name[slip_rate_constraints_idx[row] // 3].strip()
+        logger.warning(
+            f"{component}-slip rate constraint on segment {name} has no effect: "
+            "block rotations cannot produce that component for this geometry"
+        )
     return slip_rate_constraint_partials
 
 

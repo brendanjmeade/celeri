@@ -1722,6 +1722,12 @@ def solve_mcmc(
                 "a segment with mesh_flag=1 in the segment file."
             )
 
+    if len(model.meshes) == 0:
+        raise ValueError(
+            "The MCMC solver needs at least one mesh (its state vector uses the "
+            "eigenmode layout); use the dense solver for a mesh-free model"
+        )
+
     use_streaming = model.config.mcmc_station_velocity_method == "project_to_eigen"
 
     if operators is None:

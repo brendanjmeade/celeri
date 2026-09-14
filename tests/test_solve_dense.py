@@ -495,3 +495,51 @@ def test_tde_slip_rate_constraints_match_dense_construction(config_name):
         assert mesh.n_tde_constraints == len(mesh.top_slip_idx) + len(
             mesh.bottom_slip_idx
         ) + len(mesh.side_slip_idx)
+
+
+def test_build_operators_without_meshes_falls_back_to_block_only():
+    """qp/qp2/mcmc-style operator builds on a mesh-free model must not crash."""
+    config = celeri.get_config("./tests/configs/test_wna_config.json")
+    config.repl = False
+    segment = celeri.read_data(config)[0]
+    segment["mesh_flag"] = 0
+    segment["mesh_file_index"] = -1
+    model = celeri.build_model(config, override_segment=segment, override_meshes=[])
+    assert len(model.meshes) == 0
+
+    operators = celeri.build_operators(model, tde=True, eigen=True)
+
+    assert operators.tde is None
+    assert operators.eigen is None
+    assert operators.full_dense_operator.shape[1] == operators.index.n_operator_cols
+    with pytest.raises(ValueError, match="at least one mesh"):
+        celeri.optimize.solve_sqp2(model)
+
+
+def test_zero_effect_slip_rate_constraints_are_reported():
+    """A tensile constraint on a dipping segment cannot be satisfied and is flagged."""
+    from loguru import logger
+
+    from celeri.operators import (
+        _get_slip_rate_constraints_index,
+        get_slip_rate_constraints,
+    )
+
+    config = celeri.get_config("./tests/configs/test_wna_config.json")
+    config.repl = False
+    segment = celeri.read_data(config)[0]
+    dipping = int(np.flatnonzero(segment.dip != 90)[0])
+    segment.loc[dipping, "ts_rate_flag"] = 1
+    model = celeri.build_model(config, override_segment=segment)
+
+    messages = []
+    handle = logger.add(lambda message: messages.append(str(message)), level="WARNING")
+    try:
+        partials = get_slip_rate_constraints(model)
+    finally:
+        logger.remove(handle)
+
+    constrained = list(_get_slip_rate_constraints_index(model))
+    row = constrained.index(3 * dipping + 2)
+    assert not np.any(partials[row])
+    assert any("tensile-slip rate constraint" in m for m in messages)

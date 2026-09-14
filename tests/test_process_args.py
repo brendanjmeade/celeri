@@ -106,3 +106,13 @@ def test_override_values_are_validated():
     args = argparse.Namespace(config_file_name=str(CONFIG), mcmc_chains=3)
     process_args(config, args)
     assert config.mcmc_chains == 3
+
+
+def test_none_string_clears_optional_file_names():
+    config = get_config(CONFIG)
+    assert config.mogi_file_name is not None
+
+    args = argparse.Namespace(config_file_name=str(CONFIG), mogi_file_name="none")
+    process_args(config, args)
+
+    assert config.mogi_file_name is None
