@@ -1172,13 +1172,19 @@ def lsqlin_qp(
     b = numpy_to_cvxopt_matrix(b)
     beq = numpy_to_cvxopt_matrix(beq)
 
-    # Set up options
-    if opts is not None:
-        for k, v in opts.items():
-            cvxopt.solvers.options[k] = v
+    # Set up options for this call only; cvxopt keeps them in a process-wide
+    # dictionary, so restore the previous state afterwards
+    saved_options = dict(cvxopt.solvers.options)
+    try:
+        if opts is not None:
+            for k, v in opts.items():
+                cvxopt.solvers.options[k] = v
 
-    # Run CVXOPT.SQP solver
-    sol = cvxopt.solvers.qp(Q, q.T, A, b, Aeq, beq, None, x0)
+        # Run CVXOPT.SQP solver
+        sol = cvxopt.solvers.qp(Q, q.T, A, b, Aeq, beq, None, x0)
+    finally:
+        cvxopt.solvers.options.clear()
+        cvxopt.solvers.options.update(saved_options)
     return sol
 
 

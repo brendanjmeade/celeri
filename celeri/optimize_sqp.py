@@ -10,7 +10,7 @@ from celeri.celeri_util import interleave2
 from celeri.mesh import Mesh
 from celeri.model import Model
 from celeri.operators import Operators, get_qp_all_inequality_operator_and_data_vector
-from celeri.solve import Estimation, lsqlin_qp
+from celeri.solve import Estimation, build_estimation, lsqlin_qp
 
 
 def _presolve(
@@ -42,15 +42,15 @@ def _presolve(
         opts,
     )
 
-    estimation_qp = Estimation(
-        data_vector=operators.data_vector,
-        weighting_vector=operators.weighting_vector,
-        state_vector=np.array(solution_qp["x"]).flatten(),
-        operators=operators,
-        state_covariance_matrix=None,
-        n_out_of_bounds_trace=np.zeros((n_segment_meshes, 0)),
-        trace=None,
+    if solution_qp["status"] != "optimal":
+        raise ValueError(
+            f"Initial QP solve did not converge (status: {solution_qp['status']})"
+        )
+
+    estimation_qp = build_estimation(
+        model, operators, np.array(solution_qp["x"]).flatten()
     )
+    estimation_qp.n_out_of_bounds_trace = np.zeros((n_segment_meshes, 0))
 
     return estimation_qp
 
@@ -190,6 +190,18 @@ def _update_slip_rate_bounds(
     updated_ss_bounds_upper[ss_upper_oob_pos] = new_ss_bounds_upper[ss_upper_oob_pos]
     updated_ds_bounds_lower[ds_lower_oob_pos] = new_ds_bounds_lower[ds_lower_oob_pos]
     updated_ds_bounds_upper[ds_upper_oob_pos] = new_ds_bounds_upper[ds_upper_oob_pos]
+
+    # A bound tightened while the kinematic rate had one sign can end up on
+    # the wrong side of its partner once the smoothed kinematic rate changes
+    # sign; keep every interval ordered so the QP stays feasible
+    updated_ss_bounds_lower, updated_ss_bounds_upper = (
+        np.minimum(updated_ss_bounds_lower, updated_ss_bounds_upper),
+        np.maximum(updated_ss_bounds_lower, updated_ss_bounds_upper),
+    )
+    updated_ds_bounds_lower, updated_ds_bounds_upper = (
+        np.minimum(updated_ds_bounds_lower, updated_ds_bounds_upper),
+        np.maximum(updated_ds_bounds_lower, updated_ds_bounds_upper),
+    )
 
     updated_bounds = _SlipRateBounds(
         ss_lower=updated_ss_bounds_lower,
@@ -492,15 +504,10 @@ def solve_sqp(
             raise ValueError("Solver did not converge")
 
         # Create estimation object with updated solution
-        estimation_qp = Estimation(
-            data_vector=operators.data_vector,
-            weighting_vector=operators.weighting_vector,
-            state_vector=np.array(solution_qp["x"]).flatten(),
-            operators=operators,
-            state_covariance_matrix=None,
-            n_out_of_bounds_trace=n_oob_vec.copy(),
-            trace=None,
+        estimation_qp = build_estimation(
+            model, operators, np.array(solution_qp["x"]).flatten()
         )
+        estimation_qp.n_out_of_bounds_trace = n_oob_vec.copy()
 
         # Check convergence
         percent_oob = _percent_out_of_bounds(current_noob, model)
