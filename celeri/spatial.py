@@ -4,6 +4,7 @@ import cutde.halfspace as cutde_halfspace
 import numpy as np
 import pandas as pd
 import scipy
+from loguru import logger
 from rich.progress import track
 from scipy.sparse import csr_matrix
 
@@ -745,8 +746,19 @@ def get_tri_smoothing_matrix(share, tri_shared_sides_distances) -> csr_matrix:
     """
     n = share.shape[0]  # number of triangles
 
-    # Sum distances and compute 1/d (NaN propagates harmlessly for missing neighbors)
-    leading_coefficient = 2.0 / np.nansum(tri_shared_sides_distances, axis=1)  # (n,)
+    # Sum distances and compute 1/d (NaN propagates harmlessly for missing
+    # neighbors). An element with no neighbor at all gets a zero row rather
+    # than an infinite leading coefficient.
+    summed_distances = np.nansum(tri_shared_sides_distances, axis=1)  # (n,)
+    isolated = summed_distances == 0
+    if np.any(isolated):
+        logger.warning(
+            f"{int(isolated.sum())} mesh elements share no side with any other "
+            "element; they receive no smoothing"
+        )
+    leading_coefficient = np.where(
+        isolated, 0.0, 2.0 / np.where(isolated, 1.0, summed_distances)
+    )
     # (n, 3) 1/d per neighbor slot, NaN if missing
     inverse_distances = 1.0 / tri_shared_sides_distances
 

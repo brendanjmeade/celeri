@@ -55,3 +55,19 @@ def test_block_centroid_across_the_prime_meridian():
 
     assert lon[0] < 1e-6 or lon[0] > 359.999
     np.testing.assert_allclose(lat[0], 11.0, atol=1e-2)
+
+
+def test_smoothing_matrix_ignores_isolated_elements():
+    from celeri.spatial import get_tri_smoothing_matrix
+
+    # Elements 0 and 1 share a side; element 2 shares nothing
+    share = np.array([[1, -1, -1], [0, -1, -1], [-1, -1, -1]])
+    distances = np.array(
+        [[100.0, np.nan, np.nan], [100.0, np.nan, np.nan], [np.nan, np.nan, np.nan]]
+    )
+
+    smoothing = get_tri_smoothing_matrix(share, distances).toarray()
+
+    assert np.all(np.isfinite(smoothing))
+    assert not np.any(smoothing[6:9])
+    np.testing.assert_allclose(smoothing[:6].sum(axis=1), 0.0, atol=1e-12)
