@@ -308,3 +308,238 @@ def test_end_row_eigen_consistency(config_name, include_vertical):
             f"Mesh {i}: end_row_eigen[{i}]={estimation.index.eigen.end_row_eigen[i]} "
             f"doesn't match index.end_station_row={estimation.index.end_station_row}"
         )
+
+
+@pytest.mark.parametrize("config_name", ["test_japan_config", "test_wna_config"])
+def test_dense_no_meshes_state_layout(config_name):
+    """The no-mesh dense system has strain and Mogi columns and config weights."""
+    config = celeri.get_config(f"./tests/configs/{config_name}.json")
+    model = celeri.build_model(config)
+
+    estimation = celeri.assemble_and_solve_dense(model, eigen=False, tde=False)
+    index = estimation.index
+    operators = estimation.operators
+
+    assert operators.tde is None
+    assert index.tde is None
+    assert estimation.operator.shape[1] == index.n_operator_cols
+    assert estimation.state_vector.shape == (index.n_operator_cols,)
+
+    # Column blocks: rotations | block strain rates | Mogi volume change rates
+    assert index.end_block_col == 3 * index.n_blocks
+    assert index.start_block_strain_col == index.end_block_col
+    assert (
+        index.end_block_strain_col - index.start_block_strain_col
+        == 3 * index.n_strain_blocks
+    )
+    assert index.start_mogi_col == index.end_block_strain_col
+    assert index.end_mogi_col == index.n_operator_cols
+    assert estimation.block_strain_rates.shape == (3 * index.n_strain_blocks,)
+    assert estimation.mogi_volume_change_rates.shape == (index.n_mogis,)
+    np.testing.assert_array_equal(
+        estimation.operator[
+            index.start_station_row : index.end_station_row,
+            index.start_block_strain_col : index.end_block_strain_col,
+        ],
+        operators.block_strain_rate_to_velocities,
+    )
+    np.testing.assert_array_equal(
+        estimation.operator[
+            index.start_station_row : index.end_station_row,
+            index.start_mogi_col : index.end_mogi_col,
+        ],
+        operators.mogi_to_velocities,
+    )
+
+    # Every derived station column must be computable from the state vector
+    station = estimation.station
+    assert len(station) == index.n_stations
+
+    # Block rotation constraints use the configured weight, as in the mesh paths
+    weights = estimation.weighting_vector[
+        index.start_block_constraints_row : index.end_block_constraints_row
+    ]
+    assert weights.shape == (3 * index.n_block_constraints,)
+    np.testing.assert_array_equal(weights, config.block_constraint_weight)
+
+
+def test_build_and_solve_dense_variants_honor_mesh_flags():
+    """build_and_solve_dense keeps the TDEs; build_and_solve_dense_no_meshes drops them."""
+    config = celeri.get_config("./tests/configs/test_japan_config.json")
+    config.plot_estimation_summary = False
+    config.repl = False
+    model = celeri.build_model(config)
+
+    with_meshes = celeri.build_and_solve_dense(model)
+    assert with_meshes.operators.tde is not None
+    assert with_meshes.index.tde is not None
+    assert with_meshes.mesh_estimate is not None
+
+    without_meshes = celeri.build_and_solve_dense_no_meshes(model)
+    assert without_meshes.operators.tde is None
+    assert without_meshes.index.tde is None
+    assert without_meshes.mesh_estimate is None
+    assert without_meshes.state_vector.shape == (without_meshes.index.n_operator_cols,)
+    assert without_meshes.state_vector.size < with_meshes.state_vector.size
+    # Every derived output table must be computable for the no-mesh estimation
+    assert len(without_meshes.station) == without_meshes.index.n_stations
+    assert len(without_meshes.segment) == without_meshes.index.n_segments
+    assert len(without_meshes.mogi) == without_meshes.index.n_mogis
+
+
+def test_mogi_volume_change_sigma():
+    """The Mogi sigma column is propagated from the state covariance, not the rates."""
+    from dataclasses import replace
+
+    config = celeri.get_config("./tests/configs/test_japan_config.json")
+    model = celeri.build_model(config)
+    estimation = celeri.assemble_and_solve_dense(model, eigen=True, tde=True)
+    index = estimation.index
+    assert index.n_mogis > 0
+
+    expected = np.sqrt(
+        np.diag(estimation.state_covariance_matrix)[
+            index.start_mogi_col : index.end_mogi_col
+        ]
+    )
+    sigma = estimation.mogi.volume_change_sig.to_numpy()
+    np.testing.assert_allclose(sigma, expected)
+    assert np.all(np.isfinite(sigma)) and np.all(sigma > 0)
+    assert not np.allclose(sigma, estimation.mogi.volume_change.to_numpy())
+
+    no_covariance = replace(estimation, state_covariance_matrix=None)
+    assert np.isnan(no_covariance.mogi.volume_change_sig.to_numpy()).all()
+
+
+def test_euler_pole_errors_from_covariance():
+    """Euler pole uncertainties propagate the rotation-vector covariance."""
+    from dataclasses import replace
+
+    from celeri.operators import rotation_vector_err_to_euler_pole_err
+
+    config = celeri.get_config("./tests/configs/test_wna_config.json")
+    model = celeri.build_model(config)
+    estimation = celeri.assemble_and_solve_dense(model, eigen=True, tde=True)
+    n_rotation = 3 * estimation.index.n_blocks
+
+    covariance = estimation.state_covariance_matrix[0:n_rotation, 0:n_rotation]
+    with np.errstate(divide="ignore", invalid="ignore"):
+        expected = np.array(
+            rotation_vector_err_to_euler_pole_err(
+                estimation.rotation_vector_x,
+                estimation.rotation_vector_y,
+                estimation.rotation_vector_z,
+                covariance,
+            )
+        )
+    np.testing.assert_allclose(estimation.euler_err, expected, equal_nan=True)
+
+    block = estimation.block
+    rotating = block.euler_rate.to_numpy() > 1e-6
+    assert rotating.any()
+    for column in ("euler_lon_err", "euler_lat_err", "euler_rate_err"):
+        values = block[column].to_numpy()[rotating]
+        assert np.all(np.isfinite(values)) and np.all(values > 0)
+
+    no_covariance = replace(estimation, state_covariance_matrix=None)
+    assert np.isnan(no_covariance.block.euler_rate_err.to_numpy()).all()
+
+
+def test_eigen_to_tde_bcs_available_before_full_operator():
+    """The eigen boundary-condition operator is built with the other operators."""
+    config = celeri.get_config("./tests/configs/test_wna_config.json")
+    model = celeri.build_model(config)
+    operators = celeri.build_operators(model, eigen=True, tde=True)
+    assert operators.eigen is not None and operators.tde is not None
+
+    # Available before the full dense operator is ever assembled
+    assert set(operators.eigen.eigen_to_tde_bcs) == set(range(len(model.meshes)))
+    for i, mesh in enumerate(model.meshes):
+        expected = (
+            mesh.config.eigenmode_slip_rate_constraint_weight
+            * operators.tde.tde_slip_rate_constraints[i]
+            @ operators.eigen.eigenvectors_to_tde_slip[i]
+        )
+        np.testing.assert_array_equal(operators.eigen.eigen_to_tde_bcs[i], expected)
+
+    index = operators.index
+    assert index.eigen is not None
+    rows = operators.full_dense_operator[
+        index.eigen.start_tde_constraint_row_eigen[
+            0
+        ] : index.eigen.end_tde_constraint_row_eigen[0],
+        index.eigen.start_col_eigen[0] : index.eigen.end_col_eigen[0],
+    ]
+    np.testing.assert_array_equal(rows, operators.eigen.eigen_to_tde_bcs[0])
+
+
+@pytest.mark.parametrize("config_name", ["test_japan_config", "test_wna_config"])
+def test_tde_slip_rate_constraints_match_dense_construction(config_name):
+    """The direct constraint-row construction equals the former dense one."""
+    config = celeri.get_config(f"./tests/configs/{config_name}.json")
+    model = celeri.build_model(config)
+    operators = celeri.build_operators(model, eigen=False, tde=True)
+    assert operators.tde is not None
+
+    for i, mesh in enumerate(model.meshes):
+        dense = np.zeros((2 * mesh.n_tde, 2 * mesh.n_tde))
+        end_row = 0
+        for slip_idx in (mesh.top_slip_idx, mesh.bottom_slip_idx, mesh.side_slip_idx):
+            if len(slip_idx) > 0:
+                start_row, end_row = end_row, end_row + len(slip_idx)
+                dense[start_row:end_row, slip_idx] = np.eye(len(slip_idx))
+        dense = dense[np.sum(dense, 1) > 0, :]
+
+        np.testing.assert_array_equal(operators.tde.tde_slip_rate_constraints[i], dense)
+        assert mesh.n_tde_constraints == len(dense)
+        assert mesh.n_tde_constraints == len(mesh.top_slip_idx) + len(
+            mesh.bottom_slip_idx
+        ) + len(mesh.side_slip_idx)
+
+
+def test_build_operators_without_meshes_falls_back_to_block_only():
+    """qp/qp2/mcmc-style operator builds on a mesh-free model must not crash."""
+    config = celeri.get_config("./tests/configs/test_wna_config.json")
+    config.repl = False
+    segment = celeri.read_data(config)[0]
+    segment["mesh_flag"] = 0
+    segment["mesh_file_index"] = -1
+    model = celeri.build_model(config, override_segment=segment, override_meshes=[])
+    assert len(model.meshes) == 0
+
+    operators = celeri.build_operators(model, tde=True, eigen=True)
+
+    assert operators.tde is None
+    assert operators.eigen is None
+    assert operators.full_dense_operator.shape[1] == operators.index.n_operator_cols
+    with pytest.raises(ValueError, match="at least one mesh"):
+        celeri.optimize.solve_sqp2(model)
+
+
+def test_zero_effect_slip_rate_constraints_are_reported():
+    """A tensile constraint on a dipping segment cannot be satisfied and is flagged."""
+    from loguru import logger
+
+    from celeri.operators import (
+        _get_slip_rate_constraints_index,
+        get_slip_rate_constraints,
+    )
+
+    config = celeri.get_config("./tests/configs/test_wna_config.json")
+    config.repl = False
+    segment = celeri.read_data(config)[0]
+    dipping = int(np.flatnonzero(segment.dip != 90)[0])
+    segment.loc[dipping, "ts_rate_flag"] = 1
+    model = celeri.build_model(config, override_segment=segment)
+
+    messages = []
+    handle = logger.add(lambda message: messages.append(str(message)), level="WARNING")
+    try:
+        partials = get_slip_rate_constraints(model)
+    finally:
+        logger.remove(handle)
+
+    constrained = list(_get_slip_rate_constraints_index(model))
+    row = constrained.index(3 * dipping + 2)
+    assert not np.any(partials[row])
+    assert any("tensile-slip rate constraint" in m for m in messages)

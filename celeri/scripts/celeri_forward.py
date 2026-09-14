@@ -156,7 +156,13 @@ def create_forward_operators_batch(estimation, lon_batch, lat_batch):
 
 
 def compute_forward_velocities_batch(estimation, batch_operators):
-    """Compute forward velocities for a batch using the state vector and operators."""
+    """Compute forward velocities for a batch using the state vector and operators.
+
+    The per-component columns follow the contract of model_station.csv: the
+    rotation, block strain rate and Mogi columns are contributions to the
+    total, while model_*_elastic_segment and model_*_vel_tde hold the raw
+    elastic velocities of the estimated slip, which the total subtracts.
+    """
     from celeri.celeri_util import get_keep_index_12
 
     state_vector = estimation.state_vector
@@ -217,9 +223,10 @@ def compute_forward_velocities_batch(estimation, batch_operators):
                 # TDE slip is stored as [strike_slip, dip_slip] pairs, so we need the 2-component index
                 tde_keep_col_index = get_keep_index_12(tde_op.shape[1])
 
-                # Negation of this operator is for consistency with the eigen case
+                # Raw elastic velocity of the TDE slip, the same quantity as
+                # model_*_vel_tde in model_station.csv (subtracted below)
                 tde_contribution = (
-                    -tde_op[tde_keep_row_index, :][:, tde_keep_col_index]
+                    tde_op[tde_keep_row_index, :][:, tde_keep_col_index]
                     @ state_vector[
                         index.tde.start_tde_col[mesh_idx] : index.tde.end_tde_col[
                             mesh_idx
@@ -248,7 +255,7 @@ def compute_forward_velocities_batch(estimation, batch_operators):
                 tde_keep_row_index = get_keep_index_12(tde_op.shape[0])
                 tde_keep_col_index = get_keep_index_12(tde_op.shape[1])
 
-                eigen_to_vel = -(
+                eigen_to_vel = (
                     tde_op[tde_keep_row_index, :][:, tde_keep_col_index] @ eigenvectors
                 )
 
@@ -271,9 +278,12 @@ def compute_forward_velocities_batch(estimation, batch_operators):
     else:
         vel_tde = np.zeros(2 * n_stations_batch)
 
-    # Compute total velocities
+    # Compute total velocities. Both elastic terms are stored as the raw
+    # elastic velocities of the estimated slip and enter with a minus sign,
+    # exactly as Estimation.predictions does for model_station.csv:
+    #   total = rotation - elastic_segment - tde + block_strain_rate + mogi
     vel_total = (
-        vel_rotation - vel_elastic_segment + vel_tde + vel_block_strain_rate + vel_mogi
+        vel_rotation - vel_elastic_segment - vel_tde + vel_block_strain_rate + vel_mogi
     )
 
     # Compute residuals (forward model - observed, but observed is zero for forward stations)

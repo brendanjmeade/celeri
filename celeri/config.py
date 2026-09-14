@@ -21,6 +21,8 @@ Sqp2Objective = Literal[
 
 EigenvectorAlgorithm = Literal["eigh", "eigsh"]
 
+SolveType = Literal["dense", "dense_no_meshes", "qp", "qp2", "mcmc"]
+
 McmcStationVelocityMethod = Literal[
     "direct",
     "low_rank",
@@ -175,6 +177,11 @@ class Config(RelativePathSerializerMixin, BaseModel):
     locking_depth_flag4: int = 10
     locking_depth_flag5: int = 5
     locking_depth_override_flag: int = 0
+    """When non-zero, every segment's locking depth is replaced by
+    ``locking_depth_override_value``."""
+    locking_depth_override_value: float | None = None
+    """Locking depth (km) applied to all segments when
+    ``locking_depth_override_flag`` is set."""
 
     # Plotting defaults
     lat_range: tuple[float, float] = (30, 45)
@@ -199,7 +206,8 @@ class Config(RelativePathSerializerMixin, BaseModel):
     """
 
     snap_segments: int = 0
-    solve_type: str = "hmatrix"
+    solve_type: SolveType = "dense"
+    """Which solver celeri-solve runs."""
     tri_con_weight: int = 1000000
 
     unit_sigmas: bool = False
@@ -326,8 +334,10 @@ class Config(RelativePathSerializerMixin, BaseModel):
     # These are defaults; mesh-specific values can override.
     # The "parameterization" determines whether the mean is in constrained or
     # unconstrained space. For coupling with bounds [0, 1], constrained mean 0.5
-    # is at the center. For elastic with one-sided bounds, unconstrained mean 0
-    # places the constrained mean at ±softplus_lengthscale.
+    # is at the center. For elastic fields an unconstrained mean of 0 maps to a
+    # constrained prior mean of softplus_lengthscale * ln(2) (about 0.69 times
+    # the length scale, with the sign of the bound) for one-sided bounds and to
+    # the midpoint of the interval for two-sided bounds.
     mcmc_default_mesh_coupling_mean: float = 0.5
     """Default prior mean for coupling field (dimensionless, in (0, 1))."""
 
@@ -563,6 +573,19 @@ class Config(RelativePathSerializerMixin, BaseModel):
                 if isinstance(value, Path):
                     setattr(self, name, (base_dir / value).resolve())
 
+        return self
+
+    @model_validator(mode="after")
+    def validate_locking_depth_override(self) -> Self:
+        """Require a value when the global locking depth override is on."""
+        if (
+            self.locking_depth_override_flag
+            and self.locking_depth_override_value is None
+        ):
+            raise ValueError(
+                "locking_depth_override_value must be set when "
+                "locking_depth_override_flag is non-zero."
+            )
         return self
 
     @model_validator(mode="after")

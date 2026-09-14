@@ -228,3 +228,129 @@ def test_celeri_solve_mcmc_elastic_mode_output_files(config_file):
     assert "coupling_0_ds" not in posterior
     assert "elastic_eigen_0_ds" in posterior
     _assert_mcmc_outputs_consistent(estimation, run_dir)
+
+
+def test_build_and_solve_dense_does_not_write_outputs():
+    """The dense drivers solve only; celeri_solve.main owns writing and plotting."""
+    config = celeri.get_config("./tests/configs/test_wna_config.json")
+    config.repl = False
+    config.plot_estimation_summary = False
+    model = celeri.build_model(config)
+
+    estimation = celeri.build_and_solve_dense(model)
+
+    hdf5_file = config.output_path / f"model_{config.run_name}.hdf5"
+    assert not hdf5_file.exists()
+    assert not (config.output_path / "arrays.zarr").exists()
+    assert not (config.output_path / "model_station.csv").exists()
+
+    celeri.write_output(estimation)
+    assert hdf5_file.exists()
+    assert (config.output_path / "model_station.csv").exists()
+
+
+def test_celeri_solve_main_writes_once_and_plots(monkeypatch):
+    """celeri_solve.main writes the outputs exactly once and then plots."""
+    from celeri.scripts.celeri_solve import main
+
+    calls = {"write": 0, "plot": 0}
+    real_write_output = celeri.write_output
+
+    def counting_write_output(estimation):
+        calls["write"] += 1
+        real_write_output(estimation)
+
+    def counting_plot(estimation, *args, **kwargs):
+        calls["plot"] += 1
+
+    monkeypatch.setattr(celeri, "write_output", counting_write_output)
+    monkeypatch.setattr(celeri, "plot_estimation_summary", counting_plot)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "celeri-solve",
+            "./tests/configs/test_wna_config.json",
+            "--repl",
+            "0",
+            "--plot_estimation_summary",
+            "1",
+        ],
+    )
+    main()
+
+    assert calls == {"write": 1, "plot": 1}
+
+
+@pytest.mark.parametrize("eigen, tde", [(False, False), (False, True), (True, True)])
+def test_plot_estimation_summary_handles_every_layout(eigen, tde):
+    """The summary figure follows the estimation's structure, not config.solve_type."""
+    config = celeri.get_config("./tests/configs/test_wna_config.json")
+    config.repl = False
+    # A label that does not describe the estimation must not matter
+    config.solve_type = "dense"
+    model = celeri.build_model(config)
+    estimation = celeri.assemble_and_solve_dense(model, eigen=eigen, tde=tde)
+
+    celeri.plot_estimation_summary(estimation)
+
+    assert (config.output_path / "plot_estimation_summary.png").exists()
+    assert (config.output_path / "plot_estimation_summary.pdf").exists()
+
+
+def test_hdf5_table_column_attributes():
+    """The positional segment and station tables carry their own column names."""
+    config = celeri.get_config("./tests/configs/test_wna_config.json")
+    config.repl = False
+    model = celeri.build_model(config)
+    estimation = celeri.assemble_and_solve_dense(model, eigen=True, tde=True)
+    celeri.write_output(estimation)
+
+    segment_columns = list(estimation.model.segment.drop("name", axis=1).columns)
+    station_columns = list(estimation.model.station.drop("name", axis=1).columns)
+
+    def names(attr):
+        return [c.decode() if isinstance(c, bytes) else str(c) for c in attr]
+
+    with h5py.File(config.output_path / f"model_{config.run_name}.hdf5", "r") as hdf:
+        assert names(hdf.attrs["segment_columns"]) == segment_columns
+        assert names(hdf.attrs["station_columns"]) == station_columns
+        assert hdf["segment"].shape == (
+            len(estimation.model.segment),
+            len(segment_columns),
+        )
+        assert hdf["station"].shape == (
+            len(estimation.model.station),
+            len(station_columns),
+        )
+        np.testing.assert_array_equal(
+            hdf.attrs["segment_index"], estimation.model.segment.index.to_numpy()
+        )
+        np.testing.assert_array_equal(
+            hdf.attrs["station_index"], estimation.model.station.index.to_numpy()
+        )
+        # Legacy attributes keep their historical contents
+        assert names(hdf.attrs["columns"]) == station_columns
+        np.testing.assert_array_equal(
+            hdf.attrs["index"], estimation.model.segment.index.to_numpy()
+        )
+
+
+def test_hdf5_config_group_keeps_paths_flags_and_ranges():
+    config = celeri.get_config("./tests/configs/test_wna_config.json")
+    config.repl = False
+    model = celeri.build_model(config)
+    estimation = celeri.assemble_and_solve_dense(model, eigen=False, tde=False)
+    celeri.write_output(estimation)
+
+    with h5py.File(config.output_path / f"model_{config.run_name}.hdf5", "r") as hdf:
+        group = hdf["config"]
+        assert group["station_file_name"][()].decode() == str(config.station_file_name)
+        assert int(group["include_vertical_velocity"][()]) == int(
+            config.include_vertical_velocity
+        )
+        np.testing.assert_array_equal(group["lon_range"][...], config.lon_range)
+        assert group["solve_type"][()].decode() == config.solve_type
+        assert (
+            float(group["block_constraint_weight"][()])
+            == config.block_constraint_weight
+        )

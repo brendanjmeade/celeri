@@ -247,9 +247,6 @@ class Index:
 
     @property
     def n_operator_cols(self) -> int:
-        # TODO(Brendan): should there be the mogi/strain block terms here?
-        # They were missing in one of the originial functions. I think in
-        # most nodebooks those are zero.
         base = 3 * self.n_blocks + 3 * self.n_strain_blocks + self.n_mogis
         if self.tde is not None:
             base += 2 * self.tde.n_tde_total
@@ -936,6 +933,15 @@ def build_operators(
             (the default). Set to False if you need the raw TDE operators for
             methods like "direct" or "low_rank".
     """
+    if (tde or eigen) and len(model.meshes) == 0:
+        logger.warning(
+            "No meshes in the model: building block-only operators "
+            "(tde and eigen operators require at least one mesh)"
+        )
+        tde = False
+        eigen = False
+        discard_tde_to_velocities = False
+
     if eigen and not tde:
         raise ValueError("eigen operators require tde")
     if discard_tde_to_velocities and not eigen:
@@ -996,6 +1002,14 @@ def build_operators(
 
         # Get KL modes for each mesh
         _store_eigenvectors_to_tde_slip(model, operators)
+
+        # Eigenmode to TDE boundary-condition rows, weighted per mesh
+        for i in range(len(model.meshes)):
+            operators.eigen_to_tde_bcs[i] = (
+                model.meshes[i].config.eigenmode_slip_rate_constraint_weight
+                * operators.tde_slip_rate_constraints[i]
+                @ operators.eigenvectors_to_tde_slip[i]
+            )
     elif tde:
         index = _get_index(model)
         operators.index = index
@@ -1247,6 +1261,34 @@ def _store_gaussian_smoothing_operator(
         operators.linear_gaussian_smoothing[i] = W
 
 
+MESH_GEOMETRY_ATTR = "mesh_geometry"
+
+
+def _mesh_geometry_digest(mesh: Mesh) -> str:
+    """Digest of a mesh's vertex coordinates and (oriented) element table.
+
+    The elastic-operator cache key only sees the mesh *file name*; this digest,
+    stored on each cached tde_to_velocities dataset, detects a mesh whose
+    geometry or vertex order changed at an unchanged path.
+    """
+    digest = hashlib.blake2b()
+    points = np.ascontiguousarray(mesh.points, dtype=np.float64)
+    verts = np.ascontiguousarray(mesh.verts, dtype=np.int64)
+    for array in (points, verts):
+        digest.update(np.asarray(array.shape, dtype=np.int64).tobytes())
+        digest.update(array.tobytes())
+    return digest.hexdigest()[:16]
+
+
+def _tde_dataset_is_current(dataset, mesh: Mesh) -> bool:
+    """Whether a cached tde_to_velocities dataset matches the mesh geometry.
+
+    Datasets written before geometry validation existed carry no digest and
+    are treated as stale.
+    """
+    return dataset.attrs.get(MESH_GEOMETRY_ATTR) == _mesh_geometry_digest(mesh)
+
+
 def _hash_elastic_operator_input(
     meshes: list[MeshConfig], station: DataFrame, config: Config
 ):
@@ -1426,11 +1468,15 @@ def _compute_and_cache_tde_to_velocities(
     config: Config,
     operators: _OperatorBuilder,
     cache: Path | None,
+    mesh_indices: list[int] | None = None,
 ):
-    """Compute dense tde_to_velocities for every mesh and optionally append the
-    datasets to an existing cache file (preserving its other datasets).
+    """Compute dense tde_to_velocities for the given meshes (default: all) and
+    optionally append the datasets to an existing cache file (preserving its
+    other datasets). Each dataset is stamped with the mesh geometry digest.
     """
-    for i in range(len(meshes)):
+    if mesh_indices is None:
+        mesh_indices = list(range(len(meshes)))
+    for i in mesh_indices:
         logger.info(
             f"Start: TDE slip to velocity calculation for mesh: {meshes[i].file_name}"
         )
@@ -1444,11 +1490,14 @@ def _compute_and_cache_tde_to_velocities(
         logger.info("Adding tde_to_velocities to cache")
         try:
             with h5py.File(str(cache), "a") as hdf5_file:
-                for i in range(len(meshes)):
+                for i in mesh_indices:
                     key = "tde_to_velocities_" + str(i)
                     if key in hdf5_file:
                         del hdf5_file[key]
-                    hdf5_file.create_dataset(key, data=operators.tde_to_velocities[i])
+                    dataset = hdf5_file.create_dataset(
+                        key, data=operators.tde_to_velocities[i]
+                    )
+                    dataset.attrs[MESH_GEOMETRY_ATTR] = _mesh_geometry_digest(meshes[i])
         except OSError:
             # Do not lose hours of computation to an unwritable cache file
             logger.warning(
@@ -1702,30 +1751,29 @@ def _store_elastic_operators(
                     )
 
                 if tde and not skip_tde_to_velocities:
-                    tde_loaded_from_cache = False
+                    # Load every per-mesh dataset whose stored geometry digest
+                    # matches the mesh; missing datasets (streaming runs never
+                    # write them, a crash may leave a partial set), datasets
+                    # for a mesh that changed at the same path, and datasets
+                    # written before geometry validation are recomputed
+                    stale: list[int] = []
                     with h5py.File(str(cache), "r") as hdf5_file:
-                        # All per-mesh datasets must be present: a partial set
-                        # (crash during a previous multi-mesh cache write)
-                        # must trigger a recompute, not a half-load
-                        tde_keys_ok = all(
-                            ("tde_to_velocities_" + str(i)) in hdf5_file
-                            for i in range(len(meshes))
-                        )
-                        if tde_keys_ok:
-                            for i in range(len(meshes)):
-                                operators.tde_to_velocities[i] = np.array(
-                                    hdf5_file.get("tde_to_velocities_" + str(i))
-                                )
-                            tde_loaded_from_cache = True
-                    if not tde_loaded_from_cache:
-                        # Streaming runs cache the okada operator but not the
-                        # dense TDE matrices, so a later non-streaming run
-                        # lands here and must compute them
+                        for i in range(len(meshes)):
+                            dataset = hdf5_file.get("tde_to_velocities_" + str(i))
+                            if dataset is None or not _tde_dataset_is_current(
+                                dataset, meshes[i]
+                            ):
+                                stale.append(i)
+                            else:
+                                operators.tde_to_velocities[i] = np.array(dataset)
+                    if stale:
                         logger.info(
-                            "Cache missing tde_to_velocities. Computing from scratch."
+                            "Cache has no current tde_to_velocities for meshes "
+                            f"{stale} (missing, changed geometry, or written "
+                            "before geometry validation). Computing them."
                         )
                         _compute_and_cache_tde_to_velocities(
-                            meshes, station, config, operators, cache
+                            meshes, station, config, operators, cache, stale
                         )
                 return
 
@@ -1789,32 +1837,16 @@ def _store_tde_slip_rate_constraints(model: Model, operators: _OperatorBuilder):
     """
     meshes = model.meshes
     for i in range(len(meshes)):
-        # Empty constraint matrix
-        tde_slip_rate_constraints = np.zeros((2 * meshes[i].n_tde, 2 * meshes[i].n_tde))
-        # Counting index
-        start_row = 0
-        end_row = 0
-
-        # Process boundary constraints (top, bottom, side)
-        boundary_constraints = [
-            meshes[i].top_slip_idx,
-            meshes[i].bottom_slip_idx,
-            meshes[i].side_slip_idx,
-        ]
-
-        for slip_idx in boundary_constraints:
-            if len(slip_idx) > 0:
-                start_row = end_row
-                end_row = start_row + len(slip_idx)
-                tde_slip_rate_constraints[start_row:end_row, slip_idx] = np.eye(
-                    len(slip_idx)
-                )
-
-        # Eliminate blank rows
-        sum_constraint_columns = np.sum(tde_slip_rate_constraints, 1)
-        tde_slip_rate_constraints = tde_slip_rate_constraints[
-            sum_constraint_columns > 0, :
-        ]
+        # One row per constrained slip component: top, then bottom, then side
+        slip_idx = np.concatenate(
+            [
+                np.asarray(meshes[i].top_slip_idx, dtype=int),
+                np.asarray(meshes[i].bottom_slip_idx, dtype=int),
+                np.asarray(meshes[i].side_slip_idx, dtype=int),
+            ]
+        )
+        tde_slip_rate_constraints = np.zeros((len(slip_idx), 2 * meshes[i].n_tde))
+        tde_slip_rate_constraints[np.arange(len(slip_idx)), slip_idx] = 1.0
         operators.tde_slip_rate_constraints[i] = tde_slip_rate_constraints
 
 
@@ -2049,6 +2081,18 @@ def get_slip_rate_constraints(model: Model) -> np.ndarray:
     slip_rate_constraint_partials = slip_rate_constraint_partials[
         slip_rate_constraints_idx, :
     ]
+
+    # A constraint on a component that block motion can never produce
+    # (dip slip on a vertical segment, tensile slip on a dipping one) has an
+    # identically zero row: it adds a constant residual and no information
+    zero_rows = np.where(~np.any(slip_rate_constraint_partials != 0, axis=1))[0]
+    for row in zero_rows:
+        component = ("strike", "dip", "tensile")[slip_rate_constraints_idx[row] % 3]
+        name = segment.name[slip_rate_constraints_idx[row] // 3].strip()
+        logger.warning(
+            f"{component}-slip rate constraint on segment {name} has no effect: "
+            "block rotations cannot produce that component for this geometry"
+        )
     return slip_rate_constraint_partials
 
 
@@ -2265,7 +2309,7 @@ def _get_weighting_vector_no_meshes(model: Model, index: Index) -> np.ndarray:
     )
     weighting_vector[
         index.start_block_constraints_row : index.end_block_constraints_row
-    ] = 1.0
+    ] = model.config.block_constraint_weight
     weighting_vector[
         index.start_slip_rate_constraints_row : index.end_slip_rate_constraints_row
     ] = model.config.slip_constraint_weight * np.ones(index.n_slip_rate_constraints)
@@ -2387,7 +2431,7 @@ def _insert_block_strain_and_mogi(
 ) -> None:
     """Insert block strain and Mogi source operators.
 
-    This is common to tde and eigen operator types.
+    This is common to all operator types (no-mesh, tde and eigen).
     """
     # Insert block strain operator
     operator[
@@ -2403,17 +2447,24 @@ def _insert_block_strain_and_mogi(
 
 
 def _get_full_dense_operator_block_only(operators: Operators) -> np.ndarray:
+    """Build full dense operator for the no-mesh case.
+
+    Columns are block rotations, block strain rates and Mogi volume change
+    rates, matching ``Index.n_operator_cols`` and the column ranges used by
+    ``Estimation``.
+    """
     index = operators.index
     operator = np.zeros(
         (
             index.end_station_row
             + 3 * index.n_block_constraints
             + index.n_slip_rate_constraints,
-            3 * index.n_blocks,
+            index.n_operator_cols,
         )
     )
 
     _insert_common_block_operators(operator, operators, index)
+    _insert_block_strain_and_mogi(operator, operators, index)
     return operator
 
 
@@ -2546,12 +2597,13 @@ def _get_full_dense_operator_eigen(operators: Operators) -> np.ndarray:
 
     # EIGEN Eigenvector to TDE boundary conditions matrix
     for i in range(index.n_meshes):
-        # Create eigenvector to TDE boundary conditions matrix
-        operators.eigen.eigen_to_tde_bcs[i] = (
-            model.meshes[i].config.eigenmode_slip_rate_constraint_weight
-            * operators.tde.tde_slip_rate_constraints[i]
-            @ operators.eigen.eigenvectors_to_tde_slip[i]
-        )
+        if i not in operators.eigen.eigen_to_tde_bcs:
+            # Operators built before this matrix was stored at build time
+            operators.eigen.eigen_to_tde_bcs[i] = (
+                model.meshes[i].config.eigenmode_slip_rate_constraint_weight
+                * operators.tde.tde_slip_rate_constraints[i]
+                @ operators.eigen.eigenvectors_to_tde_slip[i]
+            )
 
         # Insert eigenvector to TDE boundary conditions matrix
         operator[
@@ -3008,10 +3060,19 @@ def _compute_eigen_to_velocities(
         eigenvectors_to_tde_slip = operators.eigenvectors_to_tde_slip[i]
         result = None
         if streaming:
-            if cache is not None and cache.exists():
+            if cache is not None and cache.exists() and not config.force_recompute:
                 try:
                     with h5py.File(str(cache), "r") as hdf5_file:
                         cached_data = hdf5_file.get("tde_to_velocities_" + str(i))
+                        if cached_data is not None and not _tde_dataset_is_current(
+                            cached_data, meshes[i]
+                        ):
+                            logger.info(
+                                "Cached tde_to_velocities does not match the "
+                                f"current geometry of mesh {meshes[i].file_name}; "
+                                "ignoring it"
+                            )
+                            cached_data = None
                         if cached_data is not None:
                             logger.info(
                                 "Projecting cached tde_to_velocities for mesh: "
@@ -3318,9 +3379,9 @@ def _get_index_no_meshes(model: Model):
         ),
         n_slip_rate_constraints=n_slip_rate_constraints,
         start_block_strain_col=3 * n_blocks,
-        end_block_strain_col=3 * n_blocks + n_slip_rate_constraints,
-        start_mogi_col=3 * n_blocks + n_slip_rate_constraints,
-        end_mogi_col=3 * n_blocks + n_slip_rate_constraints + n_mogi,
+        end_block_strain_col=3 * n_blocks + 3 * n_strain_blocks,
+        start_mogi_col=3 * n_blocks + 3 * n_strain_blocks,
+        end_mogi_col=3 * n_blocks + 3 * n_strain_blocks + n_mogi,
         slip_rate_bounds=np.where(
             interleave3(
                 model.segment.ss_rate_bound_flag,

@@ -111,6 +111,19 @@ def test_minimize(model):
         assert len(trace.objective_norm2) > 0
         assert len(trace.iter_time) > 0
 
+        # The detailed (strike, dip) out-of-bounds counts must add up to the
+        # totals the convergence test uses, and the run must end in bounds
+        detailed = np.array(trace.out_of_bounds_detailed)  # (iter, mesh, 2)
+        np.testing.assert_array_equal(
+            detailed.sum(axis=(1, 2)), np.array(trace.out_of_bounds)
+        )
+        estimation = trace.to_estimation()
+        np.testing.assert_array_equal(
+            estimation.n_out_of_bounds_trace.sum(axis=0),
+            np.array(trace.out_of_bounds),
+        )
+        assert trace.out_of_bounds[-1] == 0
+
     except Exception as e:
         # If the solve fails due to solver not available, skip the test
         if "solver not available" in str(e).lower():
@@ -161,3 +174,53 @@ def test_minimize_coupling():
             pytest.skip(f"Solver not available: {e}")
         else:
             raise
+
+
+def test_minimizer_trace_out_of_bounds_trace_sums_components():
+    from types import SimpleNamespace
+
+    from celeri.optimize import MinimizerTrace
+
+    trace = MinimizerTrace.__new__(MinimizerTrace)
+    # Two iterations, two meshes, (strike-slip, dip-slip) counts
+    trace.out_of_bounds_detailed = [
+        np.array([[1, 2], [3, 4]]),
+        np.array([[0, 5], [6, 0]]),
+    ]
+    trace.minimizer = SimpleNamespace(to_estimation=lambda: SimpleNamespace())
+
+    estimation = trace.to_estimation()
+
+    np.testing.assert_array_equal(
+        estimation.n_out_of_bounds_trace, np.array([[3, 5], [7, 6]])
+    )
+    assert estimation.trace is trace
+
+
+def test_regularized_slip_rate_mask_is_interleaved():
+    import pandas as pd
+
+    from celeri.optimize import _regularized_slip_rate_mask
+
+    segment = pd.DataFrame(
+        {
+            "ss_rate_flag": [0, 2, 0],
+            "ds_rate_flag": [0, 0, 0],
+            "ts_rate_flag": [0, 0, 2],
+        }
+    )
+
+    mask = _regularized_slip_rate_mask(segment)
+
+    # Segment 1 strike slip (3*1 + 0) and segment 2 tensile slip (3*2 + 2)
+    assert mask.dtype == bool
+    assert np.flatnonzero(mask).tolist() == [3, 8]
+
+
+def test_column_scale_leaves_zero_columns_alone():
+    from celeri.optimize import _column_scale
+
+    C = np.array([[1.0, 0.0, -3.0], [-2.0, 0.0, 0.5]])
+
+    np.testing.assert_array_equal(_column_scale(C), [2.0, 1.0, 3.0])
+    assert np.all(np.isfinite(C / _column_scale(C)))

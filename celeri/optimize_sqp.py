@@ -10,7 +10,7 @@ from celeri.celeri_util import interleave2
 from celeri.mesh import Mesh
 from celeri.model import Model
 from celeri.operators import Operators, get_qp_all_inequality_operator_and_data_vector
-from celeri.solve import Estimation, lsqlin_qp
+from celeri.solve import Estimation, build_estimation, lsqlin_qp
 
 
 def _presolve(
@@ -42,15 +42,15 @@ def _presolve(
         opts,
     )
 
-    estimation_qp = Estimation(
-        data_vector=operators.data_vector,
-        weighting_vector=operators.weighting_vector,
-        state_vector=np.array(solution_qp["x"]).flatten(),
-        operators=operators,
-        state_covariance_matrix=None,
-        n_out_of_bounds_trace=np.zeros((n_segment_meshes, 0)),
-        trace=None,
+    if solution_qp["status"] != "optimal":
+        raise ValueError(
+            f"Initial QP solve did not converge (status: {solution_qp['status']})"
+        )
+
+    estimation_qp = build_estimation(
+        model, operators, np.array(solution_qp["x"]).flatten()
     )
+    estimation_qp.n_out_of_bounds_trace = np.zeros((n_segment_meshes, 0))
 
     return estimation_qp
 
@@ -191,6 +191,18 @@ def _update_slip_rate_bounds(
     updated_ds_bounds_lower[ds_lower_oob_pos] = new_ds_bounds_lower[ds_lower_oob_pos]
     updated_ds_bounds_upper[ds_upper_oob_pos] = new_ds_bounds_upper[ds_upper_oob_pos]
 
+    # A bound tightened while the kinematic rate had one sign can end up on
+    # the wrong side of its partner once the smoothed kinematic rate changes
+    # sign; keep every interval ordered so the QP stays feasible
+    updated_ss_bounds_lower, updated_ss_bounds_upper = (
+        np.minimum(updated_ss_bounds_lower, updated_ss_bounds_upper),
+        np.maximum(updated_ss_bounds_lower, updated_ss_bounds_upper),
+    )
+    updated_ds_bounds_lower, updated_ds_bounds_upper = (
+        np.minimum(updated_ds_bounds_lower, updated_ds_bounds_upper),
+        np.maximum(updated_ds_bounds_lower, updated_ds_bounds_upper),
+    )
+
     updated_bounds = _SlipRateBounds(
         ss_lower=updated_ss_bounds_lower,
         ss_upper=updated_ss_bounds_upper,
@@ -276,6 +288,17 @@ def _check_coupling_bounds_single_mesh(
         estimated_tde_rates[ds_indices],
         n_oob,
     )
+
+
+def _percent_out_of_bounds(n_out_of_bounds, model: Model) -> float:
+    """Percentage of slip components on segment-tied meshes outside the bounds.
+
+    ``n_out_of_bounds`` holds the count per segment-tied mesh (strike and dip
+    slip together); the denominator counts both components of every element
+    of those meshes only, so meshes that are not tied to segments (and are
+    never bounded) do not dilute the percentage.
+    """
+    return float(np.sum(n_out_of_bounds) / (2 * model.total_mesh_points) * 100)
 
 
 def solve_sqp(
@@ -381,7 +404,6 @@ def solve_sqp(
 
     # Track out-of-bounds elements
     n_oob_vec = np.zeros((n_segment_meshes, 0))
-    tde_total = sum(mesh.n_tde for mesh in meshes)
     total_percentages = []
     iteration = 0
 
@@ -482,19 +504,13 @@ def solve_sqp(
             raise ValueError("Solver did not converge")
 
         # Create estimation object with updated solution
-        estimation_qp = Estimation(
-            data_vector=operators.data_vector,
-            weighting_vector=operators.weighting_vector,
-            state_vector=np.array(solution_qp["x"]).flatten(),
-            operators=operators,
-            state_covariance_matrix=None,
-            n_out_of_bounds_trace=n_oob_vec.copy(),
-            trace=None,
+        estimation_qp = build_estimation(
+            model, operators, np.array(solution_qp["x"]).flatten()
         )
+        estimation_qp.n_out_of_bounds_trace = n_oob_vec.copy()
 
         # Check convergence
-        total_oob = np.sum(current_noob)
-        percent_oob = total_oob / (2 * tde_total) * 100
+        percent_oob = _percent_out_of_bounds(current_noob, model)
         percent_satisfied = 100 - percent_oob
         total_percentages.append(percent_oob)
 
@@ -531,12 +547,13 @@ def plot_iterative_convergence(estimation: Estimation, *, plot_in_bounds: bool =
     assert len(meshes) >= n_meshes
     mesh_names = [mesh.name for mesh in meshes[:n_meshes]]
 
-    # Calculate total mesh elements
-    tde_total = sum(mesh.n_tde for mesh in meshes[:n_meshes])
-
-    # Calculate percentages
-    total_oob = np.sum(n_oob_vec, axis=0)
-    total_percentages_oob = total_oob / (2 * tde_total) * 100
+    # Calculate percentages over the segment-tied meshes the trace covers
+    total_percentages_oob = np.array(
+        [
+            _percent_out_of_bounds(n_oob_vec[:, k], estimation.model)
+            for k in range(n_iter)
+        ]
+    )
     total_percentages_ib = 100 - total_percentages_oob
     iterations = np.arange(len(total_percentages_oob))
 

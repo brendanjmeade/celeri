@@ -31,7 +31,7 @@ from celeri.operators import (
     rotation_vector_err_to_euler_pole_err,
     rotation_vectors_to_euler_poles,
 )
-from celeri.output import dataclass_from_disk, dataclass_to_disk, write_output
+from celeri.output import dataclass_from_disk, dataclass_to_disk
 from celeri.version import __version__ as celeri_version
 
 
@@ -157,9 +157,9 @@ class Estimation:
     def mogi(self) -> pd.DataFrame:
         """An extension of the `model.mogi` dataframe, with additional columns for the estimated mogi parameters returned by the model."""
         mogi = self.model.mogi.copy(deep=True)
-        # TODO Why the different names?
+        # Both value column names are kept for downstream compatibility
         mogi["volume_change"] = self.mogi_volume_change_rates
-        mogi["volume_change_sig"] = self.mogi_volume_change_rates
+        mogi["volume_change_sig"] = self.mogi_volume_change_sigma
         mogi["volume_change_rates"] = self.mogi_volume_change_rates
         return mogi
 
@@ -268,7 +268,9 @@ class Estimation:
         """A dataframe containing the estimated slip rates and couplings for each mesh.
 
         The slip columns come from `mesh_slip_fields`; fields that are not
-        defined for a mesh are written as zeros.
+        defined for a mesh (kinematic rates and couplings of a mesh that is
+        not tied to any segment) are written as NaN, matching the HDF5 output
+        which omits them.
         """
         if self.operators.tde is None:
             return None
@@ -279,7 +281,7 @@ class Estimation:
         for i in range(len(meshes)):
             n_elements = len(meshes[i].lon1)
             slip_fields = {
-                key: np.zeros(n_elements) if value is None else value
+                key: np.full(n_elements, np.nan) if value is None else value
                 for key, value in self.mesh_slip_fields(i).items()
             }
             this_mesh_data = {
@@ -494,8 +496,32 @@ class Estimation:
     @property
     def mogi_volume_change_rates(self) -> np.ndarray:
         """The estimated Mogi volume change rates."""
-        # TODO(Adrian) verify with eigen
         return self.state_vector[self.index.start_mogi_col : self.index.end_mogi_col]
+
+    @cached_property
+    def mogi_volume_change_sigma(self) -> np.ndarray:
+        """The standard deviation of the estimated Mogi volume change rates.
+
+        Propagated from `self.state_covariance_matrix` when it is available,
+        the posterior standard deviation of ``mogi`` for MCMC estimations,
+        and NaN otherwise.
+        """
+        index = self.index
+        if self.state_covariance_matrix is not None:
+            return np.sqrt(
+                np.diag(self.state_covariance_matrix)[
+                    index.start_mogi_col : index.end_mogi_col
+                ]
+            )
+        if self.mcmc_trace is not None:
+            posterior = self.mcmc_trace.posterior
+            if "mogi" in posterior:
+                mogi = posterior["mogi"]
+                sample_dims = [dim for dim in ("chain", "draw") if dim in mogi.dims]
+                if sample_dims:
+                    return np.asarray(mogi.std(sample_dims).values, dtype=float)
+                return np.zeros(mogi.shape, dtype=float)
+        return np.full(index.n_mogis, np.nan)
 
     @property
     def vel_rotation(self) -> np.ndarray:
@@ -594,18 +620,50 @@ class Estimation:
         return self.euler[2]
 
     @cached_property
+    def rotation_vector_covariance(self) -> np.ndarray | None:
+        """The covariance of the block rotation vectors, in (milli rad/yr)^2.
+
+        Taken from `self.state_covariance_matrix` when it is available and
+        from the posterior samples of ``rotation`` for MCMC estimations;
+        ``None`` when neither exists.
+        """
+        n_rotation = 3 * self.index.n_blocks
+        if self.state_covariance_matrix is not None:
+            return self.state_covariance_matrix[0:n_rotation, 0:n_rotation]
+        if self.mcmc_trace is not None:
+            posterior = self.mcmc_trace.posterior
+            if "rotation" in posterior:
+                rotation = posterior["rotation"]
+                sample_dims = [dim for dim in ("chain", "draw") if dim in rotation.dims]
+                if sample_dims:
+                    samples = rotation.stack(sample=sample_dims).transpose(
+                        "sample", ...
+                    )
+                    values = np.asarray(samples.values, dtype=float)
+                    if values.shape[0] > 1:
+                        return np.cov(values, rowvar=False).reshape(
+                            n_rotation, n_rotation
+                        )
+                return np.zeros((n_rotation, n_rotation))
+        return None
+
+    @cached_property
     def euler_err(self) -> np.ndarray:
-        """The estimated Euler pole errors (lon, lat, rate) for each block."""
-        # TODO
-        omega_cov = np.zeros(
-            (3 * len(self.rotation_vector_x), 3 * len(self.rotation_vector_x))
-        )
-        lon_err, lat_err, rate_err = rotation_vector_err_to_euler_pole_err(
-            self.rotation_vector_x,
-            self.rotation_vector_y,
-            self.rotation_vector_z,
-            omega_cov,
-        )
+        """The estimated Euler pole errors (lon, lat, rate) for each block.
+
+        Linearized propagation of `self.rotation_vector_covariance`; NaN when
+        no covariance is available.
+        """
+        omega_cov = self.rotation_vector_covariance
+        if omega_cov is None:
+            return np.full((3, self.index.n_blocks), np.nan)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            lon_err, lat_err, rate_err = rotation_vector_err_to_euler_pole_err(
+                self.rotation_vector_x,
+                self.rotation_vector_y,
+                self.rotation_vector_z,
+                omega_cov,
+            )
         return np.array([lon_err, lat_err, rate_err])
 
     @property
@@ -751,8 +809,9 @@ class Estimation:
         if elastic is None:
             return None
         rates = {}
-        for mesh_idx in kinematic:
-            rates[mesh_idx] = elastic[mesh_idx] / kinematic[mesh_idx]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            for mesh_idx in kinematic:
+                rates[mesh_idx] = elastic[mesh_idx] / kinematic[mesh_idx]
         return rates
 
     @property
@@ -763,8 +822,9 @@ class Estimation:
         if elastic is None:
             return None
         rates = {}
-        for mesh_idx in kinematic:
-            rates[mesh_idx] = elastic[mesh_idx] / kinematic[mesh_idx]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            for mesh_idx in kinematic:
+                rates[mesh_idx] = elastic[mesh_idx] / kinematic[mesh_idx]
         return rates
 
     @property
@@ -775,8 +835,9 @@ class Estimation:
         if elastic is None:
             return None
         rates = {}
-        for mesh_idx in kinematic:
-            rates[mesh_idx] = elastic[mesh_idx] / kinematic[mesh_idx]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            for mesh_idx in kinematic:
+                rates[mesh_idx] = elastic[mesh_idx] / kinematic[mesh_idx]
         return rates
 
     @property
@@ -787,8 +848,9 @@ class Estimation:
         if elastic is None:
             return None
         rates = {}
-        for mesh_idx in kinematic:
-            rates[mesh_idx] = elastic[mesh_idx] / kinematic[mesh_idx]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            for mesh_idx in kinematic:
+                rates[mesh_idx] = elastic[mesh_idx] / kinematic[mesh_idx]
         return rates
 
     def mcmc_draw(
@@ -1116,13 +1178,19 @@ def lsqlin_qp(
     b = numpy_to_cvxopt_matrix(b)
     beq = numpy_to_cvxopt_matrix(beq)
 
-    # Set up options
-    if opts is not None:
-        for k, v in opts.items():
-            cvxopt.solvers.options[k] = v
+    # Set up options for this call only; cvxopt keeps them in a process-wide
+    # dictionary, so restore the previous state afterwards
+    saved_options = dict(cvxopt.solvers.options)
+    try:
+        if opts is not None:
+            for k, v in opts.items():
+                cvxopt.solvers.options[k] = v
 
-    # Run CVXOPT.SQP solver
-    sol = cvxopt.solvers.qp(Q, q.T, A, b, Aeq, beq, None, x0)
+        # Run CVXOPT.SQP solver
+        sol = cvxopt.solvers.qp(Q, q.T, A, b, Aeq, beq, None, x0)
+    finally:
+        cvxopt.solvers.options.clear()
+        cvxopt.solvers.options.update(saved_options)
     return sol
 
 
@@ -1133,19 +1201,11 @@ def _build_and_solve(name: str, model: Model, *, tde: bool, eigen: bool):
     # Direct solve dense linear system
     logger.info("Start: Dense assemble and solve")
     start_solve_time = timeit.default_timer()
-    estimation = assemble_and_solve_dense(model, tde=True, eigen=False)
+    estimation = assemble_and_solve_dense(model, tde=tde, eigen=eigen)
     end_solve_time = timeit.default_timer()
     logger.success(
         f"Finish: Dense assemble and solve: {end_solve_time - start_solve_time:0.2f} seconds for solve"
     )
-
-    write_output(estimation)
-
-    if model.config.plot_estimation_summary:
-        from celeri.plot import plot_estimation_summary
-
-        plot_estimation_summary(estimation)
-
     return estimation
 
 

@@ -44,9 +44,10 @@ def write_output(
         )
         hdf.create_dataset("earth_radius", data=6371.0)  # type: ignore[arg-type]
 
-        # Write config dictionary
+        # Write config dictionary: strings (paths included) as UTF-8, booleans
+        # as integers, numbers as numbers and lists/tuples as arrays
         grp = hdf.create_group("config")
-        data = config.model_dump()
+        data = config.model_dump(mode="json")
         mesh_params = data.pop("mesh_params")
         for key, value in data.items():
             if value is None:
@@ -57,8 +58,14 @@ def write_output(
                     data=value.encode("utf-8"),
                     dtype=h5py.string_dtype(encoding="utf-8"),
                 )
-            elif np.issubdtype(type(value), np.number):
+            elif isinstance(value, bool):
+                grp.create_dataset(key, data=int(value))
+            elif isinstance(value, int | float):
                 grp.create_dataset(key, data=value)
+            elif isinstance(value, list | tuple) and all(
+                isinstance(v, int | float) and not isinstance(v, bool) for v in value
+            ):
+                grp.create_dataset(key, data=np.asarray(value))
             else:
                 continue
 
@@ -160,10 +167,12 @@ def write_output(
             dtype=string_dtype,
         )
 
-        hdf.attrs["columns"] = np.array(
+        # Column names of the positional "segment" table. The legacy "index"
+        # attribute (segment row index) is kept for existing readers.
+        hdf.attrs["segment_columns"] = np.array(
             segment_no_name.columns, dtype=h5py.string_dtype()
         )
-
+        hdf.attrs["segment_index"] = segment_no_name.index.to_numpy()
         hdf.attrs["index"] = segment_no_name.index.to_numpy()
 
         station_no_name = station.drop("name", axis=1)
@@ -178,6 +187,12 @@ def write_output(
             dtype=string_dtype,
         )
 
+        # Column names of the positional "station" table. The legacy "columns"
+        # attribute has always ended up holding the station columns; keep it.
+        hdf.attrs["station_columns"] = np.array(
+            station_no_name.columns, dtype=h5py.string_dtype()
+        )
+        hdf.attrs["station_index"] = station_no_name.index.to_numpy()
         hdf.attrs["columns"] = np.array(
             station_no_name.columns, dtype=h5py.string_dtype()
         )

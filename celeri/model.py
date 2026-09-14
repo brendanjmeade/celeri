@@ -194,6 +194,10 @@ def read_data(config: Config):
         sar = pd.read_csv(config.sar_file_name)
         sar = sar.loc[:, ~sar.columns.str.match("Unnamed")]
         logger.success(f"Read: {config.sar_file_name}")
+        logger.warning(
+            "SAR data are read and labeled but not used by any solver; "
+            "use los_file_name for line-of-sight observations"
+        )
 
     los = None
     if config.los_file_name is not None:
@@ -256,7 +260,13 @@ def build_model(
     sar = process_sar(sar, config)
     los = process_los(los, config)
     closure, segment, station, block, mogi, sar, los = assign_block_labels(
-        segment=segment, station=station, block=block, mogi=mogi, sar=sar, los=los
+        segment=segment,
+        station=station,
+        block=block,
+        mogi=mogi,
+        sar=sar,
+        los=los,
+        debug_plot_dir=config.output_path,
     )
 
     return Model(
@@ -288,17 +298,16 @@ def process_station(station, config):
 
 
 def process_sar(sar, config):
-    """Preprocessing of SAR data."""
-    if sar.empty:
-        sar["depth"] = np.zeros_like(sar.lon)
-        sar["x"], sar["y"], sar["z"] = sph2cart(sar.lon, sar.lat, RADIUS_EARTH)
-        sar["block_label"] = -1 * np.ones_like(sar.x)
-    else:
-        sar["dep"] = []
-        sar["x"] = []
-        sar["y"] = []
-        sar["x"] = []
-        sar["block_label"] = []
+    """Preprocessing of SAR data.
+
+    Adds Cartesian coordinates, depth and a block label placeholder, for an
+    empty or a populated SAR frame.
+    """
+    sar["depth"] = np.zeros(len(sar))
+    sar["x"], sar["y"], sar["z"] = sph2cart(
+        sar.lon.to_numpy(dtype=float), sar.lat.to_numpy(dtype=float), RADIUS_EARTH
+    )
+    sar["block_label"] = -1 * np.ones(len(sar), dtype=int)
     return sar
 
 
@@ -388,12 +397,20 @@ def order_endpoints_sphere(segment):
     endpoints1 = np.transpose(np.array([segment.x1, segment.y1, segment.z1]))
     endpoints2 = np.transpose(np.array([segment.x2, segment.y2, segment.z2]))
     cross_product = np.cross(endpoints1, endpoints2)
+    swap = cross_product[:, 2] < 0
 
+    # Swap the Cartesian endpoint columns together with the geographic ones
     return segment.assign(
-        lon1=np.where(cross_product[:, 2] < 0, segment.lon2, segment.lon1),
-        lat1=np.where(cross_product[:, 2] < 0, segment.lat2, segment.lat1),
-        lon2=np.where(cross_product[:, 2] < 0, segment.lon1, segment.lon2),
-        lat2=np.where(cross_product[:, 2] < 0, segment.lat1, segment.lat2),
+        lon1=np.where(swap, segment.lon2, segment.lon1),
+        lat1=np.where(swap, segment.lat2, segment.lat1),
+        lon2=np.where(swap, segment.lon1, segment.lon2),
+        lat2=np.where(swap, segment.lat1, segment.lat2),
+        x1=np.where(swap, segment.x2, segment.x1),
+        y1=np.where(swap, segment.y2, segment.y1),
+        z1=np.where(swap, segment.z2, segment.z1),
+        x2=np.where(swap, segment.x1, segment.x2),
+        y2=np.where(swap, segment.y1, segment.y2),
+        z2=np.where(swap, segment.z1, segment.z2),
     )
 
 
@@ -428,7 +445,7 @@ def zero_mesh_segment_locking_depth(segment, meshes):
     toggle_off = np.where(
         (segment.mesh_flag != 0)
         & (segment.mesh_file_index >= 0)
-        & (segment.mesh_file_index <= len(meshes))
+        & (segment.mesh_file_index < len(meshes))
     )[0]
     return segment.assign(
         locking_depth=segment.locking_depth.where(~segment.index.isin(toggle_off), 0)
@@ -493,9 +510,24 @@ def inpolygon(xq, yq, xv, yv):
     return p.contains_points(q).reshape(shape)
 
 
-def assign_block_labels(*, segment, station, block, mogi, sar, los=None):
+def _save_debug_figure(debug_plot_dir, file_name: str) -> None:
+    """Save the current matplotlib figure into ``debug_plot_dir`` and close it."""
+    if debug_plot_dir is not None:
+        out_path = Path(debug_plot_dir) / file_name
+        plt.savefig(out_path, dpi=150)
+        logger.warning(f"Saved diagnostic figure to {out_path}")
+    plt.close()
+
+
+def assign_block_labels(
+    *, segment, station, block, mogi, sar, los=None, debug_plot_dir=None
+):
     """Ben Thompson's implementation of the half edge approach to the
     block labeling problem and east/west assignment.
+
+    When a block polygon contains no interior point, or more than expected,
+    a diagnostic figure is saved into ``debug_plot_dir`` (if given) instead
+    of being shown, so that non-interactive runs never block.
     """
     # segment = split_segments_crossing_meridian(segment)
     segment = segment.copy(deep=True)
@@ -570,7 +602,7 @@ def assign_block_labels(*, segment, station, block, mogi, sar, los=None):
             padding = max(lon_range, lat_range) * 0.1
             plt.xlim(lon_min - padding, lon_max + padding)
             plt.ylim(lat_min - padding, lat_max + padding)
-            plt.show()
+            _save_debug_figure(debug_plot_dir, f"block_interior_points_polygon_{i}.png")
 
         # Case 2: One interior point.  Nothing to do
 
@@ -607,7 +639,7 @@ def assign_block_labels(*, segment, station, block, mogi, sar, los=None):
             padding = max(lon_range, lat_range) * 0.1
             plt.xlim(lon_min - padding, lon_max + padding)
             plt.ylim(lat_min - padding, lat_max + padding)
-            plt.show()
+            _save_debug_figure(debug_plot_dir, f"block_interior_points_polygon_{i}.png")
 
     # Assign block labels points to block interior points
     block["block_label"] = closure.assign_points(

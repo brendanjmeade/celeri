@@ -1,9 +1,11 @@
 import argparse
 from pathlib import Path
+from typing import get_args
 
 from loguru import logger
+from pydantic import TypeAdapter
 
-from celeri.config import Config, load_mesh_params
+from celeri.config import Config, SolveType, load_mesh_params
 
 
 def str2bool(v):
@@ -66,7 +68,8 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default=None,
         required=False,
-        help="Solution type (dense | hmatrix)",
+        choices=list(get_args(SolveType)),
+        help="Solution type (" + " | ".join(get_args(SolveType)) + ")",
     )
     parser.add_argument(
         "--repl",
@@ -103,48 +106,6 @@ def parse_args() -> argparse.Namespace:
         default=None,
         required=False,
         help="Flag for saving summary plot of model results (0 | 1)",
-    )
-    parser.add_argument(
-        "--save_elastic",
-        type=str2bool,
-        default=None,
-        required=False,
-        help="Flag for saving elastic calculations (0 | 1)",
-    )
-    parser.add_argument(
-        "--reuse_elastic",
-        type=str2bool,
-        default=None,
-        required=False,
-        help="Flag for reusing elastic calculations (0 | 1)",
-    )
-    parser.add_argument(
-        "--snap_segments",
-        type=str2bool,
-        default=None,
-        required=False,
-        help="Flag for snapping segments (0 | 1)",
-    )
-    parser.add_argument(
-        "--atol",
-        type=int,
-        default=None,
-        required=False,
-        help="Primary tolerance for H-matrix solve",
-    )
-    parser.add_argument(
-        "--btol",
-        type=int,
-        default=None,
-        required=False,
-        help="Secondary tolerance for H-matrix solve",
-    )
-    parser.add_argument(
-        "--iterative_solver",
-        type=str,
-        default=None,
-        required=False,
-        help="Interative solver type (lsqr | lsmr)",
     )
     parser.add_argument(
         "--mcmc-tune",
@@ -324,8 +285,14 @@ def process_args(config: Config, args: argparse.Namespace):
                     original_val = bool(original_val)
 
                 # Convert CLI filenames from cwd-relative str to absolute Path
-                if key[-10:] == "_file_name":
+                if key[-10:] == "_file_name" and args_val is not None:
                     args_val = Path(args_val).absolute()
+
+                # Config does not validate on assignment; validate the override
+                # against the field's declared type here
+                args_val = TypeAdapter(
+                    Config.model_fields[key].annotation
+                ).validate_python(args_val)
 
                 # Only log if the value is actually being changed
                 if original_val != args_val:
@@ -345,3 +312,7 @@ def process_args(config: Config, args: argparse.Namespace):
     if mesh_params_path is not None:
         config.mesh_params = load_mesh_params(Path(mesh_params_path), Path.cwd())
         logger.success(f"Read: {mesh_params_path}")
+
+    # Field-level validation above cannot see cross-field rules (for example
+    # the MCMC mixed-constraint check keyed on solve_type); re-run them
+    Config.model_validate(config.model_dump())

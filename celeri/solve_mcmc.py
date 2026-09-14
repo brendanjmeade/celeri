@@ -961,6 +961,12 @@ def _add_tde_elastic_constraints(
             mesh.config.side_elastic_constraint_sigma,
         ),
     ]:
+        if constraint_flag == 2:
+            raise ValueError(
+                f"{name}_slip_rate_constraint = 2 (tie the boundary slip to the "
+                "kinematic rate) is only implemented by the dense solver; use 0 "
+                "or 1 with the MCMC solver"
+            )
         if constraint_flag == 1:
             idx = np.where(elements)[0]
             constrained_tde = elastic_tde[idx]
@@ -1300,6 +1306,40 @@ def _add_mogi_component(operators: Operators, vel_idx: np.ndarray):
     return _operator_mult(op, mogi)
 
 
+def _weighted_studentt_logp(value, weight, mu, sigma, nu=6):
+    """Elementwise Student-t log-likelihood scaled by a per-observation weight.
+
+    Kept elementwise (no reduction) so that the pointwise log-likelihood used
+    by WAIC/LOO keeps one entry per observation.
+    """
+    import pymc as pm
+
+    return weight * pm.logp(pm.StudentT.dist(nu=nu, mu=mu, sigma=sigma), value)
+
+
+def _weighted_studentt_random(weight, mu, sigma, rng=None, size=None, nu=6):
+    """Draw from the (unweighted) Student-t observation model."""
+    rng = np.random.default_rng() if rng is None else rng
+    mu = np.asarray(mu, dtype=float)
+    size = mu.shape if size is None else size
+    return mu + np.asarray(sigma, dtype=float) * rng.standard_t(nu, size=size)
+
+
+def _weighted_normal_logp(value, weight, mu, sigma):
+    """Elementwise Normal log-likelihood scaled by a per-observation weight."""
+    import pymc as pm
+
+    return weight * pm.logp(pm.Normal.dist(mu=mu, sigma=sigma), value)
+
+
+def _weighted_normal_random(weight, mu, sigma, rng=None, size=None):
+    """Draw from the (unweighted) Normal observation model."""
+    rng = np.random.default_rng() if rng is None else rng
+    mu = np.asarray(mu, dtype=float)
+    size = mu.shape if size is None else size
+    return rng.normal(mu, np.asarray(sigma, dtype=float), size=size)
+
+
 def _add_station_velocity_likelihood(model: Model, mu):
     """Add station velocity likelihood to the PyMC model.
 
@@ -1321,14 +1361,8 @@ def _add_station_velocity_likelihood(model: Model, mu):
     else:
         data = np.array([model.station.east_vel, model.station.north_vel]).T
 
-    lh_dist = pm.StudentT.dist
-
-    def lh(value, weight, mu, sigma):
-        dist = lh_dist(nu=6, mu=mu, sigma=sigma)
-        return weight * pm.logp(dist, value)
-
-    def random(weight, mu, sigma, rng=None, size=None):
-        return lh_dist(nu=6, mu=mu, sigma=sigma, rng=rng, size=size)
+    lh = _weighted_studentt_logp
+    random = _weighted_studentt_random
 
     dims = (
         ("station", "xyz")
@@ -1409,20 +1443,13 @@ def _add_los_velocity_likelihood(
         )
         _log_weighting_diagnostics(diagnostics, "LOS")
 
-        def los_logp(value, weight, mu, sigma):
-            dist = pm.Normal.dist(mu=mu, sigma=sigma)
-            return pt.sum(weight * pm.logp(dist, value))
-
-        def los_random(weight, mu, sigma, rng=None, size=None):
-            return pm.Normal.dist(mu=mu, sigma=sigma, rng=rng, size=size)
-
         pm.CustomDist(
             "los_velocity",
             weight,
             los_pred,
             sigma_los,
-            logp=los_logp,
-            random=los_random,
+            logp=_weighted_normal_logp,
+            random=_weighted_normal_random,
             observed=los_ops.los_data,
             dims=("los",),
         )
@@ -1553,6 +1580,31 @@ def _add_segment_constraints(model: Model, operators: Operators, rotation):
             )
 
 
+def _validate_segment_constraint_sigmas(model: Model) -> None:
+    """Reject zero or missing sigmas on flag-1 segment rate constraints.
+
+    Flag-1 constraints are Normal observations whose sigma comes from the
+    segment file (unlike the dense solvers, which use the uniform
+    slip_constraint_weight); a zero or missing sigma would poison the
+    rotation whitening and the likelihood.
+    """
+    for comp, flag_attr, sig_attr in [
+        ("strike_slip", "ss_rate_flag", "ss_rate_sig"),
+        ("dip_slip", "ds_rate_flag", "ds_rate_sig"),
+        ("tensile_slip", "ts_rate_flag", "ts_rate_sig"),
+    ]:
+        flags = getattr(model.segment, flag_attr).values == 1
+        sigmas = getattr(model.segment, sig_attr).values[flags].astype(float)
+        good = np.isfinite(sigmas) & (sigmas > 0)
+        if not np.all(good):
+            bad = model.segment.name.values[flags][~good]
+            raise ValueError(
+                f"The MCMC solver uses {sig_attr} as the observation sigma of "
+                f"{comp} rate constraints; it must be finite and positive "
+                f"(segments: {', '.join(str(b).strip() for b in bad)})"
+            )
+
+
 def _build_pymc_model(
     model: Model,
     operators: Operators,
@@ -1566,6 +1618,8 @@ def _build_pymc_model(
         model: The celeri Model
         operators: Operators for the forward model
     """
+    _validate_segment_constraint_sigmas(model)
+
     assert operators.eigen is not None
     assert operators.tde is not None
 
@@ -1722,7 +1776,21 @@ def solve_mcmc(
                 "a segment with mesh_flag=1 in the segment file."
             )
 
+    if len(model.meshes) == 0:
+        raise ValueError(
+            "The MCMC solver needs at least one mesh (its state vector uses the "
+            "eigenmode layout); use the dense solver for a mesh-free model"
+        )
+
     use_streaming = model.config.mcmc_station_velocity_method == "project_to_eigen"
+    if not use_streaming:
+        logger.warning(
+            f"mcmc_station_velocity_method={model.config.mcmc_station_velocity_method!r}: "
+            "the sampler fits the full elastic field, but the estimation's "
+            "predictions and model_station.csv use its eigenmode projection, so "
+            "the reported velocities differ from the sampler's by the part of the "
+            "field outside the eigenbasis"
+        )
 
     if operators is None:
         if use_streaming:

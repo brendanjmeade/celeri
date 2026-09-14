@@ -17,7 +17,7 @@
   "repl": 1,
   "segment_file_name": "../data/segment/test_closure_segment.csv",
   "slip_constraint_weight": 27.2,
-  "solve_type": "hmatrix",
+  "solve_type": "dense",
   "station_file_name": "../data/station/test_closure_station.csv",
   "tri_con_weight": 1,
   "unit_sigmas": 0

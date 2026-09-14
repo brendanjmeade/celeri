@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 import celeri
 from celeri.celeri_closure import Polygon, get_segment_labels, run_block_closure
@@ -126,3 +127,69 @@ def test_global_closure():
         all_edge_idxs_stored = np.load(f)
 
     assert np.allclose(all_edge_idxs, all_edge_idxs_stored)
+
+
+def test_debug_plot_never_blocks(monkeypatch, tmp_path):
+    """The closure debug figure is saved and closed, never shown."""
+    import matplotlib.pyplot as plt
+
+    from celeri.celeri_closure import _debug_plot_polygons_and_error
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(plt, "show", lambda *a, **k: pytest.fail("plt.show called"))
+    np_segments = np.array(
+        [
+            [[0.0, 0.0], [1.0, 0.1]],
+            [[1.0, 0.1], [0.5, 1.0]],
+            [[0.5, 1.0], [0.0, 0.0]],
+        ]
+    )
+    closure = run_block_closure(np_segments)
+
+    _debug_plot_polygons_and_error(closure, [[0]], 0, reason="test")
+
+    assert list((tmp_path / "debug_plots").glob("closure_debug_*.png"))
+
+
+def _triangle_polygon():
+    np_segments = np.array(
+        [
+            [[0.0, 0.0], [1.0, 0.1]],
+            [[1.0, 0.1], [0.5, 1.0]],
+            [[0.5, 1.0], [0.0, 0.0]],
+        ]
+    )
+    closure = run_block_closure(np_segments)
+    return min(closure.polygons, key=lambda p: p.area_steradians)
+
+
+def test_interior_point_on_last_edge_is_accepted(monkeypatch):
+    """A valid interior point found on the polygon's last edge must be used."""
+    import celeri.celeri_closure as cc
+    from celeri.celeri_util import sph2cart
+
+    polygon = _triangle_polygon()
+    vs = polygon.vertices
+    last_midpoint = np.array(sph2cart(*((vs[-1] + vs[-2]) / 2), 1.0))
+
+    def crossing_except_last_edge(a, b, c, d):
+        if np.allclose(a, last_midpoint):
+            return np.full(3, np.nan)
+        return np.zeros(3)
+
+    monkeypatch.setattr(cc, "intersection", crossing_except_last_edge)
+    rebuilt = Polygon(polygon.edge_idxs, polygon.vertex_idxs, vs)
+
+    expected = (vs[-1] + vs[-2]) / 2 + np.array(
+        [vs[-1, 1] - vs[-2, 1], -(vs[-1, 0] - vs[-2, 0])]
+    ) / 4
+    np.testing.assert_allclose(rebuilt.interior, expected)
+
+
+def test_interior_point_all_edges_crossing_raises(monkeypatch):
+    import celeri.celeri_closure as cc
+
+    polygon = _triangle_polygon()
+    monkeypatch.setattr(cc, "intersection", lambda a, b, c, d: np.zeros(3))
+    with pytest.raises(ValueError, match="interior point"):
+        Polygon(polygon.edge_idxs, polygon.vertex_idxs, polygon.vertices)

@@ -340,7 +340,9 @@ def interleave2(array_1, array_2):
     Returns:
         interleaved_array (np.array): Interleaved array
     """
-    interleaved_array = np.empty((array_1.size + array_2.size), dtype=array_1.dtype)
+    interleaved_array = np.empty(
+        (array_1.size + array_2.size), dtype=np.result_type(array_1, array_2)
+    )
     interleaved_array[0::2] = array_1
     interleaved_array[1::2] = array_2
     return interleaved_array
@@ -361,7 +363,8 @@ def interleave3(array_1, array_2, array_3):
         interleaved_array (np.array): Interleaved array
     """
     interleaved_array = np.empty(
-        (array_1.size + array_2.size + array_3.size), dtype=array_1.dtype
+        (array_1.size + array_2.size + array_3.size),
+        dtype=np.result_type(array_1, array_2, array_3),
     )
     interleaved_array[0::3] = array_1
     interleaved_array[1::3] = array_2

@@ -14,6 +14,7 @@ import numpy as np
 from loguru import logger
 from scipy import linalg, sparse
 
+from celeri.celeri_util import interleave3
 from celeri.config import Sqp2Objective
 from celeri.mesh import ScalarBound
 from celeri.model import Model
@@ -153,7 +154,9 @@ class SlipRate:
             tol=tol,
             coupling_bounds=limits.dip_slip.coupling_bounds,
         )
-        return (oob1, total1), (oob2, total2)
+        # (strike, dip) out-of-bounds counts, then (strike, dip) totals: the
+        # layout Minimizer.out_of_bounds_detailed unpacks into its two arrays
+        return (oob1, oob2), (total1, total2)
 
     def constraint_loss(
         self, *, smooth_kinematic: bool, limits: SlipRateLimit
@@ -434,7 +437,7 @@ class SlipRateLimitItem:
             "upper-bound line",
         ]
 
-        for i in range(4):
+        for i in range(len(kin_coefs)):
             # Skip if coefficients are zero (no constraint)
             if abs(kin_coefs[i]) < 1e-10 and abs(est_coefs[i]) < 1e-10:
                 continue
@@ -454,7 +457,7 @@ class SlipRateLimitItem:
         )
         feasible = np.ones_like(xx, dtype=bool)
 
-        for i in range(4):
+        for i in range(len(kin_coefs)):
             if abs(est_coefs[i]) < 1e-10 and abs(kin_coefs[i]) < 1e-10:
                 continue
 
@@ -682,6 +685,29 @@ class Minimizer:
         return loss
 
 
+def _column_scale(C: np.ndarray) -> np.ndarray:
+    """Largest absolute entry of every column, with 1 for all-zero columns.
+
+    All-zero columns (a strain block or Mogi source that no station sees)
+    must not turn the rescaled problem into NaNs.
+    """
+    scale = np.abs(C).max(0)
+    scale[scale == 0] = 1.0
+    return scale
+
+
+def _regularized_slip_rate_mask(segment) -> np.ndarray:
+    """Mask over the interleaved (strike, dip, tensile) segment slip-rate
+    vector selecting the components whose ``*_rate_flag`` is 2, i.e. the
+    ones regularised towards zero.
+    """
+    return interleave3(
+        segment.ss_rate_flag.to_numpy() == 2,
+        segment.ds_rate_flag.to_numpy() == 2,
+        segment.ts_rate_flag.to_numpy() == 2,
+    ).astype(bool)
+
+
 def build_cvxpy_problem(
     model: Model,
     *,
@@ -701,7 +727,11 @@ def build_cvxpy_problem(
     if velocity_limits is None:
         velocity_limits = SlipRateLimit.from_model(model)
 
-    assert operators.eigen is not None
+    if operators.eigen is None:
+        raise ValueError(
+            "solve_sqp2 needs eigenmode operators, which require at least one "
+            "mesh; use the dense solver for a mesh-free model"
+        )
 
     data_vector_eigen = operators.data_vector
     weighting_vector_eigen = operators.weighting_vector
@@ -710,7 +740,7 @@ def build_cvxpy_problem(
     d = data_vector_eigen * np.sqrt(weighting_vector_eigen)
 
     if rescale_parameters:
-        scale = np.abs(C).max(0)
+        scale = _column_scale(C)
     else:
         scale = np.ones(C.shape[1])
 
@@ -895,13 +925,7 @@ def build_cvxpy_problem(
     )
     gamma = model.config.segment_slip_rate_regularization
     if gamma != 0.0:
-        subset = np.concatenate(
-            [
-                model.segment.ss_rate_flag == 2,
-                model.segment.ds_rate_flag == 2,
-                model.segment.ts_rate_flag == 2,
-            ]
-        )
+        subset = _regularized_slip_rate_mask(model.segment)
         objective_val = objective_val + gamma * cp.sum_squares(
             segment_slip_rate[subset]
         )
@@ -1347,9 +1371,10 @@ class MinimizerTrace:
     def to_estimation(self) -> Estimation:
         """Convert the minimizer trace to an estimation object."""
         estimation = self.minimizer.to_estimation()
-        estimation.n_out_of_bounds_trace = np.array(self.out_of_bounds_detailed)[
-            :, :, 0
-        ].T
+        # (n_iterations, n_meshes, 2) strike/dip counts -> (n_meshes, n_iterations)
+        estimation.n_out_of_bounds_trace = (
+            np.array(self.out_of_bounds_detailed).sum(axis=2).T
+        )
         estimation.trace = self
         return estimation
 

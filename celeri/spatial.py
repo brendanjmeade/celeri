@@ -4,15 +4,16 @@ import cutde.halfspace as cutde_halfspace
 import numpy as np
 import pandas as pd
 import scipy
+from loguru import logger
 from rich.progress import track
 from scipy.sparse import csr_matrix
 
 from celeri.celeri_util import (
+    cart2sph,
     cartesian_vector_to_spherical_vector,
     get_cross_partials,
     get_segment_oblique_projection,
     get_transverse_projection,
-    latitude_to_colatitude,
     sph2cart,
 )
 from celeri.constants import GEOID, KM2M, RADIUS_EARTH
@@ -745,8 +746,19 @@ def get_tri_smoothing_matrix(share, tri_shared_sides_distances) -> csr_matrix:
     """
     n = share.shape[0]  # number of triangles
 
-    # Sum distances and compute 1/d (NaN propagates harmlessly for missing neighbors)
-    leading_coefficient = 2.0 / np.nansum(tri_shared_sides_distances, axis=1)  # (n,)
+    # Sum distances and compute 1/d (NaN propagates harmlessly for missing
+    # neighbors). An element with no neighbor at all gets a zero row rather
+    # than an infinite leading coefficient.
+    summed_distances = np.nansum(tri_shared_sides_distances, axis=1)  # (n,)
+    isolated = summed_distances == 0
+    if np.any(isolated):
+        logger.warning(
+            f"{int(isolated.sum())} mesh elements share no side with any other "
+            "element; they receive no smoothing"
+        )
+    leading_coefficient = np.where(
+        isolated, 0.0, 2.0 / np.where(isolated, 1.0, summed_distances)
+    )
     # (n, 3) 1/d per neighbor slot, NaN if missing
     inverse_distances = 1.0 / tri_shared_sides_distances
 
@@ -848,52 +860,52 @@ def get_strain_rate_displacements(
     lat_obs: np.ndarray,
     centroid_lon: np.ndarray,
     centroid_lat: np.ndarray,
-    strain_rate_lon_lon: int,
-    strain_rate_lat_lat: int,
-    strain_rate_lon_lat: int,
+    strain_rate_lon_lon: float,
+    strain_rate_lat_lat: float,
+    strain_rate_lon_lat: float,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Calculate displacements due to three block strain rate components.
-    Equations are from Savage (2001) and expressed concisely in McCaffrey (2005):
-    https://www.researchgate.net/publication/251436956_Block_kinematics_of_the_Pacific-North_America_plate_boundary_in_the_southwestern_US_from_inversion_of_GPS_seismological_and_geologic_data
-    See the two unnumbered equations at the bottom of page 2:
+    """Calculate displacements due to a homogeneous block strain rate.
 
-    u_east = ε_λλ * R_E * (λ_obs - λ_c) * sin(φ_c) + ε_λφ * R_E * (φ_obs - φ_c)
-    u_north = ε_λφ * R_E * (λ_obs - λ_c) * sin(φ_c) + ε_φφ * R_E * (φ_obs - φ_c)
-    u_up = 0
+    The strain rate tensor is applied in a local east-north tangent frame
+    centred on the block centroid (Savage, 2001; McCaffrey, 2005):
 
-    u_up is zero, since strain is assumed to be strain on the spherical plane.
+        x = R_E * cos(lat_c) * (lon_obs - lon_c)
+        y = R_E * (lat_obs - lat_c)
+        u_east  = eps_ll * x + eps_lp * y
+        u_north = eps_lp * x + eps_pp * y
+        u_up    = 0
+
+    with longitudes and latitudes in radians. Positive normal components are
+    extensional and eps_lp is the symmetric shear component, so the field
+    carries no rigid rotation (that belongs to the block rotation vector).
+    The same expressions hold in both hemispheres.
 
     Args:
-    lon_obs: Longitude coordinates at the stations
-    lat_obs: Latitude coordinates at the stations
-    centroid_lon: Longitude of the block centroid
-    centroid_lat: Latitude of the block centroid
-    strain_rate_lon_lon: Strain rate component ε_λλ
-    strain_rate_lat_lat: Strain rate component ε_φφ
-    strain_rate_lon_lat: Strain rate component ε_λφ
+    lon_obs: Longitude coordinates at the stations (degrees)
+    lat_obs: Latitude coordinates at the stations (degrees)
+    centroid_lon: Longitude of the block centroid (degrees)
+    centroid_lat: Latitude of the block centroid (degrees)
+    strain_rate_lon_lon: Strain rate component eps_ll (east-east)
+    strain_rate_lat_lat: Strain rate component eps_pp (north-north)
+    strain_rate_lon_lat: Strain rate component eps_lp (east-north)
 
     Returns:
     tuple[np.ndarray, np.ndarray, np.ndarray]: Eastward, northward, and upward velocities
     """
-    centroid_lon = np.deg2rad(centroid_lon)
-    centroid_lat = latitude_to_colatitude(centroid_lat)
-    centroid_lat = np.deg2rad(centroid_lat)
-    lon_obs = np.deg2rad(lon_obs)
-    lat_obs = latitude_to_colatitude(lat_obs)
-    lat_obs = np.deg2rad(lat_obs)
+    lon_obs = np.deg2rad(np.asarray(lon_obs, dtype=float))
+    lat_obs = np.deg2rad(np.asarray(lat_obs, dtype=float))
+    centroid_lon = np.deg2rad(np.asarray(centroid_lon, dtype=float))
+    centroid_lat = np.deg2rad(np.asarray(centroid_lat, dtype=float))
 
-    # Calculate displacements from homogeneous strain
-    u_up = np.zeros(
-        lon_obs.size
-    )  # Always zero here because we're assuming plane strain on the sphere
+    # Longitude differences taken the short way around the sphere
+    delta_lon = (lon_obs - centroid_lon + np.pi) % (2 * np.pi) - np.pi
+    x = RADIUS_EARTH * np.cos(centroid_lat) * delta_lon
+    y = RADIUS_EARTH * (lat_obs - centroid_lat)
 
-    u_east = strain_rate_lon_lon * (
-        RADIUS_EARTH * (lon_obs - centroid_lon) * np.sin(centroid_lat)
-    ) + strain_rate_lon_lat * (RADIUS_EARTH * (lat_obs - centroid_lat))
-
-    u_north = strain_rate_lon_lat * (
-        RADIUS_EARTH * (lon_obs - centroid_lon) * np.sin(centroid_lat)
-    ) + strain_rate_lat_lat * (RADIUS_EARTH * (lat_obs - centroid_lat))
+    u_east = strain_rate_lon_lon * x + strain_rate_lon_lat * y
+    u_north = strain_rate_lon_lat * x + strain_rate_lat_lat * y
+    # Always zero: plane strain on the sphere
+    u_up = np.zeros(lon_obs.size)
     return u_east, u_north, u_up
 
 
@@ -962,21 +974,20 @@ def get_block_strain_rate_to_velocities_partials(
                 strain_rate_lat_lat=0,
                 strain_rate_lon_lat=1,
             )
-            # The sign convention established here (with negative signs on the lat_lat components) is that
-            # positive longitudinal strain is extensional, and
-            # positive shear strain is sinistral (counterclockwise)
+            # Columns are (eps_ll, eps_pp, eps_lp): positive normal strain rates
+            # are extensional and eps_lp is the symmetric shear component
             block_strain_rate_operator[3 * station_idx, 3 * i] = vel_east_lon_lon
-            block_strain_rate_operator[3 * station_idx, 3 * i + 1] = -vel_east_lat_lat
+            block_strain_rate_operator[3 * station_idx, 3 * i + 1] = vel_east_lat_lat
             block_strain_rate_operator[3 * station_idx, 3 * i + 2] = vel_east_lon_lat
             block_strain_rate_operator[3 * station_idx + 1, 3 * i] = vel_north_lon_lon
-            block_strain_rate_operator[
-                3 * station_idx + 1, 3 * i + 1
-            ] = -vel_north_lat_lat
+            block_strain_rate_operator[3 * station_idx + 1, 3 * i + 1] = (
+                vel_north_lat_lat
+            )
             block_strain_rate_operator[3 * station_idx + 1, 3 * i + 2] = (
                 vel_north_lon_lat
             )
             block_strain_rate_operator[3 * station_idx + 2, 3 * i] = vel_up_lon_lon
-            block_strain_rate_operator[3 * station_idx + 2, 3 * i + 1] = -vel_up_lat_lat
+            block_strain_rate_operator[3 * station_idx + 2, 3 * i + 1] = vel_up_lat_lat
             block_strain_rate_operator[3 * station_idx + 2, 3 * i + 2] = vel_up_lon_lat
     return block_strain_rate_operator, strain_rate_block_idx
 
@@ -1037,8 +1048,21 @@ def get_block_centroid(
             segment.length[segments_with_block_idx],
         )
     )
-    block_centroid_lon = np.average(lon0, weights=lengths)
-    block_centroid_lat = np.average(lat0, weights=lengths)
+    # Average unit vectors so that blocks straddling the 0/360 meridian (or a
+    # pole) get a sensible centroid, then convert back to longitude/latitude
+    x, y, z = sph2cart(
+        np.asarray(lon0, dtype=float), np.asarray(lat0, dtype=float), 1.0
+    )
+    mean_xyz = np.array(
+        [
+            np.average(x, weights=lengths),
+            np.average(y, weights=lengths),
+            np.average(z, weights=lengths),
+        ]
+    )
+    block_centroid_lon, block_centroid_lat, _ = cart2sph(*mean_xyz)
+    block_centroid_lon = np.rad2deg(block_centroid_lon) % 360.0
+    block_centroid_lat = np.rad2deg(block_centroid_lat)
     return np.array([block_centroid_lon]), np.array([block_centroid_lat])
 
 
