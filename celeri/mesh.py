@@ -647,6 +647,69 @@ def _compute_n_tde_constraints(
     return int(len(top_slip_idx) + len(bottom_slip_idx) + len(side_slip_idx))
 
 
+def _triangle_normals_enu(
+    v1: np.ndarray,
+    v2: np.ndarray,
+    v3: np.ndarray,
+    lon_centroid: np.ndarray,
+    lat_centroid: np.ndarray,
+) -> np.ndarray:
+    """Normal vector of each triangle in a local east-north-up frame.
+
+    ``v1``, ``v2``, ``v3`` are (n, 3) Cartesian vertex coordinates in meters;
+    the frame is taken at each triangle's centroid. The normal follows the
+    right-hand rule of the vertex order, so triangles ordered
+    counter-clockwise when seen from above have a positive up component.
+    """
+    lon = np.deg2rad(np.asarray(lon_centroid, dtype=float))
+    lat = np.deg2rad(np.asarray(lat_centroid, dtype=float))
+    east = np.c_[-np.sin(lon), np.cos(lon), np.zeros_like(lon)]
+    north = np.c_[-np.sin(lat) * np.cos(lon), -np.sin(lat) * np.sin(lon), np.cos(lat)]
+    up = np.c_[np.cos(lat) * np.cos(lon), np.cos(lat) * np.sin(lon), np.sin(lat)]
+
+    def to_enu(vector):
+        return np.c_[
+            np.sum(vector * east, axis=1),
+            np.sum(vector * north, axis=1),
+            np.sum(vector * up, axis=1),
+        ]
+
+    return np.cross(to_enu(v2 - v1), to_enu(v3 - v1))
+
+
+def _orient_triangles_upward(points: np.ndarray, verts: np.ndarray) -> np.ndarray:
+    """Reorder the vertices of every triangle so that its normal points up.
+
+    Element slip components are defined relative to the vertex order (the
+    dip-slip direction reverses with the winding), so a consistent
+    counter-clockwise-from-above ordering keeps one sign convention across
+    the mesh regardless of how the mesh file was written.
+    """
+    verts = np.array(verts, dtype=int, copy=True)
+    x, y, z = sph2cart(
+        points[:, 0],
+        points[:, 1],
+        constants.RADIUS_EARTH + constants.KM2M * points[:, 2],
+    )
+    xyz = np.c_[x, y, z]
+    v1, v2, v3 = xyz[verts[:, 0]], xyz[verts[:, 1]], xyz[verts[:, 2]]
+    centroid = (v1 + v2 + v3) / 3.0
+    lon_centroid, lat_centroid, _ = cart2sph(
+        centroid[:, 0], centroid[:, 1], centroid[:, 2]
+    )
+    normals = _triangle_normals_enu(
+        v1, v2, v3, np.rad2deg(lon_centroid), np.rad2deg(lat_centroid)
+    )
+    downward = normals[:, 2] < 0
+    if np.any(downward):
+        logger.info(
+            f"Reversed the vertex order of {int(downward.sum())} triangles with "
+            "downward normals"
+        )
+        verts[downward] = verts[downward][:, ::-1]
+    return verts
+
+
 def _compute_mesh_perimeter(mesh: dict):
     x_coords = mesh["points"][:, 0]
     y_coords = mesh["points"][:, 1]
@@ -1097,7 +1160,7 @@ class Mesh:
             )
         mesh["points"] = points
         verts = meshio.CellBlock("triangle", meshobj.get_cells_type("triangle")).data
-        verts = cast(np.ndarray, verts)
+        verts = _orient_triangles_upward(points, cast(np.ndarray, verts))
         mesh["verts"] = verts
 
         # Expand mesh coordinates
@@ -1133,28 +1196,24 @@ class Mesh:
         mesh["y_centroid"] = (mesh["y1"] + mesh["y2"] + mesh["y3"]) / 3.0
         mesh["z_centroid"] = (mesh["z1"] + mesh["z2"] + mesh["z3"]) / 3.0
 
-        # Spherical triangle centroids
-        mesh["lon_centroid"] = (mesh["lon1"] + mesh["lon2"] + mesh["lon3"]) / 3.0
-        mesh["lat_centroid"] = (mesh["lat1"] + mesh["lat2"] + mesh["lat3"]) / 3.0
+        # Spherical triangle centroids, from the Cartesian centroid so that
+        # triangles straddling the 0/360 meridian are handled
+        centroid_lon, centroid_lat, _ = cart2sph(
+            mesh["x_centroid"], mesh["y_centroid"], mesh["z_centroid"]
+        )
+        mesh["lon_centroid"] = np.rad2deg(centroid_lon) % 360.0
+        mesh["lat_centroid"] = np.rad2deg(centroid_lat)
 
-        # Cross products for orientations
-        tri_leg1 = np.transpose(
-            [
-                np.deg2rad(mesh["lon2"] - mesh["lon1"]),
-                np.deg2rad(mesh["lat2"] - mesh["lat1"]),
-                (1 + constants.KM2M * mesh["dep2"] / constants.RADIUS_EARTH)
-                - (1 + constants.KM2M * mesh["dep1"] / constants.RADIUS_EARTH),
-            ]
+        # Element orientation from the Cartesian legs expressed in a local
+        # east-north-up frame at each centroid (a plain (dlon, dlat) frame
+        # would stretch the east leg by 1/cos(lat) and bias strike and dip)
+        mesh["nv"] = _triangle_normals_enu(
+            np.c_[mesh["x1"], mesh["y1"], mesh["z1"]],
+            np.c_[mesh["x2"], mesh["y2"], mesh["z2"]],
+            np.c_[mesh["x3"], mesh["y3"], mesh["z3"]],
+            mesh["lon_centroid"],
+            mesh["lat_centroid"],
         )
-        tri_leg2 = np.transpose(
-            [
-                np.deg2rad(mesh["lon3"] - mesh["lon1"]),
-                np.deg2rad(mesh["lat3"] - mesh["lat1"]),
-                (1 + constants.KM2M * mesh["dep3"] / constants.RADIUS_EARTH)
-                - (1 + constants.KM2M * mesh["dep1"] / constants.RADIUS_EARTH),
-            ]
-        )
-        mesh["nv"] = np.cross(tri_leg1, tri_leg2)
         azimuth, elevation, _r = cart2sph(
             mesh["nv"][:, 0],
             mesh["nv"][:, 1],
