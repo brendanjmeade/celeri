@@ -333,3 +333,24 @@ def test_hdf5_table_column_attributes():
         np.testing.assert_array_equal(
             hdf.attrs["index"], estimation.model.segment.index.to_numpy()
         )
+
+
+def test_hdf5_config_group_keeps_paths_flags_and_ranges():
+    config = celeri.get_config("./tests/configs/test_wna_config.json")
+    config.repl = False
+    model = celeri.build_model(config)
+    estimation = celeri.assemble_and_solve_dense(model, eigen=False, tde=False)
+    celeri.write_output(estimation)
+
+    with h5py.File(config.output_path / f"model_{config.run_name}.hdf5", "r") as hdf:
+        group = hdf["config"]
+        assert group["station_file_name"][()].decode() == str(config.station_file_name)
+        assert int(group["include_vertical_velocity"][()]) == int(
+            config.include_vertical_velocity
+        )
+        np.testing.assert_array_equal(group["lon_range"][...], config.lon_range)
+        assert group["solve_type"][()].decode() == config.solve_type
+        assert (
+            float(group["block_constraint_weight"][()])
+            == config.block_constraint_weight
+        )

@@ -268,7 +268,9 @@ class Estimation:
         """A dataframe containing the estimated slip rates and couplings for each mesh.
 
         The slip columns come from `mesh_slip_fields`; fields that are not
-        defined for a mesh are written as zeros.
+        defined for a mesh (kinematic rates and couplings of a mesh that is
+        not tied to any segment) are written as NaN, matching the HDF5 output
+        which omits them.
         """
         if self.operators.tde is None:
             return None
@@ -279,7 +281,7 @@ class Estimation:
         for i in range(len(meshes)):
             n_elements = len(meshes[i].lon1)
             slip_fields = {
-                key: np.zeros(n_elements) if value is None else value
+                key: np.full(n_elements, np.nan) if value is None else value
                 for key, value in self.mesh_slip_fields(i).items()
             }
             this_mesh_data = {
@@ -807,8 +809,9 @@ class Estimation:
         if elastic is None:
             return None
         rates = {}
-        for mesh_idx in kinematic:
-            rates[mesh_idx] = elastic[mesh_idx] / kinematic[mesh_idx]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            for mesh_idx in kinematic:
+                rates[mesh_idx] = elastic[mesh_idx] / kinematic[mesh_idx]
         return rates
 
     @property
@@ -819,8 +822,9 @@ class Estimation:
         if elastic is None:
             return None
         rates = {}
-        for mesh_idx in kinematic:
-            rates[mesh_idx] = elastic[mesh_idx] / kinematic[mesh_idx]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            for mesh_idx in kinematic:
+                rates[mesh_idx] = elastic[mesh_idx] / kinematic[mesh_idx]
         return rates
 
     @property
@@ -831,8 +835,9 @@ class Estimation:
         if elastic is None:
             return None
         rates = {}
-        for mesh_idx in kinematic:
-            rates[mesh_idx] = elastic[mesh_idx] / kinematic[mesh_idx]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            for mesh_idx in kinematic:
+                rates[mesh_idx] = elastic[mesh_idx] / kinematic[mesh_idx]
         return rates
 
     @property
@@ -843,8 +848,9 @@ class Estimation:
         if elastic is None:
             return None
         rates = {}
-        for mesh_idx in kinematic:
-            rates[mesh_idx] = elastic[mesh_idx] / kinematic[mesh_idx]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            for mesh_idx in kinematic:
+                rates[mesh_idx] = elastic[mesh_idx] / kinematic[mesh_idx]
         return rates
 
     def mcmc_draw(
