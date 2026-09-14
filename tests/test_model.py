@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import pytest
 
 from celeri.celeri_util import sph2cart
 from celeri.constants import RADIUS_EARTH
@@ -45,3 +46,34 @@ def test_zero_mesh_segment_locking_depth_bounds():
 
     # Only segments tied to an existing mesh (index < number of meshes) are zeroed
     assert zeroed.locking_depth.tolist() == [0.0, 15.0, 0.0, 15.0, 15.0]
+
+
+def test_assign_block_labels_never_shows(monkeypatch, tmp_path):
+    """A polygon without an interior point is reported by a saved figure, not plt.show."""
+    import matplotlib.pyplot as plt
+
+    import celeri
+
+    monkeypatch.setattr(plt, "show", lambda *a, **k: pytest.fail("plt.show called"))
+
+    config = celeri.get_config("./tests/configs/test_wna_config.json")
+    config.repl = False
+    segment, block, meshes, station, mogi, sar, los = celeri.read_data(config)
+    station = celeri.process_station(station, config)
+    segment = celeri.process_segment(segment, config, meshes)
+    sar = celeri.process_sar(sar, config)
+    # Move one block's interior point far away so that its polygon has none
+    block = block.copy()
+    block.loc[0, "interior_lon"] = block.loc[0, "interior_lon"] + 30.0
+
+    celeri.assign_block_labels(
+        segment=segment,
+        station=station,
+        block=block,
+        mogi=mogi,
+        sar=sar,
+        los=los,
+        debug_plot_dir=tmp_path,
+    )
+
+    assert list(tmp_path.glob("block_interior_points_polygon_*.png"))

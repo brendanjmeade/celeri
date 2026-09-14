@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 import celeri
 from celeri.celeri_closure import Polygon, get_segment_labels, run_block_closure
@@ -126,3 +127,25 @@ def test_global_closure():
         all_edge_idxs_stored = np.load(f)
 
     assert np.allclose(all_edge_idxs, all_edge_idxs_stored)
+
+
+def test_debug_plot_never_blocks(monkeypatch, tmp_path):
+    """The closure debug figure is saved and closed, never shown."""
+    import matplotlib.pyplot as plt
+
+    from celeri.celeri_closure import _debug_plot_polygons_and_error
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(plt, "show", lambda *a, **k: pytest.fail("plt.show called"))
+    np_segments = np.array(
+        [
+            [[0.0, 0.0], [1.0, 0.1]],
+            [[1.0, 0.1], [0.5, 1.0]],
+            [[0.5, 1.0], [0.0, 0.0]],
+        ]
+    )
+    closure = run_block_closure(np_segments)
+
+    _debug_plot_polygons_and_error(closure, [[0]], 0, reason="test")
+
+    assert list((tmp_path / "debug_plots").glob("closure_debug_*.png"))

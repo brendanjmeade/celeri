@@ -260,7 +260,13 @@ def build_model(
     sar = process_sar(sar, config)
     los = process_los(los, config)
     closure, segment, station, block, mogi, sar, los = assign_block_labels(
-        segment=segment, station=station, block=block, mogi=mogi, sar=sar, los=los
+        segment=segment,
+        station=station,
+        block=block,
+        mogi=mogi,
+        sar=sar,
+        los=los,
+        debug_plot_dir=config.output_path,
     )
 
     return Model(
@@ -496,9 +502,24 @@ def inpolygon(xq, yq, xv, yv):
     return p.contains_points(q).reshape(shape)
 
 
-def assign_block_labels(*, segment, station, block, mogi, sar, los=None):
+def _save_debug_figure(debug_plot_dir, file_name: str) -> None:
+    """Save the current matplotlib figure into ``debug_plot_dir`` and close it."""
+    if debug_plot_dir is not None:
+        out_path = Path(debug_plot_dir) / file_name
+        plt.savefig(out_path, dpi=150)
+        logger.warning(f"Saved diagnostic figure to {out_path}")
+    plt.close()
+
+
+def assign_block_labels(
+    *, segment, station, block, mogi, sar, los=None, debug_plot_dir=None
+):
     """Ben Thompson's implementation of the half edge approach to the
     block labeling problem and east/west assignment.
+
+    When a block polygon contains no interior point, or more than expected,
+    a diagnostic figure is saved into ``debug_plot_dir`` (if given) instead
+    of being shown, so that non-interactive runs never block.
     """
     # segment = split_segments_crossing_meridian(segment)
     segment = segment.copy(deep=True)
@@ -573,7 +594,7 @@ def assign_block_labels(*, segment, station, block, mogi, sar, los=None):
             padding = max(lon_range, lat_range) * 0.1
             plt.xlim(lon_min - padding, lon_max + padding)
             plt.ylim(lat_min - padding, lat_max + padding)
-            plt.show()
+            _save_debug_figure(debug_plot_dir, f"block_interior_points_polygon_{i}.png")
 
         # Case 2: One interior point.  Nothing to do
 
@@ -610,7 +631,7 @@ def assign_block_labels(*, segment, station, block, mogi, sar, los=None):
             padding = max(lon_range, lat_range) * 0.1
             plt.xlim(lon_min - padding, lon_max + padding)
             plt.ylim(lat_min - padding, lat_max + padding)
-            plt.show()
+            _save_debug_figure(debug_plot_dir, f"block_interior_points_polygon_{i}.png")
 
     # Assign block labels points to block interior points
     block["block_label"] = closure.assign_points(

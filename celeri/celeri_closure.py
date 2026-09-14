@@ -201,7 +201,7 @@ def _debug_plot_polygons_and_error(
     - Offending half-edge: red line with endpoints marked and annotated
     - All vertices: small grey dots
 
-    Saves a PNG under ./debug_plots and also shows a non-blocking window.
+    Saves a PNG under ./debug_plots (relative to the working directory).
     """
     base_path = Path("./debug_plots")
     base_path.mkdir(exist_ok=True)
@@ -394,8 +394,7 @@ def _debug_plot_polygons_and_error(
         print(f"Saved closure debug plot to {out_path}")
     except Exception as _:
         pass
-    plt.show(block=True)
-    plt.pause(0.1)
+    plt.close(fig)
 
 
 @dataclass
