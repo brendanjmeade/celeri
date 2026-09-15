@@ -114,6 +114,23 @@ create-grid-station <lon_min> <lat_min> <lon_max> <lat_max> --n_points=<number o
   - `--n_points=<number of grid points>`: Optional. The default value is 100.
 - This produces a station file (named `<UUID>_station.csv`) that can be passed to `celeri-forward`.
 
+### `celeri-sweep-sigmoid-slope`
+
+- Run the MCMC solve for several values of `sigmoid_slope` (the steepness of the sigmoid that squashes each mesh's latent coupling field into its bounds) to see how sensitive a solution is to that choice.
+- Each value produces its own sequentially numbered folder in `runs/`, exactly as `celeri-solve` would, and a `sweep_sigmoid_slope_<first>-<last>.json` manifest in `runs/` maps each value to its folder.
+- Values are spaced linearly between `lower` and `upper`; add `--log` for geometric spacing. Every `celeri-solve` flag is accepted and applied to each run.
+- With the Python environment activated, run:
+
+```bash
+celeri-sweep-sigmoid-slope <my_config.json> <lower> <upper> [n_steps] [--log]
+```
+
+- where:
+  - `lower`, `upper`: Smallest and largest `sigmoid_slope` value (the default in a normal run is 4.0)
+  - `n_steps`: Optional. Number of values, inclusive of both ends. The default value is 3.
+  - `--log`: Optional. Space the values geometrically instead of linearly.
+- Example: `celeri-sweep-sigmoid-slope wna_config.json 1 16 3 --log` runs `sigmoid_slope` = 1, 4 and 16.
+
 ## Folder structure and file locations for applications
 
 A large number of input files can be involved in a model run.  We assume that a project is arranged using the following folder structure:

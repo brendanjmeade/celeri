@@ -74,6 +74,7 @@ celeri-segmesh = "celeri.scripts.segmesh:main"
 celeri-snap-segments = "celeri.scripts.snap_segments:main"
 celeri-solve = "celeri.scripts.celeri_solve:main"
 celeri-stl2msh = "celeri.scripts.stl2msh:main"
+celeri-sweep-sigmoid-slope = "celeri.scripts.celeri_sweep_sigmoid_slope:main"
 
 [project.urls]
 Homepage = "https://github.com/brendanjmeade/celeri"

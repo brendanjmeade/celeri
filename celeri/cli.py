@@ -25,7 +25,13 @@ def str2bool(v):
         raise argparse.ArgumentTypeError(f"Boolean value expected, got: {v}")
 
 
-def parse_args() -> argparse.Namespace:
+def build_parser() -> argparse.ArgumentParser:
+    """Build the celeri-solve argument parser.
+
+    Exposed separately from parse_args so other CLI entry points (for example
+    celeri-sweep-sigmoid-slope) can extend the same parser with extra
+    arguments and still hand the resulting namespace to process_args.
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument("config_file_name", type=str, help="Name of *_config.json file")
     parser.add_argument(
@@ -231,6 +237,16 @@ def parse_args() -> argparse.Namespace:
         help="Default softplus length scale for one-sided bound constraints",
     )
     parser.add_argument(
+        "--mcmc-default-mesh-sigmoid-slope",
+        type=float,
+        default=None,
+        required=False,
+        help=(
+            "Default slope factor for the two-sided sigmoid constraint transform "
+            "(larger = sharper coupling transitions; 4.0 = unit slope at midpoint)"
+        ),
+    )
+    parser.add_argument(
         "--mcmc-default-mesh-top-elastic-constraint-sigma",
         type=float,
         default=None,
@@ -267,7 +283,11 @@ def parse_args() -> argparse.Namespace:
         help="Write the output directory path to this file (for scripted discovery)",
     )
 
-    return parser.parse_args()
+    return parser
+
+
+def parse_args() -> argparse.Namespace:
+    return build_parser().parse_args()
 
 
 def process_args(config: Config, args: argparse.Namespace):
