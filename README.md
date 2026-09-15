@@ -135,7 +135,7 @@ celeri-sweep-sigmoid-slope <my_config.json> <lower> <upper> [n_steps] [--log]
   - Smaller values such as `1.0` to `2.0` widen the transition zone and allow more intermediate coupling values.
   - Larger values such as `8.0` to `16.0` make the transition sharper and more step-like.
   - A good first sweep brackets the default by a factor of four in each direction with geometric spacing, `1 16 3 --log`, which runs `sigmoid_slope` = 1, 4 and 16. If the solutions differ materially, refine around the interesting range, for example `2 8 4 --log`.
-  - If the `n_divergences` column in the manifest grows with `sigmoid_slope`, the sampler is struggling with the sharper transform. Prefer the largest value that still samples cleanly, or raise `--mcmc-target-accept`.
+  - If the `n_divergences` column in the manifest grows with `sigmoid_slope`, the sampler is struggling with the sharper transform. Prefer the largest value that still samples cleanly, or raise `mcmc_target_accept` in the config file.
 - Example:
 
 ```bash
