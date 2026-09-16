@@ -31,6 +31,13 @@ from celeri.output import dataclass_from_disk, dataclass_to_disk
 T = TypeVar("T")
 ByMesh = dict[int, T]
 
+DEFAULT_KINEMATIC_SMOOTHING_LENGTH_SCALE_KM = 25.0
+"""Default Gaussian length scale (km) of the kinematic slip-rate smoothing.
+
+Close to the 0.25 degree lon/lat kernel that the eigen and MCMC outputs used
+before it became configurable.
+"""
+
 
 class ScalarBound(BaseModel):
     model_config = ConfigDict(validate_assignment=True, extra="forbid")
@@ -350,7 +357,38 @@ class MeshConfig(RelativePathSerializerMixin, BaseModel):
     """
 
     iterative_coupling_smoothing_length_scale: float | None = None
-    """Smoothing length scale for SQP solver."""
+    """Deprecated: use ``kinematic_smoothing_length_scale``.
+
+    This was the length scale, in degrees of longitude/latitude, of the
+    Gaussian kernel that smoothed the kinematic slip rates for the SQP
+    coupling bounds and for the eigen outputs. When it is set and
+    ``kinematic_smoothing_length_scale`` is not,
+    ``Config.propagate_mesh_defaults`` converts it to kilometres
+    (times 111.2 km/deg) with a warning.
+    """
+
+    kinematic_smoothing_length_scale: float | None = None
+    """Gaussian smoothing length scale for the kinematic (block motion) slip rates.
+
+    The operator that maps block rotations to the strike- and dip-slip rates
+    of every element is smoothed over the mesh with a Gaussian kernel of this
+    length scale (straight-line distance between element centroids), so that
+    the long-term slip rate used by every solver (MCMC coupling, SQP bounds,
+    dense boundary constraints) and written to the outputs follows the fault
+    surface rather than the orientation of individual triangles. ``None``
+    inherits ``Config.mesh_default_kinematic_smoothing_length_scale``; ``0``
+    disables the smoothing. The unsmoothed element rates are always written as
+    the ``*_kinematic_raw`` outputs.
+
+    Dip-slip rates are smoothed in the convention of an upward-wound element
+    (each element's own sign is removed before and restored after), so a mesh
+    with mixed vertex winding is smoothed physically. Note that the dip-slip
+    rate of a near-vertical element carries the 1/cos(dip) factor of the
+    kinematic model, and smoothing spreads that amplified rate over its
+    neighbours.
+
+    UNITS: [km]
+    """
 
     iterative_coupling_kinematic_slip_regularization_scale: float = 1.0
     """Regularization scale factor for SQP solver."""

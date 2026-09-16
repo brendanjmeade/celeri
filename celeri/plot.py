@@ -1779,11 +1779,11 @@ def plot_coupling(estimation: Estimation, *, mesh_idx: int):
     assert operators.eigen is not None
     assert index.eigen is not None
 
-    # Multiply rotation vector components by TDE slip rate partials
-    kinematic = (
-        operators.rotation_to_tri_slip_rate[mesh_idx]
-        @ estimation.state_vector[0 : 3 * len(block)]
-    )
+    # Per-element and smoothed kinematic rates (the smoothing is the
+    # kinematic_smoothing_length_scale of the mesh, already in the operator)
+    rotation = estimation.state_vector[0 : 3 * len(block)]
+    kinematic = operators.kinematic_operator(mesh_idx, smooth=False) @ rotation
+    kinematic_smooth = operators.kinematic_operator(mesh_idx, smooth=True) @ rotation
 
     elastic = (
         operators.eigen.eigenvectors_to_tde_slip[mesh_idx]
@@ -1792,15 +1792,13 @@ def plot_coupling(estimation: Estimation, *, mesh_idx: int):
         ]
     )
 
-    # Calculate final coupling and smoothed kinematic
+    # Calculate final coupling from the smoothed kinematic rates
     tde_coupling_ss, kinematic_tde_rates_ss_smooth = _get_coupling(
         meshes[mesh_idx].lon_centroid,
         meshes[mesh_idx].lat_centroid,
         elastic[0::2],
-        kinematic[0::2],
-        smoothing_length_scale=meshes[
-            mesh_idx
-        ].config.iterative_coupling_smoothing_length_scale,
+        kinematic_smooth[0::2].copy(),
+        smoothing_length_scale=0.0,
         kinematic_slip_regularization_scale=meshes[
             mesh_idx
         ].config.iterative_coupling_kinematic_slip_regularization_scale,
@@ -1810,10 +1808,8 @@ def plot_coupling(estimation: Estimation, *, mesh_idx: int):
         meshes[mesh_idx].lon_centroid,
         meshes[mesh_idx].lat_centroid,
         elastic[1::2],
-        kinematic[1::2],
-        smoothing_length_scale=meshes[
-            mesh_idx
-        ].config.iterative_coupling_smoothing_length_scale,
+        kinematic_smooth[1::2].copy(),
+        smoothing_length_scale=0.0,
         kinematic_slip_regularization_scale=meshes[
             mesh_idx
         ].config.iterative_coupling_kinematic_slip_regularization_scale,

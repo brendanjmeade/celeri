@@ -549,6 +549,11 @@ def _coupling_component(
 ):
     """Model elastic slip rate as coupling * kinematic slip rate.
 
+    The kinematic slip rate comes from ``operators.rotation_to_tri_slip_rate``,
+    the operator Gaussian smoothed over the mesh when
+    ``MeshConfig.kinematic_smoothing_length_scale`` is non-zero (the same
+    operator every other solver and the outputs use).
+
     Returns the estimated elastic slip rates on the TDEs and the
     velocities at the stations (and optionally LOS locations) due to them.
 

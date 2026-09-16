@@ -40,6 +40,7 @@ from rich.progress import track
 from scipy import spatial
 from scipy.sparse import csr_matrix
 
+from celeri import constants
 from celeri.celeri_util import (
     cartesian_vector_to_spherical_vector,
     get_2component_index,
@@ -56,7 +57,12 @@ from celeri.constants import (
 from celeri.mean_block_velocity import (
     compute_moment_tensor_lambert,
 )
-from celeri.mesh import ByMesh, Mesh, MeshConfig
+from celeri.mesh import (
+    ByMesh,
+    Mesh,
+    MeshConfig,
+    triangle_winding_sign,
+)
 from celeri.model import (
     Model,
     assign_mesh_segment_labels,
@@ -557,6 +563,29 @@ class Operators:
     get_okada_displacement_slab for a segment range or read the
     "slip_rate_to_okada_to_velocities" dataset from the cache file.
     """
+    rotation_to_tri_slip_rate_raw: dict[int, np.ndarray] = field(default_factory=dict)
+    """Unsmoothed rotation to triangular slip rate mapping, one array per mesh.
+
+    UNITS: [m/rad]. ``rotation_to_tri_slip_rate`` is this operator after the
+    per-mesh Gaussian smoothing set by
+    ``MeshConfig.kinematic_smoothing_length_scale`` (the two are equal when
+    that smoothing is off). Empty for operators saved before the smoothing
+    existed; ``kinematic_operator`` then falls back to
+    ``rotation_to_tri_slip_rate``.
+    """
+
+    def kinematic_operator(self, mesh_idx: int, *, smooth: bool) -> np.ndarray:
+        """The rotation to TDE slip rate operator of one segment-tied mesh.
+
+        ``smooth=True`` returns the operator every solver uses (Gaussian
+        smoothed over the mesh when ``kinematic_smoothing_length_scale`` is
+        non-zero); ``smooth=False`` the per-element operator.
+        """
+        if mesh_idx not in self.rotation_to_tri_slip_rate:
+            raise ValueError(f"No kinematic velocities for mesh {mesh_idx}.")
+        if smooth or mesh_idx not in self.rotation_to_tri_slip_rate_raw:
+            return self.rotation_to_tri_slip_rate[mesh_idx]
+        return self.rotation_to_tri_slip_rate_raw[mesh_idx]
 
     @overload
     def kinematic_slip_rate(
@@ -578,10 +607,14 @@ class Operators:
                 as returned by `Operators.data_vector` or `Estimation.data_vector.
             mesh_idx: Index of the mesh to get the kinematic slip rate for.
                 If None, return the kinematic slip rate for all meshes.
-            smooth: Whether to apply smoothing to the slip rate.
+            smooth: ``True`` for the rates of the smoothed kinematic operator
+                (what the solvers use; see
+                ``MeshConfig.kinematic_smoothing_length_scale``), ``False``
+                for the per-element rates.
 
         Returns:
-            The kinematic slip rate as a numpy array.
+            The kinematic slip rate as a numpy array, strike slip and dip
+            slip interleaved per element.
         """
         if self.tde is None:
             raise ValueError("TDE operators are not set up.")
@@ -590,23 +623,10 @@ class Operators:
                 idx: self.kinematic_slip_rate(parameters, mesh_idx=idx, smooth=smooth)
                 for idx in self.model.segment_mesh_indices
             }
-        if mesh_idx not in self.rotation_to_tri_slip_rate:
-            raise ValueError(f"No kinematic velocities for mesh {mesh_idx}.")
-        slip_rate = (
-            self.rotation_to_tri_slip_rate[mesh_idx]
-            @ parameters[self.index.start_block_col : self.index.end_block_col]
+        operator = self.kinematic_operator(mesh_idx, smooth=smooth)
+        return (
+            operator @ parameters[self.index.start_block_col : self.index.end_block_col]
         )
-        if smooth:
-            if mesh_idx not in self.smoothing_matrix:
-                raise ValueError(f"No smoothing matrix for mesh {mesh_idx}.")
-            if self.eigen is None:
-                raise ValueError("Eigen operators are not set up.")
-            smoothing_matrix = self.eigen.linear_gaussian_smoothing[mesh_idx]
-            # Second dimension is for strike slip and dip slip
-            slip_rate_ = slip_rate.reshape((smoothing_matrix.shape[-1], 2))
-            slip_rate_smooth = smoothing_matrix @ slip_rate_
-            slip_rate = slip_rate_smooth.ravel()
-        return slip_rate
 
     # TODO: Maybe we can make it possible to always access
     # operators without tde or eigen, even if the operators
@@ -755,9 +775,20 @@ class Operators:
 
         # Skip the dense okada operator that run folders written by older
         # versions may contain; it is no longer kept in memory
-        return dataclass_from_disk(
+        operators = dataclass_from_disk(
             cls, path, extra=extra, skip={"slip_rate_to_okada_to_velocities"}
         )
+        if (
+            operators.rotation_to_tri_slip_rate
+            and not operators.rotation_to_tri_slip_rate_raw
+        ):
+            logger.warning(
+                f"Operators at {path} were saved before the kinematic slip-rate "
+                "smoothing existed: their kinematic operator is the unsmoothed "
+                "per-element one, and the smoothed and raw kinematic rates "
+                "derived from them are identical"
+            )
+        return operators
 
 
 @dataclass
@@ -773,6 +804,7 @@ class _OperatorBuilder:
     eigenvectors_to_tde_slip: dict[int, np.ndarray] = field(default_factory=dict)
     eigenvalues: dict[int, np.ndarray] = field(default_factory=dict)
     rotation_to_tri_slip_rate: dict[int, np.ndarray] = field(default_factory=dict)
+    rotation_to_tri_slip_rate_raw: dict[int, np.ndarray] = field(default_factory=dict)
     linear_gaussian_smoothing: dict[int, np.ndarray] = field(default_factory=dict)
     tde_to_velocities: dict[int, np.ndarray] = field(default_factory=dict)
     smoothing_matrix: dict[int, csr_matrix] = field(default_factory=dict)
@@ -810,6 +842,7 @@ class _OperatorBuilder:
             block_strain_rate_to_velocities=self.block_strain_rate_to_velocities,
             mogi_to_velocities=self.mogi_to_velocities,
             rotation_to_tri_slip_rate=self.rotation_to_tri_slip_rate,
+            rotation_to_tri_slip_rate_raw=self.rotation_to_tri_slip_rate_raw,
             smoothing_matrix=self.smoothing_matrix,
             global_float_block_rotation=self.global_float_block_rotation,
             rotation_to_slip_rate_to_okada_to_velocities=self.rotation_to_slip_rate_to_okada_to_velocities,
@@ -1017,6 +1050,9 @@ def build_operators(
         index = _get_index_no_meshes(model)
         operators.index = index
 
+    # Gaussian smoothing weights of every mesh (kinematic_smoothing_length_scale)
+    _store_gaussian_smoothing_operator(model.meshes, operators, index)
+
     # Get rotation to TDE kinematic slip rate operator for all meshes tied to segments
     _store_tde_coupling_constraints(model, operators)
 
@@ -1029,9 +1065,6 @@ def build_operators(
         operators.eigen_to_velocities = _compute_eigen_to_velocities(
             model, operators, index, streaming=discard_tde_to_velocities
         )
-
-    # Get smoothing operators for post-hoc smoothing of slip
-    _store_gaussian_smoothing_operator(model.meshes, operators, index)
 
     # Compute block moment tensors and areas
     _store_block_moment_tensors(model, operators)
@@ -1238,27 +1271,65 @@ def build_los_operators(
 def _store_gaussian_smoothing_operator(
     meshes: list[Mesh], operators: _OperatorBuilder, index: Index
 ):
-    for i in range(index.n_meshes):
-        points = np.vstack((meshes[i].lon_centroid, meshes[i].lat_centroid)).T
+    """Per-mesh Gaussian smoothing weights over the element centroids.
 
-        length_scale = meshes[i].config.iterative_coupling_smoothing_length_scale
-
-        # TODO(Adrian) this default should be in the config
+    Row-normalised kernel exp(-d^2 / (2 L^2)) with d the straight-line
+    distance between centroids in km and L the mesh's
+    ``kinematic_smoothing_length_scale`` (km). The weights are applied to the
+    kinematic slip-rate operator in ``_store_tde_coupling_constraints`` and
+    kept on the operators. A mesh with L <= 0 gets no entry (no smoothing).
+    """
+    del index  # every mesh gets weights, whatever the operator layout
+    default_length_scale = (
+        operators.model.config.mesh_default_kinematic_smoothing_length_scale
+    )
+    for i in range(len(meshes)):
+        length_scale = meshes[i].config.kinematic_smoothing_length_scale
         if length_scale is None:
-            length_scale = 0.25
+            length_scale = default_length_scale
+        if length_scale <= 0.0:
+            continue
 
-        # Compute pairwise Euclidean distance matrix
+        points = (
+            np.column_stack(
+                (meshes[i].x_centroid, meshes[i].y_centroid, meshes[i].z_centroid)
+            )
+            / constants.KM2M
+        )
         D = spatial.distance_matrix(points, points)
 
         # Define Gaussian weight function
         W = np.exp(-(D**2) / (2 * length_scale**2))
-        # TODO(Adrian) make this configurable
         W[W < 1e-8] = 0.0
 
         # Normalize rows so each row sums to 1
         W /= W.sum(axis=1, keepdims=True)
 
         operators.linear_gaussian_smoothing[i] = W
+
+
+def _smooth_kinematic_operator(
+    raw: np.ndarray, weights: np.ndarray | None, dip_slip_sign: np.ndarray
+) -> np.ndarray:
+    """Apply per-mesh Gaussian smoothing weights to a kinematic operator whose
+    rows are the strike-slip and dip-slip rates of each element, interleaved.
+
+    Each slip component is smoothed on its own. The dip-slip rows are
+    smoothed in the convention of an upward-wound element: ``dip_slip_sign``
+    (+1 or -1 per element, see ``triangle_winding_sign``) is divided out
+    before and multiplied back after, so that a mesh with mixed vertex
+    winding is smoothed physically instead of cancelling opposite signs.
+    ``weights=None`` returns the operator unchanged.
+    """
+    if weights is None:
+        return raw
+    n_tde = weights.shape[0]
+    components = raw.reshape(n_tde, 2, -1)
+    sign = dip_slip_sign[:, None]
+    smoothed = np.empty_like(components)
+    smoothed[:, 0, :] = weights @ components[:, 0, :]
+    smoothed[:, 1, :] = sign * (weights @ (sign * components[:, 1, :]))
+    return smoothed.reshape(raw.shape)
 
 
 MESH_GEOMETRY_ATTR = "mesh_geometry"
@@ -1340,6 +1411,7 @@ def _hash_elastic_operator_input(
         "elastic_sigma",
         "smoothing_weight",
         "softplus_lengthscale",
+        "kinematic_smoothing_length_scale",  # smooths the kinematic operator only
     }
 
     mesh_configs = [mesh.model_dump_json(exclude=constraint_fields) for mesh in meshes]
@@ -1857,15 +1929,18 @@ def _store_tde_coupling_constraints(model: Model, operators: _OperatorBuilder):
     # eliminate touching CMI meshes which have problems with this function
     # becase it assumes that a mesh is tied to segments.
     for mesh_idx in range(np.max(model.segment.mesh_file_index) + 1):
-        operators.rotation_to_tri_slip_rate[mesh_idx] = (
-            get_rotation_to_tri_slip_rate_partials(model, mesh_idx)
-        )
+        partials = get_rotation_to_tri_slip_rate_partials(model, mesh_idx)
         # Trim tensile rows
-        tri_keep_rows = get_keep_index_12(
-            np.shape(operators.rotation_to_tri_slip_rate[mesh_idx])[0]
-        )
-        operators.rotation_to_tri_slip_rate[mesh_idx] = (
-            operators.rotation_to_tri_slip_rate[mesh_idx][tri_keep_rows, :]
+        tri_keep_rows = get_keep_index_12(np.shape(partials)[0])
+        raw = partials[tri_keep_rows, :]
+        operators.rotation_to_tri_slip_rate_raw[mesh_idx] = raw
+        # The solvers use the operator smoothed over the mesh (see
+        # MeshConfig.kinematic_smoothing_length_scale); the raw per-element
+        # operator is kept for the *_kinematic_raw outputs
+        operators.rotation_to_tri_slip_rate[mesh_idx] = _smooth_kinematic_operator(
+            raw,
+            operators.linear_gaussian_smoothing.get(mesh_idx),
+            triangle_winding_sign(model.meshes[mesh_idx].nv),
         )
 
 

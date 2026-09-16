@@ -2,6 +2,8 @@ import numpy as np
 import pytest
 
 import celeri
+from celeri.mesh import triangle_winding_sign
+from celeri.operators import _smooth_kinematic_operator
 
 
 @pytest.mark.array_compare(rtol=1e-4, atol=1e-9)
@@ -168,15 +170,110 @@ def test_operator_rotation_to_tri_slip_rate(config_name):
 
     estimation = celeri.assemble_and_solve_dense(model, eigen=True, tde=True)
 
-    assert estimation.operators.rotation_to_tri_slip_rate is not None
+    assert 0 in estimation.operators.rotation_to_tri_slip_rate_raw
 
-    operator = estimation.operators.rotation_to_tri_slip_rate[0]
+    # The per-element (unsmoothed) operator pins the element geometry
+    operator = estimation.operators.rotation_to_tri_slip_rate_raw[0]
     rng = np.random.default_rng(seed=0)
     size = min(min(len(operator), len(operator[0])), 50)
     idx_rows = rng.choice(len(operator), size=size, replace=False)
     idx_cols = rng.choice(len(operator[0]), size=size, replace=False)
 
     return operator[np.ix_(idx_rows, idx_cols)]
+
+
+def test_kinematic_smoothing_follows_the_winding():
+    """Dip-slip rows are smoothed in one physical convention: reversing the
+    winding of an element (which negates its dip-slip rows and its sign)
+    leaves the smoothed field, expressed in each element's own convention,
+    consistent with the uniformly wound mesh; strike-slip rows are untouched.
+    """
+    rng = np.random.default_rng(seed=2)
+    n_tde, n_cols = 6, 9
+    raw = rng.normal(size=(2 * n_tde, n_cols))
+    weights = rng.uniform(size=(n_tde, n_tde))
+    weights /= weights.sum(axis=1, keepdims=True)
+    up = np.ones(n_tde)
+
+    uniform = _smooth_kinematic_operator(raw, weights, up)
+    np.testing.assert_allclose(uniform[0::2], weights @ raw[0::2])
+    np.testing.assert_allclose(uniform[1::2], weights @ raw[1::2])
+    np.testing.assert_array_equal(_smooth_kinematic_operator(raw, None, up), raw)
+
+    # Reverse the winding of elements 1 and 4
+    sign = up.copy()
+    sign[[1, 4]] = -1.0
+    flipped = raw.copy()
+    flipped[1::2] = sign[:, None] * raw[1::2]
+    mixed = _smooth_kinematic_operator(flipped, weights, sign)
+    np.testing.assert_allclose(mixed[0::2], uniform[0::2])
+    np.testing.assert_allclose(mixed[1::2], sign[:, None] * uniform[1::2])
+
+
+def test_kinematic_operator_is_gaussian_smoothed():
+    """rotation_to_tri_slip_rate is the per-element operator smoothed with the
+    row-normalised Gaussian weights of kinematic_smoothing_length_scale (km),
+    kinematic_slip_rate serves either, and a length scale of 0 turns the
+    smoothing off.
+    """
+    config = celeri.get_config("./tests/configs/test_japan_config.json")
+    model = celeri.build_model(config)
+    operators = celeri.build_operators(model, eigen=True, tde=True)
+    assert operators.eigen is not None
+
+    n_blocks = len(model.block)
+    rng = np.random.default_rng(seed=1)
+    params = np.zeros(operators.index.n_operator_cols)
+    params[: 3 * n_blocks] = rng.normal(size=3 * n_blocks)
+
+    for mesh_idx in model.segment_mesh_indices:
+        mesh = model.meshes[mesh_idx]
+        assert mesh.config.kinematic_smoothing_length_scale == 25.0
+        raw = operators.rotation_to_tri_slip_rate_raw[mesh_idx]
+        smooth = operators.rotation_to_tri_slip_rate[mesh_idx]
+        weights = operators.eigen.linear_gaussian_smoothing[mesh_idx]
+        assert weights.shape == (mesh.n_tde, mesh.n_tde)
+        np.testing.assert_allclose(weights.sum(axis=1), 1.0)
+        # Row-normalised Gaussian of the straight-line centroid distance (km)
+        centroids = (
+            np.column_stack((mesh.x_centroid, mesh.y_centroid, mesh.z_centroid))
+            / 1000.0
+        )
+        distance = np.linalg.norm(centroids[:, None, :] - centroids[None, :, :], axis=2)
+        kernel = np.exp(-(distance**2) / (2 * 25.0**2))
+        kernel[kernel < 1e-8] = 0.0
+        np.testing.assert_allclose(
+            weights, kernel / kernel.sum(axis=1, keepdims=True), atol=1e-12
+        )
+        # Japan meshes are wound with upward normals, so no sign enters
+        assert np.all(triangle_winding_sign(mesh.nv) == 1.0)
+        expected = (weights @ raw.reshape(mesh.n_tde, -1)).reshape(raw.shape)
+        np.testing.assert_allclose(smooth, expected, rtol=1e-12, atol=1e-12)
+        assert not np.allclose(smooth, raw)
+        np.testing.assert_allclose(
+            operators.kinematic_slip_rate(params, mesh_idx, smooth=True),
+            smooth @ params[: 3 * n_blocks],
+        )
+        np.testing.assert_allclose(
+            operators.kinematic_slip_rate(params, mesh_idx, smooth=False),
+            raw @ params[: 3 * n_blocks],
+        )
+
+    for mesh_param in config.mesh_params:
+        mesh_param.kinematic_smoothing_length_scale = 0.0
+    model_off = celeri.build_model(config)
+    operators_off = celeri.build_operators(model_off, eigen=True, tde=True)
+    assert operators_off.eigen is not None
+    for mesh_idx in model.segment_mesh_indices:
+        assert mesh_idx not in operators_off.eigen.linear_gaussian_smoothing
+        np.testing.assert_array_equal(
+            operators_off.rotation_to_tri_slip_rate[mesh_idx],
+            operators.rotation_to_tri_slip_rate_raw[mesh_idx],
+        )
+        np.testing.assert_allclose(
+            operators_off.kinematic_slip_rate(params, mesh_idx, smooth=True),
+            operators_off.kinematic_slip_rate(params, mesh_idx, smooth=False),
+        )
 
 
 @pytest.mark.array_compare(rtol=1e-3, atol=1e-9)
