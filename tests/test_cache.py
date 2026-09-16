@@ -161,3 +161,20 @@ def test_tde_cache_tracks_mesh_geometry(tmp_path):
     np.testing.assert_array_equal(restored, fresh)
     with h5py.File(cache_file, "r") as hdf5_file:
         assert "mesh_geometry" in hdf5_file["tde_to_velocities_0"].attrs
+
+
+def test_kinematic_smoothing_length_scale_does_not_change_the_cache_key():
+    """The smoothing acts on the kinematic operator only, so changing it must
+    not invalidate the elastic-operator cache.
+    """
+    config = get_config("./tests/configs/test_japan_config.json")
+    model = celeri.build_model(config)
+    reference = _hash_elastic_operator_input(
+        [mesh.config for mesh in model.meshes], model.station, model.config
+    )
+    for mesh in model.meshes:
+        mesh.config.kinematic_smoothing_length_scale = 3.0
+    changed = _hash_elastic_operator_input(
+        [mesh.config for mesh in model.meshes], model.station, model.config
+    )
+    assert changed == reference

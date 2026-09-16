@@ -127,6 +127,11 @@ def write_output(
             for suffix, strike_slip_key, dip_slip_key in (
                 ("", "strike_slip_rate", "dip_slip_rate"),
                 ("_kinematic", "strike_slip_rate_kinematic", "dip_slip_rate_kinematic"),
+                (
+                    "_kinematic_raw",
+                    "strike_slip_rate_kinematic_raw",
+                    "dip_slip_rate_kinematic_raw",
+                ),
                 ("_coupling", "strike_slip_coupling", "dip_slip_coupling"),
             ):
                 strike_slip = slip_fields[strike_slip_key]

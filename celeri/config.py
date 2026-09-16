@@ -4,10 +4,11 @@ import json
 from pathlib import Path
 from typing import Literal, Self
 
+from loguru import logger
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from celeri.celeri_util import RelativePathSerializerMixin
-from celeri.mesh import MeshConfig
+from celeri.mesh import DEFAULT_KINEMATIC_SMOOTHING_LENGTH_SCALE_KM, MeshConfig
 
 Sqp2Objective = Literal[
     "expanded_norm2",
@@ -256,6 +257,23 @@ class Config(RelativePathSerializerMixin, BaseModel):
     Intended for long multi-chain runs on non-interactive services where a
     stalled chain would otherwise hold up the run indefinitely. ``False``
     (the default) uses the plain blocking sampling call.
+    """
+
+    mesh_default_kinematic_smoothing_length_scale: float = (
+        DEFAULT_KINEMATIC_SMOOTHING_LENGTH_SCALE_KM
+    )
+    """Default Gaussian length scale (km) for smoothing the kinematic slip rates.
+
+    Propagated to each mesh's ``kinematic_smoothing_length_scale`` unless
+    overridden in the per-mesh configuration. The kinematic slip-rate operator
+    of every segment-tied mesh is smoothed with a Gaussian kernel of this
+    length scale over the straight-line distance between element centroids, so
+    that the long-term slip rates used by all solvers and written to the
+    outputs follow the fault rather than individual triangles. ``0`` disables
+    the smoothing everywhere; the unsmoothed element rates are always written
+    as the ``*_kinematic_raw`` outputs.
+
+    UNITS: [km]
     """
 
     mesh_default_eigenvector_algorithm: EigenvectorAlgorithm = "eigh"
@@ -627,7 +645,29 @@ class Config(RelativePathSerializerMixin, BaseModel):
         overrides (via ``process_args``) take effect before propagation.
         It is called at the start of ``read_data``.
         """
+        # The degree-based SQP smoothing length scale is superseded by the
+        # kilometre-based kinematic_smoothing_length_scale; convert it once
+        km_per_degree = 111.19
+        for mesh_param in self.mesh_params:
+            if (
+                mesh_param.kinematic_smoothing_length_scale is None
+                and mesh_param.iterative_coupling_smoothing_length_scale is not None
+            ):
+                converted = (
+                    mesh_param.iterative_coupling_smoothing_length_scale * km_per_degree
+                )
+                logger.warning(
+                    f"Mesh {mesh_param.mesh_filename}: "
+                    "iterative_coupling_smoothing_length_scale is deprecated; using "
+                    f"kinematic_smoothing_length_scale = {converted:.2f} km instead "
+                    f"({mesh_param.iterative_coupling_smoothing_length_scale} deg x "
+                    f"{km_per_degree} km/deg)"
+                )
+                mesh_param.kinematic_smoothing_length_scale = converted
+
         defaults: dict[str, object] = {
+            # Kinematic slip-rate smoothing
+            "kinematic_smoothing_length_scale": self.mesh_default_kinematic_smoothing_length_scale,
             # GP kernel hyperparameters
             "matern_nu": self.mcmc_default_mesh_matern_nu,
             "matern_length_scale": self.mcmc_default_mesh_matern_length_scale,

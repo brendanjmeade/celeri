@@ -779,13 +779,22 @@ def build_cvxpy_problem(
 
         kinematic_params = params_raw[param_slice]
         if is_segment_mesh:
+            # Per-element and Gaussian smoothed (MeshConfig.kinematic_smoothing_
+            # length_scale) kinematic operators; the bounds use the smoothed one
             kinematic_operator = (
-                operators.rotation_to_tri_slip_rate[mesh_idx] / scale[None, param_slice]
+                operators.kinematic_operator(mesh_idx, smooth=False)
+                / scale[None, param_slice]
             )
             kinematic_operator = adapt_operator(kinematic_operator)
+            kinematic_smooth_operator = (
+                operators.kinematic_operator(mesh_idx, smooth=True)
+                / scale[None, param_slice]
+            )
+            kinematic_smooth_operator = adapt_operator(kinematic_smooth_operator)
         else:
             kinematic_params = None
             kinematic_operator = None
+            kinematic_smooth_operator = None
 
         # Matrix vector components of elastic velocities
         assert operators.index.eigen is not None
@@ -800,9 +809,6 @@ def build_cvxpy_problem(
 
         elastic_operator = adapt_operator(elastic_operator)
 
-        smoothing_operator = operators.eigen.linear_gaussian_smoothing[mesh_idx]
-        smoothing_operator = adapt_operator(smoothing_operator)
-
         # Extract strike and dip components (even and odd indices)
         indices = {
             "strike_slip": slice(None, None, 2),
@@ -814,11 +820,9 @@ def build_cvxpy_problem(
 
         # Process strike and dip components with the same code
         for name, idx in indices.items():
-            # Get smoothed kinematic rates for component
+            # Get smoothed and per-element kinematic rates for component
             if is_segment_mesh:
-                kinematic_smooth_op = smoothing_operator @ kinematic_operator[idx]
-
-                kinematic_smooth_op = adapt_operator(kinematic_smooth_op)
+                kinematic_smooth_op = adapt_operator(kinematic_smooth_operator[idx])
                 kinematic_op = adapt_operator(kinematic_operator[idx])
                 kinematic_smooth = kinematic_smooth_op @ kinematic_params
                 kinematic = kinematic_op @ kinematic_params

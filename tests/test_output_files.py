@@ -28,9 +28,13 @@ def _assert_mcmc_outputs_consistent(estimation, run_dir):
         for i in range(len(estimation.model.meshes)):
             rows = meshes[meshes["mesh_idx"] == i]
             grp = hdf[f"meshes/mesh_{i:05}"]
-            # What the sampler used: unsmoothed, linear in the rotation, so
-            # the rate at the posterior mean rotation is the posterior mean.
+            # What the sampler used (the smoothed kinematic operator): linear
+            # in the rotation, so the rate at the posterior mean rotation is
+            # the posterior mean. The raw per-element rate is reported too.
             kinematic = estimation.operators.kinematic_slip_rate(
+                estimation.state_vector, i, smooth=True
+            )
+            kinematic_raw = estimation.operators.kinematic_slip_rate(
                 estimation.state_vector, i, smooth=False
             )
             for kind, key, component in (
@@ -43,6 +47,11 @@ def _assert_mcmc_outputs_consistent(estimation, run_dir):
                 )
                 kinematic_rate = rows[f"{key}_rate_kinematic"].to_numpy()
                 assert_allclose(kinematic_rate, kinematic[component::2], rtol=1e-6)
+                assert_allclose(
+                    rows[f"{key}_rate_kinematic_raw"].to_numpy(),
+                    kinematic_raw[component::2],
+                    rtol=1e-6,
+                )
                 kinematic_var = f"kinematic_{i}_{kind}"
                 if kinematic_var in posterior_mean:
                     # float32 boundary: same operand-scale round-off as the
@@ -68,6 +77,7 @@ def _assert_mcmc_outputs_consistent(estimation, run_dir):
                 for suffix, column in (
                     ("", f"{key}_rate"),
                     ("_kinematic", f"{key}_rate_kinematic"),
+                    ("_kinematic_raw", f"{key}_rate_kinematic_raw"),
                     ("_coupling", f"{key}_coupling"),
                 ):
                     assert_allclose(

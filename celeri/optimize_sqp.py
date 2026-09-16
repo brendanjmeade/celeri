@@ -58,17 +58,10 @@ def _presolve(
 def _get_coupling_linear(
     estimated_slip: np.ndarray,
     kinematic_slip: np.ndarray,
-    operators: Operators,
-    mesh_idx: int,
 ) -> tuple[np.ndarray, np.ndarray]:
-    assert operators.eigen is not None
-
-    # Smooth kinematic slip
-    kinematic_slip = (
-        operators.eigen.linear_gaussian_smoothing[mesh_idx] @ kinematic_slip
-    )
-
-    # Calculate coupling
+    """Coupling as the ratio of the estimated elastic slip to the kinematic
+    slip of the (Gaussian smoothed) kinematic operator.
+    """
     coupling = estimated_slip / kinematic_slip
     return coupling, kinematic_slip
 
@@ -240,8 +233,10 @@ def _check_coupling_bounds_single_mesh(
     eigen_start = index.eigen.start_col_eigen[mesh_idx]
     eigen_end = index.eigen.end_col_eigen[mesh_idx]
 
+    # Rates of the smoothed kinematic operator (see
+    # MeshConfig.kinematic_smoothing_length_scale)
     kinematic_tde_rates = (
-        operators.rotation_to_tri_slip_rate[mesh_idx]
+        operators.kinematic_operator(mesh_idx, smooth=True)
         @ estimation_qp.state_vector[0:block_size]
     )
 
@@ -258,15 +253,11 @@ def _check_coupling_bounds_single_mesh(
     tde_coupling_ss, kinematic_tde_rates_ss_smooth = _get_coupling_linear(
         estimated_tde_rates[ss_indices],
         kinematic_tde_rates[ss_indices],
-        operators,
-        mesh_idx,
     )
 
     tde_coupling_ds, kinematic_tde_rates_ds_smooth = _get_coupling_linear(
         estimated_tde_rates[ds_indices],
         kinematic_tde_rates[ds_indices],
-        operators,
-        mesh_idx,
     )
 
     # Update slip rate bounds based on coupling constraints

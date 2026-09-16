@@ -38,7 +38,7 @@ mm/yr.
 
 | # | Result | Evidence |
 |---|---|---|
-| 1 | **Triangle strike and dip were biased by the missing cos(latitude) factor.** `Mesh.from_params` built element normals from (Δlon, Δlat, Δr) legs. On the shipped meshes strikes were off by up to 12.8° and dips by up to 8.9°; a synthetic 60°-dipping fault at 40° N loaded as 53°. Because the kinematic dip slip scales with 1/cos(dip), kinematic rates and every coupling ratio built from them were wrong by 5–20 % of the relative plate motion, and a fully coupled mesh left a velocity discontinuity of that size across its trace. **Fixed** (strike, dip and centroids now come from the Cartesian vertices in a local east-north-up frame). | S3a, S1c, S1d: Japan transects: median trace step 6–7 % of plate motion before, 0.4–0.9 % after; synthetic model: kinematic dip slip 33.1 → 40.0 mm/yr (segment value 39.9), TDE-vs-Okada mismatch 4.0 → 0.05 mm/yr. |
+| 1 | **Triangle strike and dip were biased by the missing cos(latitude) factor.** `Mesh.from_params` built element normals from (Δlon, Δlat, Δr) legs. On the shipped meshes strikes were off by up to 12.8° and dips by up to 8.9°; a synthetic 60°-dipping fault at 40° N loaded as 53°. Because the kinematic dip slip scales with 1/cos(dip), kinematic rates and every coupling ratio built from them were wrong by 5–20 % of the relative plate motion, and a fully coupled mesh left a velocity discontinuity of that size across its trace. **Fixed** (strike, dip and centroids now come from the Cartesian vertices in a local east-north-up frame; the vertex reordering that landed with it was reverted, see section 8). | S3a, S1c, S1d: Japan transects: median trace step 6–7 % of plate motion before, 0.4–0.9 % after; synthetic model: kinematic dip slip 33.1 → 40.0 mm/yr (segment value 39.9), TDE-vs-Okada mismatch 4.0 → 0.05 mm/yr. |
 | 2 | **The block strain-rate operator's shear column was a rigid rotation, not shear**, and the operator changed sign structure south of the equator (colatitude convention plus a one-sided negation). Shear strain could not be modelled and the shear column was nearly collinear with the block's Euler vector. **Fixed** (strain applied as a symmetric tensor in a local east-north frame; both hemispheres). | R2-3, R3-2: unit ε_λφ gave ∂u_e/∂y = −1, ∂u_n/∂x = +1 (shear 0.000, rotation 0.999); Japan block `tottori` had strain estimated. New finite-difference test in both hemispheres. |
 | 3 | **The Okada geographic-frame handling is correct.** The mapping pass suspected the commented-out alternative; the harness showed the live code (stations rotated into the fault frame with the projected strike, displacements rotated back with the true azimuth) matches an independent transverse-Mercator + cutde reference to ~1e-3 on short segments, and that the alternative would be wrong by 2·sin(δ/2) with δ the oblique-Mercator grid convergence (median 8°, up to 55°). All three unit slips have the specified physical signs, and `dip > 90` puts the hanging wall on the left. | S2a/S2b/S2c. |
 | 4 | **`dense_no_meshes` ran the meshed dense solve**, and the no-mesh path it was supposed to run crashed on any model with strain blocks or Mogi sources and weighted block-rotation constraints with 1 instead of 1e24. **Fixed.** | S8; D1, D3. |
@@ -101,7 +101,7 @@ Severity: **W** wrong results, **C** crash, **S** silent misbehaviour, **K** con
 | R4-14, R4-11 | S/C | Guard qp2 parameter scaling against all-zero columns | Zero column → NaN problem; debug plot loop indexed past two columns. |
 | R2-7, R3-5, R3-8, R3-10, R2-4, R3-6, R3-11 | C/S | Validate inputs that used to fail late or silently | Mesh-free models crashed `qp`/`qp2`/`mcmc` operator builds; positive-down mesh depths and too many eigenmodes loaded silently or failed opaquely; unordered/typo'd `ScalarBound`; slip-rate constraints on components block motion cannot produce; `"none"` file-name override crashed; cross-field config rules skipped after CLI overrides. |
 | R2-6, R3-9, R2-16 | S | Promote interleaved dtypes and skip smoothing of isolated mesh elements | Integer strike-slip columns truncated float dip/tensile values; isolated elements produced inf/NaN in the Laplacian. |
-| D26, D25, R3-3 | W | Compute triangle strike, dip and centroids in a local east-north frame | See headline 1; also uniform vertex winding (cutde's dip-slip direction follows the winding) and centroids across the 0/360 meridian. |
+| D26, D25, R3-3 | W | Compute triangle strike, dip and centroids in a local east-north frame | See headline 1; also centroids across the 0/360 meridian. The commit also reordered every triangle to an upward normal; that part changed the stored dip-slip sign on every segmesh mesh and was reverted on 2026-09-15 (section 8). |
 | D23 | K | Make celeri-forward's TDE columns match model_station.csv | See headline 6. |
 | R1-1, R1-3, R1-5, R1-7, R1-2, R1-6 | S/K | Keep the LOS log-likelihood pointwise and validate MCMC inputs | LOS logp summed to a scalar; `random=` callables returned distributions; zero/missing `*_rate_sig` on flag-1 constraints; boundary flag 2 silently ignored by MCMC; `direct`/`low_rank` prediction mismatch now warned about; wrong prior-mean comment. |
 | R4-6, R4-7 | K | Write the whole config to the HDF5 output and NaN for undefined mesh fields | Paths, booleans and ranges were dropped from the HDF5 `config` group; `model_meshes.csv` wrote zeros where the HDF5 omitted fields; coupling ratios raised warnings on zero kinematic rates. |
@@ -153,7 +153,9 @@ among reverse-slipping neighbours, coupling −0.43). Predicted station velociti
 most 0.009 mm/yr and the residual RMS is unchanged, because that deep triangle barely reaches
 the stations. Note that the solve-group run made right after the winding commit had loaded the
 stale cached operator and passed; the cache-validation commit exposed it, which is the defect it
-was written to catch.
+was written to catch. **The reordering was reverted on 2026-09-15 and these WNA baselines were
+regenerated again with the file's winding (section 8); a mixed-winding mesh now produces a
+warning instead.**
 
 ## 4. Proposed, not landed (science or design decisions)
 
@@ -220,3 +222,83 @@ outputs are in the audit session's scratchpad; each is a standalone script that 
 models in-process, uses a private elastic-operator cache, and prints PASS/FAIL with the numbers
 quoted above. The durable checks were promoted to tests (section 6); the synthetic model
 generator in `s1d_synthetic.py` is the template for `tests/test_mesh_geometry.py`.
+
+## 8. Correction of 2026-09-15: the vertex reordering changed a sign convention, and was reverted
+
+The commit `c56f493` did two things: it measured strike and dip in a local east-north-up frame
+(the fix of headline 1, kept) and it reordered the vertices of every triangle whose right-hand
+normal points down so that all normals point up. The second part was described as normalising
+"one reversed Cascadia triangle". It did much more. The segmesh tool writes every ribbon mesh
+with downward normals (a Taiwan segmesh: 126 of 126 triangles; WNA meshes 15, 45 and 63: every
+triangle), so the reordering reversed every triangle of every mesh the group makes. On such a
+triangle the old code reported the dip in (90, 180], the kinematic factor 1/cos(dip) was negative
+and cutde's dip-slip column had the opposite sign, so the stored dip-slip number was negative for
+reverse motion; the two signs cancel and the velocities were right either way. Reordering flips
+both, which is physically neutral (verified on WNA mesh 15 with cutde: strike-slip and tensile
+columns unchanged to 1e-14, dip-slip column exactly negated; kinematic dip slip negated) but
+changes the stored dip-slip sign of every kinematic and elastic rate, of the state vector and of
+the MCMC `elastic_*_ds` fields against every earlier run, and makes asymmetric
+`elastic_constraints_ds` bounds refer to the opposite physical sense. Changing a sign convention
+was never a goal of the audit and the effect was not measured or reported. Brendan's decision:
+revert the reordering.
+
+| Quantity | Before `c56f493` | With the reordering | After the revert |
+|---|---|---|---|
+| Vertex order in `mesh.verts` | As in the .msh file | Reversed on every downward-wound triangle | As in the .msh file |
+| `mesh.dip` on such triangles | 90 to 180 deg | 0 to 90 deg | 90 to 180 deg |
+| `mesh.strike` on such triangles | Strike + 180 deg | Strike | Strike + 180 deg (the kinematic code reduces strike mod 180) |
+| Kinematic strike-slip rate | | Unchanged | |
+| Kinematic dip-slip rate | Sign follows the file's winding (negative = reverse on downward-wound triangles) | Positive = reverse everywhere | Sign follows the file's winding |
+| cutde strike-slip and tensile columns | | Unchanged | |
+| cutde dip-slip column | | Negated on reordered triangles | As before |
+| Station velocities for a given physical slip | | Identical | |
+| Stored dip-slip rates, state vector, MCMC `elastic_*_ds`, meaning of asymmetric `elastic_constraints_ds` | File's convention | Opposite sign on downward-wound meshes | File's convention |
+| Mixed-winding meshes (WNA mesh 48: 463 of 689 down; Cascadia: 1) | Per-triangle sign inconsistent | Consistent | Inconsistent, now reported by a warning naming the mesh and the counts |
+
+The east-north-up strike/dip, the Cartesian-centroid longitude/latitude, the negative-depth check
+and the cache geometry digest are kept. `tests/test_mesh_geometry.py` now checks that the file's
+winding is preserved, that a reversed strip reports the same plane with dip in (90, 180] and the
+opposite strike, that the two dip-slip sign factors reverse together (cutde columns), and that a
+mixed-winding mesh warns.
+
+### The "stripes" of September 2026 were the output change of PR #507, not the geometry
+
+A Longitudinal Valley fault MCMC run made after PR #515 showed along-strike stripes and
+per-triangle speckles in the kinematic, elastic and slipping rates that an earlier run did not.
+The east-north-up strike/dip is not the cause: on nine meshes (Japan, Cascadia, NSHM, WNA ribbon
+and Taiwan segmeshes) the new strike differs from the old by a near-constant per-mesh offset
+(1.2 to 6.3 deg) and dip by at most 2.4 deg, and neighbour-to-neighbour roughness of strike and
+dip is the same before and after. The stripes are the true per-element kinematic rates of a gmsh
+ribbon mesh (adjacent triangles differ in strike by up to 20 deg and in dip by up to 10 deg, and
+1/cos(dip) amplifies the dip jitter), which the MCMC sampler has always multiplied coupling by.
+What changed is the output: until PR #507 (`fa386e8`, 2026-08-26) eigen and MCMC runs wrote the
+Gaussian-smoothed kinematic rate (0.25 deg lon/lat kernel) and the eigen-projected elastic
+field; from then on MCMC wrote the raw per-element rate and coupling x raw kinematic. On the WNA
+MCMC run 84 (July 2026) the stored kinematic rates equal the Gaussian-smoothed rates of the old
+code to 0.000 mm/yr on every dipping mesh, while the raw rates differ by up to 80 mm/yr in dip
+slip. The remedy (this correction) makes the smoothing a per-mesh configuration
+(`MeshConfig.kinematic_smoothing_length_scale`, km over the straight-line centroid distance,
+default `Config.mesh_default_kinematic_smoothing_length_scale` = 25 km, 0 disables) applied to
+the kinematic operator itself, so that the MCMC coupling model, the SQP bounds, the dense
+boundary rows and every output share one smooth kinematic field; the raw per-element rates are
+written alongside as `*_kinematic_raw`. The dip-slip rows are smoothed in the convention of an
+upward-wound element (each element's winding sign is divided out before and multiplied back
+after), so a mixed-winding mesh is smoothed physically rather than cancelling opposite signs;
+the stored signs are untouched. The degree-based `iterative_coupling_smoothing_length_scale` is
+deprecated and converted with a warning, and the new field is excluded from the elastic-operator
+cache key.
+
+Measured on the WNA model at the state vector of its July 2026 MCMC run, the default 25 km
+kernel removes the stripes and lands on the field that run's output carried: the largest
+neighbour-to-neighbour jump in the kinematic dip-slip rate of the segment-tied meshes falls from
+106.2 to 0.07 mm/yr on mesh 74, from 8.3 to 0.03 on mesh 17 and from 681.2 to 1.1 on mesh 90,
+against 0.06, 0.03 and 0.18 for the 0.25 degree kernel that run used.
+
+Three consequences are worth knowing. The smoothing spreads the 1/cos(dip)-amplified dip-slip
+rate of a near-vertical element over its neighbours (proposal R2-5 remains the fix). Operators
+saved before this change carry only the unsmoothed operator (`Operators.from_disk` warns). And
+on a mesh with mixed winding the *stored* kinematic field keeps a sign jump at the winding
+boundary (WNA mesh 48: largest neighbour jump 3.4 mm/yr against 0.03 for the old kernel), because
+the smoothing now preserves each element's physical sense instead of averaging the two
+conventions into a cancelled value that merely looked smooth; the warning names such meshes so
+that the mesh file can be fixed.

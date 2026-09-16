@@ -3,8 +3,10 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
+from loguru import logger
 from pydantic import ValidationError
 
+import celeri
 from celeri.config import Config
 from celeri.model import locking_depth_manager
 
@@ -51,3 +53,41 @@ def test_solve_type_is_constrained(tmp_path):
 
     with pytest.raises(ValidationError, match="solve_type"):
         Config.model_validate(_config_data(tmp_path, solve_type="hmatrix"))
+
+
+def _japan_config():
+    return celeri.get_config("./tests/configs/test_japan_config.json")
+
+
+def test_kinematic_smoothing_length_scale_propagates():
+    config = _japan_config()
+    assert config.mesh_default_kinematic_smoothing_length_scale == 25.0
+    assert all(m.kinematic_smoothing_length_scale is None for m in config.mesh_params)
+
+    config.mesh_params[0].kinematic_smoothing_length_scale = 0.0
+    config.propagate_mesh_defaults()
+    assert config.mesh_params[0].kinematic_smoothing_length_scale == 0.0
+    assert all(
+        m.kinematic_smoothing_length_scale == 25.0 for m in config.mesh_params[1:]
+    )
+
+
+def test_deprecated_degree_smoothing_length_scale_is_converted():
+    config = _japan_config()
+    config.mesh_params[0].iterative_coupling_smoothing_length_scale = 0.25
+    messages = []
+    handler_id = logger.add(
+        lambda message: messages.append(str(message)), level="WARNING"
+    )
+    try:
+        config.propagate_mesh_defaults()
+    finally:
+        logger.remove(handler_id)
+
+    assert config.mesh_params[0].kinematic_smoothing_length_scale == pytest.approx(
+        0.25 * 111.19
+    )
+    assert any("iterative_coupling_smoothing_length_scale" in m for m in messages)
+    assert all(
+        m.kinematic_smoothing_length_scale == 25.0 for m in config.mesh_params[1:]
+    )
