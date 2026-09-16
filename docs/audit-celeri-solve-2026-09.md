@@ -286,7 +286,19 @@ upward-wound element (each element's winding sign is divided out before and mult
 after), so a mixed-winding mesh is smoothed physically rather than cancelling opposite signs;
 the stored signs are untouched. The degree-based `iterative_coupling_smoothing_length_scale` is
 deprecated and converted with a warning, and the new field is excluded from the elastic-operator
-cache key. Two consequences are worth knowing: the smoothing spreads the 1/cos(dip)-amplified
-dip-slip rate of a near-vertical element over its neighbours (the pre-existing proposal R2-5
-remains the fix), and operators saved before this change carry only the unsmoothed operator
-(`Operators.from_disk` warns).
+cache key.
+
+Measured on the WNA model at the state vector of its July 2026 MCMC run, the default 25 km
+kernel removes the stripes and lands on the field that run's output carried: the largest
+neighbour-to-neighbour jump in the kinematic dip-slip rate of the segment-tied meshes falls from
+106.2 to 0.07 mm/yr on mesh 74, from 8.3 to 0.03 on mesh 17 and from 681.2 to 1.1 on mesh 90,
+against 0.06, 0.03 and 0.18 for the 0.25 degree kernel that run used.
+
+Three consequences are worth knowing. The smoothing spreads the 1/cos(dip)-amplified dip-slip
+rate of a near-vertical element over its neighbours (proposal R2-5 remains the fix). Operators
+saved before this change carry only the unsmoothed operator (`Operators.from_disk` warns). And
+on a mesh with mixed winding the *stored* kinematic field keeps a sign jump at the winding
+boundary (WNA mesh 48: largest neighbour jump 3.4 mm/yr against 0.03 for the old kernel), because
+the smoothing now preserves each element's physical sense instead of averaging the two
+conventions into a cancelled value that merely looked smooth; the warning names such meshes so
+that the mesh file can be fixed.
