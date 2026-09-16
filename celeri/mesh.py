@@ -677,37 +677,22 @@ def _triangle_normals_enu(
     return np.cross(to_enu(v2 - v1), to_enu(v3 - v1))
 
 
-def _orient_triangles_upward(points: np.ndarray, verts: np.ndarray) -> np.ndarray:
-    """Reorder the vertices of every triangle so that its normal points up.
+WINDING_TOLERANCE = 1e-6
+"""|n_z| / |n| below which a triangle counts as vertical for the winding checks."""
 
-    Element slip components are defined relative to the vertex order (the
-    dip-slip direction reverses with the winding), so a consistent
-    counter-clockwise-from-above ordering keeps one sign convention across
-    the mesh regardless of how the mesh file was written.
+
+def triangle_winding_sign(normals: np.ndarray) -> np.ndarray:
+    """+1 for triangles whose (east-north-up) normal points up or is horizontal
+    within ``WINDING_TOLERANCE``, -1 for those whose normal points down.
+
+    The sign of an element's dip-slip quantities follows its vertex order
+    (the kinematic factor 1/cos(dip) and cutde's dip-slip direction both
+    reverse with the winding), so this is the factor that converts the
+    element's own dip-slip convention to that of an upward-wound element.
+    Vertical triangles have no meaningful winding and get +1.
     """
-    verts = np.array(verts, dtype=int, copy=True)
-    x, y, z = sph2cart(
-        points[:, 0],
-        points[:, 1],
-        constants.RADIUS_EARTH + constants.KM2M * points[:, 2],
-    )
-    xyz = np.c_[x, y, z]
-    v1, v2, v3 = xyz[verts[:, 0]], xyz[verts[:, 1]], xyz[verts[:, 2]]
-    centroid = (v1 + v2 + v3) / 3.0
-    lon_centroid, lat_centroid, _ = cart2sph(
-        centroid[:, 0], centroid[:, 1], centroid[:, 2]
-    )
-    normals = _triangle_normals_enu(
-        v1, v2, v3, np.rad2deg(lon_centroid), np.rad2deg(lat_centroid)
-    )
-    downward = normals[:, 2] < 0
-    if np.any(downward):
-        logger.info(
-            f"Reversed the vertex order of {int(downward.sum())} triangles with "
-            "downward normals"
-        )
-        verts[downward] = verts[downward][:, ::-1]
-    return verts
+    unit_z = normals[:, 2] / np.linalg.norm(normals, axis=1)
+    return np.where(unit_z < -WINDING_TOLERANCE, -1.0, 1.0)
 
 
 def _compute_mesh_perimeter(mesh: dict):
@@ -1160,7 +1145,7 @@ class Mesh:
             )
         mesh["points"] = points
         verts = meshio.CellBlock("triangle", meshobj.get_cells_type("triangle")).data
-        verts = _orient_triangles_upward(points, cast(np.ndarray, verts))
+        verts = cast(np.ndarray, verts)
         mesh["verts"] = verts
 
         # Expand mesh coordinates
@@ -1224,6 +1209,31 @@ class Mesh:
         mesh["dip_flag"] = mesh["dip"] != 90
 
         mesh["n_tde"] = mesh["lon1"].size
+
+        # The vertex order of a triangle sets the direction of its normal, and
+        # the sign of every dip-slip quantity on the element follows it: the
+        # kinematic factor 1/cos(dip) and cutde's dip-slip direction both
+        # reverse with the winding, so the element's physics is the same
+        # either way but the stored dip-slip numbers change sign. The file's
+        # winding is kept as is; report it rather than change it.
+        unit_z = mesh["nv"][:, 2] / np.linalg.norm(mesh["nv"], axis=1)
+        n_downward = int(np.sum(unit_z < -WINDING_TOLERANCE))
+        n_upward = int(np.sum(unit_z > WINDING_TOLERANCE))
+        if n_downward > 0 and n_upward > 0:
+            logger.warning(
+                f"Mesh {config.mesh_filename} has mixed vertex winding: "
+                f"{n_downward} of {mesh['n_tde']} triangles have downward "
+                "normals, so the sign of their dip-slip rates (kinematic and "
+                "elastic) is opposite to the rest of the mesh and the Laplacian "
+                "smoothing, eigenmodes and bounds mix two sign conventions on "
+                "this mesh. Reorder those triangles in the mesh file."
+            )
+        elif n_downward > 0:
+            logger.info(
+                f"Mesh {config.mesh_filename}: every triangle has a downward "
+                "normal (dip reported in (90, 180]); stored dip-slip rates are "
+                "negative for reverse motion on this mesh"
+            )
 
         # Calcuate areas of each triangle in mesh
         triangle_vertex_array = np.zeros((mesh["n_tde"], 3, 3))
