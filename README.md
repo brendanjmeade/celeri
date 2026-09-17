@@ -114,6 +114,38 @@ create-grid-station <lon_min> <lat_min> <lon_max> <lat_max> --n_points=<number o
   - `--n_points=<number of grid points>`: Optional. The default value is 100.
 - This produces a station file (named `<UUID>_station.csv`) that can be passed to `celeri-forward`.
 
+### `celeri-sweep-sigmoid-slope`
+
+- Run the MCMC solve for several values of `sigmoid_slope` to see how sensitive a solution is to that choice.
+- `sigmoid_slope` sets how sharply the latent coupling field on each mesh is squashed into its bounds (for example coupling in `[0, 1]`). The transform is `sigmoid(slope * (x - midpoint) / scale) * scale + lower`, so the slope of the transform at the midpoint of the bounds is `sigmoid_slope / 4`.
+- Each value produces its own sequentially numbered folder in `runs/`, exactly as `celeri-solve` would, and a `sweep_sigmoid_slope_<first>-<last>.json` manifest in `runs/` maps each value to its folder, together with the number of divergent transitions and the wall time of each run.
+- Every `celeri-solve` flag is accepted and applied to each run, so `--mcmc-tune` and `--mcmc-draws` can be used for quick checks before a full sweep.
+- With the Python environment activated, run:
+
+```bash
+celeri-sweep-sigmoid-slope <my_config.json> <lower> <upper> [n_steps] [--log]
+```
+
+- where:
+  - `lower`, `upper`: Smallest and largest `sigmoid_slope` value. Both must be positive.
+  - `n_steps`: Optional. Number of values, inclusive of both ends. The default value is 3.
+  - `--log`: Optional. Space the values geometrically instead of linearly.
+- Recommended values:
+  - `4.0` is the default in a normal `celeri-solve` run. It gives unit slope at the midpoint of the bounds, so modest excursions of the latent field saturate near the bounds and coupling tends to be near-binary.
+  - Smaller values such as `1.0` to `2.0` widen the transition zone and allow more intermediate coupling values.
+  - Larger values such as `8.0` to `16.0` make the transition sharper and more step-like.
+  - A good first sweep brackets the default by a factor of four in each direction with geometric spacing, `1 16 3 --log`, which runs `sigmoid_slope` = 1, 4 and 16. If the solutions differ materially, refine around the interesting range, for example `2 8 4 --log`.
+  - If the `n_divergences` column in the manifest grows with `sigmoid_slope`, the sampler is struggling with the sharper transform. Prefer the largest value that still samples cleanly, or raise `mcmc_target_accept` in the config file.
+- Example:
+
+```bash
+celeri-sweep-sigmoid-slope wna_config.json 1 16 3 --log
+celeri-sweep-sigmoid-slope wna_config.json 2 8 4 --log --mcmc-tune 200 --mcmc-draws 200
+```
+
+- The swept value is also recorded in each run folder, in `config.json` (`mcmc_default_mesh_sigmoid_slope` and every `mesh_params[*].sigmoid_slope`) and in the run's `description`.
+- A value that fails is logged, recorded as `"failed"` in the manifest, and the remaining values still run. The command exits non-zero if any value failed.
+
 ## Folder structure and file locations for applications
 
 A large number of input files can be involved in a model run.  We assume that a project is arranged using the following folder structure:

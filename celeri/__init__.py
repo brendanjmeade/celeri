@@ -12,7 +12,7 @@ from celeri.celeri_util import (
     interleave3,
     wrap2360,
 )
-from celeri.cli import parse_args, process_args
+from celeri.cli import build_parser, parse_args, process_args
 from celeri.config import Config, get_config
 from celeri.filter_mcmc_chains_by_waic import WaicSummary, select_chains, waic_summary
 from celeri.mesh import Mesh, MeshConfig
@@ -114,6 +114,7 @@ __all__ = [
     "build_estimation",
     "build_model",
     "build_operators",
+    "build_parser",
     "create_output_folder",
     "diagnose_matrix",
     "get_2component_index",
