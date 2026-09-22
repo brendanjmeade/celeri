@@ -14,8 +14,20 @@ if typing.TYPE_CHECKING:
     from _typeshed import DataclassInstance
 
     from celeri.solve import Estimation
+    
+"""
+HDF5 caps a single object-header message at 64 KB, so an attribute holds only ~8000 int64 values. 
+Keep writing indices as attributes when they fit, and fall back to a dataset of the same name when they do not.
+"""
 
+_ATTR_MAX_BYTES = 60_000
 
+def _write_index(hdf, name: str, values: np.ndarray) -> None:
+    if values.nbytes <= _ATTR_MAX_BYTES:
+        hdf.attrs[name] = values
+    else:
+        hdf.create_dataset(name, data=values)
+        
 def write_output(
     estimation: Estimation,
 ):
@@ -177,8 +189,8 @@ def write_output(
         hdf.attrs["segment_columns"] = np.array(
             segment_no_name.columns, dtype=h5py.string_dtype()
         )
-        hdf.attrs["segment_index"] = segment_no_name.index.to_numpy()
-        hdf.attrs["index"] = segment_no_name.index.to_numpy()
+        _write_index(hdf, "segment_index", segment_no_name.index.to_numpy())
+        _write_index(hdf, "index", segment_no_name.index.to_numpy())
 
         station_no_name = station.drop("name", axis=1)
 
@@ -197,7 +209,7 @@ def write_output(
         hdf.attrs["station_columns"] = np.array(
             station_no_name.columns, dtype=h5py.string_dtype()
         )
-        hdf.attrs["station_index"] = station_no_name.index.to_numpy()
+        _write_index(hdf, "station_index", station_no_name.index.to_numpy())
         hdf.attrs["columns"] = np.array(
             station_no_name.columns, dtype=h5py.string_dtype()
         )
