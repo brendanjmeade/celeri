@@ -126,7 +126,10 @@ def main():
     model = celeri.build_model(args["config_file_name"])
 
     # Get mesh directory
-    mesh_dir = model.meshes[0].file_name.parent
+    if model.meshes:
+        mesh_dir = model.meshes[0].file_name.parent
+    else:
+        mesh_dir = model.config.mesh_parameters_file_name.parent
     # Get stem of segment file name
     seg_file_stem = model.config.segment_file_name.stem
     n_meshes = len(model.meshes)  # Number of preexisting meshes
