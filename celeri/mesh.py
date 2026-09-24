@@ -1184,108 +1184,120 @@ class Mesh:
         mesh["points"] = points
         verts = meshio.CellBlock("triangle", meshobj.get_cells_type("triangle")).data
         verts = cast(np.ndarray, verts)
-        mesh["verts"] = verts
-
-        # Expand mesh coordinates
-        mesh["lon1"] = points[verts[:, 0], 0]
-        mesh["lon2"] = points[verts[:, 1], 0]
-        mesh["lon3"] = points[verts[:, 2], 0]
-        mesh["lat1"] = points[verts[:, 0], 1]
-        mesh["lat2"] = points[verts[:, 1], 1]
-        mesh["lat3"] = points[verts[:, 2], 1]
-        mesh["dep1"] = points[verts[:, 0], 2]
-        mesh["dep2"] = points[verts[:, 1], 2]
-        mesh["dep3"] = points[verts[:, 2], 2]
-        mesh["centroids"] = np.mean(mesh["points"][mesh["verts"], :], axis=1)
-        # Cartesian coordinates in meters
-        mesh["x1"], mesh["y1"], mesh["z1"] = sph2cart(
-            mesh["lon1"],
-            mesh["lat1"],
-            constants.RADIUS_EARTH + constants.KM2M * mesh["dep1"],
-        )
-        mesh["x2"], mesh["y2"], mesh["z2"] = sph2cart(
-            mesh["lon2"],
-            mesh["lat2"],
-            constants.RADIUS_EARTH + constants.KM2M * mesh["dep2"],
-        )
-        mesh["x3"], mesh["y3"], mesh["z3"] = sph2cart(
-            mesh["lon3"],
-            mesh["lat3"],
-            constants.RADIUS_EARTH + constants.KM2M * mesh["dep3"],
-        )
-
-        # Cartesian triangle centroids
-        mesh["x_centroid"] = (mesh["x1"] + mesh["x2"] + mesh["x3"]) / 3.0
-        mesh["y_centroid"] = (mesh["y1"] + mesh["y2"] + mesh["y3"]) / 3.0
-        mesh["z_centroid"] = (mesh["z1"] + mesh["z2"] + mesh["z3"]) / 3.0
-
-        # Spherical triangle centroids, from the Cartesian centroid so that
-        # triangles straddling the 0/360 meridian are handled
-        centroid_lon, centroid_lat, _ = cart2sph(
-            mesh["x_centroid"], mesh["y_centroid"], mesh["z_centroid"]
-        )
-        mesh["lon_centroid"] = np.rad2deg(centroid_lon) % 360.0
-        mesh["lat_centroid"] = np.rad2deg(centroid_lat)
-
-        # Element orientation from the Cartesian legs expressed in a local
-        # east-north-up frame at each centroid (a plain (dlon, dlat) frame
-        # would stretch the east leg by 1/cos(lat) and bias strike and dip)
-        mesh["nv"] = _triangle_normals_enu(
-            np.c_[mesh["x1"], mesh["y1"], mesh["z1"]],
-            np.c_[mesh["x2"], mesh["y2"], mesh["z2"]],
-            np.c_[mesh["x3"], mesh["y3"], mesh["z3"]],
-            mesh["lon_centroid"],
-            mesh["lat_centroid"],
-        )
-        azimuth, elevation, _r = cart2sph(
-            mesh["nv"][:, 0],
-            mesh["nv"][:, 1],
-            mesh["nv"][:, 2],
-        )
-        mesh["strike"] = wrap2360(-np.rad2deg(azimuth))
-        mesh["dip"] = 90 - np.rad2deg(elevation)
-        mesh["dip_flag"] = mesh["dip"] != 90
-
-        mesh["n_tde"] = mesh["lon1"].size
-
-        # The vertex order of a triangle sets the direction of its normal, and
-        # the sign of every dip-slip quantity on the element follows it: the
-        # kinematic factor 1/cos(dip) and cutde's dip-slip direction both
-        # reverse with the winding, so the element's physics is the same
-        # either way but the stored dip-slip numbers change sign. The file's
-        # winding is kept as is; report it rather than change it.
-        unit_z = mesh["nv"][:, 2] / np.linalg.norm(mesh["nv"], axis=1)
-        n_downward = int(np.sum(unit_z < -WINDING_TOLERANCE))
-        n_upward = int(np.sum(unit_z > WINDING_TOLERANCE))
-        if n_downward > 0 and n_upward > 0:
-            logger.warning(
-                f"Mesh {config.mesh_filename} has mixed vertex winding: "
-                f"{n_downward} of {mesh['n_tde']} triangles have downward "
-                "normals, so the sign of their dip-slip rates (kinematic and "
-                "elastic) is opposite to the rest of the mesh and the Laplacian "
-                "smoothing, eigenmodes and bounds mix two sign conventions on "
-                "this mesh. Reorder those triangles in the mesh file."
+        """
+        while loop to check element winding direction
+        Mesh coordinates and properties are first calculated based on .msh file and used as the basis for the element-normal vector calculation. Any elements with a downward-pointing normal are wound clockwise, and we want to enforce counterclockwise winding to agree with the cutde slip sign conventions.
+        Any clockwise-wound elements have columns 1 and 2 of their verts array swapped at the end of the while loop. Therefore, the second and final time through the loop, mesh coordinates and properties are re-calculated, reflecting the reordering of nodes.
+        """
+        n_downward = 1
+        while n_downward > 0:
+            mesh["verts"] = verts
+            # Expand mesh coordinates
+            mesh["lon1"] = points[verts[:, 0], 0]
+            mesh["lon2"] = points[verts[:, 1], 0]
+            mesh["lon3"] = points[verts[:, 2], 0]
+            mesh["lat1"] = points[verts[:, 0], 1]
+            mesh["lat2"] = points[verts[:, 1], 1]
+            mesh["lat3"] = points[verts[:, 2], 1]
+            mesh["dep1"] = points[verts[:, 0], 2]
+            mesh["dep2"] = points[verts[:, 1], 2]
+            mesh["dep3"] = points[verts[:, 2], 2]
+            mesh["centroids"] = np.mean(mesh["points"][mesh["verts"], :], axis=1)
+            # Cartesian coordinates in meters
+            mesh["x1"], mesh["y1"], mesh["z1"] = sph2cart(
+                mesh["lon1"],
+                mesh["lat1"],
+                constants.RADIUS_EARTH + constants.KM2M * mesh["dep1"],
             )
-        elif n_downward > 0:
-            logger.info(
-                f"Mesh {config.mesh_filename}: every triangle has a downward "
-                "normal (dip reported in (90, 180]); stored dip-slip rates are "
-                "negative for reverse motion on this mesh"
+            mesh["x2"], mesh["y2"], mesh["z2"] = sph2cart(
+                mesh["lon2"],
+                mesh["lat2"],
+                constants.RADIUS_EARTH + constants.KM2M * mesh["dep2"],
+            )
+            mesh["x3"], mesh["y3"], mesh["z3"] = sph2cart(
+                mesh["lon3"],
+                mesh["lat3"],
+                constants.RADIUS_EARTH + constants.KM2M * mesh["dep3"],
             )
 
-        # Calcuate areas of each triangle in mesh
-        triangle_vertex_array = np.zeros((mesh["n_tde"], 3, 3))
-        triangle_vertex_array[:, 0, 0] = mesh["x1"]
-        triangle_vertex_array[:, 1, 0] = mesh["x2"]
-        triangle_vertex_array[:, 2, 0] = mesh["x3"]
-        triangle_vertex_array[:, 0, 1] = mesh["y1"]
-        triangle_vertex_array[:, 1, 1] = mesh["y2"]
-        triangle_vertex_array[:, 2, 1] = mesh["y3"]
-        triangle_vertex_array[:, 0, 2] = mesh["z1"]
-        triangle_vertex_array[:, 1, 2] = mesh["z2"]
-        triangle_vertex_array[:, 2, 2] = mesh["z3"]
+            # Cartesian triangle centroids
+            mesh["x_centroid"] = (mesh["x1"] + mesh["x2"] + mesh["x3"]) / 3.0
+            mesh["y_centroid"] = (mesh["y1"] + mesh["y2"] + mesh["y3"]) / 3.0
+            mesh["z_centroid"] = (mesh["z1"] + mesh["z2"] + mesh["z3"]) / 3.0
 
-        mesh["areas"] = triangle_area(triangle_vertex_array)
+            # Spherical triangle centroids, from the Cartesian centroid so that
+            # triangles straddling the 0/360 meridian are handled
+            centroid_lon, centroid_lat, _ = cart2sph(
+                mesh["x_centroid"], mesh["y_centroid"], mesh["z_centroid"]
+            )
+            mesh["lon_centroid"] = np.rad2deg(centroid_lon) % 360.0
+            mesh["lat_centroid"] = np.rad2deg(centroid_lat)
+
+            # Element orientation from the Cartesian legs expressed in a local
+            # east-north-up frame at each centroid (a plain (dlon, dlat) frame
+            # would stretch the east leg by 1/cos(lat) and bias strike and dip)
+            mesh["nv"] = _triangle_normals_enu(
+                np.c_[mesh["x1"], mesh["y1"], mesh["z1"]],
+                np.c_[mesh["x2"], mesh["y2"], mesh["z2"]],
+                np.c_[mesh["x3"], mesh["y3"], mesh["z3"]],
+                mesh["lon_centroid"],
+                mesh["lat_centroid"],
+            )
+            azimuth, elevation, _r = cart2sph(
+                mesh["nv"][:, 0],
+                mesh["nv"][:, 1],
+                mesh["nv"][:, 2],
+            )
+            mesh["strike"] = wrap2360(-np.rad2deg(azimuth))
+            mesh["dip"] = 90 - np.rad2deg(elevation)
+            mesh["dip_flag"] = mesh["dip"] != 90
+
+            mesh["n_tde"] = mesh["lon1"].size
+
+            # The vertex order of a triangle sets the direction of its normal, and
+            # the sign of every dip-slip quantity on the element follows it: the
+            # kinematic factor 1/cos(dip) and cutde's dip-slip direction both
+            # reverse with the winding, so the element's physics is the same
+            # either way but the stored dip-slip numbers change sign. The file's
+            # winding is kept as is; report it rather than change it.
+            unit_z = mesh["nv"][:, 2] / np.linalg.norm(mesh["nv"], axis=1)
+            n_downward = int(np.sum(unit_z < -WINDING_TOLERANCE))
+            n_upward = int(np.sum(unit_z > WINDING_TOLERANCE))
+            if n_downward > 0 and n_upward > 0:
+                logger.warning(
+                    f"Mesh {config.mesh_filename} has mixed vertex winding: "
+                    f"{n_downward} of {mesh['n_tde']} triangles have downward "
+                    "normals, so the sign of their dip-slip rates (kinematic and "
+                    "elastic) is opposite to the rest of the mesh and the Laplacian "
+                    "smoothing, eigenmodes and bounds mix two sign conventions on "
+                    "this mesh. Reorder those triangles in the mesh file."
+                )
+            elif n_downward > 0:
+                logger.info(
+                    f"Mesh {config.mesh_filename}: every triangle has a downward "
+                    "normal (dip reported in (90, 180]); stored dip-slip rates are "
+                    "negative for reverse motion on this mesh"
+                )
+
+            # Calcuate areas of each triangle in mesh
+            triangle_vertex_array = np.zeros((mesh["n_tde"], 3, 3))
+            triangle_vertex_array[:, 0, 0] = mesh["x1"]
+            triangle_vertex_array[:, 1, 0] = mesh["x2"]
+            triangle_vertex_array[:, 2, 0] = mesh["x3"]
+            triangle_vertex_array[:, 0, 1] = mesh["y1"]
+            triangle_vertex_array[:, 1, 1] = mesh["y2"]
+            triangle_vertex_array[:, 2, 1] = mesh["y3"]
+            triangle_vertex_array[:, 0, 2] = mesh["z1"]
+            triangle_vertex_array[:, 1, 2] = mesh["z2"]
+            triangle_vertex_array[:, 2, 2] = mesh["z3"]
+
+            mesh["areas"] = triangle_area(triangle_vertex_array)
+
+            # Swap CW-wound elements
+            verts_ccw = np.vstack([verts[:, 2], verts[:, 1]]).T
+            downward = unit_z < -WINDING_TOLERANCE
+            verts[downward, 1:] = verts_ccw[downward, :]
+            logger.info(f"Swapped nodes of {n_downward} elements to give CCW winding.")
 
         mesh["n_modes"] = np.max(
             [
