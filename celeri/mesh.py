@@ -1186,8 +1186,16 @@ class Mesh:
         verts = cast(np.ndarray, verts)
         """
         while loop to check element winding direction
-        Mesh coordinates and properties are first calculated based on .msh file and used as the basis for the element-normal vector calculation. Any elements with a downward-pointing normal are wound clockwise, and we want to enforce counterclockwise winding to agree with the cutde slip sign conventions.
-        Any clockwise-wound elements have columns 1 and 2 of their verts array swapped at the end of the while loop. Therefore, the second and final time through the loop, mesh coordinates and properties are re-calculated, reflecting the reordering of nodes.
+        Mesh coordinates and properties are first calculated based on .msh file
+        and used as the basis for the element-normal vector calculation. Any
+        elements with a downward-pointing normal are wound clockwise, and we
+        want to enforce counterclockwise winding to agree with the cutde slip
+        sign conventions.
+
+        Any clockwise-wound elements have columns 1 and 2 of their verts array
+        swapped at the end of the while loop. Therefore, the second and final
+        time through the loop, mesh coordinates and properties are re-calculated,
+        reflecting the reordering of nodes.
         """
         n_downward = 1
         while n_downward > 0:
