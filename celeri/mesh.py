@@ -1305,7 +1305,10 @@ class Mesh:
             verts_ccw = np.vstack([verts[:, 2], verts[:, 1]]).T
             downward = unit_z < -WINDING_TOLERANCE
             verts[downward, 1:] = verts_ccw[downward, :]
-            logger.info(f"Swapped nodes of {n_downward} elements to give CCW winding.")
+            if n_downward > 0:
+                logger.info(
+                    f"Swapped nodes of {n_downward} elements to give CCW winding."
+                )
 
         mesh["n_modes"] = np.max(
             [
