@@ -107,3 +107,58 @@ It's also possible to resolve the merge conflict with a rebase, but this approac
 ### What to put in `pixi.toml` vs `pyproject.toml`
 
 The `pyproject.toml` file defines the requirements of the Python package. The `pixi.toml` includes the Python package as a dependency. Therefore, dependencies in `pixi.toml` should be a superset of the dependencies in `pyproject.toml`. The `pixi.toml` should include all the development dependencies, notebook dependencies, and all other convenience packages. In contrast, `pyproject.toml` can be more slimmed down. Any dependency deemed to be "optional" must be excluded from `pyproject.toml`, since it is impossible to install `celeri` in a (consistent) Python environment without also installing all the packages in `pyproject.toml`.
+
+## Regenerating the arraydiff test baselines
+
+`tests/test_solve_dense.py` compares operators and solutions against the "gold" arrays
+in `tests/reference/` using
+[pytest-arraydiff](https://github.com/astropy/pytest-arraydiff), which is why the
+**solve** CI job runs it with `--arraydiff`:
+
+```bash
+pixi run pytest ./tests/test_solve_dense.py --arraydiff
+```
+
+A change that legitimately moves those numbers — an operator fix, a geometry change, a
+sign-convention change — needs the affected baselines regenerated. Generate into a
+scratch directory first and copy in only the files that changed. Pointing
+`--arraydiff-generate-path` straight at `tests/reference/` rewrites all 22 baselines and
+hides which ones actually moved:
+
+1. Regenerate into a scratch directory. The flag implies `--arraydiff`, and each test
+   reports as *skipped* rather than passed:
+
+   ```bash
+   pixi run pytest ./tests/test_solve_dense.py --arraydiff-generate-path=/tmp/celeri-gold
+   ```
+
+2. Review the diff. Only the files you expected to move may differ; anything else means
+   the change had a wider reach than intended and should be understood before going on:
+
+   ```bash
+   diff -rq tests/reference /tmp/celeri-gold
+   ```
+
+3. Copy in just those files and confirm the suite is green:
+
+   ```bash
+   cp /tmp/celeri-gold/<changed>.txt tests/reference/
+   pixi run pytest ./tests/test_solve_dense.py --arraydiff
+   ```
+
+Commit the regenerated baselines in their own commit, saying which quantity moved and
+why, and state in the PR that the change of numbers is intended. Where an earlier commit
+already computed the same quantity a different way, diffing against it
+(`git show <rev>:tests/reference/<file>`) is a cheap independent check.
+
+### Elastic operator cache
+
+The test configs cache elastic operators in `tests/data/operators/` and
+`tests/operators/` (gitignored, 100–350 MB per file). The cache key
+(`_hash_elastic_operator_input`) only sees the mesh *file name*, so each cached dataset
+is additionally stamped with `_mesh_geometry_digest`, a hash of the mesh `points` **and**
+`verts` (see `celeri/operators.py`). A geometry or vertex-order change invalidates the
+affected datasets and they recompute, which is slow but correct.
+
+Do not work around that digest. Before it existed, a stale cache let a vertex-winding
+change pass the test suite and left the regenerated baselines silently wrong.
