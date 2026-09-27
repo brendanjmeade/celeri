@@ -116,3 +116,27 @@ def test_none_string_clears_optional_file_names():
     process_args(config, args)
 
     assert config.mogi_file_name is None
+
+
+def test_mcmc_sampler_flags_override_config(monkeypatch):
+    from celeri import parse_args
+
+    config = get_config(CONFIG)
+    assert config.mcmc_target_accept != 0.8
+    assert config.mcmc_drop_stalled_chains is False
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "celeri-solve",
+            str(CONFIG),
+            "--mcmc-target-accept",
+            "0.8",
+            "--mcmc-drop-stalled-chains",
+            "1",
+        ],
+    )
+    process_args(config, parse_args())
+
+    assert config.mcmc_target_accept == 0.8
+    assert config.mcmc_drop_stalled_chains is True

@@ -142,6 +142,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="Number of parallel MCMC chains to run",
     )
     parser.add_argument(
+        "--mcmc-target-accept",
+        type=float,
+        default=None,
+        required=False,
+        help="Target acceptance rate for the NUTS sampler (0-1)",
+    )
+    parser.add_argument(
+        "--mcmc-drop-stalled-chains",
+        type=str2bool,
+        default=None,
+        required=False,
+        help="Flag for dropping stalled MCMC chains once the others finish (0 | 1)",
+    )
+    parser.add_argument(
         "--mcmc-backend",
         type=str,
         default=None,
