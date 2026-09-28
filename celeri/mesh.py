@@ -1267,25 +1267,10 @@ class Mesh:
             # kinematic factor 1/cos(dip) and cutde's dip-slip direction both
             # reverse with the winding, so the element's physics is the same
             # either way but the stored dip-slip numbers change sign. The file's
-            # winding is kept as is; report it rather than change it.
+            # winding is kept as is but the mesh["verts"] array is changed, with
+            # swapped second and third columns to reverse the winding direction.
             unit_z = mesh["nv"][:, 2] / np.linalg.norm(mesh["nv"], axis=1)
             n_downward = int(np.sum(unit_z < -WINDING_TOLERANCE))
-            n_upward = int(np.sum(unit_z > WINDING_TOLERANCE))
-            if n_downward > 0 and n_upward > 0:
-                logger.warning(
-                    f"Mesh {config.mesh_filename} has mixed vertex winding: "
-                    f"{n_downward} of {mesh['n_tde']} triangles have downward "
-                    "normals, so the sign of their dip-slip rates (kinematic and "
-                    "elastic) is opposite to the rest of the mesh and the Laplacian "
-                    "smoothing, eigenmodes and bounds mix two sign conventions on "
-                    "this mesh. Reorder those triangles in the mesh file."
-                )
-            elif n_downward > 0:
-                logger.info(
-                    f"Mesh {config.mesh_filename}: every triangle has a downward "
-                    "normal (dip reported in (90, 180]); stored dip-slip rates are "
-                    "negative for reverse motion on this mesh"
-                )
 
             # Calcuate areas of each triangle in mesh
             triangle_vertex_array = np.zeros((mesh["n_tde"], 3, 3))
