@@ -1271,6 +1271,7 @@ class Mesh:
             # swapped second and third columns to reverse the winding direction.
             unit_z = mesh["nv"][:, 2] / np.linalg.norm(mesh["nv"], axis=1)
             n_downward = int(np.sum(unit_z < -WINDING_TOLERANCE))
+            int(np.sum(unit_z >= WINDING_TOLERANCE))
 
             # Calcuate areas of each triangle in mesh
             triangle_vertex_array = np.zeros((mesh["n_tde"], 3, 3))
@@ -1291,8 +1292,8 @@ class Mesh:
             downward = unit_z < -WINDING_TOLERANCE
             verts[downward, 1:] = verts_ccw[downward, :]
             if n_downward > 0:
-                logger.info(
-                    f"Swapped nodes of {n_downward} elements to give CCW winding."
+                logger.warning(
+                    f"Entirely CW or mixed vertex winding detected; {n_downward} of {mesh['n_tde']} elements have downward normals. Swapped nodes to give CCW winding."
                 )
 
         mesh["n_modes"] = np.max(
