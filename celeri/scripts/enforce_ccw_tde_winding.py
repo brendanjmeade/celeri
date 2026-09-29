@@ -102,26 +102,12 @@ def main():
     # the sign of every dip-slip quantity on the element follows it: the
     # kinematic factor 1/cos(dip) and cutde's dip-slip direction both
     # reverse with the winding, so the element's physics is the same
-    # either way but the stored dip-slip numbers change sign. The file's
-    # winding is kept as is; report it rather than change it.
+    # either way but the stored dip-slip numbers change sign. The
+    # mesh["verts"] array is changed, with swapped second and third
+    # columns to reverse the winding direction, and an updated file is
+    # written.
     unit_z = mesh["nv"][:, 2] / np.linalg.norm(mesh["nv"], axis=1)
     n_downward = int(np.sum(unit_z < -WINDING_TOLERANCE))
-    n_upward = int(np.sum(unit_z > WINDING_TOLERANCE))
-    if n_downward > 0 and n_upward > 0:
-        logger.warning(
-            f"Mesh {filename} has mixed vertex winding: "
-            f"{n_downward} of {mesh['n_tde']} triangles have downward "
-            "normals, so the sign of their dip-slip rates (kinematic and "
-            "elastic) is opposite to the rest of the mesh and the Laplacian "
-            "smoothing, eigenmodes and bounds mix two sign conventions on "
-            "this mesh. Reorder those triangles in the mesh file."
-        )
-    elif n_downward > 0:
-        logger.info(
-            f"Mesh {filename}: every triangle has a downward "
-            "normal (dip reported in (90, 180]); stored dip-slip rates are "
-            "negative for reverse motion on this mesh"
-        )
 
     # Swap CW-wound elements
     verts_ccw = np.vstack([verts[:, 2], verts[:, 1]]).T
@@ -133,10 +119,13 @@ def main():
     cells = [("triangle", verts)]
     meshout = meshio.Mesh(points, cells)
 
-    # Write to .msh file
-    out_filename = Path(filename.parent, filename.stem + "_ccw.msh")
-    meshio.gmsh.write(mesh=meshout, binary=False, filename=out_filename)
-    logger.info(f"Wrote updated mesh to {out_filename}.")
+    # Write to .msh file, if we swapped any nodes
+    if n_downward > 0:
+        out_filename = Path(filename.parent, filename.stem + "_ccw.msh")
+        meshio.gmsh.write(mesh=meshout, binary=False, filename=out_filename)
+        logger.info(f"Wrote updated mesh to {out_filename}.")
+    else:
+        logger.info("No nodes swapped, so no updated mesh file written.")
 
 
 if __name__ == "__main__":
