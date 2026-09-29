@@ -1291,9 +1291,15 @@ class Mesh:
             verts_ccw = np.vstack([verts[:, 2], verts[:, 1]]).T
             downward = unit_z < -WINDING_TOLERANCE
             verts[downward, 1:] = verts_ccw[downward, :]
-            if n_downward > 0:
+            if n_downward == mesh["n_tde"]:
                 logger.warning(
-                    f"Entirely CW or mixed vertex winding detected; {n_downward} of {mesh['n_tde']} elements have downward normals. Swapped nodes to give CCW winding."
+                    f"Mesh {config.mesh_filename} has all-clockwise vertex winding: "
+                    f"{n_downward} of {mesh['n_tde']} elements have downward normals. Swapped nodes to give CCW winding."
+                )
+            elif n_downward > 0 and np.sum(unit_z > WINDING_TOLERANCE) > 0:
+                logger.warning(
+                    f"Mesh {config.mesh_filename} has mixed vertex winding: "
+                    f"{n_downward} of {mesh['n_tde']} elements have downward normals. Swapped nodes to give CCW winding."
                 )
 
         mesh["n_modes"] = np.max(
