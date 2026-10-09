@@ -1403,6 +1403,7 @@ def _hash_elastic_operator_input(
         "coupling_constraints_ds",
         "coupling_mean",
         "coupling_mean_parameterization",
+        "coupling_mean_filename",
         "coupling_sigma",
         "elastic_constraints_ss",
         "elastic_constraints_ds",

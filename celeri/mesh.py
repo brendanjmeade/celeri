@@ -264,6 +264,17 @@ class MeshConfig(RelativePathSerializerMixin, BaseModel):
     When None, uses default from Config.mcmc_default_mesh_coupling_mean_parameterization.
     """
 
+    coupling_mean_filename: Path | None = None
+    """CSV of per-triangle prior means for the coupling field in MCMC.
+
+    One row per triangle in mesh order, with columns ``strike_slip_coupling``
+    and ``dip_slip_coupling`` (as in model_meshes.csv, so an earlier run's
+    coupling can serve as the prior mean). When set, it replaces coupling_mean
+    for every slip component with coupling bounds. The values are read in the
+    coupling_mean_parameterization space; constrained values must lie strictly
+    inside the bounds.
+    """
+
     coupling_sigma: float | None = None
     """GP prior amplitude scale for coupling field in MCMC.
 
