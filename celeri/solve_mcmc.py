@@ -360,6 +360,25 @@ def _get_eigenmodes(
     return eigenvectors[:, :n_eigs]
 
 
+def _get_eigenmode_projection(
+    model: Model,
+    mesh_idx: int,
+    kind: Literal["strike_slip", "dip_slip"],
+) -> np.ndarray:
+    """Matrix ``P`` whose transpose projects an element field onto the eigenmodes.
+
+    The coefficients of the projection of a field ``f`` onto the retained
+    eigenmodes are ``P.T @ f``. The eigenvectors ``V`` are orthonormal in the
+    Euclidean inner product unless the mesh uses area weighting, in which case
+    they are orthonormal in the area-weighted one and ``P = W V``.
+    """
+    eigenvectors = _get_eigenmodes(model, mesh_idx, kind)
+    weights = model.meshes[mesh_idx].eigenmode_weights
+    if weights is None:
+        return eigenvectors
+    return eigenvectors * weights[:, None]
+
+
 def _get_eigen_to_velocity(
     model: Model,
     mesh_idx: int,
@@ -464,8 +483,8 @@ def _velocities_from_elastic_mesh(
         raise ValueError("Either vel_idx or los_ops must be provided")
 
     if los_ops is not None:
-        eigenvectors = _get_eigenmodes(model, mesh_idx, kind)
-        coefs = _operator_mult(eigenvectors.T, elastic)
+        projection = _get_eigenmode_projection(model, mesh_idx, kind)
+        coefs = _operator_mult(projection.T, elastic)
 
         if kind == "strike_slip":
             n_eigs = model.meshes[mesh_idx].config.n_modes_strike_slip
@@ -512,12 +531,10 @@ def _velocities_from_elastic_mesh(
             operators,
             vel_idx,
         )
-        eigenvectors = _get_eigenmodes(model, mesh_idx, kind)
-        # TODO: This assumes that the eigenvectors are orthogonal
-        # with respect to the euclidean inner product. If we change
-        # the eigen decomposition to use a different inner product,
-        # we will need to change this projection.
-        coefs = _operator_mult(eigenvectors.T, elastic)
+        # Projection in the inner product the eigenvectors are orthonormal
+        # in (Euclidean, or area weighted; see _get_eigenmode_projection)
+        projection = _get_eigenmode_projection(model, mesh_idx, kind)
+        coefs = _operator_mult(projection.T, elastic)
         # eigen_to_velocities now includes selected velocity components
         elastic_velocity = _operator_mult(to_velocity, coefs)
         return elastic_velocity
@@ -750,8 +767,10 @@ def _elastic_component(
     #
     # When there are no bounds, _constrain_field is identity, so
     #   elastic_tde = V @ c + mu                        (n_tde,)
-    # The project_to_eigen velocity is T @ V^T @ elastic_tde.  Expanding:
-    #   T @ V^T @ (V @ c + mu) = T @ c + mu * T @ (V^T @ 1)
+    # The project_to_eigen velocity is T @ P^T @ elastic_tde, where P = V, or
+    # W V for an area-weighted mesh (_get_eigenmode_projection), so P^T V = I.
+    # Expanding:
+    #   T @ P^T @ (V @ c + mu) = T @ c + mu * T @ (P^T @ 1)
     # The second term's matrix-vector multiply is precomputed once; at
     # runtime we only pay a cheap vector add per step.
     #
@@ -763,7 +782,7 @@ def _elastic_component(
     # station velocities and LOS velocities when no bounds are present).
     unconstrained = lower is None and upper is None
     if unconstrained and mu_unconstrained != 0.0:
-        mean_coefs = eigenvectors.sum(axis=0)
+        mean_coefs = _get_eigenmode_projection(model, mesh_idx, kind).sum(axis=0)
     else:
         mean_coefs = None
 
@@ -771,7 +790,7 @@ def _elastic_component(
         station_vels = _operator_mult(to_velocity, param)
         if mean_coefs is not None:
             # Constant velocity contribution of the mean field projected
-            # onto the eigensubspace: mu * T @ (V^T @ 1_{n_tde})
+            # onto the eigensubspace: mu * T @ (P^T @ 1_{n_tde})
             station_vels = station_vels + mu_unconstrained * _operator_mult(
                 to_velocity, mean_coefs
             )
@@ -1895,7 +1914,8 @@ def _state_vector_from_draw(
     The eigen coefficients are the projection of the sampled elastic TDE
     field (``elastic_*``) onto the eigenvectors, for both the coupling and
     the elastic parameterization. This is what the sampler's forward model
-    sees (with ``project_to_eigen`` the velocities are ``T @ V.T @ elastic``),
+    sees (with ``project_to_eigen`` the velocities are ``T @ P.T @ elastic``,
+    ``P`` from ``_get_eigenmode_projection``),
     and for the elastic parameterization it includes the prior mean offset
     and any bound transform, which the raw ``elastic_eigen_*`` coefficients
     do not. Those coefficients are only used as a fallback when the elastic
@@ -1937,8 +1957,8 @@ def _state_vector_from_draw(
 
             if elastic_tde_var in posterior_point:
                 elastic_tde = posterior_point[elastic_tde_var].values
-                eigenvectors = _get_eigenmodes(model, mesh_idx, kind)
-                coefs[coef_start : coef_start + n_modes] = eigenvectors.T @ elastic_tde
+                projection = _get_eigenmode_projection(model, mesh_idx, kind)
+                coefs[coef_start : coef_start + n_modes] = projection.T @ elastic_tde
             elif elastic_eigen_var in posterior_point:
                 coefs[coef_start : coef_start + n_modes] = posterior_point[
                     elastic_eigen_var

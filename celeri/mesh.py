@@ -408,15 +408,53 @@ class MeshConfig(RelativePathSerializerMixin, BaseModel):
     When None, uses default from Config.mcmc_default_mesh_matern_length_scale.
     Interpretation depends on matern_length_units.
 
-    UNITS: depends on matern_length_units - [mesh diameters] or [TODO]
+    UNITS: depends on matern_length_units - [mesh diameters], [m], or
+    [local element sizes] for "local"
     """
 
-    matern_length_units: Literal["absolute", "diameters"] | None = None
+    matern_length_units: Literal["absolute", "diameters", "local"] | None = None
     """Units for matern_length_scale.
 
     When None, uses default from Config.mesh_default_matern_length_units.
     - "diameters": scales by mesh diameter
     - "absolute": uses value directly in mesh coordinate units
+    - "local": the length scale varies over the mesh and is
+      ``matern_length_scale`` times the local element size (the square root
+      of the element area, smoothed over ``matern_length_smoothing``), so a
+      locally refined mesh gets a locally shorter length scale. The kernel is
+      the non-stationary Matérn of Paciorek & Schervish (2006), which keeps
+      unit prior variance on every element and reduces to the stationary
+      kernel where the element size is uniform. Implies
+      ``eigenmode_area_weighting`` unless that is set explicitly.
+    """
+
+    matern_length_smoothing: float | None = None
+    """Gaussian smoothing length for the element-size field used when
+    matern_length_units is "local".
+
+    The element sizes (square roots of the element areas) are averaged with
+    area weights over a Gaussian of this standard deviation (straight-line
+    distance between element centroids), so that the length scale varies
+    smoothly rather than with the size of individual triangles. ``0`` turns
+    the smoothing off. When None, uses twice the area-weighted mean element
+    size. Ignored for the other units.
+
+    UNITS: [m]
+    """
+
+    eigenmode_area_weighting: bool | None = None
+    """Whether the eigendecomposition of the Matérn kernel is weighted by
+    element area.
+
+    With area weighting the eigenmodes are those of the kernel as an integral
+    operator over the fault surface (``W^½ K W^½`` with ``W`` the element areas
+    over their mean), so mode ordering and the fraction of prior variance
+    captured are measured per unit area rather than per element, and a locally
+    refined mesh does not draw the leading modes toward its dense region. The
+    eigenvectors are then orthonormal in the area-weighted inner product. With
+    all modes kept, the prior covariance on the elements is the same either way.
+    When None, area weighting is used if and only if matern_length_units is
+    "local".
     """
 
     eigenvector_algorithm: Literal["eigh", "eigsh"] | None = None
@@ -747,6 +785,126 @@ def _compute_mesh_perimeter(mesh: dict):
     )
 
 
+def resolve_eigenmode_area_weighting(config: MeshConfig) -> bool:
+    """Whether a mesh's eigendecomposition is area weighted (see MeshConfig)."""
+    if config.eigenmode_area_weighting is not None:
+        return config.eigenmode_area_weighting
+    return config.matern_length_units == "local"
+
+
+def _eigenmode_weights(areas: np.ndarray) -> np.ndarray:
+    """Element weights of the area-weighted eigendecomposition: areas over their mean."""
+    return areas / areas.mean()
+
+
+def _matern_correlation(scaled_distance: np.ndarray, nu: float) -> np.ndarray:
+    """Matérn correlation of distances already divided by the length scale.
+
+    Same expressions as sklearn's ``Matern`` kernel. ``scaled_distance`` is
+    overwritten.
+    """
+    d = scaled_distance
+    if nu == 0.5:
+        np.negative(d, out=d)
+        return np.exp(d, out=d)
+    if nu == 1.5:
+        d *= np.sqrt(3)
+        k = 1.0 + d
+        np.negative(d, out=d)
+        k *= np.exp(d, out=d)
+        return k
+    if nu == 2.5:
+        d *= np.sqrt(5)
+        k = 1.0 + d + d**2 / 3.0
+        np.negative(d, out=d)
+        k *= np.exp(d, out=d)
+        return k
+    if nu == np.inf:
+        d **= 2
+        d *= -0.5
+        return np.exp(d, out=d)
+    from scipy.special import gamma, kv
+
+    zero = d == 0.0
+    d[zero] = np.finfo(float).eps
+    tmp = np.sqrt(2 * nu) * d
+    k = np.full_like(d, 2 ** (1.0 - nu) / gamma(nu))
+    k *= tmp**nu
+    k *= kv(nu, tmp)
+    k[zero] = 1.0
+    return k
+
+
+def _local_length_scales(
+    distance: np.ndarray,
+    areas: np.ndarray,
+    multiplier: float,
+    smoothing: float | None,
+) -> tuple[np.ndarray, float]:
+    """Length scale of each element for ``matern_length_units == "local"``.
+
+    ``multiplier`` times the element size (square root of the area), averaged
+    with area weights over a Gaussian of standard deviation ``smoothing``.
+
+    Returns:
+        length_scales: (n_tde,) in the units of ``distance``
+        smoothing: The smoothing length used
+    """
+    if multiplier <= 0:
+        raise ValueError(
+            f"matern_length_scale must be positive for local units, got {multiplier}"
+        )
+    size = np.sqrt(areas)
+    if smoothing is None:
+        smoothing = 2.0 * float(np.average(size, weights=areas))
+    if smoothing < 0:
+        raise ValueError(f"matern_length_smoothing must be >= 0, got {smoothing}")
+    if smoothing > 0:
+        weights = distance / smoothing
+        weights **= 2
+        weights *= -0.5
+        np.exp(weights, out=weights)
+        weights *= areas[None, :]
+        size = (weights @ size) / weights.sum(axis=1)
+        del weights
+    if multiplier < 2:
+        logger.warning(
+            f"matern_length_scale = {multiplier} local element sizes: a length "
+            "scale under about two elements is not resolved by the mesh"
+        )
+    return multiplier * size, smoothing
+
+
+def _nonstationary_matern_kernel(
+    distance: np.ndarray, length_scales: np.ndarray, nu: float
+) -> np.ndarray:
+    """Non-stationary Matérn correlation matrix (Paciorek & Schervish, 2006).
+
+    For isotropic local length scales l_i in d = 3 dimensions (the centroid
+    coordinates),
+
+        K_ij = (l_i l_j / m_ij)^(d/2) M_nu(r_ij / sqrt(m_ij)),
+        m_ij = (l_i^2 + l_j^2) / 2,
+
+    which is positive definite for any length-scale field, has K_ii = 1, and
+    equals the stationary Matérn kernel where l is constant. ``distance`` is
+    overwritten.
+    """
+    half_sum_sq = length_scales[:, None] ** 2 + length_scales[None, :] ** 2
+    half_sum_sq *= 0.5
+    distance /= np.sqrt(half_sum_sq)
+    kernel = _matern_correlation(distance, nu)
+    del distance
+    # Prefactor (l_i l_j / m_ij)^(3/2), computed in place
+    np.reciprocal(half_sum_sq, out=half_sum_sq)
+    half_sum_sq *= length_scales[:, None]
+    half_sum_sq *= length_scales[None, :]
+    np.power(half_sum_sq, 1.5, out=half_sum_sq)
+    kernel *= half_sum_sq
+    np.fill_diagonal(kernel, 1.0)
+    return kernel
+
+
 def _get_eigenvalues_and_eigenvectors(
     n_eigenvalues: int,
     x: np.ndarray,
@@ -754,8 +912,12 @@ def _get_eigenvalues_and_eigenvectors(
     z: np.ndarray,
     matern_nu: float = 0.5,  # Smoothness parameter
     matern_length_scale: float = 1.0,
-    matern_length_units: Literal["absolute", "diameters"] = "diameters",
+    matern_length_units: Literal["absolute", "diameters", "local"] = "diameters",
     eigenvector_algorithm: Literal["eigh", "eigsh"] = "eigh",
+    *,
+    areas: np.ndarray | None = None,
+    matern_length_smoothing: float | None = None,
+    area_weighting: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, float]:
     """Get the eigenvalues and eigenvectors of the mesh Matérn kernel.
 
@@ -763,27 +925,67 @@ def _get_eigenvalues_and_eigenvectors(
     Eigenvalues scale as sigma**2, so the amplitude can be reintroduced later
     by multiplying eigenvalues by sigma**2 (eigenvectors are unchanged).
 
+    With ``area_weighting`` the decomposition is of ``W^½ K W^½`` (``W`` the
+    element areas over their mean) and the returned eigenvectors are
+    ``W^-½ U``, orthonormal in the area-weighted inner product
+    (``V.T @ (w[:, None] * V) = I``). The eigenvalues are still the prior
+    variances of the mode coefficients, and ``V diag(eigenvalues) V.T``
+    converges to ``K`` as modes are added.
+
+    ``areas`` are required for local units and for area weighting.
+
     Returns:
         eigenvalues: Top eigenvalues in descending order (n_eigenvalues,)
         eigenvectors: Corresponding eigenvectors as columns (n_tde, n_eigenvalues)
-        trace: Trace of the full covariance matrix (= sum of all eigenvalues)
+        trace: Trace of the full (weighted) covariance matrix (= sum of all
+            eigenvalues)
     """
     n_tde = x.size
 
     # Triangle centroid coordinates (n_tde, 3)
     centroid_coordinates = np.array([x, y, z]).T
 
-    if matern_length_units == "diameters":
-        # Scale length_scale by mesh diameter (max pairwise distance)
-        diameter = float(np.max(scipy.spatial.distance.pdist(centroid_coordinates)))
-        matern_length_scale *= diameter
-    else:
-        assert matern_length_units == "absolute"
+    if (matern_length_units == "local" or area_weighting) and areas is None:
+        raise ValueError(
+            "Element areas are required for local length units and area weighting"
+        )
 
-    # Use sklearn's Matern kernel which handles all special cases (nu=0.5, 1.5, 2.5)
-    # and the general case with proper numerical stability
-    kernel = Matern(nu=matern_nu, length_scale=matern_length_scale)
-    covariance_matrix = kernel(centroid_coordinates)
+    if matern_length_units == "local":
+        assert areas is not None
+        distance = scipy.spatial.distance.cdist(
+            centroid_coordinates, centroid_coordinates
+        )
+        length_scales, smoothing = _local_length_scales(
+            distance, areas, matern_length_scale, matern_length_smoothing
+        )
+        logger.info(
+            f"Local Matérn length scale ({matern_length_scale:g} element sizes, "
+            f"smoothed over {smoothing:.0f}m): min {length_scales.min():.0f}m, "
+            f"median {np.median(length_scales):.0f}m, max {length_scales.max():.0f}m"
+        )
+        covariance_matrix = _nonstationary_matern_kernel(
+            distance, length_scales, matern_nu
+        )
+        del distance
+    else:
+        if matern_length_units == "diameters":
+            # Scale length_scale by mesh diameter (max pairwise distance)
+            diameter = float(np.max(scipy.spatial.distance.pdist(centroid_coordinates)))
+            matern_length_scale *= diameter
+        else:
+            assert matern_length_units == "absolute"
+
+        # Use sklearn's Matern kernel which handles all special cases (nu=0.5, 1.5, 2.5)
+        # and the general case with proper numerical stability
+        kernel = Matern(nu=matern_nu, length_scale=matern_length_scale)
+        covariance_matrix = cast(np.ndarray, kernel(centroid_coordinates))
+
+    sqrt_weights = None
+    if area_weighting:
+        assert areas is not None
+        sqrt_weights = np.sqrt(_eigenmode_weights(areas))
+        covariance_matrix *= sqrt_weights[:, None]
+        covariance_matrix *= sqrt_weights[None, :]
 
     trace = float(np.trace(covariance_matrix))
 
@@ -807,6 +1009,8 @@ def _get_eigenvalues_and_eigenvectors(
     )
     eigenvalues_descending = eigenvalues_ascending[::-1]
     eigenvectors_descending = eigenvectors_ascending[:, ::-1]
+    if sqrt_weights is not None:
+        eigenvectors_descending = eigenvectors_descending / sqrt_weights[:, None]
     return eigenvalues_descending, eigenvectors_descending, trace
 
 
@@ -913,7 +1117,7 @@ def _log_eigenvalue_truncation(
     areas: np.ndarray | None = None,
     nu: float | None = None,
     matern_length_scale: float | None = None,
-    matern_length_units: Literal["absolute", "diameters"] | None = None,
+    matern_length_units: Literal["absolute", "diameters", "local"] | None = None,
 ) -> None:
     """Log the fraction of prior variance captured and N for standard thresholds.
 
@@ -921,7 +1125,8 @@ def _log_eigenvalue_truncation(
     (*nu*, *matern_length_scale*, *matern_length_units*) are provided,
     unreachable thresholds are supplemented with a corrected Weyl asymptotic
     estimate for N (shown as ``~N``), and a rough estimate of the minimum
-    length scale needed at the current *n_modes* (shown as ``≈ℓ``).
+    length scale needed at the current *n_modes* (shown as ``≈ℓ``). The Weyl
+    estimates assume one length scale, so they are skipped for local units.
 
     The Weyl correction renormalizes the asymptotic formula using the exact
     truncation error at the current *n_modes* as a calibration point.
@@ -938,6 +1143,7 @@ def _log_eigenvalue_truncation(
         and nu is not None
         and matern_length_scale is not None
         and matern_length_units is not None
+        and matern_length_units != "local"
     )
 
     abs_length_scale: float | None = None
@@ -953,6 +1159,7 @@ def _log_eigenvalue_truncation(
             and nu is not None
             and matern_length_scale is not None
             and matern_length_units is not None
+            and matern_length_units != "local"
         )
         abs_length_scale, total_area, diameter = _get_absolute_length_scale_and_area(
             x_centroid,
@@ -1372,6 +1579,9 @@ class Mesh:
                 matern_length_scale=config.matern_length_scale,
                 matern_length_units=config.matern_length_units,
                 eigenvector_algorithm=config.eigenvector_algorithm,
+                areas=mesh["areas"],
+                matern_length_smoothing=config.matern_length_smoothing,
+                area_weighting=resolve_eigenmode_area_weighting(config),
             )
         )
         _log_eigenvalue_truncation(
@@ -1393,6 +1603,19 @@ class Mesh:
     @property
     def file_name(self) -> Path | None:
         return self.config.mesh_filename
+
+    @property
+    def eigenmode_weights(self) -> np.ndarray | None:
+        """Element weights of the inner product the eigenvectors are orthonormal in.
+
+        None for the Euclidean inner product (``V.T @ V = I``). With area
+        weighting, the areas over their mean (``V.T @ (w[:, None] * V) = I``),
+        so the projection of an element field ``f`` onto the modes is
+        ``V.T @ (w * f)``.
+        """
+        if not resolve_eigenmode_area_weighting(self.config):
+            return None
+        return _eigenmode_weights(self.areas)
 
     @property
     def name(self) -> str:
@@ -1496,6 +1719,9 @@ class Mesh:
                     matern_length_scale=config.matern_length_scale,
                     matern_length_units=config.matern_length_units,
                     eigenvector_algorithm=config.eigenvector_algorithm,
+                    areas=mesh.areas,
+                    matern_length_smoothing=config.matern_length_smoothing,
+                    area_weighting=resolve_eigenmode_area_weighting(config),
                 )
             )
             _log_eigenvalue_truncation(
