@@ -312,7 +312,9 @@ class Config(RelativePathSerializerMixin, BaseModel):
     The interpretation depends on ``mesh_default_matern_length_units``.
     """
 
-    mesh_default_matern_length_units: Literal["absolute", "diameters"] = "diameters"
+    mesh_default_matern_length_units: Literal["absolute", "diameters", "local"] = (
+        "diameters"
+    )
     """Default units for the Matérn kernel length scale.
 
     Propagated to each mesh's ``matern_length_units`` unless overridden in the
@@ -320,6 +322,8 @@ class Config(RelativePathSerializerMixin, BaseModel):
 
     - "diameters": Scales by mesh diameter (max pairwise centroid distance)
     - "absolute": Uses the value directly in mesh coordinate units (meters)
+    - "local": Multiples of the local element size, so the length scale follows
+      the mesh density (see ``MeshConfig.matern_length_units``)
     """
 
     mcmc_station_velocity_method: McmcStationVelocityMethod = "project_to_eigen"

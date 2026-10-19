@@ -1412,6 +1412,9 @@ def _hash_elastic_operator_input(
         "smoothing_weight",
         "softplus_lengthscale",
         "kinematic_smoothing_length_scale",  # smooths the kinematic operator only
+        # The eigenmodes are projected at run time, so they don't enter the cache
+        "matern_length_smoothing",
+        "eigenmode_area_weighting",
     }
 
     mesh_configs = [mesh.model_dump_json(exclude=constraint_fields) for mesh in meshes]
