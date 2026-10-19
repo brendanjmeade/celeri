@@ -285,3 +285,48 @@ def test_mcmc_rejects_kinematic_boundary_constraints(coupling_model):
             _build_pymc_model(model, operators)
     finally:
         model.meshes[0].config.top_slip_rate_constraint = original
+
+
+def test_coupling_mean_filename_sets_per_triangle_prior_mean(coupling_model, tmp_path):
+    import pandas as pd
+    import pytensor
+
+    from celeri.solve_mcmc import _build_pymc_model
+
+    model, operators = coupling_model
+    mesh = model.meshes[0]
+    rng = np.random.default_rng(0)
+    means = pd.DataFrame(
+        {
+            "strike_slip_coupling": rng.uniform(0.05, 0.95, mesh.n_tde),
+            "dip_slip_coupling": rng.uniform(0.05, 0.95, mesh.n_tde),
+        }
+    )
+    path = tmp_path / "coupling_mean.csv"
+    means.to_csv(path, index=False)
+    mesh.config.coupling_mean_filename = path
+    try:
+        pymc_model = _build_pymc_model(model, operators)
+        # With every GP coefficient at its prior mean (0), the coupling field is
+        # the per-triangle mean from the file.
+        point = pymc_model.initial_point()
+        values = [point[v.name] for v in pymc_model.value_vars]
+        for kind in ("strike_slip", "dip_slip"):
+            short = {"strike_slip": "ss", "dip_slip": "ds"}[kind]
+            (field,) = pymc_model.replace_rvs_by_values(
+                [pymc_model[f"coupling_0_{short}"]]
+            )
+            coupling = pytensor.function(
+                pymc_model.value_vars, field, on_unused_input="ignore"
+            )(*values)
+            assert_allclose(coupling, means[f"{kind}_coupling"], rtol=1e-5)
+
+        means.iloc[:-1].to_csv(path, index=False)
+        with pytest.raises(ValueError, match="triangles"):
+            _build_pymc_model(model, operators)
+
+        means.assign(dip_slip_coupling=1.0).to_csv(path, index=False)
+        with pytest.raises(ValueError, match="upper bound"):
+            _build_pymc_model(model, operators)
+    finally:
+        mesh.config.coupling_mean_filename = None

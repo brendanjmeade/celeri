@@ -279,20 +279,20 @@ def _unconstrain_field(
 
 
 def _get_unconstrained_mean(
-    mean: float,
+    mean: float | np.ndarray,
     mean_parameterization: str,
     lower: float | None,
     upper: float | None,
     softplus_lengthscale: float | None,
     field_name: str,
     sigmoid_slope: float = 4.0,
-) -> float:
+) -> float | np.ndarray:
     """Convert a prior mean to unconstrained space.
 
     Parameters
     ----------
-    mean : float
-        The prior mean value.
+    mean : float | np.ndarray
+        The prior mean value, or one value per element.
     mean_parameterization : str
         Either "constrained" (mean is in bounded space) or "unconstrained".
     lower : float | None
@@ -306,8 +306,8 @@ def _get_unconstrained_mean(
 
     Returns
     -------
-    float
-        The unconstrained mean.
+    float | np.ndarray
+        The unconstrained mean (an array if ``mean`` is one).
 
     Raises
     ------
@@ -320,20 +320,56 @@ def _get_unconstrained_mean(
 
     # mean_parameterization == "constrained"
     # Validate that the constrained mean is within bounds
-    if lower is not None and mean <= lower:
+    values = np.asarray(mean, dtype=float)
+    if lower is not None and np.any(values <= lower):
         raise ValueError(
-            f"{field_name}: constrained mean {mean} must be > lower bound {lower}. "
+            f"{field_name}: constrained mean {np.min(values)} must be > lower bound {lower}. "
             f"Set a mesh-specific value or use unconstrained parameterization."
         )
-    if upper is not None and mean >= upper:
+    if upper is not None and np.any(values >= upper):
         raise ValueError(
-            f"{field_name}: constrained mean {mean} must be < upper bound {upper}. "
+            f"{field_name}: constrained mean {np.max(values)} must be < upper bound {upper}. "
             f"Set a mesh-specific value or use unconstrained parameterization."
         )
 
-    return _unconstrain_field(
-        np.array([mean]), lower, upper, softplus_lengthscale, sigmoid_slope
-    ).item()
+    unconstrained = _unconstrain_field(
+        np.atleast_1d(values), lower, upper, softplus_lengthscale, sigmoid_slope
+    )
+    return unconstrained.item() if values.ndim == 0 else unconstrained
+
+
+def _coupling_prior_mean(
+    model: Model,
+    mesh_idx: int,
+    kind: Literal["strike_slip", "dip_slip"],
+) -> float | np.ndarray:
+    """Return a mesh's coupling prior mean: per triangle if coupling_mean_filename is set."""
+    config = model.meshes[mesh_idx].config
+    if config.coupling_mean_filename is None:
+        assert config.coupling_mean is not None
+        return config.coupling_mean
+
+    path = config.coupling_mean_filename
+    column = f"{kind}_coupling"
+    table = pd.read_csv(path)
+    if column not in table.columns:
+        raise ValueError(f"coupling_mean_filename {path}: no '{column}' column")
+    values = table[column].to_numpy(dtype=float)
+    n_tde = model.meshes[mesh_idx].n_tde
+    if values.shape != (n_tde,):
+        raise ValueError(
+            f"coupling_mean_filename {path}: {values.size} rows, "
+            f"but mesh {mesh_idx} has {n_tde} triangles"
+        )
+    if not np.all(np.isfinite(values)):
+        raise ValueError(
+            f"coupling_mean_filename {path}: '{column}' has non-finite values"
+        )
+    logger.info(
+        f"Mesh {mesh_idx} {kind}: coupling prior mean from {path.name} "
+        f"({values.min():.3g} to {values.max():.3g})"
+    )
+    return values
 
 
 def _operator_mult(operator: np.ndarray, vector):
@@ -560,7 +596,7 @@ def _coupling_component(
     lower: float | None,
     upper: float | None,
     sigma: float,
-    mu_unconstrained: float,
+    mu_unconstrained: float | np.ndarray,
     *,
     los_ops: LosOperators | None = None,
 ):
@@ -584,7 +620,7 @@ def _coupling_component(
         lower: Lower bound for coupling constraint
         upper: Upper bound for coupling constraint
         sigma: Amplitude scale parameter for GP prior
-        mu_unconstrained: Prior mean in unconstrained space
+        mu_unconstrained: Prior mean in unconstrained space (scalar or per triangle)
         los_ops: LOS operators. If provided, also compute LOS velocities.
 
     Returns:
@@ -898,7 +934,7 @@ def _mesh_component(
 
         if has_coupling_bound:
             mu_unconstrained = _get_unconstrained_mean(
-                config.coupling_mean,
+                _coupling_prior_mean(model, mesh_idx, kind),
                 config.coupling_mean_parameterization,
                 coupling_limit.lower,
                 coupling_limit.upper,
@@ -906,6 +942,8 @@ def _mesh_component(
                 f"coupling_{kind_short} mesh {mesh_idx}",
                 sigmoid_slope=sigmoid_slope,
             )
+            if isinstance(mu_unconstrained, np.ndarray):
+                mu_unconstrained = mu_unconstrained.astype("f")
             elastic_tde, station_vels, los_vels = _coupling_component(
                 model,
                 mesh_idx,
