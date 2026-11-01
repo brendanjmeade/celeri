@@ -42,7 +42,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: hynek/build-and-inspect-python-package@v3.0.1 # v3.0.1
+      - uses: hynek/build-and-inspect-python-package@v3.0.2 # v3.0.1
         with:
           # Prove that the packages were built in the context of this workflow.
           # Skip attestation on pull_request runs: PRs (especially from forks) lack
