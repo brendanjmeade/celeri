@@ -20,8 +20,15 @@ from rich.table import Table
 from rich.text import Text
 from scipy.spatial.distance import cdist
 
+from celeri.constants import VERTICAL_DIP_TOLERANCE_DEG
+
 if TYPE_CHECKING:
     from celeri.config import Config
+
+
+def is_vertical_dip(dip):
+    """Whether dips (degrees) are within VERTICAL_DIP_TOLERANCE_DEG of 90."""
+    return np.abs(np.asarray(dip, dtype=float) - 90.0) <= VERTICAL_DIP_TOLERANCE_DEG
 
 
 def sph2cart(lon, lat, radius):

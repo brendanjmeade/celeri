@@ -57,6 +57,7 @@ def _one_triangle_mesh():
         dep3=dep[2:],
         points=np.c_[lon, lat, dep],
         verts=np.array([[0, 1, 2]]),
+        near_vertical_edges=np.zeros((1, 3), dtype=bool),
     )
 
 

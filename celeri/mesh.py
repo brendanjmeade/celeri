@@ -4,6 +4,7 @@ import json
 import os
 import sys
 from dataclasses import dataclass
+from functools import cached_property
 from pathlib import Path
 from typing import Any, Literal, TypeVar, cast
 
@@ -20,6 +21,7 @@ from celeri import constants
 from celeri.celeri_util import (
     RelativePathSerializerMixin,
     cart2sph,
+    is_vertical_dip,
     sph2cart,
     triangle_area,
     wrap2360,
@@ -393,10 +395,13 @@ class MeshConfig(RelativePathSerializerMixin, BaseModel):
 
     Dip-slip rates are smoothed in the convention of an upward-wound element
     (each element's own sign is removed before and restored after), so a mesh
-    with mixed vertex winding is smoothed physically. Note that the dip-slip
-    rate of a near-vertical element carries the 1/cos(dip) factor of the
-    kinematic model, and smoothing spreads that amplified rate over its
-    neighbours.
+    with mixed vertex winding is smoothed physically. The dip-slip rate of a
+    dipping element is the fault-normal relative block motion times
+    1/cos(dip), so a steep element (within a few degrees of vertical) carries
+    an amplified rate that smoothing spreads over its neighbours. Elements
+    within ``constants.VERTICAL_DIP_TOLERANCE_DEG`` of vertical take no
+    kinematic dip slip: their fault-normal motion would be tensile, and the
+    mesh operators have no tensile component.
 
     UNITS: [km]
     """
@@ -1282,11 +1287,12 @@ class Mesh:
              nv: np.ndarray
                  Normal vectors of the triangles.
              strike: np.ndarray
-                 Magnitude of the strike slip on each triangle.
+                 Strike of each triangle (degrees).
              dip: np.ndarray
-                 Magnitude of the dip slip on each triangle.
+                 Dip of each triangle (degrees).
              dip_flag: np.ndarray
-                 Bool indicating the presence of dip slip on each triangle.
+                 Bool indicating that each triangle is not vertical (its dip
+                 is not within constants.VERTICAL_DIP_TOLERANCE_DEG of 90).
              n_tde: int
                  The number of triangular elements constituting the mesh.
              areas: np.ndarray
@@ -1476,7 +1482,7 @@ class Mesh:
             )
             mesh["strike"] = wrap2360(-np.rad2deg(azimuth))
             mesh["dip"] = 90 - np.rad2deg(elevation)
-            mesh["dip_flag"] = mesh["dip"] != 90
+            mesh["dip_flag"] = ~is_vertical_dip(mesh["dip"])
 
             mesh["n_tde"] = mesh["lon1"].size
 
@@ -1609,7 +1615,44 @@ class Mesh:
         )
 
         logger.success(f"Read: {filename}")
-        return cls(**mesh)
+        result = cls(**mesh)
+        n_near_vertical = int(np.sum(result.near_vertical_edges))
+        if n_near_vertical:
+            logger.info(
+                f"Mesh {filename}: {n_near_vertical} element sides within "
+                f"{constants.VERTICAL_DIP_TOLERANCE_DEG} degrees of vertical are "
+                "made vertical in the elastic calculation"
+            )
+        return result
+
+    @cached_property
+    def near_vertical_edges(self) -> np.ndarray:
+        """(n_tde, 3) bool: element sides close to, but not exactly, vertical.
+
+        Side k of element i joins its vertices k and (k + 1) % 3 (in the
+        lon1/lat1/dep1, lon2/... order). A side is flagged when its angle from
+        vertical, from the geodesic horizontal distance and the depth
+        difference of its ends, is in (0, VERTICAL_DIP_TOLERANCE_DEG]. The
+        triangular dislocation solution loses accuracy for such sides, and
+        get_tde_displacement_slab_single_mesh makes them vertical (issue
+        #536). Sides whose ends share a longitude and latitude are exactly
+        vertical and not flagged.
+        """
+        lon = np.stack([self.lon1, self.lon2, self.lon3], axis=1)
+        lat = np.stack([self.lat1, self.lat2, self.lat3], axis=1)
+        dep = np.stack([self.dep1, self.dep2, self.dep3], axis=1)
+        start = [0, 1, 2]
+        end = [1, 2, 0]
+        _, _, horizontal = constants.GEOID.inv(
+            lon[:, start].ravel(),
+            lat[:, start].ravel(),
+            lon[:, end].ravel(),
+            lat[:, end].ravel(),
+        )
+        horizontal = np.asarray(horizontal).reshape(-1, 3)
+        vertical = constants.KM2M * np.abs(dep[:, end] - dep[:, start])
+        tolerance = np.tan(np.deg2rad(constants.VERTICAL_DIP_TOLERANCE_DEG))
+        return (horizontal > 0) & (horizontal <= tolerance * vertical)
 
     @property
     def file_name(self) -> Path | None:

@@ -361,10 +361,20 @@ def _coupling_prior_mean(
             f"coupling_mean_filename {path}: {values.size} rows, "
             f"but mesh {mesh_idx} has {n_tde} triangles"
         )
-    if not np.all(np.isfinite(values)):
-        raise ValueError(
-            f"coupling_mean_filename {path}: '{column}' has non-finite values"
+    non_finite = ~np.isfinite(values)
+    if np.any(non_finite):
+        # Couplings are undefined (NaN) where the kinematic rate is zero, e.g.
+        # the dip slip of vertical elements in an earlier run's output
+        if config.coupling_mean is None:
+            raise ValueError(
+                f"coupling_mean_filename {path}: '{column}' has non-finite "
+                "values and no coupling_mean to fill them with"
+            )
+        logger.info(
+            f"Mesh {mesh_idx} {kind}: {int(non_finite.sum())} non-finite values in "
+            f"{path.name} replaced by coupling_mean = {config.coupling_mean}"
         )
+        values = np.where(non_finite, config.coupling_mean, values)
     logger.info(
         f"Mesh {mesh_idx} {kind}: coupling prior mean from {path.name} "
         f"({values.min():.3g} to {values.max():.3g})"

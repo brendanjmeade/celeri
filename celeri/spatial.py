@@ -643,6 +643,37 @@ def get_tri_displacements_single_mesh(
     return vel_east, vel_north, vel_up
 
 
+def snap_near_vertical_edges(tri: np.ndarray, edges) -> np.ndarray:
+    """Make the flagged sides of a triangle exactly vertical.
+
+    tri is a (3, 3) array of (x, y, z) vertices in a local planar frame (z up)
+    and edges a length-3 bool array where entry k flags the side joining
+    vertices k and (k + 1) % 3 (Mesh.near_vertical_edges). Each flagged side
+    is made vertical by moving its deeper vertex horizontally under its
+    shallower one, unless that would collapse the triangle. The triangular
+    dislocation solution loses accuracy for sides close to, but not exactly,
+    vertical (issue #536); the vertex moves by at most the side length times
+    tan(VERTICAL_DIP_TOLERANCE_DEG).
+
+    Returns a new array; tri is not modified.
+    """
+    tri = np.array(tri, dtype=float)
+    for k in np.flatnonzero(edges):
+        a, b = k, (k + 1) % 3
+        deeper, shallower = (a, b) if tri[a, 2] < tri[b, 2] else (b, a)
+        snapped = tri.copy()
+        snapped[deeper, :2] = tri[shallower, :2]
+        twice_area = np.linalg.norm(
+            np.cross(snapped[1] - snapped[0], snapped[2] - snapped[0])
+        )
+        longest_side = max(
+            np.linalg.norm(snapped[i] - snapped[(i + 1) % 3]) for i in range(3)
+        )
+        if twice_area > 1e-9 * longest_side**2:
+            tri = snapped
+    return tri
+
+
 def get_tde_displacement_slab_single_mesh(
     obs_lon,
     obs_lat,
@@ -663,12 +694,15 @@ def get_tde_displacement_slab_single_mesh(
     get_tde_to_velocities_single_mesh.
 
     Each triangle is evaluated with a single cutde disp_matrix call that yields
-    all three slip components at once. If out is given, the columns are written
-    into it (it must have shape (3 * n_obs, 3 * (tri_stop - tri_start))) and it
-    is returned.
+    all three slip components at once. Sides flagged in
+    mesh.near_vertical_edges are first made exactly vertical
+    (snap_near_vertical_edges). If out is given, the columns are written into
+    it (it must have shape (3 * n_obs, 3 * (tri_stop - tri_start))) and it is
+    returned.
     """
     nu = poissons_ratio(material_lambda, material_mu)
     mesh = meshes[mesh_idx]
+    near_vertical_edges = mesh.near_vertical_edges
     obs_lon = np.asarray(obs_lon)
     obs_lat = np.asarray(obs_lat)
     n_obs = obs_lon.size
@@ -699,6 +733,8 @@ def get_tde_displacement_slab_single_mesh(
                 [tri_x3, tri_y3, tri_z3],
             ]
         )
+        if near_vertical_edges[t].any():
+            tri_coords = snap_near_vertical_edges(tri_coords, near_vertical_edges[t])
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
