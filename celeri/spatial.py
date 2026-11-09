@@ -20,6 +20,14 @@ from celeri.constants import GEOID, KM2M, RADIUS_EARTH
 from celeri.okada.cutde_okada import TriangulationTypes, dc3dwrapper_cutde_disp
 
 
+def poissons_ratio(material_lambda, material_mu) -> float:
+    """Poisson's ratio of an isotropic medium from its Lamé parameters.
+
+    nu = lambda / (2 (lambda + mu)); nu = 0.25 when lambda = mu.
+    """
+    return material_lambda / (2 * (material_lambda + material_mu))
+
+
 def get_rotation_to_velocities_partials(station, n_blocks):
     """Calculate block rotation partials operator for stations in dataframe
     station.
@@ -659,7 +667,7 @@ def get_tde_displacement_slab_single_mesh(
     into it (it must have shape (3 * n_obs, 3 * (tri_stop - tri_start))) and it
     is returned.
     """
-    poissons_ratio = material_mu / (2 * (material_mu + material_lambda))
+    nu = poissons_ratio(material_lambda, material_mu)
     mesh = meshes[mesh_idx]
     obs_lon = np.asarray(obs_lon)
     obs_lat = np.asarray(obs_lat)
@@ -695,7 +703,7 @@ def get_tde_displacement_slab_single_mesh(
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             disp_mat = cutde_halfspace.disp_matrix(
-                obs_pts=obs_coords, tris=np.array([tri_coords]), nu=poissons_ratio
+                obs_pts=obs_coords, tris=np.array([tri_coords]), nu=nu
             )
         # disp_mat has shape (n_obs, 3 displacement components, 1, 3 slip
         # components); the reshape gives rows interleaved (east, north, up) per
@@ -798,9 +806,7 @@ def get_mogi_to_velocities_partials(mogi, station, config) -> np.ndarray:
     if mogi.empty:
         mogi_operator = np.zeros((3 * len(station), 0))
     else:
-        poissons_ratio = config.material_mu / (
-            2 * (config.material_lambda + config.material_mu)
-        )
+        nu = poissons_ratio(config.material_lambda, config.material_mu)
         mogi_operator = np.zeros((3 * len(station), len(mogi)))
         for i in range(len(mogi)):
             mogi_depth = KM2M * mogi.depth[i]
@@ -808,7 +814,7 @@ def get_mogi_to_velocities_partials(mogi, station, config) -> np.ndarray:
                 mogi.lon[i],
                 mogi.lat[i],
                 mogi_depth,
-                poissons_ratio,
+                nu,
                 station.lon,
                 station.lat,
             )

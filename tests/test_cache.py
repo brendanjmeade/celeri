@@ -10,6 +10,8 @@ from loguru import logger
 import celeri
 from celeri.config import get_config
 from celeri.operators import (
+    TDE_KERNEL_VERSION,
+    TDE_KERNEL_VERSION_ATTR,
     _hash_elastic_operator_input,
     _OperatorBuilder,
     _store_elastic_operators,
@@ -160,7 +162,56 @@ def test_tde_cache_tracks_mesh_geometry(tmp_path):
     _, restored = build()
     np.testing.assert_array_equal(restored, fresh)
     with h5py.File(cache_file, "r") as hdf5_file:
-        assert "mesh_geometry" in hdf5_file["tde_to_velocities_0"].attrs
+        attrs = hdf5_file["tde_to_velocities_0"].attrs
+        assert "mesh_geometry" in attrs
+        assert attrs[TDE_KERNEL_VERSION_ATTR] == TDE_KERNEL_VERSION
+
+
+@pytest.mark.parametrize("lambda_over_mu", [1.0, 2.0])
+def test_tde_cache_tracks_poissons_ratio_kernel(tmp_path, lambda_over_mu):
+    """Datasets written before issue #536 carry no kernel version and used the
+    wrong Poisson's ratio. They are reused when lambda == mu, where the old
+    and new kernels agree, and recomputed otherwise.
+    """
+    from celeri.mesh import Mesh
+
+    config = get_config("tests/configs/test_japan_config.json")
+    config.repl = False
+    config.elastic_operator_cache_dir = tmp_path / "cache"
+    config.material_lambda = int(lambda_over_mu * config.material_mu)
+    config.propagate_mesh_defaults()
+    mesh = Mesh.from_params(config.mesh_params[2])
+
+    def build():
+        model = celeri.build_model(config, override_meshes=[mesh])
+        operators = _OperatorBuilder(model)
+        _store_elastic_operators(model, operators)
+        return model, operators.tde_to_velocities[0].copy()
+
+    model, fresh = build()
+    cache_file = config.elastic_operator_cache_dir / (
+        _hash_elastic_operator_input(
+            [model.meshes[0].config], model.station, model.config
+        )
+        + ".hdf5"
+    )
+
+    # Make the dataset look like one written by the old kernel
+    with h5py.File(cache_file, "r+") as hdf5_file:
+        dataset = hdf5_file["tde_to_velocities_0"]
+        dataset[...] = 0.0
+        del dataset.attrs[TDE_KERNEL_VERSION_ATTR]
+    _, reloaded = build()
+
+    if lambda_over_mu == 1.0:
+        # Trusted: served from the cache as is
+        np.testing.assert_array_equal(reloaded, 0.0)
+    else:
+        # Not trusted: recomputed and restamped
+        np.testing.assert_array_equal(reloaded, fresh)
+        with h5py.File(cache_file, "r") as hdf5_file:
+            attrs = hdf5_file["tde_to_velocities_0"].attrs
+            assert attrs[TDE_KERNEL_VERSION_ATTR] == TDE_KERNEL_VERSION
 
 
 def test_kinematic_smoothing_length_scale_does_not_change_the_cache_key():

@@ -1351,13 +1351,36 @@ def _mesh_geometry_digest(mesh: Mesh) -> str:
     return digest.hexdigest()[:16]
 
 
-def _tde_dataset_is_current(dataset, mesh: Mesh) -> bool:
-    """Whether a cached tde_to_velocities dataset matches the mesh geometry.
+TDE_KERNEL_VERSION_ATTR = "tde_kernel_version"
+TDE_KERNEL_VERSION = 2
+"""Version of the TDE Green's-function kernel stamped on cached datasets.
 
-    Datasets written before geometry validation existed carry no digest and
-    are treated as stale.
+The cache key covers stations, mesh configs and the material parameters, but
+not how the columns are computed from them. Bump this whenever the kernel's
+output changes for unchanged inputs, and teach ``_tde_dataset_is_current``
+when an older dataset is still bitwise identical to the current kernel's.
+
+1 (unstamped): Poisson's ratio computed as mu / (2 (lambda + mu)).
+2: Poisson's ratio lambda / (2 (lambda + mu)) (issue #536).
+"""
+
+
+def _tde_dataset_is_current(dataset, mesh: Mesh, config: Config) -> bool:
+    """Whether a cached tde_to_velocities dataset can be reused.
+
+    The dataset must match the mesh geometry (datasets written before
+    geometry validation existed carry no digest and are stale) and either
+    carry the current kernel version or come from an older kernel whose
+    columns are identical for these inputs.
     """
-    return dataset.attrs.get(MESH_GEOMETRY_ATTR) == _mesh_geometry_digest(mesh)
+    if dataset.attrs.get(MESH_GEOMETRY_ATTR) != _mesh_geometry_digest(mesh):
+        return False
+    version = int(dataset.attrs.get(TDE_KERNEL_VERSION_ATTR, 1))
+    if version == TDE_KERNEL_VERSION:
+        return True
+    # Version 1 used the wrong Poisson's ratio, which coincides with the
+    # correct one only when lambda == mu
+    return version == 1 and config.material_lambda == config.material_mu
 
 
 def _hash_elastic_operator_input(
@@ -1574,6 +1597,7 @@ def _compute_and_cache_tde_to_velocities(
                         key, data=operators.tde_to_velocities[i]
                     )
                     dataset.attrs[MESH_GEOMETRY_ATTR] = _mesh_geometry_digest(meshes[i])
+                    dataset.attrs[TDE_KERNEL_VERSION_ATTR] = TDE_KERNEL_VERSION
         except OSError:
             # Do not lose hours of computation to an unwritable cache file
             logger.warning(
@@ -1837,7 +1861,7 @@ def _store_elastic_operators(
                         for i in range(len(meshes)):
                             dataset = hdf5_file.get("tde_to_velocities_" + str(i))
                             if dataset is None or not _tde_dataset_is_current(
-                                dataset, meshes[i]
+                                dataset, meshes[i], config
                             ):
                                 stale.append(i)
                             else:
@@ -1845,8 +1869,9 @@ def _store_elastic_operators(
                     if stale:
                         logger.info(
                             "Cache has no current tde_to_velocities for meshes "
-                            f"{stale} (missing, changed geometry, or written "
-                            "before geometry validation). Computing them."
+                            f"{stale} (missing, changed geometry, written "
+                            "before geometry validation, or by an older TDE "
+                            "kernel). Computing them."
                         )
                         _compute_and_cache_tde_to_velocities(
                             meshes, station, config, operators, cache, stale
@@ -1958,17 +1983,11 @@ def get_rotation_to_tri_slip_rate_partials(model: Model, mesh_idx: int) -> np.nd
     n_blocks = len(model.block)
     tri_slip_rate_partials = np.zeros((3 * model.meshes[mesh_idx].n_tde, 3 * n_blocks))
 
-    # Generate strikes and dips for elements using same sign convention as segments
-    # Element strikes are 0-180
-    # Dip direction is 0-90 for E dips, 90-180 for W dips
+    # Element strikes folded into 0-180, the same sign convention as segments
     ew_switch = np.zeros_like(model.meshes[mesh_idx].strike)
     ns_switch = np.zeros_like(model.meshes[mesh_idx].strike)
     tristrike = np.array(model.meshes[mesh_idx].strike)
     tristrike[model.meshes[mesh_idx].strike > 180] -= 180
-    tridip = np.array(model.meshes[mesh_idx].dip)
-    tridip[model.meshes[mesh_idx].strike > 180] = (
-        180 - tridip[model.meshes[mesh_idx].strike > 180]
-    )
 
     east_labels, west_labels, closest_segment_idx = assign_mesh_segment_labels(
         model, mesh_idx
@@ -3144,12 +3163,12 @@ def _compute_eigen_to_velocities(
                     with h5py.File(str(cache), "r") as hdf5_file:
                         cached_data = hdf5_file.get("tde_to_velocities_" + str(i))
                         if cached_data is not None and not _tde_dataset_is_current(
-                            cached_data, meshes[i]
+                            cached_data, meshes[i], config
                         ):
                             logger.info(
                                 "Cached tde_to_velocities does not match the "
-                                f"current geometry of mesh {meshes[i].file_name}; "
-                                "ignoring it"
+                                f"current geometry of mesh {meshes[i].file_name} "
+                                "or the current TDE kernel; ignoring it"
                             )
                             cached_data = None
                         if cached_data is not None:
