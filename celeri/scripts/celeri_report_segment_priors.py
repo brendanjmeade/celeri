@@ -11,6 +11,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from celeri.celeri_util import is_vertical_dip
+
 
 def main():
     """Main execution function."""
@@ -111,7 +113,7 @@ def main():
                     )
 
             # Check for tensile-slip constraints on dipping fault
-            if df.dip[i] != 90.0:
+            if not is_vertical_dip(df.dip[i]):
                 if df.ts_rate_flag[i] != 0:
                     raise SystemExit(
                         "*** STOP: SOFT TENSILE-SLIP CONSTRAINT ON NON-VERTICAL FAULT ***"
@@ -122,7 +124,7 @@ def main():
                     )
 
             # Check for dip-slip constraints on a vertical fault
-            if df.dip[i] == 90.0:
+            if is_vertical_dip(df.dip[i]):
                 if df.ds_rate_flag[i] != 0:
                     raise SystemExit(
                         "*** STOP: SOFT DIP-SLIP CONSTRAINT ON VERTICAL FAULT ***"

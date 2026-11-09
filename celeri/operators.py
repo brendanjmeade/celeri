@@ -48,6 +48,7 @@ from celeri.celeri_util import (
     get_keep_index_12,
     interleave2,
     interleave3,
+    is_vertical_dip,
     sph2cart,
 )
 from celeri.config import Config
@@ -1352,7 +1353,7 @@ def _mesh_geometry_digest(mesh: Mesh) -> str:
 
 
 TDE_KERNEL_VERSION_ATTR = "tde_kernel_version"
-TDE_KERNEL_VERSION = 2
+TDE_KERNEL_VERSION = 3
 """Version of the TDE Green's-function kernel stamped on cached datasets.
 
 The cache key covers stations, mesh configs and the material parameters, but
@@ -1362,6 +1363,8 @@ when an older dataset is still bitwise identical to the current kernel's.
 
 1 (unstamped): Poisson's ratio computed as mu / (2 (lambda + mu)).
 2: Poisson's ratio lambda / (2 (lambda + mu)) (issue #536).
+3: element sides close to vertical made vertical (Mesh.near_vertical_edges,
+   issue #536).
 """
 
 
@@ -1380,7 +1383,11 @@ def _tde_dataset_is_current(dataset, mesh: Mesh, config: Config) -> bool:
         return True
     # Version 1 used the wrong Poisson's ratio, which coincides with the
     # correct one only when lambda == mu
-    return version == 1 and config.material_lambda == config.material_mu
+    if version == 1 and config.material_lambda != config.material_mu:
+        return False
+    # Versions 1 and 2 did not snap near-vertical sides; they agree with the
+    # current kernel for a mesh that has none
+    return not np.any(mesh.near_vertical_edges)
 
 
 def _hash_elastic_operator_input(
@@ -1988,6 +1995,15 @@ def get_rotation_to_tri_slip_rate_partials(model: Model, mesh_idx: int) -> np.nd
     ns_switch = np.zeros_like(model.meshes[mesh_idx].strike)
     tristrike = np.array(model.meshes[mesh_idx].strike)
     tristrike[model.meshes[mesh_idx].strike > 180] -= 180
+    # A vertical element takes no kinematic dip slip: its fault-normal motion
+    # would be tensile, and the mesh operators carry no tensile component.
+    # Otherwise the dip slip is the fault-normal motion times 1 / cos(dip),
+    # whose sign follows the element's vertex winding.
+    vertical = is_vertical_dip(model.meshes[mesh_idx].dip)
+    dip_scale_factor = np.zeros(model.meshes[mesh_idx].n_tde)
+    dip_scale_factor[~vertical] = 1.0 / np.cos(
+        np.deg2rad(model.meshes[mesh_idx].dip[~vertical])
+    )
 
     east_labels, west_labels, closest_segment_idx = assign_mesh_segment_labels(
         model, mesh_idx
@@ -2048,7 +2064,7 @@ def get_rotation_to_tri_slip_rate_partials(model: Model, mesh_idx: int) -> np.nd
         unit_x_perpendicular = sign_corr * np.sin(np.deg2rad(tristrike[el_idx] - 90))
         unit_y_perpendicular = sign_corr * np.cos(np.deg2rad(tristrike[el_idx] - 90))
         # Project by fault dip
-        scale_factor = 1.0 / (np.cos(np.deg2rad(model.meshes[mesh_idx].dip[el_idx])))
+        scale_factor = dip_scale_factor[el_idx]
         slip_rate_matrix = np.array(
             [
                 [

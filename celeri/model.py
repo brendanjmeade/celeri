@@ -9,9 +9,14 @@ from matplotlib import path
 from scipy.spatial.distance import cdist
 
 from celeri import celeri_closure
-from celeri.celeri_util import sph2cart
+from celeri.celeri_util import is_vertical_dip, sph2cart
 from celeri.config import Config, get_config
-from celeri.constants import GEOID, RADIUS_EARTH
+from celeri.constants import (
+    GEOID,
+    NEAR_VERTICAL_AMPLIFICATION_WARNING,
+    RADIUS_EARTH,
+    VERTICAL_DIP_TOLERANCE_DEG,
+)
 from celeri.mesh import Mesh
 
 
@@ -257,6 +262,7 @@ def build_model(
 
     station = process_station(station, config)
     segment = process_segment(segment, config, meshes)
+    _warn_near_vertical_amplification(segment, meshes)
     sar = process_sar(sar, config)
     los = process_los(los, config)
     closure, segment, station, block, mogi, sar, los = assign_block_labels(
@@ -327,8 +333,98 @@ def process_los(los, config):
     return los
 
 
+def _summarize_names(names, limit: int = 10) -> str:
+    names = [str(name) for name in names]
+    if len(names) <= limit:
+        return ", ".join(names)
+    return ", ".join(names[:limit]) + f", ... ({len(names) - limit} more)"
+
+
+def snap_vertical_segment_dips(segment: pd.DataFrame) -> pd.DataFrame:
+    """Set the dip of segments within VERTICAL_DIP_TOLERANCE_DEG of vertical
+    to exactly 90 degrees.
+
+    The elastic solution loses accuracy for nearly (but not exactly) vertical
+    rectangles, and only an exactly vertical segment takes the vertical branch
+    of the kinematic model, which routes fault-normal relative motion to
+    tensile slip rather than amplifying it by 1 / cos(dip) into dip slip
+    (issue #536; see VERTICAL_DIP_TOLERANCE_DEG).
+    """
+    dip = segment.dip.to_numpy(dtype=float)
+    snap = is_vertical_dip(dip) & (dip != 90.0)
+    if not np.any(snap):
+        return segment
+    names = segment.name.to_numpy()[snap] if "name" in segment else np.flatnonzero(snap)
+    logger.info(
+        f"Set the dip of {int(snap.sum())} segments within "
+        f"{VERTICAL_DIP_TOLERANCE_DEG} degrees of vertical to 90: "
+        f"{_summarize_names(names)}"
+    )
+    # A vertical segment has no kinematic or elastic dip slip, so dip-slip
+    # constraints and bounds on it act on a row of zeros
+    has_ds_flag = np.zeros_like(snap)
+    for column in ("ds_rate_flag", "ds_rate_bound_flag"):
+        if column in segment:
+            has_ds_flag |= segment[column].to_numpy() != 0
+    flagged = snap & has_ds_flag
+    if np.any(flagged):
+        flagged_names = (
+            segment.name.to_numpy()[flagged]
+            if "name" in segment
+            else np.flatnonzero(flagged)
+        )
+        logger.warning(
+            f"{int(flagged.sum())} segments set to vertical carry dip-slip rate "
+            "constraints or bounds, which act on a zero dip-slip rate on a "
+            "vertical segment (a bound that excludes zero makes the problem "
+            f"infeasible): {_summarize_names(flagged_names)}"
+        )
+    return segment.assign(dip=np.where(snap, 90.0, dip))
+
+
+def _warn_near_vertical_amplification(
+    segment: pd.DataFrame, meshes: list[Mesh]
+) -> None:
+    """Warn about dipping segments and mesh elements close to vertical, whose
+    kinematic dip slip is the fault-normal relative block motion amplified by
+    1 / |cos(dip)| > NEAR_VERTICAL_AMPLIFICATION_WARNING (issue #514).
+    """
+
+    def amplified(dip):
+        dip = np.asarray(dip, dtype=float)
+        return (
+            np.abs(np.cos(np.deg2rad(dip))) < 1.0 / NEAR_VERTICAL_AMPLIFICATION_WARNING
+        ) & ~is_vertical_dip(dip)
+
+    parts = []
+    segment_amplified = amplified(segment.dip)
+    if np.any(segment_amplified):
+        names = (
+            segment.name.to_numpy()[segment_amplified]
+            if "name" in segment
+            else np.flatnonzero(segment_amplified)
+        )
+        parts.append(
+            f"{int(segment_amplified.sum())} segments ({_summarize_names(names, 5)})"
+        )
+    for mesh in meshes:
+        n_amplified = int(np.sum(amplified(mesh.dip)))
+        if n_amplified:
+            parts.append(f"{n_amplified} of {mesh.n_tde} elements of mesh {mesh.name}")
+    if parts:
+        logger.warning(
+            "Kinematic dip slip is the fault-normal relative block motion times "
+            f"1 / |cos(dip)| > {NEAR_VERTICAL_AMPLIFICATION_WARNING:g} on "
+            + "; ".join(parts)
+            + ". Dips within "
+            f"{VERTICAL_DIP_TOLERANCE_DEG} degrees of 90 are treated as vertical "
+            "(see issue #514)."
+        )
+
+
 def process_segment(segment, config, meshes):
     """Add derived fields to segment dataframe."""
+    segment = snap_vertical_segment_dips(segment)
     segment["x1"], segment["y1"], segment["z1"] = sph2cart(
         segment.lon1, segment.lat1, RADIUS_EARTH
     )

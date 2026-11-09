@@ -35,6 +35,18 @@ from celeri.output import dataclass_from_disk, dataclass_to_disk
 from celeri.version import __version__ as celeri_version
 
 
+def coupling_ratio(elastic: np.ndarray, kinematic: np.ndarray) -> np.ndarray:
+    """Coupling as the ratio elastic / kinematic slip rate.
+
+    NaN where the kinematic rate is exactly zero (e.g. the dip slip of a
+    vertical mesh element), where the coupling is undefined.
+    """
+    elastic = np.asarray(elastic, dtype=float)
+    kinematic = np.asarray(kinematic, dtype=float)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return np.where(kinematic == 0, np.nan, elastic / kinematic)
+
+
 @dataclass(kw_only=True)
 class Estimation:
     """A class to hold an estimation of the model parameters."""
@@ -246,8 +258,9 @@ class Estimation:
             elif kinematic is not None:
                 rate = fields[f"{key}_rate"]
                 assert rate is not None
-                with np.errstate(divide="ignore", invalid="ignore"):
-                    fields[f"{key}_coupling"] = rate / kinematic[component::2]
+                fields[f"{key}_coupling"] = coupling_ratio(
+                    rate, kinematic[component::2]
+                )
         return fields
 
     @cached_property
@@ -817,9 +830,8 @@ class Estimation:
         if elastic is None:
             return None
         rates = {}
-        with np.errstate(divide="ignore", invalid="ignore"):
-            for mesh_idx in kinematic:
-                rates[mesh_idx] = elastic[mesh_idx] / kinematic[mesh_idx]
+        for mesh_idx in kinematic:
+            rates[mesh_idx] = coupling_ratio(elastic[mesh_idx], kinematic[mesh_idx])
         return rates
 
     @property
@@ -837,9 +849,8 @@ class Estimation:
         if elastic is None:
             return None
         rates = {}
-        with np.errstate(divide="ignore", invalid="ignore"):
-            for mesh_idx in kinematic:
-                rates[mesh_idx] = elastic[mesh_idx] / kinematic[mesh_idx]
+        for mesh_idx in kinematic:
+            rates[mesh_idx] = coupling_ratio(elastic[mesh_idx], kinematic[mesh_idx])
         return rates
 
     @property

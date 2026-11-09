@@ -61,9 +61,43 @@ def _get_coupling_linear(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Coupling as the ratio of the estimated elastic slip to the kinematic
     slip of the (Gaussian smoothed) kinematic operator.
+
+    The coupling is NaN where the kinematic slip is exactly zero (e.g. the
+    dip slip of vertical elements); _update_slip_rate_bounds pins the slip
+    of those elements to zero instead.
     """
-    coupling = estimated_slip / kinematic_slip
+    with np.errstate(divide="ignore", invalid="ignore"):
+        coupling = np.where(
+            kinematic_slip == 0, np.nan, estimated_slip / kinematic_slip
+        )
     return coupling, kinematic_slip
+
+
+ZERO_KINEMATIC_SLIP_RATE_BOUND = 1e-3
+"""Half-width of the slip-rate bounds of elements with zero kinematic slip.
+
+Coupling bounds on an element whose kinematic slip rate is exactly zero (the
+dip slip of a vertical element) require zero elastic slip; the bounds are set
+to +/- this value rather than to zero exactly, which the interior-point QP
+solver handles poorly.
+
+UNITS: [mm/yr]
+"""
+
+
+def _pin_zero_kinematic_bounds(
+    zero: np.ndarray, lower: np.ndarray, upper: np.ndarray
+) -> tuple[int, np.ndarray, np.ndarray]:
+    """Bound the slip of elements with zero kinematic slip to about zero.
+
+    Returns the number of those elements whose bounds were not yet pinned
+    (they count as out of bounds) and the updated bounds.
+    """
+    bound = ZERO_KINEMATIC_SLIP_RATE_BOUND
+    n_unpinned = int(np.sum(zero & ((lower < -bound) | (upper > bound))))
+    lower = np.where(zero, -bound, lower)
+    upper = np.where(zero, bound, upper)
+    return n_unpinned, lower, upper
 
 
 @dataclass
@@ -132,7 +166,9 @@ def _update_slip_rate_bounds(
     ds_lower_oob_pos = np.intersect1d(ds_lower_oob_idx, pos_ds_idx)
     ds_upper_oob_pos = np.intersect1d(ds_upper_oob_idx, pos_ds_idx)
 
-    # Calculate total number of OOB coupling constraints
+    # Calculate total number of OOB coupling constraints. Elements with zero
+    # kinematic slip have NaN coupling, which is never out of bounds here;
+    # they are handled by _pin_zero_kinematic_bounds below.
     n_oob = (
         len(ss_lower_oob_idx)
         + len(ss_upper_oob_idx)
@@ -195,6 +231,24 @@ def _update_slip_rate_bounds(
         np.minimum(updated_ds_bounds_lower, updated_ds_bounds_upper),
         np.maximum(updated_ds_bounds_lower, updated_ds_bounds_upper),
     )
+
+    # With zero kinematic slip the coupling bounds allow only zero elastic
+    # slip; easing the bounds toward coupling * 0 would never get there
+    n_unpinned_ss, updated_ss_bounds_lower, updated_ss_bounds_upper = (
+        _pin_zero_kinematic_bounds(
+            kinematic_tde_rates_ss == 0,
+            updated_ss_bounds_lower,
+            updated_ss_bounds_upper,
+        )
+    )
+    n_unpinned_ds, updated_ds_bounds_lower, updated_ds_bounds_upper = (
+        _pin_zero_kinematic_bounds(
+            kinematic_tde_rates_ds == 0,
+            updated_ds_bounds_lower,
+            updated_ds_bounds_upper,
+        )
+    )
+    n_oob += n_unpinned_ss + n_unpinned_ds
 
     updated_bounds = _SlipRateBounds(
         ss_lower=updated_ss_bounds_lower,
@@ -640,13 +694,13 @@ def _get_coupling(
     # The purpose of this is to prevent coupling blow up as the kinematic
     # rates approach zero
     if kinematic_slip_regularization_scale > 0:
-        kinematic_slip[np.abs(kinematic_slip) < kinematic_slip_regularization_scale] = (
-            kinematic_slip_regularization_scale
-            * np.sign(
-                kinematic_slip[
-                    np.abs(kinematic_slip) < kinematic_slip_regularization_scale
-                ]
-            )
+        small = np.abs(kinematic_slip) < kinematic_slip_regularization_scale
+        # Exactly zero rates (the dip slip of vertical elements) take the
+        # positive floor; np.sign(0) would leave them at zero
+        kinematic_slip[small] = np.where(
+            kinematic_slip[small] >= 0,
+            kinematic_slip_regularization_scale,
+            -kinematic_slip_regularization_scale,
         )
 
     # Calculate coupling

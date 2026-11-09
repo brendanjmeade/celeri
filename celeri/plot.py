@@ -726,10 +726,14 @@ def plot_mesh(
     if not ax:
         ax = plt.gca()
 
+    # Limits from the finite values only (couplings are NaN where the
+    # kinematic rate is zero)
+    finite_values = np.asarray(fill_value, dtype=float)
+    finite_values = finite_values[np.isfinite(finite_values)]
     if vmin is None:
-        vmin = np.min([-1e-10, np.min(fill_value)])
+        vmin = min(-1e-10, finite_values.min()) if finite_values.size else -1e-10
     if vmax is None:
-        vmax = np.max([1e-10, np.max(fill_value)])
+        vmax = max(1e-10, finite_values.max()) if finite_values.size else 1e-10
 
     if center is None:
         norm = colors.Normalize(vmin=vmin, vmax=vmax)

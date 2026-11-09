@@ -1,4 +1,5 @@
 import dataclasses
+from types import SimpleNamespace
 
 import meshio
 import numpy as np
@@ -252,3 +253,85 @@ def test_vertical_mesh_is_not_reported_as_mixed_winding(tmp_path):
     np.testing.assert_allclose(mesh.dip, 90.0, atol=1e-6)
     assert np.all(triangle_winding_sign(mesh.nv) == 1.0)
     assert not any("mixed vertex winding" in message for message in messages)
+
+
+def test_near_vertical_edges_are_flagged(tmp_path):
+    """Sides within VERTICAL_DIP_TOLERANCE_DEG of vertical (but not exactly
+    vertical) are flagged for the elastic snap (issue #536).
+    """
+    steep = _load(_dipping_strip(tmp_path / "steep.msh", dip=89.99))
+    assert steep.near_vertical_edges.shape == (steep.n_tde, 3)
+    # Each triangle has one down-dip side, at 0.01 degrees from vertical
+    np.testing.assert_array_equal(steep.near_vertical_edges.sum(axis=1), 1)
+    # The elements are vertical within the tolerance
+    assert not np.any(steep.dip_flag)
+
+    dipping = _load(_dipping_strip(tmp_path / "dipping.msh", dip=89.9))
+    assert not np.any(dipping.near_vertical_edges)
+    assert np.all(dipping.dip_flag)
+
+
+def test_near_vertical_mesh_matches_vertical_mesh(tmp_path):
+    """The triangular dislocation solution is inaccurate for sides close to,
+    but not exactly, vertical; snapping them restores the vertical result.
+    """
+    steep = _load(_dipping_strip(tmp_path / "steep.msh", dip=90.0 - 1e-4))
+    assert np.all(steep.near_vertical_edges.sum(axis=1) == 1)
+    # The steep strip's normals point down by more than WINDING_TOLERANCE, so
+    # it is rewound on load; the vertical strip's are round-off and are not.
+    # The dip-slip sign of a vertical element follows its vertex order, so
+    # compare with the vertical strip written in the rewound order.
+    vertical = _load(_dipping_strip(tmp_path / "vertical.msh", dip=90.0, reverse=True))
+    np.testing.assert_array_equal(
+        np.sort(steep.verts, axis=1), np.sort(vertical.verts, axis=1)
+    )
+
+    expected = _tde_columns(vertical)
+    scale = np.max(np.abs(expected))
+    assert np.max(np.abs(_tde_columns(steep) - expected)) < 1e-5 * scale
+
+    # Without the snap the same geometry is far off
+    steep.near_vertical_edges = np.zeros_like(steep.near_vertical_edges)
+    assert np.max(np.abs(_tde_columns(steep) - expected)) > 1e-2 * scale
+
+
+def _kinematic_partials(mesh, monkeypatch):
+    """get_rotation_to_tri_slip_rate_partials for a mesh between two blocks,
+    with block 1 east and block 0 west of every element.
+    """
+    import pandas as pd
+
+    from celeri import operators
+
+    monkeypatch.setattr(
+        operators,
+        "assign_mesh_segment_labels",
+        lambda model, mesh_idx: (
+            np.ones(mesh.n_tde, dtype=int),
+            np.zeros(mesh.n_tde, dtype=int),
+            np.zeros(mesh.n_tde, dtype=int),
+        ),
+    )
+    model = SimpleNamespace(
+        block=pd.DataFrame(index=range(2)),
+        meshes=[mesh],
+        segment=pd.DataFrame({"azimuth": [0.0]}),
+    )
+    return operators.get_rotation_to_tri_slip_rate_partials(model, 0)
+
+
+def test_vertical_elements_take_no_kinematic_dip_slip(tmp_path, monkeypatch):
+    """A vertical element's dip-slip row is zero rather than the fault-normal
+    motion times 1 / cos(90 degrees) ~ 1e16 with a round-off sign (issue #536).
+    """
+    for dip in (90.0, 89.97):
+        mesh = _load(_dipping_strip(tmp_path / f"strip_{dip}.msh", dip=dip))
+        partials = _kinematic_partials(mesh, monkeypatch)
+        assert np.all(np.isfinite(partials))
+        np.testing.assert_array_equal(partials[1::3], 0.0)
+        assert np.any(partials[0::3] != 0.0)
+
+    # A dipping element keeps the 1 / cos(dip) dip slip
+    mesh = _load(_dipping_strip(tmp_path / "dipping.msh", dip=60.0))
+    partials = _kinematic_partials(mesh, monkeypatch)
+    assert np.any(partials[1::3] != 0.0)
