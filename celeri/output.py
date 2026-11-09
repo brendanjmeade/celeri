@@ -10,15 +10,18 @@ import h5py
 import numpy as np
 import zarr
 
+from celeri.constants import KM2M, RADIUS_EARTH
+
 if typing.TYPE_CHECKING:
     from _typeshed import DataclassInstance
 
     from celeri.solve import Estimation
 
 
-# HDF5 caps a single object-header message at 64 KB, so an attribute holds only ~8000 int64 values. 
+# HDF5 caps a single object-header message at 64 KB, so an attribute holds only ~8000 int64 values.
 # Keep writing indices as attributes when they fit, and fall back to a dataset of the same name when they do not.
 _ATTR_MAX_BYTES = 60_000
+
 
 def _write_index(hdf, name: str, values: np.ndarray) -> None:
     if values.nbytes <= _ATTR_MAX_BYTES:
@@ -53,7 +56,8 @@ def write_output(
             data=config.run_name.encode("utf-8"),
             dtype=h5py.string_dtype(encoding="utf-8"),
         )
-        hdf.create_dataset("earth_radius", data=6371.0)  # type: ignore[arg-type]
+        # The sphere radius used throughout celeri (constants.RADIUS_EARTH), in km
+        hdf.create_dataset("earth_radius", data=RADIUS_EARTH / KM2M)  # type: ignore[arg-type]
 
         # Write config dictionary: strings (paths included) as UTF-8, booleans
         # as integers, numbers as numbers and lists/tuples as arrays

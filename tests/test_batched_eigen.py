@@ -102,8 +102,8 @@ def _one_hot_column_reference(model, tri_idx, slip):
     """
     mesh = model.meshes[0]
     config = model.config
-    poissons_ratio = config.material_mu / (
-        2 * (config.material_mu + config.material_lambda)
+    poissons_ratio = config.material_lambda / (
+        2 * (config.material_lambda + config.material_mu)
     )
     projection = get_transverse_projection(
         mesh.centroids[tri_idx, 0], mesh.centroids[tri_idx, 1]

@@ -385,14 +385,13 @@ def process_segment(segment, config, meshes):
 
 def order_endpoints_sphere(segment):
     """Endpoint ordering function, placing west point first.
-    This converts the endpoint coordinates from spherical to Cartesian,
-    then takes the cross product to test for ordering (i.e., a positive z
-    component of cross(point1, point2) means that point1 is the western
-    point). This method works for both (-180, 180) and (0, 360) longitude
-    conventions.
-    BJM: Not sure why cross product approach was definitely not working in
-    python so I revereted to relative longitude check which sould be fine because
-    we're always in 0-360 space.
+
+    Uses the Cartesian endpoint coordinates (x1, y1, z1) and (x2, y2, z2): a
+    negative z component of cross(point1, point2) means that point2 is the
+    western point, and the two endpoints are swapped. The test does not depend
+    on the longitude convention ((-180, 180) or (0, 360)) or on crossing the
+    0/360 meridian. The Cartesian columns are swapped together with the
+    geographic ones.
     """
     endpoints1 = np.transpose(np.array([segment.x1, segment.y1, segment.z1]))
     endpoints2 = np.transpose(np.array([segment.x2, segment.y2, segment.z2]))

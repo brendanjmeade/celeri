@@ -220,9 +220,9 @@ def cartesian_vector_to_spherical_vector(vel_x, vel_y, vel_z, lon, lat):
             ],
             [-np.sin(np.deg2rad(lon)), np.cos(np.deg2rad(lon)), 0],
             [
-                -np.cos(np.deg2rad(lat)) * np.cos(np.deg2rad(lon)),
-                -np.cos(np.deg2rad(lat)) * np.sin(np.deg2rad(lon)),
-                -np.sin(np.deg2rad(lat)),
+                np.cos(np.deg2rad(lat)) * np.cos(np.deg2rad(lon)),
+                np.cos(np.deg2rad(lat)) * np.sin(np.deg2rad(lon)),
+                np.sin(np.deg2rad(lat)),
             ],
         ]
     )

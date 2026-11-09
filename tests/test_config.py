@@ -91,3 +91,34 @@ def test_deprecated_degree_smoothing_length_scale_is_converted():
     assert all(
         m.kinematic_smoothing_length_scale == 25.0 for m in config.mesh_params[1:]
     )
+
+
+def test_poissons_ratio_must_match_lame_parameters(tmp_path):
+    """poissons_ratio is derived from material_lambda and material_mu; a value
+    given in the config is only a consistency check (issue #536).
+    """
+    # lambda == mu gives nu = 0.25
+    config = Config.model_validate(_config_data(tmp_path, poissons_ratio=0.25))
+    assert config.poissons_ratio == 0.25
+
+    with pytest.raises(ValidationError, match="poissons_ratio"):
+        Config.model_validate(_config_data(tmp_path, poissons_ratio=0.3))
+
+    # lambda == 2 mu gives nu = 1/3
+    Config.model_validate(
+        _config_data(
+            tmp_path,
+            material_lambda=60_000_000_000,
+            material_mu=30_000_000_000,
+            poissons_ratio=1 / 3,
+        )
+    )
+    with pytest.raises(ValidationError, match="poissons_ratio"):
+        Config.model_validate(
+            _config_data(
+                tmp_path,
+                material_lambda=60_000_000_000,
+                material_mu=30_000_000_000,
+                poissons_ratio=1 / 6,
+            )
+        )

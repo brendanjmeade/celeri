@@ -192,8 +192,19 @@ class Config(RelativePathSerializerMixin, BaseModel):
     quiver_scale: int = 100
 
     material_lambda: int = 30000000000
+    """First Lamé parameter of the elastic half-space. UNITS: [Pa]"""
+
     material_mu: int = 30000000000
+    """Shear modulus of the elastic half-space. UNITS: [Pa]"""
+
     poissons_ratio: float | None = None
+    """Deprecated: Poisson's ratio is derived from the Lamé parameters as
+    ``material_lambda / (2 * (material_lambda + material_mu))``.
+
+    If set, it is only checked for consistency with ``material_lambda`` and
+    ``material_mu`` and an inconsistent value is rejected. Set the Lamé
+    parameters to change Poisson's ratio.
+    """
 
     pickle_save: bool = True
     repl: bool = False
@@ -607,6 +618,22 @@ class Config(RelativePathSerializerMixin, BaseModel):
             raise ValueError(
                 "locking_depth_override_value must be set when "
                 "locking_depth_override_flag is non-zero."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def validate_poissons_ratio(self) -> Self:
+        """Reject a poissons_ratio inconsistent with the Lamé parameters."""
+        if self.poissons_ratio is None:
+            return self
+        derived = self.material_lambda / (2 * (self.material_lambda + self.material_mu))
+        if abs(self.poissons_ratio - derived) > 1e-9:
+            raise ValueError(
+                f"poissons_ratio = {self.poissons_ratio} is inconsistent with "
+                f"material_lambda = {self.material_lambda} and material_mu = "
+                f"{self.material_mu}, which give a Poisson's ratio of "
+                f"{derived:.6g}. celeri derives Poisson's ratio from the Lamé "
+                "parameters; set those instead and remove poissons_ratio."
             )
         return self
 
