@@ -330,3 +330,166 @@ def test_coupling_mean_filename_sets_per_triangle_prior_mean(coupling_model, tmp
             _build_pymc_model(model, operators)
     finally:
         mesh.config.coupling_mean_filename = None
+
+
+@pytest.fixture
+def station_sigma_mode(coupling_model):
+    """Switch the shared coupling model to the per-station sigma likelihood."""
+    model, operators = coupling_model
+    original = model.config.mcmc_station_weighting
+    model.config.mcmc_station_weighting = "station_sigma"
+    try:
+        yield model, operators
+    finally:
+        model.config.mcmc_station_weighting = original
+
+
+@pytest.mark.parametrize("include_vertical", [False, True])
+def test_station_velocity_sigmas_match_operator_row_order(
+    station_sigma_mode, include_vertical
+):
+    from numpy.testing import assert_array_equal
+
+    from celeri.celeri_util import get_keep_index_12
+    from celeri.solve_mcmc import _station_velocity_sigmas
+
+    model, _ = station_sigma_mode
+    n = len(model.station)
+    original = model.config.include_vertical_velocity
+    model.config.include_vertical_velocity = include_vertical
+    try:
+        sig = _station_velocity_sigmas(model)
+    finally:
+        model.config.include_vertical_velocity = original
+
+    # Operator rows are station-major (east, north, up); without verticals the
+    # likelihood keeps the east and north rows only.
+    full = np.column_stack(
+        [model.station.east_sig, model.station.north_sig, model.station.up_sig]
+    ).ravel()
+    vel_idx = np.arange(3 * n) if include_vertical else get_keep_index_12(3 * n)
+    assert sig.shape == (n, 3 if include_vertical else 2)
+    assert_array_equal(sig.ravel(), full[vel_idx])
+
+
+@pytest.mark.parametrize(
+    ("fixed_scale", "nu"),
+    [(None, 6.0), (None, 3.0), (2.5, 20.0)],
+    ids=["learned-default-nu", "learned-nu3", "fixed-scale-nu20"],
+)
+def test_station_sigma_likelihood_uses_station_file_sigmas(
+    station_sigma_mode, fixed_scale, nu
+):
+    import pytensor
+    from scipy import stats
+
+    from celeri.solve_mcmc import _build_pymc_model
+
+    model, operators = station_sigma_mode
+    model.config.mcmc_station_sigma_scale = fixed_scale
+    model.config.mcmc_station_sigma_nu = nu
+    try:
+        pymc_model = _build_pymc_model(model, operators)
+    finally:
+        model.config.mcmc_station_sigma_scale = None
+        model.config.mcmc_station_sigma_nu = 6.0
+    assert "sigma" not in pymc_model.named_vars
+
+    point = pymc_model.initial_point()
+    if fixed_scale is None:
+        assert "station_sigma_scale" in pymc_model.named_vars
+        scale = 1.7
+        point["station_sigma_scale_log__"] = np.log(scale)
+    else:
+        assert "station_sigma_scale" not in pymc_model.named_vars
+        scale = fixed_scale
+    (logp,) = pymc_model.compile_logp(vars=[pymc_model["station_velocity"]], sum=False)(
+        point
+    )
+    (mu_graph,) = pymc_model.replace_rvs_by_values([pymc_model["mu"]])
+    mu = pytensor.function(pymc_model.value_vars, mu_graph, on_unused_input="ignore")(
+        *[point[v.name] for v in pymc_model.value_vars]
+    )
+
+    data = model.station[["east_vel", "north_vel"]].to_numpy(dtype=float)
+    sig = model.station[["east_sig", "north_sig"]].to_numpy(dtype=float)
+    expected = stats.t.logpdf(data, df=nu, loc=mu, scale=scale * sig)
+    assert logp.shape == data.shape
+    assert_allclose(logp, expected, rtol=1e-6)
+
+
+@pytest.mark.parametrize("bad", [0.0, -1.0, np.nan])
+def test_station_sigma_rejects_nonpositive_sigma(station_sigma_mode, bad):
+    import re
+
+    from celeri.solve_mcmc import _build_pymc_model
+
+    model, operators = station_sigma_mode
+    original = model.station.loc[0, "east_sig"]
+    name = str(model.station.loc[0, "name"]).strip()
+    model.station.loc[0, "east_sig"] = bad
+    try:
+        with pytest.raises(ValueError, match=f"east_sig.*{re.escape(name)}"):
+            _build_pymc_model(model, operators)
+    finally:
+        model.station.loc[0, "east_sig"] = original
+
+
+def test_station_sigma_rotation_whitening_scales_station_rows(station_sigma_mode):
+    from celeri.celeri_util import get_keep_index_12
+    from celeri.solve_mcmc import _build_rotation_transform
+
+    model, operators = station_sigma_mode
+    vel_idx = get_keep_index_12(3 * len(model.station))
+    with_sigmas = _build_rotation_transform(model, operators, vel_idx)
+
+    columns = ["east_sig", "north_sig"]
+    original = model.station[columns].copy()
+    model.config.mcmc_station_weighting = None
+    try:
+        unweighted = _build_rotation_transform(model, operators, vel_idx)
+        model.config.mcmc_station_weighting = "station_sigma"
+        model.station[columns] = 1.0
+        unit_sigmas = _build_rotation_transform(model, operators, vel_idx)
+        # A fixed scale s acts like sigmas multiplied by s
+        model.station[columns] = 2.5
+        doubled_sigmas = _build_rotation_transform(model, operators, vel_idx)
+        model.station[columns] = 1.0
+        model.config.mcmc_station_sigma_scale = 2.5
+        fixed_scale = _build_rotation_transform(model, operators, vel_idx)
+    finally:
+        model.station[columns] = original
+        model.config.mcmc_station_weighting = "station_sigma"
+        model.config.mcmc_station_sigma_scale = None
+
+    # Unit sigmas reproduce the unweighted whitening exactly ...
+    assert_allclose(unit_sigmas.scale_diag, unweighted.scale_diag)
+    assert_allclose(unit_sigmas.vh, unweighted.vh)
+    # ... the station file's sigmas change it ...
+    assert not np.allclose(with_sigmas.scale_diag, unweighted.scale_diag)
+    # ... and a fixed scale enters as a factor on every sigma.
+    assert_allclose(fixed_scale.scale_diag, doubled_sigmas.scale_diag)
+    assert not np.allclose(fixed_scale.scale_diag, unit_sigmas.scale_diag)
+
+
+@pytest.mark.parametrize("fixed_scale", [None, 1.5], ids=["learned", "fixed"])
+def test_mcmc_station_sigma_samples(fixed_scale):
+    """A short station_sigma run samples (or fixes) s and keeps the pointwise LL."""
+    config = celeri.get_config("data/config/wna_config.json")
+    config.mcmc_station_weighting = "station_sigma"
+    config.mcmc_station_sigma_scale = fixed_scale
+    config.mcmc_station_sigma_nu = 4.0
+    model = celeri.build_model(config)
+    estimation = celeri.solve_mcmc(
+        model, sample_kwargs={"tune": 10, "draws": 10, "chains": 1}
+    )
+    trace = estimation.mcmc_trace
+    assert "sigma" not in trace.posterior
+    if fixed_scale is None:
+        assert np.all(trace.posterior["station_sigma_scale"].values > 0)
+    else:
+        assert "station_sigma_scale" not in trace.posterior
+    assert trace.log_likelihood["station_velocity"].shape[-2:] == (
+        len(model.station),
+        2,
+    )
