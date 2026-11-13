@@ -35,7 +35,7 @@ from celeri._arviz_compat import (  # LEGACY-MCMC
 from celeri.celeri_util import get_keep_index_12
 from celeri.constants import RADIUS_EARTH
 from celeri.mcmc_watchdog import sample_with_watchdog
-from celeri.model import Model
+from celeri.model import Model, _summarize_names
 from celeri.operators import (
     LosOperators,
     Operators,
@@ -1169,6 +1169,53 @@ def _block_rotation_precision(
     return prec, sigma_rms, mu
 
 
+def _station_velocity_sigmas(model: Model) -> np.ndarray:
+    """Per-station velocity sigmas used by the "station_sigma" likelihood.
+
+    Returns the station file's ``east_sig`` and ``north_sig`` (and ``up_sig``
+    when ``include_vertical_velocity``) as an array of shape
+    ``(n_stations, 2 | 3)`` in mm/yr. Its row-major ``ravel()`` is in the row
+    order of ``rotation_to_velocities[vel_idx]``: station by station, east then
+    north (then up).
+
+    Raises:
+        ValueError: If any sigma is missing, non-finite or not positive.
+    """
+    columns = ["east_sig", "north_sig"]
+    if model.config.include_vertical_velocity:
+        columns.append("up_sig")
+    sig = model.station[columns].to_numpy(dtype=float)
+    for comp_idx, column in enumerate(columns):
+        good = np.isfinite(sig[:, comp_idx]) & (sig[:, comp_idx] > 0)
+        if not np.all(good):
+            bad = model.station.name.to_numpy()[~good]
+            raise ValueError(
+                f'mcmc_station_weighting="station_sigma" uses {column} as the '
+                "observation sigma of station velocities; it must be finite and "
+                f"positive (stations: {_summarize_names(str(b).strip() for b in bad)})"
+            )
+    return sig
+
+
+def _log_station_sigmas(model: Model, sig: np.ndarray) -> None:
+    """Log the range of the per-station sigmas used by the likelihood."""
+    components = ["east", "north", "up"][: sig.shape[1]]
+    logger.info(
+        f"Using per-station sigma likelihood ({len(sig)} stations); sigma [mm/yr]:"
+    )
+    for comp_idx, comp in enumerate(components):
+        values = sig[:, comp_idx]
+        logger.info(
+            f"  {comp}: min {values.min():.3g}, median {np.median(values):.3g}, "
+            f"max {values.max():.3g}"
+        )
+    if model.config.include_vertical_velocity and np.all(sig[:, 2] == 1.0):
+        logger.warning(
+            "Every up_sig is exactly 1.0, a common placeholder value; vertical "
+            "velocities are weighted as if their sigma were 1 mm/yr"
+        )
+
+
 def _build_rotation_transform(
     model: Model, operators: Operators, vel_idx: np.ndarray
 ) -> "RotationTransform":
@@ -1179,7 +1226,10 @@ def _build_rotation_transform(
     by its precision.  The SVD of A gives an unconstrained parametrisation in
     which the combined likelihood curvature is approximately isotropic.
 
-    Station velocity observations use sigma = 1 (assumed).
+    Station velocity observations use sigma = 1 (assumed), except with
+    ``mcmc_station_weighting="station_sigma"``, where they use the station
+    file's per-component sigmas times the fixed scale factor (a learned
+    scale factor is assumed to be 1).
     LOS velocity observations use sigma = 1 (assumed).
     Segment regularisation uses the scalar ``gamma`` from config.
     Segment slip-rate observations use their per-segment sigma values.
@@ -1203,7 +1253,13 @@ def _build_rotation_transform(
 
     # Both operators are [m / rad]; scaling by 1e-6 makes them map
     # rotation in [rad/Gyr] to rates in [mm/yr].
-    A_parts = [(rotation_to_vel - rotation_to_okada_vel) * 1e-6]
+    A_station = (rotation_to_vel - rotation_to_okada_vel) * 1e-6
+    if model.config.mcmc_station_weighting == "station_sigma":
+        # A learned scale factor is assumed to be 1
+        scale = model.config.mcmc_station_sigma_scale or 1.0
+        sig = scale * _station_velocity_sigmas(model).ravel()
+        A_station = A_station / sig[:, np.newaxis]
+    A_parts = [A_station]
 
     # LOS velocity observations — sigma = 1 assumed, analogous to station velocities.
     if operators.los is not None:
@@ -1415,7 +1471,16 @@ def _weighted_normal_random(weight, mu, sigma, rng=None, size=None):
 def _add_station_velocity_likelihood(model: Model, mu):
     """Add station velocity likelihood to the PyMC model.
 
-    Uses area-weighted Student-t likelihood for station observations.
+    Uses a Student-t likelihood for station observations, weighted according
+    to ``config.mcmc_station_weighting``:
+
+    - None: one learned noise level ``sigma`` (mm/yr) for every observation.
+    - "voronoi": as None, with each station's log-likelihood scaled by its
+      Voronoi area weight.
+    - "station_sigma": per-observation scale ``s * sig``, where ``sig`` comes
+      from the station file and the dimensionless factor ``s`` is fixed by
+      ``config.mcmc_station_sigma_scale`` or, when that is None, learned as
+      ``station_sigma_scale``. Student-t ν is ``config.mcmc_station_sigma_nu``.
 
     Args:
         model: The model instance
@@ -1423,8 +1488,7 @@ def _add_station_velocity_likelihood(model: Model, mu):
     """
     import pymc as pm
 
-    # Velocity uncertainty prior in mm/yr
-    sigma = pm.HalfNormal("sigma", sigma=2)
+    weighting = model.config.mcmc_station_weighting
 
     if model.config.include_vertical_velocity:
         data = np.array(
@@ -1442,7 +1506,31 @@ def _add_station_velocity_likelihood(model: Model, mu):
         else ("station", "xy")
     )
 
-    if model.config.mcmc_station_weighting is None:
+    if weighting == "station_sigma":
+        sig = _station_velocity_sigmas(model)
+        _log_station_sigmas(model, sig)
+        nu = model.config.mcmc_station_sigma_nu
+        # Dimensionless factor on the station file's sigmas (~1 if they are right)
+        scale = model.config.mcmc_station_sigma_scale
+        if scale is None:
+            scale = pm.HalfNormal("station_sigma_scale", sigma=2)
+            logger.info(f"Learning station_sigma_scale; Student-t nu = {nu}")
+        else:
+            logger.info(f"Fixed station sigma scale = {scale}; Student-t nu = {nu}")
+        pm.StudentT(
+            "station_velocity",
+            mu=mu,
+            sigma=scale * sig,
+            observed=data,
+            dims=dims,
+            nu=nu,
+        )
+        return
+
+    # Velocity uncertainty prior in mm/yr
+    sigma = pm.HalfNormal("sigma", sigma=2)
+
+    if weighting is None:
         logger.info(f"Using unweighted station likelihood ({len(data)} stations)")
         pm.StudentT(
             "station_velocity",
@@ -1452,7 +1540,7 @@ def _add_station_velocity_likelihood(model: Model, mu):
             dims=dims,
             nu=6,
         )
-    elif model.config.mcmc_station_weighting == "voronoi":
+    elif weighting == "voronoi":
         weight, diagnostics = _compute_voronoi_weights(
             model.station[["x", "y", "z"]].values,
             model.config.mcmc_station_effective_area,
@@ -1471,8 +1559,8 @@ def _add_station_velocity_likelihood(model: Model, mu):
         )
     else:
         raise ValueError(
-            f"Unknown mcmc_station_weighting: {model.config.mcmc_station_weighting}. "
-            "Must be None or 'voronoi'."
+            f"Unknown mcmc_station_weighting: {weighting}. "
+            "Must be None, 'voronoi' or 'station_sigma'."
         )
 
 
@@ -1484,7 +1572,8 @@ def _add_los_velocity_likelihood(
     r"""Add LOS velocity likelihood to the PyMC model.
 
     Uses the same Voronoi area weighting as station likelihood when
-    mcmc_station_weighting is \"voronoi\".
+    mcmc_station_weighting is \"voronoi\". With \"station_sigma\" the LOS
+    likelihood is unweighted: LOS files carry no per-point sigma.
 
     Args:
         model: Model (for config and LOS coordinates).
@@ -1499,7 +1588,7 @@ def _add_los_velocity_likelihood(
     sigma_los = pm.HalfNormal("sigma_los", sigma=2)
 
     weighting = model.config.mcmc_station_weighting
-    if weighting is None:
+    if weighting is None or weighting == "station_sigma":
         logger.info(f"Using unweighted LOS likelihood ({los_ops.n_los} points)")
         pm.Normal(
             "los_velocity",
@@ -1527,7 +1616,8 @@ def _add_los_velocity_likelihood(
         )
     else:
         raise ValueError(
-            f"Unknown mcmc_station_weighting: {weighting}. Must be None or 'voronoi'."
+            f"Unknown mcmc_station_weighting: {weighting}. "
+            "Must be None, 'voronoi' or 'station_sigma'."
         )
 
 
@@ -1691,6 +1781,8 @@ def _build_pymc_model(
         operators: Operators for the forward model
     """
     _validate_segment_constraint_sigmas(model)
+    if model.config.mcmc_station_weighting == "station_sigma":
+        _station_velocity_sigmas(model)  # fail on bad sigmas before building
 
     assert operators.eigen is not None
     assert operators.tde is not None
