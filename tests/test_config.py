@@ -122,3 +122,30 @@ def test_poissons_ratio_must_match_lame_parameters(tmp_path):
                 poissons_ratio=1 / 6,
             )
         )
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"mcmc_station_sigma_nu": 0.0},
+        {"mcmc_station_sigma_nu": -2.0},
+        {"mcmc_station_sigma_nu": float("inf")},
+        {"mcmc_station_sigma_scale": 0.0},
+        {"mcmc_station_sigma_scale": float("nan")},
+    ],
+)
+def test_station_sigma_likelihood_settings_must_be_positive(tmp_path, overrides):
+    (field,) = overrides
+    with pytest.raises(ValidationError, match=field):
+        Config.model_validate(_config_data(tmp_path, **overrides))
+
+
+def test_station_sigma_likelihood_defaults(tmp_path):
+    config = Config.model_validate(_config_data(tmp_path))
+    assert config.mcmc_station_sigma_nu == 6.0
+    assert config.mcmc_station_sigma_scale is None  # learned
+    config = Config.model_validate(
+        _config_data(tmp_path, mcmc_station_sigma_nu=4, mcmc_station_sigma_scale=1.5)
+    )
+    assert config.mcmc_station_sigma_nu == 4.0
+    assert config.mcmc_station_sigma_scale == 1.5

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 from typing import Literal, Self
 
@@ -30,7 +31,7 @@ McmcStationVelocityMethod = Literal[
     "project_to_eigen",
 ]
 
-McmcStationWeighting = Literal["voronoi",]
+McmcStationWeighting = Literal["voronoi", "station_sigma"]
 
 McmcMeanParameterization = Literal["constrained", "unconstrained"]
 
@@ -352,15 +353,32 @@ class Config(RelativePathSerializerMixin, BaseModel):
     mcmc_station_weighting: McmcStationWeighting | None = "voronoi"
     """Method for weighting station and LOS observations in MCMC likelihood.
 
-    Applied to both GNSS station velocities and LOS (e.g. InSAR) velocities when
-    present. Options:
+    Options:
     - None: All observations weighted equally with weight one.
     - "voronoi": Weight by Voronoi cell area to reduce over-representation of clusters (default)
+    - "station_sigma": Use the station file's ``east_sig``, ``north_sig`` and (when
+      ``include_vertical_velocity``) ``up_sig`` as per-observation noise scales.
+
+    None and "voronoi" apply to both GNSS station velocities and LOS (e.g. InSAR)
+    velocities when present, and learn a single noise level ``sigma`` in mm/yr shared
+    by every station.
 
     The "voronoi" option is a pragmatic approach to handle spatially clustered stations
     without the computational cost of full spatial correlation modeling. It down-weights
     stations in dense clusters proportionally to their spacing. Use None if you want
     standard unweighted likelihood or if your network has uniform spatial coverage.
+
+    The "station_sigma" option weights each station component individually. The
+    likelihood of component j at station i is Student-t (ν = ``mcmc_station_sigma_nu``)
+    with scale ``s * sig_ij``, where s is a single dimensionless factor (about 1 when
+    the sigmas are realistic): learned as ``station_sigma_scale``, or fixed by
+    ``mcmc_station_sigma_scale``. The relative weighting
+    between observations is exactly the one given in the station file: halving a
+    station's sigma fits it twice as tightly, and a large sigma effectively frees it.
+    These are the same sigmas the dense solvers use. Every sigma must be finite and
+    positive. This mode does not apply Voronoi declustering, and LOS observations (which
+    carry no sigma column) are unweighted. With ``unit_sigmas`` it reduces to the None
+    likelihood.
     """
 
     # Default mean and sigma for coupling/elastic GP priors in MCMC.
@@ -515,6 +533,40 @@ class Config(RelativePathSerializerMixin, BaseModel):
     UNITS: [m²]
     """
 
+    mcmc_station_sigma_nu: float = 6.0
+    """Degrees of freedom ν of the Student-t station velocity likelihood.
+
+    Controls how quickly a badly fitting station loses influence. Smaller values
+    have heavier tails, so outliers pull less on the solution; larger values
+    approach a Gaussian (least-squares) likelihood, where every station's pull
+    keeps growing with its residual. Must be finite and positive; the Student-t
+    has finite variance only for ν > 2.
+
+    Only used when mcmc_station_weighting is "station_sigma". The other modes
+    use ν = 6.
+
+    UNITS: [dimensionless]
+    """
+
+    mcmc_station_sigma_scale: float | None = None
+    """Fixed factor s multiplying every station sigma in the MCMC likelihood.
+
+    In "station_sigma" mode the Student-t scale of each observation is
+    ``s * sig``, where ``sig`` is the station file's ``east_sig``, ``north_sig``
+    or ``up_sig``.
+
+    - None (default): s is learned, with a HalfNormal(2) prior, and reported as
+      ``station_sigma_scale`` in the posterior. Only the ratios between station
+      sigmas then matter, because a common factor is absorbed into s.
+    - A positive number: s is fixed at that value and not sampled. With 1 the
+      station sigmas are used as absolute Student-t scales; larger values widen
+      every station's noise and so the posterior.
+
+    Only used when mcmc_station_weighting is "station_sigma".
+
+    UNITS: [dimensionless]
+    """
+
     sqp2_annealing_enabled: bool = False
     """Enable annealing to search for a more optimal solution.
 
@@ -634,6 +686,24 @@ class Config(RelativePathSerializerMixin, BaseModel):
                 f"{self.material_mu}, which give a Poisson's ratio of "
                 f"{derived:.6g}. celeri derives Poisson's ratio from the Lamé "
                 "parameters; set those instead and remove poissons_ratio."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def validate_station_sigma_likelihood(self) -> Self:
+        """Require a finite positive ν and, when set, a finite positive scale."""
+        if not (
+            math.isfinite(self.mcmc_station_sigma_nu) and self.mcmc_station_sigma_nu > 0
+        ):
+            raise ValueError(
+                "mcmc_station_sigma_nu must be finite and positive, got "
+                f"{self.mcmc_station_sigma_nu}"
+            )
+        scale = self.mcmc_station_sigma_scale
+        if scale is not None and not (math.isfinite(scale) and scale > 0):
+            raise ValueError(
+                "mcmc_station_sigma_scale must be finite and positive (or null to "
+                f"learn it), got {scale}"
             )
         return self
 
