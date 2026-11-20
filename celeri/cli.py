@@ -176,7 +176,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         required=False,
-        help="Station weighting method (voronoi | none)",
+        help="Station weighting method (none | voronoi | station_sigma)",
     )
     parser.add_argument(
         "--mcmc-station-effective-area",
