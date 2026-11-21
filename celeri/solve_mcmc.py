@@ -16,6 +16,7 @@ Unit Conventions
 """
 
 import importlib.util
+import shutil
 from datetime import UTC, datetime
 from typing import Literal, cast
 
@@ -43,6 +44,14 @@ from celeri.operators import (
     build_operators,
 )
 from celeri.solve import Estimation, build_estimation
+from celeri.station_covariance import (
+    COMPONENTS,
+    VecchiaFactor,
+    load_station_covariance,
+    mean_information,
+    station_factor,
+    whiten_tensor,
+)
 
 DIRECTION_IDX = {
     "strike_slip": slice(None, None, 2),
@@ -1217,7 +1226,10 @@ def _log_station_sigmas(model: Model, sig: np.ndarray) -> None:
 
 
 def _build_rotation_transform(
-    model: Model, operators: Operators, vel_idx: np.ndarray
+    model: Model,
+    operators: Operators,
+    vel_idx: np.ndarray,
+    station_covariance: VecchiaFactor | None = None,
 ) -> "RotationTransform":
     """Build an SVD-based reparametrisation transform for block rotations.
 
@@ -1229,7 +1241,8 @@ def _build_rotation_transform(
     Station velocity observations use sigma = 1 (assumed), except with
     ``mcmc_station_weighting="station_sigma"``, where they use the station
     file's per-component sigmas times the fixed scale factor (a learned
-    scale factor is assumed to be 1).
+    scale factor is assumed to be 1). With ``mcmc_station_weighting="covariance"``
+    the station rows are whitened like the residuals (sigma = 1 assumed).
     LOS velocity observations use sigma = 1 (assumed).
     Segment regularisation uses the scalar ``gamma`` from config.
     Segment slip-rate observations use their per-segment sigma values.
@@ -1241,6 +1254,7 @@ def _build_rotation_transform(
         operators: Operators object (must have ``model`` attached).
         vel_idx: Row indices selecting velocity components from
             ``rotation_to_velocities``.
+        station_covariance: Whitening of the "covariance" station weighting.
 
     Returns:
         A ``RotationTransform`` instance (vh, svdvals) ready for use as a
@@ -1259,6 +1273,12 @@ def _build_rotation_transform(
         scale = model.config.mcmc_station_sigma_scale or 1.0
         sig = scale * _station_velocity_sigmas(model).ravel()
         A_station = A_station / sig[:, np.newaxis]
+    elif model.config.mcmc_station_weighting == "covariance":
+        assert station_covariance is not None
+        n_stations = len(model.station)
+        A_station = station_covariance.whiten(
+            A_station.reshape(n_stations, -1, A_station.shape[1])
+        ).reshape(A_station.shape)
     A_parts = [A_station]
 
     # LOS velocity observations — sigma = 1 assumed, analogous to station velocities.
@@ -1308,7 +1328,12 @@ def _build_rotation_transform(
     return RotationTransform(vh, svdvals, mu)
 
 
-def _add_rotation_component(model: Model, operators: Operators, vel_idx: np.ndarray):
+def _add_rotation_component(
+    model: Model,
+    operators: Operators,
+    vel_idx: np.ndarray,
+    station_covariance: VecchiaFactor | None = None,
+):
     """Add block rotation component to the PyMC model.
 
     Returns rotation parameters and velocity contributions.
@@ -1320,6 +1345,8 @@ def _add_rotation_component(model: Model, operators: Operators, vel_idx: np.ndar
     Args:
         operators: The operators object
         vel_idx: Row indices to select velocity components (horizontal only or all 3)
+        station_covariance: Whitening of the "covariance" station weighting, used
+            to scale the rotation reparametrisation.
     """
     import pymc as pm
     import pytensor.tensor as pt
@@ -1365,7 +1392,9 @@ def _add_rotation_component(model: Model, operators: Operators, vel_idx: np.ndar
         else:
             return np.concatenate(rotation_samples, axis=-1)
 
-    rotation_transform = _build_rotation_transform(model, operators, vel_idx)
+    rotation_transform = _build_rotation_transform(
+        model, operators, vel_idx, station_covariance
+    )
 
     # Units: [rad / Gyr]
     # Now using proper transform instead of manual implementation
@@ -1468,7 +1497,73 @@ def _weighted_normal_random(weight, mu, sigma, rng=None, size=None):
     return rng.normal(mu, np.asarray(sigma, dtype=float), size=size)
 
 
-def _add_station_velocity_likelihood(model: Model, mu):
+def _build_station_covariance(model: Model) -> VecchiaFactor:
+    """Whitening of the "covariance" station weighting.
+
+    Reads ``mcmc_station_covariance_file_name``, builds the near-field Vecchia
+    factor over the station table, logs a summary and, when the run folder
+    exists, saves a copy of the file and the factor there.
+    """
+    config = model.config
+    path = config.mcmc_station_covariance_file_name
+    if path is None:
+        raise ValueError(
+            'mcmc_station_weighting "covariance" requires '
+            "mcmc_station_covariance_file_name"
+        )
+    covariance = load_station_covariance(path)
+    n_components = 3 if config.include_vertical_velocity else 2
+    missing = [
+        name
+        for name in COMPONENTS[:n_components]
+        if name not in covariance["components"]
+    ]
+    if missing:
+        logger.warning(
+            f"Station covariance {path} has no {missing} component: "
+            "those residuals stay independent"
+        )
+    radius = config.mcmc_station_covariance_taper_radius
+    same_block = config.mcmc_station_covariance_same_block
+    fit = covariance.get("fit") or {}
+    for key, value in (("taper_radius_km", radius), ("same_block", same_block)):
+        if key in fit and fit[key] != value:
+            logger.warning(
+                f"Station covariance {path} was fit with {key} = {fit[key]}, but "
+                f"this run uses {value}: refit it with the run's settings"
+            )
+    factor, rows = station_factor(
+        model.station, covariance, n_components, radius, same_block
+    )
+    n_neighbors = (factor.neighbors[rows] != rows[:, None]).sum(axis=1)
+    info = mean_information(factor, rows, n_components)
+    logger.info(
+        f"Station covariance from {path}: {rows.size} of {len(model.station)} "
+        f"stations correlated, taper radius {radius} km, same block only "
+        f"{same_block}; {n_neighbors.mean():.1f} conditioning neighbours on average "
+        f"(at most {factor.neighbors.shape[1]})"
+    )
+    logger.info(
+        "Station covariance: the correlated stations count as "
+        f"{np.round(info).astype(int).tolist()} independent stations for a "
+        f"common offset (per component, of {rows.size})"
+    )
+    output_path = config.output_path
+    if output_path is not None and output_path.exists():
+        shutil.copyfile(path, output_path / "station_covariance.json")
+        np.savez_compressed(
+            output_path / "station_covariance_factor.npz",
+            neighbors=factor.neighbors,
+            coef=factor.coef,
+            inv_sd=factor.inv_sd,
+            correlated_rows=rows,
+        )
+    return factor
+
+
+def _add_station_velocity_likelihood(
+    model: Model, mu, station_covariance: VecchiaFactor | None = None
+):
     """Add station velocity likelihood to the PyMC model.
 
     Uses a Student-t likelihood for station observations, weighted according
@@ -1481,10 +1576,15 @@ def _add_station_velocity_likelihood(model: Model, mu):
       from the station file and the dimensionless factor ``s`` is fixed by
       ``config.mcmc_station_sigma_scale`` or, when that is None, learned as
       ``station_sigma_scale``. Student-t ν is ``config.mcmc_station_sigma_nu``.
+    - "covariance": as None, applied to residuals whitened with
+      ``station_covariance`` (see ``celeri.station_covariance``). The pointwise
+      log-likelihood of a station is that of its whitened residual, conditional
+      on its earlier neighbours, plus the log Jacobian of the whitening.
 
     Args:
         model: The model instance
         mu: Predicted velocities in mm/yr
+        station_covariance: Whitening for the "covariance" weighting
     """
     import pymc as pm
 
@@ -1557,10 +1657,36 @@ def _add_station_velocity_likelihood(model: Model, mu):
             observed=data,
             dims=dims,
         )
+    elif weighting == "covariance":
+        assert station_covariance is not None
+        logger.info(
+            f"Using correlated station likelihood ({len(data)} stations, "
+            "near-field covariance)"
+        )
+        factor = station_covariance
+        log_inv_sd = np.log(factor.inv_sd)
+
+        def covariance_logp(value, mu, sigma):
+            e = whiten_tensor(value - mu, factor)
+            return pm.logp(pm.StudentT.dist(nu=6, mu=0.0, sigma=sigma), e) + log_inv_sd
+
+        def covariance_random(mu, sigma, rng=None, size=None):
+            # Independent noise: predictive draws ignore the correlation
+            return mu + sigma * rng.standard_t(6, size=size)
+
+        pm.CustomDist(
+            "station_velocity",
+            mu,
+            sigma,
+            logp=covariance_logp,
+            random=covariance_random,
+            observed=data,
+            dims=dims,
+        )
     else:
         raise ValueError(
             f"Unknown mcmc_station_weighting: {weighting}. "
-            "Must be None, 'voronoi' or 'station_sigma'."
+            "Must be None, 'voronoi', 'station_sigma' or 'covariance'."
         )
 
 
@@ -1572,8 +1698,9 @@ def _add_los_velocity_likelihood(
     r"""Add LOS velocity likelihood to the PyMC model.
 
     Uses the same Voronoi area weighting as station likelihood when
-    mcmc_station_weighting is \"voronoi\". With \"station_sigma\" the LOS
-    likelihood is unweighted: LOS files carry no per-point sigma.
+    mcmc_station_weighting is \"voronoi\". With \"station_sigma\" or
+    \"covariance\" the LOS likelihood is unweighted: LOS files carry no per-point
+    sigma, and the station covariance covers stations only.
 
     Args:
         model: Model (for config and LOS coordinates).
@@ -1588,7 +1715,7 @@ def _add_los_velocity_likelihood(
     sigma_los = pm.HalfNormal("sigma_los", sigma=2)
 
     weighting = model.config.mcmc_station_weighting
-    if weighting is None or weighting == "station_sigma":
+    if weighting is None or weighting in ("station_sigma", "covariance"):
         logger.info(f"Using unweighted LOS likelihood ({los_ops.n_los} points)")
         pm.Normal(
             "los_velocity",
@@ -1618,7 +1745,7 @@ def _add_los_velocity_likelihood(
     else:
         raise ValueError(
             f"Unknown mcmc_station_weighting: {weighting}. "
-            "Must be None, 'voronoi' or 'station_sigma'."
+            "Must be None, 'voronoi', 'station_sigma' or 'covariance'."
         )
 
 
@@ -1784,6 +1911,9 @@ def _build_pymc_model(
     _validate_segment_constraint_sigmas(model)
     if model.config.mcmc_station_weighting == "station_sigma":
         _station_velocity_sigmas(model)  # fail on bad sigmas before building
+    station_covariance = None
+    if model.config.mcmc_station_weighting == "covariance":
+        station_covariance = _build_station_covariance(model)
 
     assert operators.eigen is not None
     assert operators.tde is not None
@@ -1831,7 +1961,7 @@ def _build_pymc_model(
         )
 
         rotation, rotation_velocity, rotation_okada_velocity = _add_rotation_component(
-            model, operators, vel_idx
+            model, operators, vel_idx, station_covariance
         )
 
         mogi_velocity = _add_mogi_component(operators, vel_idx)
@@ -1860,7 +1990,7 @@ def _build_pymc_model(
         dims = ("station", "xyz") if include_vertical else ("station", "xy")
         mu_det = pm.Deterministic("mu", mu, dims=dims)
 
-        _add_station_velocity_likelihood(model, mu_det)
+        _add_station_velocity_likelihood(model, mu_det, station_covariance)
         _add_segment_constraints(model, operators, rotation)
 
         if operators.los is not None:

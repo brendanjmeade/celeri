@@ -158,3 +158,38 @@ def test_station_weighting_defaults_to_unweighted(tmp_path):
         _config_data(tmp_path, mcmc_station_weighting="voronoi")
     )
     assert config.mcmc_station_weighting == "voronoi"
+
+
+def test_station_covariance_defaults(tmp_path):
+    config = Config.model_validate(_config_data(tmp_path))
+    assert config.mcmc_station_covariance_file_name is None
+    assert config.mcmc_station_covariance_taper_radius == 3.0
+    assert config.mcmc_station_covariance_same_block is True
+
+
+def test_station_covariance_mode_requires_file(tmp_path):
+    with pytest.raises(ValidationError, match="mcmc_station_covariance_file_name"):
+        Config.model_validate(
+            _config_data(tmp_path, mcmc_station_weighting="covariance")
+        )
+
+
+def test_station_covariance_file_name_is_relative_to_config(tmp_path):
+    config = Config.model_validate(
+        _config_data(
+            tmp_path,
+            mcmc_station_weighting="covariance",
+            mcmc_station_covariance_file_name="../covariance/cov.json",
+        )
+    )
+    config_dir = Path("./tests/configs").resolve()
+    expected = (config_dir / "../covariance/cov.json").resolve()
+    assert config.mcmc_station_covariance_file_name == expected
+
+
+@pytest.mark.parametrize("radius", [0.0, -1.0, float("nan"), float("inf")])
+def test_station_covariance_taper_radius_must_be_positive(tmp_path, radius):
+    with pytest.raises(ValidationError, match="mcmc_station_covariance_taper_radius"):
+        Config.model_validate(
+            _config_data(tmp_path, mcmc_station_covariance_taper_radius=radius)
+        )

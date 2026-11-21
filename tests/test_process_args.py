@@ -140,3 +140,35 @@ def test_mcmc_sampler_flags_override_config(monkeypatch):
 
     assert config.mcmc_target_accept == 0.8
     assert config.mcmc_drop_stalled_chains is True
+
+
+def test_station_covariance_flags_override_config(monkeypatch, tmp_path):
+    from celeri import parse_args
+
+    covariance = tmp_path / "covariance.json"
+    covariance.write_text("{}")
+    config = get_config(CONFIG)
+    assert config.mcmc_station_covariance_file_name is None
+    assert config.mcmc_station_covariance_same_block is True
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "celeri-solve",
+            str(CONFIG),
+            "--mcmc-station-weighting",
+            "covariance",
+            "--mcmc-station-covariance-file-name",
+            str(covariance),
+            "--mcmc-station-covariance-taper-radius",
+            "2.5",
+            "--mcmc-station-covariance-same-block",
+            "0",
+        ],
+    )
+    process_args(config, parse_args())
+
+    assert config.mcmc_station_weighting == "covariance"
+    assert config.mcmc_station_covariance_file_name == covariance.absolute()
+    assert config.mcmc_station_covariance_taper_radius == 2.5
+    assert config.mcmc_station_covariance_same_block is False

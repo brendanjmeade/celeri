@@ -146,6 +146,27 @@ celeri-sweep-sigmoid-slope wna_config.json 2 8 4 --log --mcmc-tune 200 --mcmc-dr
 - The swept value is also recorded in each run folder, in `config.json` (`mcmc_default_mesh_sigmoid_slope` and every `mesh_params[*].sigmoid_slope`) and in the run's `description`.
 - A value that fails is logged, recorded as `"failed"` in the manifest, and the remaining values still run. The command exits non-zero if any value failed.
 
+### `celeri-fit-station-covariance`
+
+- Fit a near-field correlation model to the station velocity residuals of a finished run, for the `"covariance"` MCMC station weighting. Densely sampled velocity fields (for example InSAR-derived grids) have residuals that are correlated over kilometres; this weighting stops nearby stations from counting as independent data, so results no longer depend on how densely the field is sampled.
+- The workflow is: run once with the unweighted likelihood, fit, then run again with the covariance. The station-to-station covariance is built at run time from the station coordinates, so one file serves any subsample of the same data set.
+- With the Python environment activated, run:
+
+```bash
+celeri-fit-station-covariance <run_dir> <covariance.json> [--station-names NAME ...] [--taper-radius 3] [--no-same-block]
+```
+
+- Then set, in the config file (or with the matching `celeri-solve` flags):
+
+```json
+"mcmc_station_weighting": "covariance",
+"mcmc_station_covariance_file_name": "../covariance/covariance.json",
+"mcmc_station_covariance_taper_radius": 3.0,
+"mcmc_station_covariance_same_block": true
+```
+
+- Stations farther apart than the taper radius (km), or on different blocks, are independent. See [docs/station-covariance.md](docs/station-covariance.md) for the model, the file format, how to choose the taper radius and the caveats.
+
 ## Folder structure and file locations for applications
 
 A large number of input files can be involved in a model run.  We assume that a project is arranged using the following folder structure:

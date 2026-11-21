@@ -176,7 +176,29 @@ def build_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         required=False,
-        help="Station weighting method (none | voronoi | station_sigma)",
+        help="Station weighting method (none | voronoi | station_sigma | covariance)",
+    )
+    parser.add_argument(
+        "--mcmc-station-covariance-file-name",
+        type=str,
+        default=None,
+        required=False,
+        help="Station covariance file (from celeri-fit-station-covariance) for "
+        "--mcmc-station-weighting covariance",
+    )
+    parser.add_argument(
+        "--mcmc-station-covariance-taper-radius",
+        type=float,
+        default=None,
+        required=False,
+        help="Distance (km) beyond which station residuals are independent",
+    )
+    parser.add_argument(
+        "--mcmc-station-covariance-same-block",
+        type=str2bool,
+        default=None,
+        required=False,
+        help="Flag for correlating only stations on the same block (0 | 1)",
     )
     parser.add_argument(
         "--mcmc-station-effective-area",

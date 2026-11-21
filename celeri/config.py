@@ -31,7 +31,7 @@ McmcStationVelocityMethod = Literal[
     "project_to_eigen",
 ]
 
-McmcStationWeighting = Literal["voronoi", "station_sigma"]
+McmcStationWeighting = Literal["voronoi", "station_sigma", "covariance"]
 
 McmcMeanParameterization = Literal["constrained", "unconstrained"]
 
@@ -358,6 +358,8 @@ class Config(RelativePathSerializerMixin, BaseModel):
     - "voronoi": Weight by Voronoi cell area to reduce over-representation of clusters.
     - "station_sigma": Use the station file's ``east_sig``, ``north_sig`` and (when
       ``include_vertical_velocity``) ``up_sig`` as per-observation noise scales.
+    - "covariance": Whiten station residuals with a sparse near-field covariance
+      read from ``mcmc_station_covariance_file_name``.
 
     None and "voronoi" apply to both GNSS station velocities and LOS (e.g. InSAR)
     velocities when present, and learn a single noise level ``sigma`` in mm/yr shared
@@ -378,6 +380,16 @@ class Config(RelativePathSerializerMixin, BaseModel):
     positive. This mode does not apply Voronoi declustering, and LOS observations (which
     carry no sigma column) are unweighted. With ``unit_sigmas`` it reduces to the None
     likelihood.
+
+    The "covariance" option keeps the None likelihood (Student-t with ν = 6 and one
+    learned ``sigma``) but applies it to station residuals whitened with a sparse
+    correlated-noise model, so densely sampled velocity fields are not counted many
+    times over. Stations closer than ``mcmc_station_covariance_taper_radius`` (and,
+    with ``mcmc_station_covariance_same_block``, on the same block) share
+    information; farther apart they are independent. The correlation model comes
+    from ``mcmc_station_covariance_file_name``, which ``celeri-fit-station-covariance``
+    writes from an earlier run's residuals. LOS observations are unweighted. See
+    ``docs/station-covariance.md``.
     """
 
     # Default mean and sigma for coupling/elastic GP priors in MCMC.
@@ -566,6 +578,45 @@ class Config(RelativePathSerializerMixin, BaseModel):
     UNITS: [dimensionless]
     """
 
+    mcmc_station_covariance_file_name: Path | None = None
+    """Station covariance file for the "covariance" station weighting.
+
+    A JSON file written by ``celeri-fit-station-covariance`` from an earlier run's
+    residuals. It names the correlated stations and gives, for each velocity
+    component, the nugget and Matérn terms of their correlation as a function of
+    distance. The station-to-station covariance itself is built at run time from
+    the station coordinates. A relative path is resolved from the config file's
+    directory.
+
+    Required when mcmc_station_weighting is "covariance", and only used then.
+    """
+
+    mcmc_station_covariance_taper_radius: float = 3.0
+    """Distance beyond which station residuals are independent.
+
+    The correlation from ``mcmc_station_covariance_file_name`` is multiplied by a
+    Wendland taper that reaches zero at this distance. Within it, nearby stations
+    share information, so adding stations stops adding independent data; beyond
+    it, every patch of stations counts, which keeps the long-wavelength velocity
+    field anchored. Larger values discount the data more; values below the
+    station spacing reduce to the unweighted likelihood. See
+    ``docs/station-covariance.md`` for how the default was chosen.
+
+    Only used when mcmc_station_weighting is "covariance".
+
+    UNITS: [km]
+    """
+
+    mcmc_station_covariance_same_block: bool = True
+    """Correlate only stations on the same block.
+
+    When True, stations on different blocks (on opposite sides of a fault) are
+    independent, so a velocity step across a fault, such as one from shallow
+    creep, is fit station by station rather than treated as correlated noise.
+
+    Only used when mcmc_station_weighting is "covariance".
+    """
+
     sqp2_annealing_enabled: bool = False
     """Enable annealing to search for a more optimal solution.
 
@@ -703,6 +754,25 @@ class Config(RelativePathSerializerMixin, BaseModel):
             raise ValueError(
                 "mcmc_station_sigma_scale must be finite and positive (or null to "
                 f"learn it), got {scale}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def validate_station_covariance_likelihood(self) -> Self:
+        """Require a positive taper radius, and a covariance file in that mode."""
+        radius = self.mcmc_station_covariance_taper_radius
+        if not (math.isfinite(radius) and radius > 0):
+            raise ValueError(
+                "mcmc_station_covariance_taper_radius must be finite and positive, "
+                f"got {radius}"
+            )
+        if (
+            self.mcmc_station_weighting == "covariance"
+            and self.mcmc_station_covariance_file_name is None
+        ):
+            raise ValueError(
+                'mcmc_station_weighting "covariance" requires '
+                "mcmc_station_covariance_file_name"
             )
         return self
 
