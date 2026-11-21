@@ -493,3 +493,138 @@ def test_mcmc_station_sigma_samples(fixed_scale):
         len(model.station),
         2,
     )
+
+
+def _demo_covariance_file(path):
+    """Covariance file correlating every demo station over tens of km."""
+    import json
+
+    component = {
+        "nugget": 0.2,
+        "terms": [{"weight": 0.8, "length_km": 50.0, "smoothness": 0.5}],
+    }
+    covariance = {
+        "station_names": None,
+        "n_neighbors": 20,
+        "ordering_seed": 0,
+        "components": {"east": component, "north": component},
+    }
+    path.write_text(json.dumps(covariance))
+    return path
+
+
+@pytest.fixture
+def covariance_mode(coupling_model, tmp_path):
+    """Switch the shared coupling model to the correlated station likelihood."""
+    model, operators = coupling_model
+    config = model.config
+    original = (
+        config.mcmc_station_weighting,
+        config.mcmc_station_covariance_file_name,
+        config.mcmc_station_covariance_taper_radius,
+    )
+    config.mcmc_station_weighting = "covariance"
+    config.mcmc_station_covariance_file_name = _demo_covariance_file(
+        tmp_path / "covariance.json"
+    )
+    # The demo GNSS stations are tens of km apart
+    config.mcmc_station_covariance_taper_radius = 100.0
+    try:
+        yield model, operators
+    finally:
+        (
+            config.mcmc_station_weighting,
+            config.mcmc_station_covariance_file_name,
+            config.mcmc_station_covariance_taper_radius,
+        ) = original
+
+
+def test_covariance_likelihood_whitens_residuals(covariance_mode):
+    import pytensor
+    from scipy import stats
+
+    from celeri.solve_mcmc import _build_pymc_model, _build_station_covariance
+
+    model, operators = covariance_mode
+    pymc_model = _build_pymc_model(model, operators)
+    factor = _build_station_covariance(model)
+    assert np.any(factor.coef != 0)
+
+    point = pymc_model.initial_point()
+    sigma = 1.7
+    point["sigma_log__"] = np.log(sigma)
+    (logp,) = pymc_model.compile_logp(vars=[pymc_model["station_velocity"]], sum=False)(
+        point
+    )
+    (mu_graph,) = pymc_model.replace_rvs_by_values([pymc_model["mu"]])
+    mu = pytensor.function(pymc_model.value_vars, mu_graph, on_unused_input="ignore")(
+        *[point[v.name] for v in pymc_model.value_vars]
+    )
+
+    data = model.station[["east_vel", "north_vel"]].to_numpy(dtype=float)
+    e = factor.whiten(data - mu)
+    expected = stats.t.logpdf(e, df=6, scale=sigma) + np.log(factor.inv_sd)
+    assert logp.shape == data.shape
+    assert_allclose(logp, expected, rtol=1e-6)
+
+
+def test_covariance_rotation_transform_whitens_station_rows(covariance_mode):
+    from celeri.celeri_util import get_keep_index_12
+    from celeri.solve_mcmc import _build_rotation_transform, _build_station_covariance
+
+    model, operators = covariance_mode
+    config = model.config
+    vel_idx = get_keep_index_12(3 * len(model.station))
+    whitened = _build_rotation_transform(
+        model, operators, vel_idx, _build_station_covariance(model)
+    )
+    config.mcmc_station_covariance_taper_radius = 1e-6
+    try:
+        independent = _build_rotation_transform(
+            model, operators, vel_idx, _build_station_covariance(model)
+        )
+    finally:
+        config.mcmc_station_covariance_taper_radius = 100.0
+    config.mcmc_station_weighting = None
+    try:
+        unweighted = _build_rotation_transform(model, operators, vel_idx)
+    finally:
+        config.mcmc_station_weighting = "covariance"
+
+    # A taper shorter than every station spacing is the unweighted likelihood
+    assert_allclose(independent.scale_diag, unweighted.scale_diag)
+    assert not np.allclose(whitened.scale_diag, unweighted.scale_diag)
+
+
+def test_covariance_mode_requires_file(covariance_mode):
+    from celeri.solve_mcmc import _build_pymc_model
+
+    model, operators = covariance_mode
+    model.config.mcmc_station_covariance_file_name = None
+    with pytest.raises(ValueError, match="mcmc_station_covariance_file_name"):
+        _build_pymc_model(model, operators)
+
+
+@pytest.mark.parametrize("backend", ["jax", "numba"])
+def test_mcmc_station_covariance_samples(tmp_path, backend):
+    """A short covariance run samples, keeps the pointwise LL and saves the factor."""
+    config = celeri.get_config("data/config/wna_config.json")
+    config.mcmc_station_weighting = "covariance"
+    config.mcmc_station_covariance_file_name = _demo_covariance_file(
+        tmp_path / "covariance.json"
+    )
+    config.mcmc_station_covariance_taper_radius = 100.0
+    config.mcmc_backend = backend
+    model = celeri.build_model(config)
+    estimation = celeri.solve_mcmc(
+        model, sample_kwargs={"tune": 10, "draws": 10, "chains": 1}
+    )
+    trace = estimation.mcmc_trace
+    assert np.all(trace.posterior["sigma"].values > 0)
+    assert trace.log_likelihood["station_velocity"].shape[-2:] == (
+        len(model.station),
+        2,
+    )
+    assert (config.output_path / "station_covariance.json").exists()
+    with np.load(config.output_path / "station_covariance_factor.npz") as saved:
+        assert saved["coef"].shape[0] == len(model.station)
