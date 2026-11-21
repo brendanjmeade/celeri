@@ -149,3 +149,12 @@ def test_station_sigma_likelihood_defaults(tmp_path):
     )
     assert config.mcmc_station_sigma_nu == 4.0
     assert config.mcmc_station_sigma_scale == 1.5
+
+
+def test_station_weighting_defaults_to_unweighted(tmp_path):
+    config = Config.model_validate(_config_data(tmp_path))
+    assert config.mcmc_station_weighting is None
+    config = Config.model_validate(
+        _config_data(tmp_path, mcmc_station_weighting="voronoi")
+    )
+    assert config.mcmc_station_weighting == "voronoi"

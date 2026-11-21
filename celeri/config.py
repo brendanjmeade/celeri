@@ -350,12 +350,12 @@ class Config(RelativePathSerializerMixin, BaseModel):
     in memory at once.
     """
 
-    mcmc_station_weighting: McmcStationWeighting | None = "voronoi"
+    mcmc_station_weighting: McmcStationWeighting | None = None
     """Method for weighting station and LOS observations in MCMC likelihood.
 
     Options:
-    - None: All observations weighted equally with weight one.
-    - "voronoi": Weight by Voronoi cell area to reduce over-representation of clusters (default)
+    - None: All observations weighted equally with weight one (default).
+    - "voronoi": Weight by Voronoi cell area to reduce over-representation of clusters.
     - "station_sigma": Use the station file's ``east_sig``, ``north_sig`` and (when
       ``include_vertical_velocity``) ``up_sig`` as per-observation noise scales.
 
@@ -363,10 +363,9 @@ class Config(RelativePathSerializerMixin, BaseModel):
     velocities when present, and learn a single noise level ``sigma`` in mm/yr shared
     by every station.
 
-    The "voronoi" option is a pragmatic approach to handle spatially clustered stations
-    without the computational cost of full spatial correlation modeling. It down-weights
-    stations in dense clusters proportionally to their spacing. Use None if you want
-    standard unweighted likelihood or if your network has uniform spatial coverage.
+    The "voronoi" option down-weights stations in dense clusters in proportion to
+    their Voronoi cell area. It is opt-in: in practice it has not recovered faults
+    known to be locked or creeping, so it is not the default.
 
     The "station_sigma" option weights each station component individually. The
     likelihood of component j at station i is Student-t (ν = ``mcmc_station_sigma_nu``)

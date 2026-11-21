@@ -1595,6 +1595,7 @@ def _add_los_velocity_likelihood(
             mu=los_pred,
             sigma=sigma_los,
             observed=los_ops.los_data,
+            dims=("los",),
         )
     elif weighting == "voronoi":
         assert model.los is not None  # guaranteed when LOS likelihood is added
