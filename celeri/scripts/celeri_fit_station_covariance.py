@@ -208,6 +208,25 @@ def mle_component(xyz_km, neighbors, used, values, start, smoothness, taper_radi
     return unpack(result.x), int(result.nfev)
 
 
+def bound_notes(fit, taper_radius):
+    """Explain any correlation length the likelihood fit left at a bound."""
+    low, high = LENGTH_BOUNDS_KM
+    notes = []
+    for term in fit["terms"]:
+        if np.isclose(term["length_km"], low):
+            notes.append(
+                f"  the {term['weight']:.3f} term's length is at the fit's lower "
+                f"bound ({low:g} km): it acts as extra nugget"
+            )
+        elif np.isclose(term["length_km"], high):
+            notes.append(
+                f"  the {term['weight']:.3f} term's length is at the fit's upper "
+                f"bound ({high:g} km): within {taper_radius:g} km it is constant, "
+                "so its correlation follows the taper's shape"
+            )
+    return notes
+
+
 def describe(fit):
     terms = ", ".join(
         f"{t['weight']:.3f} x {t['length_km']:.2f} km" for t in fit["terms"]
@@ -421,19 +440,8 @@ def main(argv=None):
                 f"{name}, maximum likelihood: {describe(fit)}; profile log "
                 f"likelihood {mle_ll:.1f} ({mle_ll - ll:+.1f}, {n_eval} evaluations)"
             )
-            low, high = LENGTH_BOUNDS_KM
-            for term in fit["terms"]:
-                if np.isclose(term["length_km"], low):
-                    print(
-                        f"  the {term['weight']:.3f} term's length is at the fit's "
-                        f"lower bound ({low:g} km): it acts as extra nugget"
-                    )
-                elif np.isclose(term["length_km"], high):
-                    print(
-                        f"  the {term['weight']:.3f} term's length is at the fit's "
-                        f"upper bound ({high:g} km): within {taper:g} km it is "
-                        "constant, so its correlation follows the taper's shape"
-                    )
+            for note in bound_notes(fit, taper):
+                print(note)
         details[name]["whitened_sd_over_fitted_scale"] = round(float(ratio), 4)
         fits[name] = fit
 

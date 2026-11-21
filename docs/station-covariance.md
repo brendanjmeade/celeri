@@ -218,21 +218,50 @@ The cost is that cross-fault east correlation is treated as independent.
 ## Reading the fit output
 
 The script prints, for each velocity component, the least-squares and the
-maximum-likelihood fits, then checks the result. What each line means, and
-what to look for:
+maximum-likelihood fits, then checks the result. For the WNA 100k run (99,531
+Xu et al. (2021) grid stations, *R* = 3 km, same block only):
+
+```
+runs/0000000005: 99531 stations (['xu_2021']); taper radius 3 km, same block only True
+east, correlogram fit: nugget 0.001; 0.201 x 0.40 km, 0.798 x 17.84 km; rms misfit 0.053; profile log likelihood 40200.5
+east, maximum likelihood: nugget 0.016; 0.065 x 0.01 km, 0.919 x 1000.00 km; profile log likelihood 42559.9 (+2359.4, 600 evaluations)
+  the 0.065 term's length is at the fit's lower bound (0.01 km): it acts as extra nugget
+  the 0.919 term's length is at the fit's upper bound (1000 km): within 3 km it is constant, so its correlation follows the taper's shape
+north, correlogram fit: nugget 0.075; 0.164 x 3.23 km, 0.761 x 22.37 km; rms misfit 0.044; profile log likelihood 55537.4
+north, maximum likelihood: nugget 0.001; 0.019 x 0.01 km, 0.980 x 1000.00 km; profile log likelihood 61098.4 (+5561.1, 244 evaluations)
+  the 0.019 term's length is at the fit's lower bound (0.01 km): it acts as extra nugget
+  the 0.980 term's length is at the fit's upper bound (1000 km): within 3 km it is constant, so its correlation follows the taper's shape
+whitened residual correlation within 3 km: [[0.014, -0.088], [-0.065, -0.029], [-0.022, 0.141], [0.085, 0.185], [0.227, 0.309], [0.243, 0.291], [0.256, 0.338], [0.233, 0.286]]
+independent stations for a common offset: [35708, 34673] of 99531
+Vecchia Gaussian log density with 10 neighbours: [-9398.7, 5627.8]
+Vecchia Gaussian log density with 20 neighbours: [-9428.3, 5693.0]
+Vecchia Gaussian log density with 30 neighbours: [-9424.3, 5702.3]
+Vecchia Gaussian log density with 60 neighbours: [-9424.3, 5702.3]
+```
+
+This fit took nearly 2 hours on a heavily loaded machine. A prototype of the
+same fit took 25 minutes on a lightly loaded one. Most of the time goes to
+the likelihood fit.
+
+What each line means, what to look for, and what the WNA output shows:
 
 - **`correlogram fit`**: a least-squares fit to the binned residual
   correlation. It is the starting point of the likelihood fit (and the
   result, with `--method correlogram`).
 - **`maximum likelihood`**: the parameters written to the file, which
   maximize the Vecchia likelihood of the tapered model. The likelihood gain
-  over the correlogram fit is in brackets and should be positive.
+  over the correlogram fit is in brackets and should be positive. The
+  evaluation count stops at 600, the optimizer's budget (east, here), when
+  the likelihood is flat in some direction; that is harmless if the gain
+  is large.
 - **`length is at the fit's upper bound`**: within *R*, a correlation length
   much longer than *R* is indistinguishable from a constant, so the
   likelihood cannot pin it and the fit stops at 1000 km. The term's
   correlation then simply follows the taper's shape. This is expected when
   the residuals are correlated well beyond *R*, as in WNA. Similarly, a length
-  at the lower bound (0.01 km) acts as extra nugget.
+  at the lower bound (0.01 km) acts as extra nugget. So in WNA, within 3 km
+  the fitted correlation is simply a nugget (about 0.08 east and 0.02 north)
+  plus the rest following the taper's shape.
 - **`whitened residual correlation within R`**: the residual correlation
   after whitening, one `[east, north]` pair per correlogram bin inside *R*.
   Values near 0 at short distances mean the near-field correlation is
@@ -240,13 +269,19 @@ what to look for:
   the modelled correlation to zero there while the residuals are still
   correlated: that is the correlation the model deliberately ignores (see
   [Why a taper](#why-a-taper)).
+  - The WNA bins are centred at 0.125, 0.375, …, 2.75 km.
+  - Before whitening, the residuals correlate at 0.7–1.1 in every bin. The
+    correlogram is normalized by the overall variance, so bins dominated by
+    high-residual areas can exceed 1.
+  - After whitening: −0.09 to 0.19 below 1 km, and 0.23–0.34 from 1 to 3 km.
 - **`independent stations for a common offset`**: how strongly the selected
   stations together still anchor the long-wavelength field. A few hundred
   for 10⁵ stations means the regional velocity is barely constrained; see
-  [Why a taper](#why-a-taper).
+  [Why a taper](#why-a-taper). In WNA: about 35,000 of 99,531.
 - **`Vecchia Gaussian log density with m neighbours`**: should stop changing
   by `--n-neighbors`. If it still changes between `n_neighbors` and twice
-  that, increase `--n-neighbors`.
+  that, increase `--n-neighbors`. In WNA, 30 and 60 neighbours give the same
+  density.
 
 The plot shows, for each component, the residual correlogram (dots), the
 fitted correlation without and with the taper (dashed and solid lines) and
@@ -254,7 +289,7 @@ the whitened residuals' correlogram (crosses), with *R* marked.
 
 ## The covariance file
 
-The format, with illustrative values:
+The file from the WNA fit above, abridged and with values rounded:
 
 ```json
 {
@@ -263,16 +298,29 @@ The format, with illustrative values:
     "ordering_seed": 0,
     "components": {
         "east": {
-            "nugget": 0.05,
+            "nugget": 0.016,
             "terms": [
-                {"weight": 0.15, "length_km": 0.4, "smoothness": 0.5},
-                {"weight": 0.80, "length_km": 18.0, "smoothness": 0.5}
+                {"weight": 0.065, "length_km": 0.01, "smoothness": 0.5},
+                {"weight": 0.919, "length_km": 1000.0, "smoothness": 0.5}
             ]
         },
-        "north": {"nugget": 0.05, "terms": ["...as for east..."]}
+        "north": {
+            "nugget": 0.001,
+            "terms": [
+                {"weight": 0.019, "length_km": 0.01, "smoothness": 0.5},
+                {"weight": 0.980, "length_km": 1000.0, "smoothness": 0.5}
+            ]
+        }
     },
-    "fit": {"taper_radius_km": 3.0, "same_block": true, "...": "diagnostics"},
-    "source": {"run_dir": "...", "created": "..."}
+    "fit": {
+        "method": "mle",
+        "taper_radius_km": 3.0,
+        "same_block": true,
+        "residual_sd_mm_per_yr": {"east": 2.58, "north": 1.51},
+        "independent_stations_common_offset": {"east": 35708.1, "north": 34673.0},
+        "...": "per-component fits, correlograms, convergence check"
+    },
+    "source": {"run_dir": "/.../runs/0000000005", "n_stations": 99531, "...": "..."}
 }
 ```
 

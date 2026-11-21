@@ -295,7 +295,7 @@ def test_fit_script_recovers_correlation_and_round_trips(tmp_path):
         assert 0.6 < term["weight"] < 1.0
 
 
-def test_fit_script_bounds_lengths_far_beyond_the_taper(tmp_path):
+def test_fit_script_bounds_lengths_far_beyond_the_taper(tmp_path, capsys):
     from celeri.scripts.celeri_fit_station_covariance import LENGTH_BOUNDS_KM, main
 
     # Within a 3 km taper a 200 km correlation is flat, so the likelihood
@@ -321,6 +321,7 @@ def test_fit_script_bounds_lengths_far_beyond_the_taper(tmp_path):
         for term in covariance["components"][name]["terms"]:
             low, high = LENGTH_BOUNDS_KM
             assert low <= term["length_km"] <= high
+    assert "upper bound (1000 km)" in capsys.readouterr().out
 
 
 def test_fit_script_refuses_to_overwrite(tmp_path):
